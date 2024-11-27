@@ -1,0 +1,30 @@
+from collections import abc
+
+import torch
+
+from ...tensorlist import TensorList
+from ...core import OptimizerModule
+
+def _polyak_step(ascent_direction, velocity: TensorList, momentum, dampening: TensorList):
+    # add velocity to ascent direction
+    updated_direction = ascent_direction + velocity * (1 - dampening)
+
+    # add ascent direction to velocity (one before the update!)
+    velocity += ascent_direction
+
+    # decay velocity
+    velocity *= momentum
+
+    return updated_direction
+
+class PolyakMomentum(OptimizerModule):
+    def __init__(self, momentum: float = 0.9, dampening: float = 0, ):
+        defaults = dict(momentum = momentum, dampening = dampening)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def _update(self, state, ascent_direction):
+        velocity = self.get_state_key('velocity')
+        settings = self.get_all_group_keys()
+        updated_direction = _polyak_step(ascent_direction, velocity, settings['momentum'], settings['dampening'])
+        return updated_direction

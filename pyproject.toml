@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchzero"
+description = ""
+
+version = "0.0.1"
+dependencies = [
+  "numpy",
+]
+requires-python = ">= 3.12"
+readme = "README.md"
+authors = [
+  {name = "Ivan Nikishev", email = "nkshv2@gmail.com"},
+]
+license = {file = "LICENSE"}
+keywords = []
+
+
+[project.urls]
+Homepage = "https://github.com/inikishev/torchzero"
+Repository = "https://github.com/inikishev/torchzero"
+Issues = "https://github.com/inikishev/torchzero/isses"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]

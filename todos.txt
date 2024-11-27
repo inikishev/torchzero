@@ -1,0 +1,85 @@
+- permutation params (Combinatorial number system, Factorial number system, argsort, Lehmer code https://optuna.readthedocs.io/en/stable/faq.html#how-can-i-deal-with-permutation-as-a-parameter)
+- function param (from computational primitives)
+- maybe turing machine param
+- add sample_mutate
+- add sample_crossover
+- docs
+- bounded array (?)
+- hypervolume pareto indicatior
+- add plotly plotting + plotly volume
+- pruning
+- increase dim by one and test execution time and plot.
+- plot how optimizer loss changes with changing some hyperparameter
+- stop after n no improvement steps
+- add non-continuous param
+
+optimizers
+- meta
+- ga
+- bo
+- grid search
+- sequential search
+- coordinate descent
+- spatial mutation hill climbing
+- redo all rs
+- check what I have in torchzero
+- autogluon surrogate
+
+integrations
+- https://github.com/PKU-DAIR/open-box
+- https://github.com/icb-dcm/pypesto
+- https://github.com/guofei9987/scikit-opt
+- https://github.com/syne-tune
+- https://github.com/SimonBlanke/Hyperactive
+- https://github.com/dme65/pySOT
+- https://github.com/Pyomo/pyomo
+- https://github.com/fabianp/hoag
+- https://github.com/ishaslavin/Comparison_Based_Optimization
+- https://github.com/caesarcai/ZORO
+- https://github.com/NiMlr/High-Dim-ES-RL
+- https://github.com/dietmarwo/fast-cma-es
+- https://github.com/numericalalgorithmsgroup/dfols
+- https://github.com/bayesian-optimization/BayesianOptimization
+- https://github.com/DLR-SC/sqpdfo
+- https://github.com/Project-Platypus/Platypus
+- https://github.com/coin-or/rbfopt
+- https://github.com/airbus/discrete-optimization
+- https://github.com/michelbierlaire/optimization
+- https://github.com/mlpack/ensmallen
+
+# BENCHMARKS
+- fitting models (classification, regression)
+- sparse regresion via sparse recovery (linear regression that fits vector with no more than s non zero entries)
+- cellular automaton that stops after n steps
+- https://zoopt.readthedocs.io/en/latest/Examples/Optimize-a-Discrete-Function.html
+
+
+# DONE
+- plotting
+- history class
+- add stopping IN optimize, to avoid force-stopping by raising EndStudy
+- scheduling
+- one-hot encoded categorical params
+- tests
+- add sample_set
+- add sample_generate_pertubation
+- add sample_increment, sample_decrement
+- registry like nevergrad
+- test all optimizers
+- penalties for oob
+- https://github.com/SimonBlanke/Gradient-Free-Optimizers
+- https://github.com/optimagic-dev/optimagic
+- fdsa
+- surrogates
+- https://github.com/uqfoundation/mystic
+- https://github.com/thieu1995/mealpy
+- https://github.com/stevengj/nlopt
+- https://github.com/lindonroberts/directsearch
+- https://github.com/lmfit/lmfit-py
+- REWRITE PARAMS
+- vector optimizer class
+- vectorized evaluation
+- https://github.com/polixir/ZOOpt
+- https://github.com/adamsolomou/second-order-random-search
+- https://github.com/anyoptimization/pymoo
+- https://github.com/WilliamLwj/PyXAB
