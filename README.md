@@ -30,12 +30,11 @@ This code will also work with all built in pytorch optimizers, including LBFGS, 
 # Stuff i've implemented
 There will be docs with a more exhaustive list and explanations. For now I hope that everything should be reasonably straightforward to use.
 - Gradient approximation via finite difference or randomized finite difference (which includes SPSA and Gaussian smoothing algorithm described in *Nesterov, Y., & Spokoiny, V. (2017). Random gradient-free minimization of convex functions. Foundations of Computational Mathematics, 17(2), 527-566.*)
-- Newton with hessian approximation via finite difference or gradient finite difference
+- Exact Newton's method, and newton with hessian approximation via finite difference.
 - Various line searches
 - Polyak momentum, nesterov momentum
 - Gradient clipping and normalization
 - Learning rate droput (*Lin, H., Zeng, W., Zhuang, Y., Ding, X., Huang, Y., & Paisley, J. (2022). Learning rate dropout. IEEE Transactions on Neural Networks and Learning Systems, 34(11), 9029-9039.*)
-- Exact newton
 - Laplacian smoothing (*Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55*)
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
 - Projections into small random subspace (which is a part of things like *Gower, R., Kovalev, D., Lieder, F., & Richtárik, P. (2019). RSN: randomized subspace Newton. Advances in Neural Information Processing Systems, 32.*)
