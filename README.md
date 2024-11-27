@@ -28,7 +28,7 @@ optimizer.step(closure)
 This code will also work with all built in pytorch optimizers, including LBFGS, all optimizers in this library, as well as most custom ones.
 
 # Stuff i've implemented
-There will be docs with a more exhaustive list and explanations. But everything should be reasonably straightforward to use and has docstrings.
+There will be docs with a more exhaustive list and explanations. For now I hope that everything should be reasonably straightforward to use.
 - Gradient approximation via finite difference or randomized finite difference (which includes SPSA and Gaussian smoothing algorithm described in *Nesterov, Y., & Spokoiny, V. (2017). Random gradient-free minimization of convex functions. Foundations of Computational Mathematics, 17(2), 527-566.*)
 - Newton with hessian approximation via finite difference or gradient finite difference
 - Various line searches
