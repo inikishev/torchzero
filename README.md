@@ -40,7 +40,7 @@ There will be docs with a more exhaustive list and explanations. But everything 
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
 - Projections into small random subspace (which is a part of things like *Gower, R., Kovalev, D., Lieder, F., & Richtárik, P. (2019). RSN: randomized subspace Newton. Advances in Neural Information Processing Systems, 32.*)
 - I've implemented SGD and Adam as composable modules as well, so if you ever wanted Adam with line search, you can now do it (but check out *Kenneweg, P., Kenneweg, T., Fumagalli, F., & Hammer, B. (2024, June). No learning rates needed: Introducing SALSA-Stable Armijo Line Search Adaptation. In 2024 International Joint Conference on Neural Networks (IJCNN) (pp. 1-8). IEEE.*)
-- 
-Also, due to me using TensorList, which is kinda like TensorDict, and due to the modular nature of those implementations, they usually somehow turn out to have reasonably clean code and might be good as reference implementations.
+  
+Also, due to me using TensorList, which is kinda like TensorDict, and due to the modular nature of those implementations, they usually turn out to have reasonably clean code and might be good as reference implementations.
 
 But the code is still highly experimental, untested and subject to change, so feel free but be careful if using this for actual project.
