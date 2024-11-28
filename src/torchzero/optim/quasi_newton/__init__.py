@@ -1,2 +1,2 @@
 from .newton_grad_fdm import NewtonGradFDM
-from .newton_ray_search import NewtonRaySearch, DiagNewtonRaySearch
+from .newton_ray_search import NewtonRaySearch, NewtonGradFDMRaySearch

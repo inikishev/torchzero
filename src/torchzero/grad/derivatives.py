@@ -44,5 +44,8 @@ def jacobian_and_hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[to
     jac = jacobian(input, wrt, create_graph=True, batched = batched)
     return jac, jacobian(jac, wrt, batched = batched)
 
+def jacobian_list_to_vec(jacobians: abc.Sequence[torch.Tensor]):
+    return torch.cat([i.ravel() for i in jacobians], 0)
+
 def hessian_list_to_mat(hessians: abc.Sequence[torch.Tensor]):
     return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)

@@ -74,7 +74,8 @@ class ExactNewton(OptimizerModule):
 
         Args:
             tikhonov (float, optional):
-                tikhonov regularization (constant value added to the diagonal of the hessian). Defaults to 0.
+                tikhonov regularization (constant value added to the diagonal of the hessian). 
+                Also known as Levenberg-Marquardt regularization. Defaults to 0.
             solver (Solvers, optional):
                 solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
             fallback (Solvers, optional):

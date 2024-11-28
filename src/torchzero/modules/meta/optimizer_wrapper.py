@@ -69,7 +69,13 @@ class ClosureOptimizerWrapper(OptimizerModule):
             return self.child.step(state)
 
 class UninitializedClosureOptimizerWrapper(OptimizerModule):
-    def __init__(self, optimizer_cls: abc.Callable[..., torch.optim.Optimizer]):
+    def __init__[**K](
+        self,
+        optimizer_cls: abc.Callable[T.Concatenate[T.Any, K], torch.optim.Optimizer],
+        /,
+        *args: K.args,
+        **kwargs: K.kwargs,
+    ):
         """
         Wraps any torch.optim.Optimizer.
         If this is the last module, performs a step with the optimizer passing it the closure.
@@ -80,12 +86,14 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
         """
 
         super().__init__({})
-        self.optimizer_cls = optimizer_cls
+        self._optimizer_cls = optimizer_cls
+        self._args = args
+        self._kwargs = kwargs
 
     def _initialize_(self, params):
         """Initializes this optimizer and all children with the given parameters."""
         super()._initialize_(params)
-        self.optimizer = self.optimizer_cls(params)
+        self.optimizer = self._optimizer_cls(params, *self._args, **self._kwargs)
 
     @torch.no_grad
     def step(self, state):
