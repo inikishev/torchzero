@@ -7,7 +7,7 @@ optimizer = torchzero.optim.ModularOptimizer(model.parameters(), [*list of modul
 ```
 For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. 
 
-Or `[ExactNewton(), BacktrackingLS()]` for newton with backtracking line search. Something a bit more interesting - `[Subspace(ProjRandom(3)), NewtonFDM(1e-3)]` will perform a newton step via finite-difference approximated hessian in a small subspace defined by 3 random projections. `[Subspace(ProjRandom(3)), ClosureOptimizerWrapper(torch.optim.LBFGS(model.parameters())]` will use pytorches LBFGS in a random 3-dimensional subspace, via hooking into the closure. 
+Or `[ExactNewton(), BacktrackingLS()]` for newton with backtracking line search. Something a bit more interesting - `[Subspace(ProjRandom(3)), NewtonFDM(1e-3)]` will perform a newton step via finite-difference approximated hessian in a small subspace defined by 3 random projections, making it feasible for large scale problems.
 
 # How to use
 
@@ -30,7 +30,7 @@ This code will also work with all built in pytorch optimizers, including LBFGS, 
 # Stuff i've implemented
 There will be docs with a more exhaustive list and explanations. For now I hope that everything should be reasonably straightforward to use.
 - Gradient approximation via finite difference or randomized finite difference (which includes SPSA and Gaussian smoothing algorithm described in *Nesterov, Y., & Spokoiny, V. (2017). Random gradient-free minimization of convex functions. Foundations of Computational Mathematics, 17(2), 527-566.*)
-- Exact Newton's method, and newton with hessian approximation via finite difference.
+- Exact Newton's method (with Levenberg-Marquardt regularization), and newton with hessian approximation via finite difference.
 - Various line searches
 - Polyak momentum, nesterov momentum
 - Gradient clipping and normalization
