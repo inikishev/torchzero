@@ -57,7 +57,7 @@ opt = ScipyMinimize(model.parameters(), method = 'trust-krylov')
 Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**). Note that it performs full minimization on each step. 
 
 ### Nevergrad wrapper
-```
+```py
 opt = NevergradOptimizer(bench.parameters(), ng.optimizers.NGOptBase, budget = 1000)
 ```
 Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**).
