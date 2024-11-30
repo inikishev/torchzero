@@ -48,7 +48,7 @@ But the code is still highly experimental, untested and subject to change, so fe
 
 
 # other stuff
-### scipy.optimize.minimize.wrapper
+### scipy.optimize.minimize wrapper
 scipy.optimize.minimize wrapper with support for both gradient and hessian via batched autograd
 ```py
 from torchzero.optim.wrappers.scipy import ScipyMinimize
