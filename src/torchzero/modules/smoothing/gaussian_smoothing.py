@@ -16,7 +16,7 @@ def _numpy_or_torch_mean(losses: list):
     else:
         return np.mean(losses).item()
 
-class RandomSampling(OptimizerModule):
+class ApproxGaussianSmoothing(OptimizerModule):
     def __init__(
         self,
         n_samples: int = 4,
@@ -25,7 +25,7 @@ class RandomSampling(OptimizerModule):
         sample_x0 = False,
         randomize_every: int = 1,
     ):
-        """Samples and averages gradients in multiple random points around current position.
+        """Samples and averages value and gradients in multiple random points around current position.
         This effectively applies smoothing to the function.
 
         Args:

@@ -9,7 +9,7 @@ from ...modules import (SGD, NewtonGradFDM, LineSearches, NewtonFDM, Subspace,
 from ..modular import ModularOptimizer
 
 
-class NewtonRaySearch(ModularOptimizer):
+class NewtonFDMRaySearch(ModularOptimizer):
     def __init__(
         self,
         params,
@@ -71,7 +71,7 @@ class LBFGSRaySearch(ModularOptimizer):
     def __init__(
         self,
         params,
-        lr = 1e-2,
+        lr = 1,
         momentum:float = 0,
         weight_decay:float = 0,
         dampening: float = 0,

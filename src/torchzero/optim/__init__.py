@@ -11,6 +11,6 @@ Ready to use optimizers.
 
 """
 from .modular import ModularOptimizer
-from .quasi_newton import NewtonGradFDM, NewtonRaySearch, NewtonGradFDMRaySearch
+from .quasi_newton import *
 from .zeroth_order import *
-from .second_order import ExactNewton
+from .second_order import *

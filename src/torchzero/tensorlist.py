@@ -121,26 +121,26 @@ class TensorList(list[torch.Tensor | T.Any]):
             self.get_existing_grads().zero_()
         return self
 
-    def __add__(self, other: STOrSTSequence): return self.add(other) # type:ignore
-    def __radd__(self, other: STOrSTSequence): return self.add(other)
-    def __iadd__(self, other: STOrSTSequence): # type:ignore
+    def __add__(self, other: STOrSTSequence) -> T.Self: return self.add(other) # type:ignore
+    def __radd__(self, other: STOrSTSequence) -> T.Self: return self.add(other)
+    def __iadd__(self, other: STOrSTSequence) -> T.Self: # type:ignore
         self.add_(other)
         return self
 
-    def __sub__(self, other: "Scalar | STSequence"): return self.sub(other)
-    def __rsub__(self, other: "Scalar | STSequence"): return - self.sub(other)
-    def __isub__(self, other: "Scalar | STSequence"):
+    def __sub__(self, other: "Scalar | STSequence") -> T.Self: return self.sub(other)
+    def __rsub__(self, other: "Scalar | STSequence") -> T.Self: return - self.sub(other)
+    def __isub__(self, other: "Scalar | STSequence") -> T.Self:
         self.sub_(other)
         return self
 
-    def __mul__(self, other: STOrSTSequence): return self.mul(other) # type:ignore
-    def __rmul__(self, other: STOrSTSequence): return self.mul(other) # type:ignore
-    def __imul__(self, other: STOrSTSequence): # type:ignore
+    def __mul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
+    def __rmul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
+    def __imul__(self, other: STOrSTSequence) -> T.Self: # type:ignore
         self.mul_(other)
         return self
 
     def __truediv__(self, other: "Scalar | STSequence") -> T.Self: return self.div(other)
-    def __rtruediv__(self, other: "Scalar | STSequence"): return other * self.reciprocal()
+    def __rtruediv__(self, other: "Scalar | STSequence") -> T.Self: return other * self.reciprocal() # type:ignore
     def __itruediv__(self, other: "Scalar | STSequence") -> T.Self:
         self.div_(other)
         return self

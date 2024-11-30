@@ -5,6 +5,6 @@ as well as gradient/update clipping and normalization.
 from .basic import Clone, Lambda, Reciprocal, NanToNum
 from .clipping import ClipNorm, ClipValue
 from .lr import LR
-from .normalization import Normalize
+from .normalization import Normalize, normalize_grad_
 from .on_increase import NegateOnLossIncrease, ZeroOnLossIncrease
-from .sign import Sign
+from .sign import Sign, sign_grad_

@@ -5,7 +5,7 @@ from collections import abc
 import torch
 
 from ... import tl
-from ...core import OptimizerModule, OptimizationState
+from ...core import OptimizationState, OptimizerModule
 
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
@@ -14,18 +14,14 @@ class Projection(ABC):
     n = 1
     @abstractmethod
     def sample(self, params: tl.TensorList, state: OptimizationState) -> list[tl.TensorList]:
-        """_summary_
+        """Generate a projection.
 
         Args:
-            params (tl.TensorList): _description_
-            state (OptimizationState): _description_
-
-        Raises:
-            ValueError: _description_
-            ValueError: _description_
+            params (tl.TensorList): tensor list of parameters.
+            state (OptimizationState): optimization state object.
 
         Returns:
-            list[tl.TensorList]: _description_
+            projection.
         """
 
 class ProjRandom(Projection):
@@ -38,9 +34,11 @@ class ProjRandom(Projection):
 
 
 class Proj2Masks(Projection):
-    def __init__(self, n_masks = 1):
-        self.n_masks = n_masks
-        self.n = n_masks * 2
+    def __init__(self, n_pairs = 1):
+        """Similar to ProjRandom, but generates pairs of two random masks of 0s and 1s,
+        where second mask is an inverse of the first mask."""
+        self.n_masks = n_pairs
+        self.n = n_pairs * 2
 
     def sample(self, params: tl.TensorList, state: OptimizationState):
         projections = []
@@ -54,6 +52,7 @@ class Proj2Masks(Projection):
 
 
 class ProjAscent(Projection):
+    """Use ascent direction as the projection."""
     def sample(self, params: tl.TensorList, state: OptimizationState):
         if state.ascent_direction is None: raise ValueError
         return [state.ascent_direction]
@@ -85,6 +84,58 @@ class ProjGradRay(Projection):
         mean = params.total_mean().detach().cpu().item()
         return [grad + grad.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
 
+class ProjGradAscentDifference(Projection):
+    def __init__(self, normalize=False):
+        """Use difference between gradient and ascent direction as projection.
+
+        Args:
+            normalize (bool, optional): normalizes grads and ascent projection to have norm = 1. Defaults to False.
+        """
+        self.normalize = normalize
+
+    def sample(self, params: tl.TensorList, state: OptimizationState):
+        grad = state.maybe_compute_grad_(params)
+        if self.normalize:
+            return [state.ascent_direction / state.ascent_direction.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
+        else:
+            return [state.ascent_direction - grad] # type:ignore
+
+class ProjLastGradDifference(Projection):
+    def __init__(self):
+        """Use difference between last two gradients as the projection."""
+        self.last_grad = None
+    def sample(self, params: tl.TensorList, state: OptimizationState):
+        if self.last_grad is None:
+            self.last_grad = state.maybe_compute_grad_(params)
+            return [self.last_grad]
+        else:
+            grad = state.maybe_compute_grad_(params)
+            diff = grad - self.last_grad
+            self.last_grad = grad
+            return [diff]
+
+class ProjLastAscentDifference(Projection):
+    def __init__(self):
+        """Use difference between last two ascent directions as the projection."""
+        self.last_direction = T.cast(tl.TensorList, None)
+
+    def sample(self, params: tl.TensorList, state: OptimizationState):
+        if self.last_direction is None:
+            self.last_direction: tl.TensorList = state.ascent_direction # type:ignore
+            return [self.last_direction]
+        else:
+            diff = state.ascent_direction - self.last_direction # type:ignore
+            self.last_direction = state.ascent_direction # type:ignore
+            return [diff]
+
+class ProjNormalize(Projection):
+    def __init__(self, *projections: Projection):
+        """Normalizes all projections to have norm = 1."""
+        self.projections = projections
+
+    def sample(self, params: tl.TensorList, state: OptimizationState): # type:ignore
+        vecs = [proj for obj in self.projections for proj in obj.sample(params, state)]
+        return [v/v.total_vector_norm(2) for v in vecs]
 
 class Subspace(OptimizerModule):
     def __init__(self, projections: Projection | abc.Iterable[Projection], randomize_every: int = 1, ):
