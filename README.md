@@ -45,3 +45,19 @@ All modules should be quite fast, especially on models with many different param
 Also due to the modular nature of those implementations, they usually turn out to have reasonably clean code and might be good as reference implementations.
 
 But the code is still highly experimental, untested and subject to change, so feel free but be careful if using this for actual project.
+
+
+# other stuff
+### scipy.optimize.minimize.wrapper
+scipy.optimize.minimize wrapper with support for both gradient and hessian via batched autograd
+```py
+from torchzero.optim.wrappers.scipy import ScipyMinimize
+opt = ScipyMinimize(model.parameters(), method = 'trust-krylov')
+```
+Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**). Note that it performs full minimization on each step. 
+
+### Nevergrad wrapper
+```
+opt = NevergradOptimizer(bench.parameters(), ng.optimizers.NGOptBase, budget = 1000)
+```
+Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**).
