@@ -8,7 +8,7 @@ from torch.optim.optimizer import ParamsT
 
 from torchzero.tensorlist import TensorList, NumberList
 
-_StateInit = T.Literal['params', 'grad'] | abc.Callable
+_StateInit = T.Literal['params', 'grad'] | abc.Callable | TensorList
 class TensorListOptimizer(torch.optim.Optimizer, ABC):
     def __init__(self, params: ParamsT, defaults):
         """torch.optim.Optimizer with some additional methods related to TensorList.
@@ -50,10 +50,11 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         """
         value = TensorList()
         if params is None: params = self.get_params()
-        for p in params:
+        for pi, p in enumerate(params):
             state = self.state[p]
             if key not in state:
                 if callable(init): state[key] = init(p)
+                elif isinstance(init, TensorList): state[key] = init[pi]
                 elif init == 'params': state[key] = params.clone()
                 elif init == 'grad': state[key] = params.grad.clone()
                 else: raise ValueError(f'unknown init - {init}')
@@ -73,13 +74,14 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         if params is None: params = self.get_params()
         if callable(inits) or isinstance(inits, str): inits = [inits] * len(keys) # type:ignore
 
-        for p in params:
+        for pi, p in enumerate(params):
             state = self.state[p]
             for i, (key, init) in enumerate(zip(keys, inits)): # type:ignore
                 if key not in state:
                     if callable(init): state[key] = init(p)
-                    elif init == 'params': state[key] = params.clone()
-                    elif init == 'grad': state[key] = params.grad.clone()
+                    elif isinstance(init, TensorList): state[key] = init[pi]
+                    elif init == 'params': state[key] = p.clone()
+                    elif init == 'grad': state[key] = p.grad.clone() if p.grad is not None else torch.zeros_like(p)
                     else: raise ValueError(f'unknown init - {init}')
                 values[i].append(state[key])
         return values

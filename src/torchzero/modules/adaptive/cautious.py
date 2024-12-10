@@ -98,6 +98,7 @@ class NegateOnSignChange(OptimizerModule):
         # initialize on first step
         if self.current_step == 0:
             prev_sign.set_(cur_sign)
+            self.current_step += 1
             return ascent_direction
 
         # mask will be > 0 for parameters where both signs are the same
@@ -133,6 +134,7 @@ class UndoOnSignChange(OptimizerModule):
         if self.current_step == 0:
             prev_sign.set_(cur_sign)
             prev_ascent.copy_(ascent_direction)
+            self.current_step += 1
             return ascent_direction
 
         ascent_direction -= prev_ascent.mul_(cur_sign != prev_sign)

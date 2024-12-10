@@ -123,45 +123,31 @@ class TensorList(list[torch.Tensor | T.Any]):
 
     def __add__(self, other: STOrSTSequence) -> T.Self: return self.add(other) # type:ignore
     def __radd__(self, other: STOrSTSequence) -> T.Self: return self.add(other)
-    def __iadd__(self, other: STOrSTSequence) -> T.Self: # type:ignore
-        self.add_(other)
-        return self
+    def __iadd__(self, other: STOrSTSequence) -> T.Self: return self.add_(other) # type:ignore
 
     def __sub__(self, other: "Scalar | STSequence") -> T.Self: return self.sub(other)
     def __rsub__(self, other: "Scalar | STSequence") -> T.Self: return - self.sub(other)
-    def __isub__(self, other: "Scalar | STSequence") -> T.Self:
-        self.sub_(other)
-        return self
+    def __isub__(self, other: "Scalar | STSequence") -> T.Self: return self.sub_(other)
 
     def __mul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
     def __rmul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
-    def __imul__(self, other: STOrSTSequence) -> T.Self: # type:ignore
-        self.mul_(other)
-        return self
+    def __imul__(self, other: STOrSTSequence) -> T.Self: return self.mul_(other) # type:ignore
 
     def __truediv__(self, other: "Scalar | STSequence") -> T.Self: return self.div(other)
     def __rtruediv__(self, other: "Scalar | STSequence") -> T.Self: return other * self.reciprocal() # type:ignore
-    def __itruediv__(self, other: "Scalar | STSequence") -> T.Self:
-        self.div_(other)
-        return self
+    def __itruediv__(self, other: "Scalar | STSequence") -> T.Self: return self.div_(other)
 
     def __floordiv__(self, other: STOrSTSequence): return self.floor_divide(other)
     #def __rfloordiv__(self, other: "TensorList"): return other.floor_divide(self)
-    def __ifloordiv__(self, other: STOrSTSequence):
-        self.floor_divide_(other)
-        return self
+    def __ifloordiv__(self, other: STOrSTSequence): return self.floor_divide_(other)
 
     def __mod__(self, other: STOrSTSequence): return self.remainder(other)
     #def __rmod__(self, other: STOrSTSequence): return self.remainder(other)
-    def __imod__(self, other: STOrSTSequence):
-        self.remainder_(other)
-        return self
+    def __imod__(self, other: STOrSTSequence):return self.remainder_(other)
 
     def __pow__(self, other: "Scalar | STSequence"): return self.pow(other)
     #def __rpow__(self, other: Scalar | STSequence): return self.pow(other)
-    def __ipow__(self, other: "Scalar | STSequence"):
-        self.pow_(other)
-        return self
+    def __ipow__(self, other: "Scalar | STSequence"): return self.pow_(other)
 
     def __neg__(self): return self.neg()
 
@@ -172,8 +158,14 @@ class TensorList(list[torch.Tensor | T.Any]):
     def __gt__(self, other: STOrSTSequence): return self.gt(other) # type:ignore
     def __ge__(self, other: STOrSTSequence): return self.ge(other) # type:ignore
 
-    def __invert__(self): return self.map(torch.logical_not)
+    def __invert__(self): return self.logical_not()
 
+    def __and__(self, other: torch.Tensor | TensorSequence): return self.logical_and(other)
+    def __iand__(self, other: torch.Tensor | TensorSequence): return self.logical_and_(other)
+    def __or__(self, other: torch.Tensor | TensorSequence): return self.logical_or(other)
+    def __ior__(self, other: torch.Tensor | TensorSequence): return self.logical_or_(other)
+    def __xor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor(other)
+    def __ixor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor_(other)
 
     def map(self, fn: A.Callable[..., torch.Tensor], *args, **kwargs):
         """Applies `fn` to all elements of this TensorList
@@ -208,19 +200,15 @@ class TensorList(list[torch.Tensor | T.Any]):
     def zipmap_args(self, fn: A.Callable[..., T.Any], *others, **kwargs):
         """If `args` is list/tuple, applies `fn` to this TensorList zipped with `others`.
         Otherwise applies `fn` to this TensorList and `other`."""
-        if isinstance(others[0], (list, tuple)):
-            return self.__class__(fn(*z, **kwargs) for z in zip(self, *others))
-        else:
-            return self.__class__(fn(i, *others, **kwargs) for i in self)
+        others = [i if isinstance(i, (list, tuple)) else [i]*len(self) for i in others]
+        return self.__class__(fn(*z, **kwargs) for z in zip(self, *others))
 
     def zipmap_args_inplace_(self, fn: A.Callable[..., T.Any], *others, **kwargs):
         """If `args` is list/tuple, applies `fn` to this TensorList zipped with `other`.
         Otherwise applies `fn` to this TensorList and `other`.
         The callable must modify elements in-place."""
-        if isinstance(others[0], (list, tuple)):
-            for z in zip(self, *others): fn(*z, **kwargs)
-        else:
-            for i in self: fn(i, *others, **kwargs)
+        others = [i if isinstance(i, (list, tuple)) else [i]*len(self) for i in others]
+        for z in zip(self, *others): fn(*z, **kwargs)
         return self
 
     def _foreach_apply(self, fn: A.Callable[[list[torch.Tensor]], list[torch.Tensor]], *args, **kwargs):
@@ -352,7 +340,21 @@ class TensorList(list[torch.Tensor | T.Any]):
     def ge(self, other: STOrSTSequence): return self.zipmap(torch.ge, other)
     def ge_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('ge_'), other)
 
-    def equal(self, other: STOrSTSequence): return self.zipmap(torch.equal, other)
+    def logical_and(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_and, other)
+    def logical_and_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_and_'), other)
+    def logical_or(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_or, other)
+    def logical_or_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_or_'), other)
+    def logical_xor(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_xor, other)
+    def logical_xor_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_xor_'), other)
+
+    def logical_not(self): return self.__class__(torch.logical_not(i) for i in self)
+    def logical_not_(self):
+        for i in self: i.logical_not_()
+        return self
+
+    def equal(self, other: torch.Tensor | TensorSequence):
+        """returns TensorList of boolean values, True if two tensors have the same size and elements, False otherwise."""
+        return self.zipmap(torch.equal, other)
 
     def add(self, other: STOrSTSequence, alpha: Scalar = 1):
         if alpha == 1: return self.__class__(torch._foreach_add(self, other))
@@ -536,16 +538,6 @@ class TensorList(list[torch.Tensor | T.Any]):
     def fill(self, value: STOrSTSequence): return self.zipmap(torch.fill, other = value)
     def fill_(self, value: STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
 
-    def where(self, cond: torch.Tensor | TensorSequence, input: STOrSTSequence, other: STOrSTSequence):
-        """where.
-
-        Args:
-            cond (torch.Tensor | TensorSequence): boolean condition tensor.
-            input (STOrSTSequence): value or tensor for where condition is true.
-            other (STOrSTSequence): value or tensor for where condition is false.
-        """
-        return self.zipmap_args(torch.where, cond, input, other)
-
     def masked_fill(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
     def masked_fill_(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
@@ -613,3 +605,9 @@ def mean(tensorlists: A.Iterable[TensorList]):
 def sum(tensorlists: A.Iterable[TensorList]):
     """Returns a tensorlist which is the sum of given tensorlists."""
     return stack(tensorlists).sum(0)
+
+
+def where(condition: TensorList, input: STOrSTSequence, other: STOrSTSequence):
+    """Where but for a tensorlist."""
+    args = [i if isinstance(i, (list, tuple)) else [i]*len(condition) for i in (input, other)]
+    return condition.__class__(torch.where(*z) for z in zip(condition, *args))

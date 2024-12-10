@@ -3,6 +3,7 @@ This submodule contains composable optimizer "building blocks".
 """
 
 from .gradient_approximation import *
+from .adaptive import *
 from .line_search import *
 from .meta import *
 from .momentum import *
