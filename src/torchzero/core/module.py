@@ -62,12 +62,12 @@ class OptimizationState:
 
             if self.closure is None: raise ValueError()
             with torch.enable_grad(): self.fx0 = self.closure(True) # pylint:disable = not-callable (???)
-            self.grad = params.grad
+            self.grad = params.ensure_grad_().grad
 
         return self.grad
 
     def maybe_use_grad_(self, params: TensorList | None) -> TensorList:
-        """If ascent direction is None, use the gradient as ascent direction.
+        """If ascent direction is None, use cloned gradient as ascent direction.
         otherwise returns existing ascent direction.
         If gradient hasn't been computed, this also sets `fx0`."""
         if self.ascent_direction is None:
@@ -111,13 +111,25 @@ class OptimizerModule(TensorListOptimizer, ABC):
         self._initialized = False
         self._make_closure = make_closure
 
+        self._has_custom_params = False
+        """Signifies that `self.set_params` was called on this to set custom params.
+        When this is True, when parent calls `_update_child_params_` with this module as child,
+        nothing will happen, as this module already has parameters set."""
+
+    def set_params(self, params: ParamsT):
+        """Set parameters to this module. Use this to set per-parameter group settings."""
+        self._initialize_(params)
+        self._has_custom_params = True
+        return self
+
     def _initialize_(self, params: ParamsT):
         """Initializes this optimizer and all children with the given parameters."""
         if isinstance(params, torch.Tensor): raise ValueError("Params must be an iterable of tensors, not torch.Tensor")
         params = list(params) # type:ignore
-         # super().__init__, which is torch.optim.Optimizer.__init__,
-         # calls self.add_param_group on each param group,
-         # and that method updates all child params.
+        # super().__init__, which is torch.optim.Optimizer.__init__,
+        # calls self.add_param_group on each param group,
+        # which in turn calls _update_child_params_,
+        # which calls add_param_group on each child.
         super().__init__(params, self._defaults)
         self._initialized = True
 
@@ -147,8 +159,9 @@ class OptimizerModule(TensorListOptimizer, ABC):
         # if child is not initialized, torch.optim.Optimizer.__init__ is called on it by _initialize_ method
         if not child._initialized:
             child._initialize_(self._params)
+
         # otherwise to avoid calling __init__ multiple twice, we erase the param groups and readd them
-        else:
+        elif not child._has_custom_params:
             child.param_groups = []
             for group in self.param_groups:
                 # it is important not to propagate all the settings
@@ -244,6 +257,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
     @torch.no_grad
     def _update(self, state: OptimizationState, ascent_direction: TensorList) -> TensorList:
         """Update `ascent_direction` and return the new ascent direction (but it may update it in place).
+        Make sure it doesn't return anything from `state` to avoid future modules modifying that in-place.
 
         Before calling `_update`, if ascent direction was not provided to `step`, it will be set to the gradients.
 

@@ -3,7 +3,7 @@ from collections import abc
 
 import torch
 
-from ...core import OptimizerModule, _get_loss
+from ...core import OptimizerModule, _get_loss, ClosureType
 from .chain import Chain
 class SetGrad(OptimizerModule):
     """Sets gradient to ascent direction."""
@@ -20,11 +20,12 @@ class SetGrad(OptimizerModule):
 
 class MakeClosure(OptimizerModule):
     def __init__(self):
-        """Only works after modules that modify the closure. Step method returns the modified closure"""
+        """Only works after modules that modify the closure.
+        Step method returns the modified closure that you can pass to some pytorch optimizer."""
         super().__init__({})
 
     @torch.no_grad
-    def step(self, state): # type:ignore
+    def step(self, state) -> ClosureType: # type:ignore
         if self.child is not None: raise ValueError("SetGrad can't have children")
         if state.closure is None:
             raise ValueError("MakeClosure requires closure")
@@ -33,14 +34,15 @@ class MakeClosure(OptimizerModule):
 
 class MakeClosureFromModules(Chain):
     def __init__(self, modules):
-        """Step method returns the modified closure"""
+        """Step method returns a closure that sets gradient to whatever update the modules made.
+        You can pass that closure to any pytorch optimizer."""
         if isinstance(modules, OptimizerModule): modules = [modules]
         else: modules = list(modules)
         modules.append(SetGrad())
         super().__init__(modules)
 
     @torch.no_grad
-    def step(self, state): # type:ignore
+    def step(self, state) -> ClosureType: # type:ignore
         if state.closure is None: raise ValueError('MakeClosureFromModules requires a closure.')
         closure = state.closure # closure shouldn't reference state attribute because it can be changed
 
@@ -52,4 +54,4 @@ class MakeClosureFromModules(Chain):
             if backward: return self.child.step(state)
             else: return closure(backward, **k)
 
-        return update_closure
+        return update_closure # type:ignore

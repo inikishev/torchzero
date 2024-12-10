@@ -111,3 +111,5 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
             state.ascent_direction = params_before_step - params
             params.set_(params_before_step)
             return self.child.step(state)
+
+# TODO: optimizer whatevering

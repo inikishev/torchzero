@@ -206,7 +206,7 @@ class TensorList(list[torch.Tensor | T.Any]):
         return self
 
     def zipmap_args(self, fn: A.Callable[..., T.Any], *others, **kwargs):
-        """If `args` is list/tuple, applies `fn` to this TensorList zipped with `other`.
+        """If `args` is list/tuple, applies `fn` to this TensorList zipped with `others`.
         Otherwise applies `fn` to this TensorList and `other`."""
         if isinstance(others[0], (list, tuple)):
             return self.__class__(fn(*z, **kwargs) for z in zip(self, *others))
@@ -532,6 +532,24 @@ class TensorList(list[torch.Tensor | T.Any]):
     def any(self): return self.__class__(i.any() for i in self)
     def all(self): return self.__class__(i.all() for i in self)
     def isfinite(self): return self.__class__(i.isfinite() for i in self)
+
+    def fill(self, value: STOrSTSequence): return self.zipmap(torch.fill, other = value)
+    def fill_(self, value: STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
+
+    def where(self, cond: torch.Tensor | TensorSequence, input: STOrSTSequence, other: STOrSTSequence):
+        """where.
+
+        Args:
+            cond (torch.Tensor | TensorSequence): boolean condition tensor.
+            input (STOrSTSequence): value or tensor for where condition is true.
+            other (STOrSTSequence): value or tensor for where condition is false.
+        """
+        return self.zipmap_args(torch.where, cond, input, other)
+
+    def masked_fill(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
+        return self.zipmap_args(torch.masked_fill, mask, fill_value)
+    def masked_fill_(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
+        return self.zipmap_args_inplace_(MethodCallerWithArgs('masked_fill_'), mask, fill_value)
 
     def flatiter(self) -> A.Generator[torch.Tensor]:
         for tensor in self:

@@ -5,7 +5,11 @@ import nevergrad as ng
 import numpy as np
 import torch
 
-from ...core import TensorListOptimizer
+from ...core import ClosureType, TensorListOptimizer
+from ...modules import (Proj2Masks, ProjGrad, ProjLastGradDifference,
+                        ProjNormalize, Subspace,
+                        UninitializedClosureOptimizerWrapper)
+from ..modular import ModularOptimizer
 
 
 def _ensure_float(x):
@@ -71,3 +75,29 @@ class NevergradOptimizer(TensorListOptimizer):
         loss = closure(False)
         self.opt.tell(x, _ensure_float(loss))
         return loss
+
+
+
+# class NevergradSubspace(ModularOptimizer):
+#     def __init__(
+#         self,
+#         params,
+#         opt_cls:"type[ng.optimizers.base.Optimizer] | abc.Callable[..., ng.optimizers.base.Optimizer]",
+#         budget=None,
+#         mutable_sigma = False,
+#         use_init = True,
+#         projections = Proj2Masks(5),
+#     ):
+
+#         modules = [
+#             Subspace(projections, update_every=100),
+#             UninitializedClosureOptimizerWrapper(
+#                 NevergradOptimizer,
+#                 opt_cls = opt_cls,
+#                 budget = budget,
+#                 mutable_sigma = mutable_sigma,
+#                 use_init = use_init,
+#             ),
+#         ]
+
+#         super().__init__(params, modules)

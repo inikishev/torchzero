@@ -33,7 +33,15 @@ def _step_2poins(x1, f1, df1, x2, f2):
 
 class QuadraticInterpolation2Point(LineSearchBase):
     def __init__(self, lr=1e-2, log_lrs = False, max_evals = 2, min_dist = 1e-2,):
-        super().__init__({"lr": lr}, False, maxiter=None, log_lrs=log_lrs)
+        """This is WIP, please don't use yet! Use `MinimizeQuadraticLS` and `MinimizeQuadratic3PointsLS` instead.
+
+        Args:
+            lr (_type_, optional): _description_. Defaults to 1e-2.
+            log_lrs (bool, optional): _description_. Defaults to False.
+            max_evals (int, optional): _description_. Defaults to 2.
+            min_dist (_type_, optional): _description_. Defaults to 1e-2.
+        """
+        super().__init__({"lr": lr}, maxiter=None, log_lrs=log_lrs)
         self.max_evals = max_evals
         self.min_dist = min_dist
 

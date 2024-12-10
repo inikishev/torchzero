@@ -37,12 +37,15 @@ class Proj2Masks(Projection):
     def __init__(self, n_pairs = 1):
         """Similar to ProjRandom, but generates pairs of two random masks of 0s and 1s,
         where second mask is an inverse of the first mask."""
-        self.n_masks = n_pairs
-        self.n = n_pairs * 2
+        self.n_pairs = n_pairs
+
+    @property
+    def n(self):
+        return self.n_pairs * 2
 
     def sample(self, params: tl.TensorList, state: OptimizationState):
         projections = []
-        for i in range(self.n_masks):
+        for i in range(self.n_pairs):
             mask = params.bernoulli_like(0.5)
             mask2 = 1 - mask
             projections.append(mask)
@@ -133,22 +136,42 @@ class ProjNormalize(Projection):
         """Normalizes all projections to have norm = 1."""
         self.projections = projections
 
+    @property
+    def n(self):
+        return sum(proj.n for proj in self.projections)
+
     def sample(self, params: tl.TensorList, state: OptimizationState): # type:ignore
         vecs = [proj for obj in self.projections for proj in obj.sample(params, state)]
-        return [v/v.total_vector_norm(2) for v in vecs]
+        norms = [v.total_vector_norm(2) for v in vecs]
+        return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)]
 
 class Subspace(OptimizerModule):
-    def __init__(self, projections: Projection | abc.Iterable[Projection], randomize_every: int = 1, ):
+    def __init__(self, projections: Projection | abc.Iterable[Projection], update_every: int = 1, ):
         """Optimizes parameters projected into a lower (or higher) dimensional subspace.
 
+        The subspace is a bunch of projections that go through the current point. Projections can be random,
+        or face in the direction of the gradient, or difference between last two gradients, etc. The projections
+        are updated every `update_every` steps.
+
+        Notes:
+            This doesn't work with anything that directly calculates the hessian or other quantities via `torch.autograd.grad`,
+            like `ExactNewton`. I will have to manually implement a subspace version for it.
+
+            This also zeroes parameters after each step, meaning it won't work with some integrations like nevergrad
+            (as they store their own parameters which don't get zeroed). It does however work with integrations like
+            `scipy.optimize` because they performs a full minimization on each step.
+        Another version of this which doesn't zero the params is under way.
+
         Args:
-            projections (Projection | Iterable[Projection]): list of projections.
-            randomize_every (int, optional): generates new random projections every n steps. Defaults to 1.
+            projections (Projection | Iterable[Projection]):
+                list of projections - `Projection` objects that define the directions of the projections.
+                Each Projection object may generate one or multiple directions.
+            update_every (int, optional): generates new projections every n steps. Defaults to 1.
         """
         super().__init__({})
         if isinstance(projections, Projection): projections = [projections]
         self.projections = list(projections)
-        self.randomize_every = randomize_every
+        self.update_every = update_every
         self.current_step = 0
 
         # cast them because they are guaranteed to be assigned on 1st step.
@@ -174,7 +197,7 @@ class Subspace(OptimizerModule):
         params = self.get_params()
 
         # every `regenerate_every` steps we generate new random projections.
-        if self.current_step % self.randomize_every == 0:
+        if self.current_step % self.update_every == 0:
 
             # generate n projection vetors
             self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
@@ -216,6 +239,8 @@ class Subspace(OptimizerModule):
 
         # projected_params are residuals that have been applied to actual params on previous step in some way
         # therefore they need to now become zero (otherwise they work like momentum with no decay).
+        # note: THIS WON'T WORK WITH INTEGRATIONS, UNLESS THEY PERFORM FULL MINIMIZATION EACH STEP
+        # because their params won't be zeroed.
         self.projected_params.zero_()
 
         self.current_step += 1

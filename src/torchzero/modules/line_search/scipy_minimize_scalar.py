@@ -19,7 +19,18 @@ class ScipyMinimizeScalarLS(LineSearchBase):
         options = None,
         log_lrs = False,
     ):
-        super().__init__({}, False, maxiter=maxiter, log_lrs=log_lrs)
+        """Line search via `scipy.optimize.minimize_scalar`. All args except maxiter are the same as for it.
+
+        Args:
+            method (T.Optional[str], optional): 'brent', 'golden' or 'bounded'. Defaults to None.
+            maxiter (T.Optional[int], optional): hard limit on maximum number of function evaluations. Defaults to None.
+            bracket (_type_, optional): bracket. Defaults to None.
+            bounds (_type_, optional): bounds. Defaults to None.
+            tol (T.Optional[float], optional): some kind of tolerance. Defaults to None.
+            options (_type_, optional): options for method. Defaults to None.
+            log_lrs (bool, optional): logs lrs and values into `_lrs`. Defaults to False.
+        """
+        super().__init__({}, make_closure=False, maxiter=maxiter, log_lrs=log_lrs)
         self.method = method
         self.tol = tol
         self.bracket = bracket

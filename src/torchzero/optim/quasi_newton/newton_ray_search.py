@@ -4,7 +4,7 @@ from collections import abc
 import torch
 
 from ...core import OptimizerModule
-from ...modules import (SGD, NewtonGradFDM, LineSearches, NewtonFDM, Subspace,
+from ...modules import (SGD, HvInvFDM, LineSearches, NewtonFDM, Subspace,
                         get_line_search, ProjAscentRay, UninitializedClosureOptimizerWrapper, LR)
 from ..modular import ModularOptimizer
 
@@ -36,7 +36,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
 
         super().__init__(params, modules)
 
-class NewtonGradFDMRaySearch(ModularOptimizer):
+class HvInvFDMRaySearch(ModularOptimizer):
     def __init__(
         self,
         params,
@@ -54,7 +54,7 @@ class NewtonGradFDMRaySearch(ModularOptimizer):
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(ProjAscentRay(ray_width, n = n_rays)),
-            NewtonGradFDM(eps = eps),
+            HvInvFDM(eps = eps),
         ]
         if lr != 1:
             modules.append(LR(lr))

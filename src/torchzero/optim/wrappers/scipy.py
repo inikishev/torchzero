@@ -9,7 +9,12 @@ import torch
 from ...core import ClosureType, TensorListOptimizer
 from ...grad.derivatives import (hessian, hessian_list_to_mat,
                                  jacobian_and_hessian, jacobian_list_to_vec)
+from ...modules import (SGD, Proj2Masks, ProjAscent, ProjGrad,
+                        ProjGradAscentDifference, ProjLastAscentDifference,
+                        ProjLastGradDifference, ProjNormalize, Subspace,
+                        UninitializedClosureOptimizerWrapper)
 from ...tensorlist import TensorList
+from ..modular import ModularOptimizer
 
 
 def _ensure_float(x):
@@ -195,3 +200,48 @@ class ScipyDE(TensorListOptimizer):
         params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         return res.fun
 
+
+class ScipyMinimizeSubspace(ModularOptimizer):
+    def __init__(
+        self,
+        params,
+        projections = (
+            Proj2Masks(2),
+            ProjNormalize(
+                ProjGrad(),
+                ProjAscent(),
+                ProjLastGradDifference(),
+                ProjLastAscentDifference(),
+                ProjGradAscentDifference(),
+            )
+        ),
+        method=None,
+        bounds=None,
+        constraints=(),
+        tol=None,
+        callback=None,
+        options=None,
+        jac: T.Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
+        hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
+        momentum = 0.9,
+    ):
+
+        modules = [
+            Subspace(projections),
+            UninitializedClosureOptimizerWrapper(
+                ScipyMinimize,
+                method = method,
+                bounds = bounds,
+                constraints = constraints,
+                tol = tol,
+                callback = callback,
+                options = options,
+                jac = jac,
+                hess = hess
+            ),
+        ]
+
+        if momentum is not None and momentum != 0:
+            modules.insert(0, SGD(1, momentum = momentum))
+
+        super().__init__(params, modules)

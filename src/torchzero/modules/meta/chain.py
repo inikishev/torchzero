@@ -8,7 +8,7 @@ from ...core import OptimizerModule
 
 class Chain(OptimizerModule):
     def __init__(self, modules: OptimizerModule | abc.Iterable[OptimizerModule]):
-        """Chains multiple modules together."""
+        """Chains multiple modules together. This module must be either last or the only module!"""
         super().__init__({})
         if isinstance(modules, OptimizerModule): modules = [modules]
         else: modules = list(modules)

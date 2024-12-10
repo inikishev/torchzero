@@ -4,7 +4,8 @@ from ...core import OptimizerModule, _get_loss
 
 
 class NegateOnLossIncrease(OptimizerModule):
-    """Subtracts the ascent direction, and if loss didn't decrease, negates the ascent direction."""
+    """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!!
+    Subtracts the ascent direction, and if loss didn't decrease, negates the ascent direction."""
     def __init__(self):
         super().__init__({})
 
@@ -45,7 +46,8 @@ class NegateOnLossIncrease(OptimizerModule):
 
 
 class ZeroOnLossIncrease(OptimizerModule):
-    """Subtracts the ascent direction, and if loss didn't decrease, zeroes the ascent direction."""
+    """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!!
+    Subtracts the ascent direction, and if loss didn't decrease, zeroes the ascent direction."""
     def __init__(self):
         super().__init__({})
 

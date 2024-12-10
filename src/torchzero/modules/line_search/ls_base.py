@@ -13,8 +13,14 @@ from ...python_tools import ScalarType
 class MaxIterReached(Exception): pass
 
 class LineSearchBase(OptimizerModule, ABC):
-    def __init__(self, defaults: dict, make_closure=False, maxiter = None, log_lrs = False):
-        super().__init__(defaults, make_closure)
+    def __init__(
+        self,
+        defaults: dict,
+        make_closure=False,
+        maxiter=None,
+        log_lrs=False,
+    ):
+        super().__init__(defaults, make_closure=make_closure)
         self._reset()
 
         self.maxiter = maxiter

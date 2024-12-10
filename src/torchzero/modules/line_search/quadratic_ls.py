@@ -20,7 +20,7 @@ def _ensure_float(x):
 
 class MinimizeQuadraticLS(LineSearchBase):
     def __init__(self, lr=1e-2, max_dist = 1e4, validate_step = True, log_lrs = False,):
-        super().__init__({"lr": lr}, False, maxiter=None, log_lrs=log_lrs)
+        super().__init__({"lr": lr}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
         self.validate_step = validate_step
@@ -106,7 +106,7 @@ def _newton_step_3points(
 
 class MinimizeQuadratic3PointsLS(LineSearchBase):
     def __init__(self, max_dist = 1e4, validate_step = True, log_lrs = False,):
-        super().__init__({}, False, maxiter=None, log_lrs=log_lrs)
+        super().__init__({}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
         self.validate_step = validate_step

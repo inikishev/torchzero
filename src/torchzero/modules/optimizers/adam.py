@@ -8,7 +8,7 @@ from ...core import OptimizerModule
 
 class Adam(OptimizerModule):
     def __init__(self, lr: float = 1e-3, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8):
-        """Adam module.
+        """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!! Adam module.
 
         Args:
             lr (float, optional): learning rate.
@@ -25,17 +25,19 @@ class Adam(OptimizerModule):
     @torch.no_grad
     def _update(self, state, ascent_direction):
         settings = self.get_all_group_keys()
-        mu, sigma = self.get_state_keys(['mu', 'sigma'], inits = ['params', torch.zeros_like])
+        first_mom, second_mom = self.get_state_keys(['mu', 'sigma'], inits = ['params', torch.zeros_like])
         lr = settings['lr']
         beta1 = settings['beta1']
         beta2 = settings['beta2']
         eps = settings['eps']
         self.current_step += 1
 
-        mu.mul_(beta1).add_(ascent_direction * (1 - beta1))
-        sigma.mul_(beta2).add_(ascent_direction.pow(2) * (1 - beta2))
-        mu.div_(1 - beta1**self.current_step)
-        sigma.div_(1 - beta2**self.current_step)
-        mu.div_(sigma.sqrt_().add_(eps)).mul_(-lr)
-        return mu
+        first_mom.mul_(beta1).add_(ascent_direction * (1 - beta1))
+        second_mom.mul_(beta2).add_(ascent_direction.pow_(2) * (1 - beta2))
+
+        first_mom.div_(1 - beta1**self.current_step)
+        second_mom.div_(1 - beta2**self.current_step)
+
+        first_mom.div_(second_mom.sqrt_().add_(eps)).mul_(-lr)
+        return first_mom
 

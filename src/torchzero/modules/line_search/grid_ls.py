@@ -18,7 +18,7 @@ class GridLS(LineSearchBase):
         stop_on_worsened=False,
         log_lrs = False
     ):
-        super().__init__({}, False, maxiter=None, log_lrs=log_lrs)
+        super().__init__({}, make_closure=False, maxiter=None, log_lrs=log_lrs)
         self.lrs = lrs
         self.stop_on_improvement = stop_on_improvement
         self.stop_on_worsened = stop_on_worsened

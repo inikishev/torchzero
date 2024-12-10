@@ -2,10 +2,12 @@ import torch
 
 from ...core import OptimizerModule
 
-class NewtonGradFDM(OptimizerModule):
+class HvInvFDM(OptimizerModule):
     def __init__(self, eps=1e-3):
-        """Performs a diagonal newton step the hessian
-        approximated via finite difference two forwards and backwards from two gradients.
+        """Experimental (maybe don't use yet).
+        This should approximate the hessian via just two backward passes
+        but it only works if hessian is purely diagonal.
+        Otherwise I don't really know what happens and I am looking into it.
 
         Args:
             eps (float, optional): finite difference epsilon. Defaults to 1e-3.
