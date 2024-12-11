@@ -6,9 +6,6 @@ from ...tensorlist import TensorList, where
 from ...core import OptimizerModule
 
 
-def _bool_ones_like(x):
-    return torch.ones_like(x, dtype=torch.bool)
-
 class ScaleLRBySignChange(OptimizerModule):
     def __init__(self, lr: float = 1, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, use_grad=False):
         """
