@@ -7,7 +7,8 @@ from ...core import OptimizerModule
 
 class RandomCoordinateMomentum(OptimizerModule):
     def __init__(self, p: float = 0.1, decay: float = 0.99, dampening: float = 0, ):
-        """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!!"""
+        """Only uses `p` random coordinates of the new update. Other coordinates remain from previous update.
+        This works but I don't know if it is any good."""
         defaults = dict(p=p, decay=decay, dampening = dampening)
         super().__init__(defaults)
 
@@ -35,7 +36,8 @@ class RandomCoordinateMomentum(OptimizerModule):
 
 class RandomCoordinateNesterovMomentum(OptimizerModule):
     def __init__(self, p: float = 0.1, decay: float = 0.99, dampening: float = 0, ):
-        """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!!"""
+        """Only uses `p` random coordinates of the new update. Other coordinates remain from previous update.
+        This works but I don't know if it is any good."""
         defaults = dict(p=p, decay=decay, dampening = dampening)
         super().__init__(defaults)
 

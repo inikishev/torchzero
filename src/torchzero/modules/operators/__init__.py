@@ -6,5 +6,5 @@ from .basic import Clone, Lambda, Reciprocal, NanToNum
 from .clipping import ClipNorm, ClipValue
 from .lr import LR
 from .normalization import Normalize, normalize_grad_
-from .on_increase import NegateOnLossIncrease, ZeroOnLossIncrease
+from .on_increase import NegateOnLossIncrease
 from .sign import Sign, sign_grad_
