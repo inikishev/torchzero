@@ -60,8 +60,8 @@ class OptimizationState:
         """Computes gradient if it hasn't been computed already."""
         if self.grad is None:
 
-            if self.closure is None: raise ValueError()
-            with torch.enable_grad(): self.fx0 = self.closure(True) # pylint:disable = not-callable (???)
+            if self.closure is not None:
+                with torch.enable_grad(): self.fx0 = self.closure(True) # pylint:disable = not-callable (???)
             self.grad = params.ensure_grad_().grad
 
         return self.grad

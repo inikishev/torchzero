@@ -538,6 +538,13 @@ class TensorList(list[torch.Tensor | T.Any]):
     def fill(self, value: STOrSTSequence): return self.zipmap(torch.fill, other = value)
     def fill_(self, value: STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
 
+    def where(self, condition: torch.Tensor | TensorSequence, other: STOrSTSequence):
+        """self where condition is true other otherwise"""
+        return self.zipmap_args(MethodCallerWithArgs('where'), condition, other)
+    def where_(self, condition: torch.Tensor | TensorSequence, other: STOrSTSequence):
+        """self where condition is true other otherwise, note that this creates a new tensorlist and sets it."""
+        return self.set_(self.where(condition, other))
+
     def masked_fill(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
     def masked_fill_(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
