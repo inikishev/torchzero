@@ -58,6 +58,18 @@ class MethodCallerWithArgs:
     def __reduce__(self):
         return self.__class__, self._name
 
+class _TensorLikeFactory:
+    """_foreach_lerp_ doesn't accept list of scalars, so I have to convert them to tensors
+    meaning I have to give them appropriate dtype and device.
+
+    So this takes a tensor and returns a callable that converts anything to a tensor with same device and dtype"""
+    __slots__ = ("device", "dtype")
+    def __init__(self, tensor):
+        self.device = tensor.device
+        self.dtype = tensor.dtype
+    def __call__(self, x): return torch.tensor(x, dtype = self.dtype, device = self.device)
+
+
 # tensorlist must subclass list
 # UserList doesn't work with _foreach_xxx
 class TensorList(list[torch.Tensor | T.Any]):
@@ -498,20 +510,28 @@ class TensorList(list[torch.Tensor | T.Any]):
         return self
 
     def lerp(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+        """linear interpolation of between self and tensors1. `out = self + weight * (tensors1 - self)`."""
         return self.__class__(torch._foreach_lerp(self, tensors1, weight))
     def lerp_(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+        """linear interpolation of between self and tensors1. `out = self + weight * (tensors1 - self)`."""
         torch._foreach_lerp_(self, tensors1, weight)
         return self
 
+    def lerp_compat(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
+        """`lerp` but supports python number sequence as weight and implemented through other operations"""
+        return self + weight * (TensorList(tensors1) - self)
+    def lerp_compat_(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
+        """`lerp_` but supports python number sequence as weight and implemented through other operations"""
+        return self.add_(TensorList(tensors1).sub(self).mul_(weight))
 
-    def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor"):
+    def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcmul(self, tensors1, tensor2, value))
-    def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor"):
+    def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
         torch._foreach_addcmul_(self, tensors1, tensor2, value)
         return self
-    def addcdiv(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor"):
+    def addcdiv(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcdiv(self, tensors1, tensor2, value))
-    def addcdiv_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor"):
+    def addcdiv_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
         torch._foreach_addcdiv_(self, tensors1, tensor2, value)
         return self
 

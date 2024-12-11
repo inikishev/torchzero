@@ -33,7 +33,7 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         for p in self.get_params():
             if p.requires_grad and p.grad is None: p.grad = torch.zeros_like(p)
 
-    def get_state_key(self, key: str, init: T.Literal['params', 'grad'] | abc.Callable = torch.zeros_like, params=None) -> TensorList:
+    def get_state_key(self, key: str, init: _StateInit = torch.zeros_like, params=None) -> TensorList:
         """Returns a TensorList with the `key` states of all `params` that currently have grad or require grad,
         depending on `mode` passed on `__init__`. Creates the states if they don't exist.
         This guarantees that the returned TensorList is the same shape as params, so

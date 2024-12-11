@@ -10,7 +10,15 @@ def _bool_ones_like(x):
     return torch.ones_like(x, dtype=torch.bool)
 
 class Rprop(OptimizerModule):
-    def __init__(self, lr: float = 1, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, backtrack=True):
+    def __init__(
+        self,
+        lr: float = 1,
+        nplus: float = 1.2,
+        nminus: float = 0.5,
+        lb: float | None = 1e-6,
+        ub: float | None = 50,
+        backtrack=True,
+    ):
         """
         Resilient propagation. The update magnitude gets multiplied by `nplus` if gradient didn't change the sign,
         or `nminus` if it did. Then the update is applied with the sign of the current gradient.
@@ -24,11 +32,14 @@ class Rprop(OptimizerModule):
         *Riedmiller, M., & Braun, H. (1993, March). A direct adaptive method for faster backpropagation learning: The RPROP algorithm. In IEEE international conference on neural networks (pp. 586-591). IEEE.*
 
         Args:
-            lr (float): _description_
-            nplus (float): _description_
-            nminus (float): _description_
-            lb (float): _description_
-            ub (float): _description_
+            lr (float): learning rate (default: 1).
+            nplus (float): multiplicative increase factor for when ascent didn't change sign (default: 1.2).
+            nminus (float): multiplicative decrease factor for when ascent changed sign (default: 0.5).
+            lb (float): minimum step size, can be None (default: 1e-6)
+            ub (float): maximum step size, can be None (default: 50)
+            backtrack (float):
+                if True, when ascent sign changes, undoes last weight update, otherwise sets update to 0.
+                When this is False, this exactly matches pytorch Rprop. (default: True)
         """
         defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub)
         super().__init__(defaults)

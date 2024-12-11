@@ -5,14 +5,6 @@ import torch
 from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
-class _tensor_like:
-    """_foreach_lerp_ doesn't accept list of scalars, so I have to convert them to tensors
-    meaning I have to give them appropriate dtype and device."""
-    __slots__ = ("device", "dtype")
-    def __init__(self, tensor):
-        self.device = tensor.device
-        self.dtype = tensor.dtype
-    def __call__(self, x): return torch.tensor(x, dtype = self.dtype, device = self.device)
 
 def _rmsprop_step_(ascent: TensorList, mean_sqr: TensorList, alpha, eps: TensorList):
     mean_sqr.mul_(alpha).addcmul_(ascent, ascent, value = 1 - alpha)
@@ -20,18 +12,24 @@ def _rmsprop_step_(ascent: TensorList, mean_sqr: TensorList, alpha, eps: TensorL
 
 def _centered_rmsprop_step_(ascent: TensorList, mean_sqr: TensorList, mean: TensorList, alpha, eps: TensorList):
     mean_sqr.mul_(alpha).addcmul_(ascent, ascent, value = 1 - alpha)
-    mean.lerp_(ascent, 1-alpha.map(_tensor_like(ascent[0])))
+    mean.lerp_compat_(ascent, 1-alpha)
     return ascent.div_(mean_sqr.addcmul(mean, mean, value=-1).sqrt_().add_(eps))
 
 class RMSProp(OptimizerModule):
     def __init__(self, alpha: float = 0.99, eps: float = 1e-8, centered=False):
         """https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
 
+        Divides ascent direction by running average of its mean square root.
+
         Exactly matches pytorch RMSProp.
 
         Args:
-            alpha (float, optional): _description_. Defaults to 0.99.
-            eps (float, optional): _description_. Defaults to 1e-8.
+            alpha (float, optional): smoothing constant (decay of ascent mean square root running average).
+                Defaults to 0.99.
+            eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-8.
+            centered (float, optional):
+                if True, compute the centered RMSProp, the gradient is normalized by an estimation of its variance.
+                Defaults to False.
         """
         defaults = dict(alpha = alpha, eps = eps)
         super().__init__(defaults)
