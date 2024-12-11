@@ -7,7 +7,7 @@ from ...core import OptimizerModule
 
 class Cautious(OptimizerModule):
     def __init__(self, normalize = True, eps=1e-6):
-        """COMPLETELY UNTESTED AND MAY NOT WORK AT ALL!!!
+        """
         Negates update for parameters where ascent direction and gradient sign is inconsistent.
         Otherwise ascent direction is squared (or am I misunderstanding it?).
         Also normalizes ascent direction by the number of parameters that are not masked.
@@ -31,8 +31,10 @@ class Cautious(OptimizerModule):
         grad = state.maybe_compute_grad_(params)
 
         # mask will be > 0 for parameters where both signs are the same
-        mask = ascent_direction * (grad > 0)
-        if self.normalize: mask /= mask.total_mean() + self.eps
+        mask = (ascent_direction * grad) > 0
+        if self.normalize:
+            mask = mask.to(ascent_direction.dtype[0])
+            mask /= mask.total_mean() + self.eps
         ascent_direction *= mask
 
         return ascent_direction

@@ -550,6 +550,12 @@ class TensorList(list[torch.Tensor | T.Any]):
     def masked_fill_(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
         return self.zipmap_args_inplace_(MethodCallerWithArgs('masked_fill_'), mask, fill_value)
 
+    def select_set_(self, mask: TensorSequence, value: STOrSTSequence):
+        """Same as tensor[mask] = value"""
+        if not isinstance(value, (list,tuple)): value = [value]*len(self) # type:ignore
+        for tensor, m, v in zip(self, mask, value): # type:ignore
+            tensor[m] = v
+
     def flatiter(self) -> A.Generator[torch.Tensor]:
         for tensor in self:
             yield from tensor.view(-1)
