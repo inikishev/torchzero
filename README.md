@@ -1,6 +1,3 @@
-# NOTE
-I wouldn't recommend using it as in the current state as many things are broken. Unless you need ExactNewton/ScipyMinimize/NevergradOptimizer, those work fine. But it will be much less broken very soon.
-
 # torchzero
 This is a work-in-progress general purpose optimization library for pytorch. We have zeroth, first, second order and quasi newton methods, gradient approximation, line searches and a whole lot of other stuff.
 
