@@ -5,15 +5,15 @@ import torch
 from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
-def _nesterov_step_(ascent_direction, velocity: TensorList, momentum, dampening,):
+def _nesterov_step_(ascent, velocity: TensorList, momentum, dampening,):
     # update velocity with the ascent direction
-    velocity += ascent_direction
+    velocity += ascent
 
     # decay velocity (this can be moved before previous line for slightly different results)
     velocity *= momentum
 
     # update ascent direction with velocity
-    ascent_direction += velocity * (1 - dampening)
+    ascent += velocity * (1 - dampening)
 
 
 class NesterovMomentum(OptimizerModule):
@@ -22,8 +22,8 @@ class NesterovMomentum(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         velocity = self.get_state_key('velocity')
         settings = self.get_all_group_keys()
-        _nesterov_step_(ascent_direction, velocity, settings['momentum'], settings['dampening'])
-        return ascent_direction
+        _nesterov_step_(ascent, velocity, settings['momentum'], settings['dampening'])
+        return ascent

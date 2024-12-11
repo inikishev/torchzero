@@ -57,8 +57,8 @@ class Proj2Masks(Projection):
 class ProjAscent(Projection):
     """Use ascent direction as the projection."""
     def sample(self, params: tl.TensorList, state: OptimizationState):
-        if state.ascent_direction is None: raise ValueError
-        return [state.ascent_direction]
+        if state.ascent is None: raise ValueError
+        return [state.ascent]
 
 class ProjAscentRay(Projection):
     def __init__(self, eps = 0.1, n = 1, distribution: tl.Distributions = 'normal', ):
@@ -67,9 +67,9 @@ class ProjAscentRay(Projection):
         self.n = n
 
     def sample(self, params: tl.TensorList, state: OptimizationState):
-        if state.ascent_direction is None: raise ValueError
+        if state.ascent is None: raise ValueError
         mean = params.total_mean().detach().cpu().item()
-        return [state.ascent_direction + state.ascent_direction.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
+        return [state.ascent + state.ascent.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
 
 class ProjGrad(Projection):
     def sample(self, params: tl.TensorList, state: OptimizationState):
@@ -99,9 +99,9 @@ class ProjGradAscentDifference(Projection):
     def sample(self, params: tl.TensorList, state: OptimizationState):
         grad = state.maybe_compute_grad_(params)
         if self.normalize:
-            return [state.ascent_direction / state.ascent_direction.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
+            return [state.ascent / state.ascent.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
         else:
-            return [state.ascent_direction - grad] # type:ignore
+            return [state.ascent - grad] # type:ignore
 
 class ProjLastGradDifference(Projection):
     def __init__(self):
@@ -124,11 +124,11 @@ class ProjLastAscentDifference(Projection):
 
     def sample(self, params: tl.TensorList, state: OptimizationState):
         if self.last_direction is None:
-            self.last_direction: tl.TensorList = state.ascent_direction # type:ignore
+            self.last_direction: tl.TensorList = state.ascent # type:ignore
             return [self.last_direction]
         else:
-            diff = state.ascent_direction - self.last_direction # type:ignore
-            self.last_direction = state.ascent_direction # type:ignore
+            diff = state.ascent - self.last_direction # type:ignore
+            self.last_direction = state.ascent # type:ignore
             return [diff]
 
 class ProjNormalize(Projection):
@@ -228,7 +228,7 @@ class Subspace(OptimizerModule):
 
         # perform a step with the child
         state.closure = projected_closure
-        state.ascent_direction = None
+        state.ascent = None
         if state.grad is not None:
             state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
         loss = self.child.step(state)

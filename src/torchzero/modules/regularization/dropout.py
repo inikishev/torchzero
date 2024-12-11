@@ -23,8 +23,8 @@ class Dropout(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         p = self.get_group_key('p')
 
-        ascent_direction *= ascent_direction.bernoulli_like(p)
-        return ascent_direction
+        ascent *= ascent.bernoulli_like(p)
+        return ascent

@@ -145,18 +145,18 @@ class ExactNewton(OptimizerModule):
                     newton_step, success = _fallback_gd(hessian, gvec)
 
         # apply the `_update` method
-        state.ascent_direction = grads.from_vec(newton_step.squeeze_().nan_to_num_(0,0,0))
+        state.ascent = grads.from_vec(newton_step.squeeze_().nan_to_num_(0,0,0))
 
         # validate if newton step decreased loss
         if self.validate:
 
-            params.sub_(state.ascent_direction)
+            params.sub_(state.ascent)
             fx1 = state.closure(False)
-            params.add_(state.ascent_direction)
+            params.add_(state.ascent)
 
             # if loss increases, set ascent direction to grad times lr
             if (not fx1.isfinite()) or fx1 - state.fx0 > state.fx0 * self.tol: # type:ignore
-                state.ascent_direction = grads.div_(grads.total_vector_norm(2) / self.gd_lr)
+                state.ascent = grads.div_(grads.total_vector_norm(2) / self.gd_lr)
 
         # peform an update with the ascent direction, or pass it to the child.
         return self._update_params_or_step_with_child(state, params=params)

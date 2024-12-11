@@ -13,21 +13,21 @@ class RandomCoordinateMomentum(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         velocity = self.get_state_key('velocity')
         settings = self.get_all_group_keys()
 
         # apply velocity
-        updated_direction = ascent_direction + velocity * (1 - settings['dampening'])
+        updated_direction = ascent + velocity * (1 - settings['dampening'])
 
         # decay velocity
         velocity *= settings['decay']
 
         # we pick p indexes to update with the new ascent direction
-        indexes = ascent_direction.bernoulli_like(settings['p']).as_bool()
+        indexes = ascent.bernoulli_like(settings['p']).as_bool()
 
         # update the velocity at those indexes
-        for a, v, i in zip(ascent_direction, velocity, indexes):
+        for a, v, i in zip(ascent, velocity, indexes):
             v[i] = a[i].clone()
 
 
@@ -42,22 +42,22 @@ class RandomCoordinateNesterovMomentum(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         velocity = self.get_state_key('velocity')
         settings = self.get_all_group_keys()
 
         # we pick p indexes to update with the new ascent direction
-        indexes = ascent_direction.bernoulli_like(settings['p']).as_bool()
+        indexes = ascent.bernoulli_like(settings['p']).as_bool()
 
         # update the velocity at those indexes
         # clone ascent direction so that it doesn't keep updating velocity with it
-        for a, v, i in zip(ascent_direction.clone(), velocity, indexes):
+        for a, v, i in zip(ascent.clone(), velocity, indexes):
             v[i] = a[i]
 
         # decay velocity
         velocity *= settings['decay']
 
         # apply velocity
-        ascent_direction += velocity * (1 - settings['dampening'])
+        ascent += velocity * (1 - settings['dampening'])
 
-        return ascent_direction
+        return ascent

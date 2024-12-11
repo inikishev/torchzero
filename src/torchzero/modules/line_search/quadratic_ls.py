@@ -31,7 +31,7 @@ class MinimizeQuadraticLS(LineSearchBase):
         closure = state.closure
         if state.fx0 is None: state.fx0 = state.closure(False)
         grad = state.grad
-        if grad is None: grad = state.ascent_direction # in case we used FDM
+        if grad is None: grad = state.ascent # in case we used FDM
         if grad is None: raise ValueError('QuardaticLS requires gradients.')
 
         params = self.get_params()
@@ -115,7 +115,7 @@ class MinimizeQuadratic3PointsLS(LineSearchBase):
     def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
         if state.closure is None: raise ValueError('QuardaticLS requires closure')
         closure = state.closure
-        ascent_direction = state.ascent_direction
+        ascent_direction = state.ascent
         if ascent_direction is None: raise ValueError('Ascent direction is None')
 
         if state.fx0 is None: state.fx0 = state.closure(False)

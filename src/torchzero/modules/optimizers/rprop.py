@@ -8,6 +8,7 @@ from ...core import OptimizerModule
 
 def _bool_ones_like(x):
     return torch.ones_like(x, dtype=torch.bool)
+
 class Rprop(OptimizerModule):
     def __init__(self, lr: float = 1, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, backtrack=True):
         """
@@ -28,10 +29,6 @@ class Rprop(OptimizerModule):
             nminus (float): _description_
             lb (float): _description_
             ub (float): _description_
-
-        Note:
-            If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-            they need to have `make_closure` set to True so that they write to `grad` attribute.
         """
         defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub)
         super().__init__(defaults)
@@ -39,10 +36,10 @@ class Rprop(OptimizerModule):
         self.backtrack = backtrack
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         params = self.get_params()
 
-        sign = ascent_direction.sign_()
+        sign = ascent.sign_()
         nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
         prev, allowed, magnitudes = self.get_state_keys(
             ['prev_ascent', 'prevent_update', 'magnitudes'],
@@ -84,3 +81,4 @@ class Rprop(OptimizerModule):
         prev.copy_(ascent)
         self.current_step += 1
         return ascent
+

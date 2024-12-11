@@ -50,17 +50,17 @@ class WeightDecay(OptimizerModule):
         self.ord = ord
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         params = self.get_params()
         alpha = self.get_group_key('alpha')
 
         if self.ord == 1:
-            ascent_direction.add_(params.sign() * alpha)
+            ascent.add_(params.sign() * alpha)
 
         elif self.ord == 2:
-            ascent_direction.add_(params * alpha)
+            ascent.add_(params * alpha)
 
         else:
             raise NotImplementedError(f'Ord {self.ord} not implemented.')
 
-        return ascent_direction
+        return ascent

@@ -21,8 +21,8 @@ class Normalize(OptimizerModule):
         self.min = min
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
-        norm = ascent_direction.total_vector_norm(self.ord)
+    def _update(self, state, ascent):
+        norm = ascent.total_vector_norm(self.ord)
         if norm > self.min:
-            ascent_direction.div_(norm / self.norm_value)
-        return ascent_direction
+            ascent.div_(norm / self.norm_value)
+        return ascent

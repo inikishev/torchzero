@@ -21,10 +21,10 @@ class OptimizerWrapper(OptimizerModule):
 
     @torch.no_grad
     def step(self, state):
-        if state.ascent_direction is None: raise ValueError
+        if state.ascent is None: raise ValueError
 
         params = self.get_params()
-        params.accumulate_grad_(state.ascent_direction)
+        params.accumulate_grad_(state.ascent)
 
         if self.child is None:
             state.fx0_approx = self.optimizer.step()
@@ -33,7 +33,7 @@ class OptimizerWrapper(OptimizerModule):
         else:
             params_before_step = params.clone()
             state.fx0_approx = self.optimizer.step()
-            state.ascent_direction = params_before_step - params
+            state.ascent = params_before_step - params
             params.set_(params_before_step)
             return self.child.step(state)
 
@@ -54,7 +54,7 @@ class ClosureOptimizerWrapper(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
-        if state.ascent_direction is not None: raise ValueError('ascent_direction must be None (maybe not???)')
+        if state.ascent is not None: raise ValueError('ascent_direction must be None (maybe not???)')
 
         if self.child is None:
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
@@ -64,7 +64,7 @@ class ClosureOptimizerWrapper(OptimizerModule):
             params = self.get_params()
             params_before_step = params.clone()
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
-            state.ascent_direction = params_before_step - params
+            state.ascent = params_before_step - params
             params.set_(params_before_step)
             return self.child.step(state)
 
@@ -98,7 +98,7 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
-        if state.ascent_direction is not None: raise ValueError('ascent_direction must be None (maybe not???)')
+        if state.ascent is not None: raise ValueError('ascent_direction must be None (maybe not???)')
 
         if self.child is None:
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
@@ -108,7 +108,7 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
             params = self.get_params()
             params_before_step = params.clone()
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
-            state.ascent_direction = params_before_step - params
+            state.ascent = params_before_step - params
             params.set_(params_before_step)
             return self.child.step(state)
 

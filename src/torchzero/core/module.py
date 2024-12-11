@@ -37,7 +37,7 @@ class OptimizationState:
         if True, sets `.grad` attributes of all learnable params, for example via `loss.backward()`.
         Closure can be None for some first order optimizers."""
 
-        self.ascent_direction: TensorList | None = None
+        self.ascent: TensorList | None = None
         """Ascent direction, for example the gradients.
         Will be None on the first module in the chain.
         May remain none for modules that create a new closure."""
@@ -70,14 +70,14 @@ class OptimizationState:
         """If ascent direction is None, use cloned gradient as ascent direction.
         otherwise returns existing ascent direction.
         If gradient hasn't been computed, this also sets `fx0`."""
-        if self.ascent_direction is None:
+        if self.ascent is None:
             if params is None: raise ValueError()
             grad = self.maybe_compute_grad_(params)
 
             # clone the gradients to avoid modifying them.
-            self.ascent_direction = grad.clone()
+            self.ascent = grad.clone()
 
-        return self.ascent_direction
+        return self.ascent
 
     def get_loss(self):
         """Returns fx0 if it is not None otherwise fx0_approx"""
@@ -98,8 +98,8 @@ class OptimizationState:
         state.fx0_approx = self.fx0_approx
         state.grad = self.grad
 
-        if clone_ascent and self.ascent_direction is not None: state.ascent_direction = self.ascent_direction.clone()
-        else: state.ascent_direction = self.ascent_direction
+        if clone_ascent and self.ascent is not None: state.ascent = self.ascent.clone()
+        else: state.ascent = self.ascent
 
         return state
 
@@ -184,9 +184,9 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """
         # if this has no children, update params and return loss.
         if self.child is None:
-            if state.ascent_direction is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
+            if state.ascent is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
             if params is None: params = self.get_params()
-            params -= state.ascent_direction
+            params -= state.ascent
             return state.get_loss()
 
         # otherwise pass the updated ascent direction to the child
@@ -199,17 +199,17 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
         params = self.get_params()
         closure = state.closure # closure shouldn't reference state attribute because it can be changed
-        ascent_direction = state.ascent_direction
+        ascent_direction = state.ascent
 
         def update_closure(backward = True, **k):
             loss = closure(backward, **k)
 
             # on backward, update the ascent direction
             if backward:
-                ascent = self._update(state, ascent_direction) # type:ignore
+                grad = self._update(state, ascent_direction) # type:ignore
                 # set new ascent direction as gradients
                 # (accumulation doesn't make sense here as closure always calls zero_grad)
-                for p, g in zip(params,ascent):
+                for p, g in zip(params,grad):
                     p.grad = g
 
             return loss
@@ -231,15 +231,15 @@ class OptimizerModule(TensorListOptimizer, ABC):
         params = None
 
         # cases where we would need params
-        if state.ascent_direction is None or self.child is None:
+        if state.ascent is None or self.child is None:
             params = self.get_params()
 
         # if this is the first module, it uses the gradients
         state.maybe_use_grad_(params)
 
         # apply the `_update` method
-        ascent_direction = self._update(state, state.ascent_direction) # type:ignore
-        state.ascent_direction = ascent_direction
+        ascent_direction = self._update(state, state.ascent) # type:ignore
+        state.ascent = ascent_direction
 
         # peform an update with the ascent direction, or pass it to the child.
         return self._update_params_or_step_with_child(state, params=params)
@@ -255,7 +255,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         return self._step_update_ascent_direction(state)
 
     @torch.no_grad
-    def _update(self, state: OptimizationState, ascent_direction: TensorList) -> TensorList:
+    def _update(self, state: OptimizationState, ascent: TensorList) -> TensorList:
         """Update `ascent_direction` and return the new ascent direction (but it may update it in place).
         Make sure it doesn't return anything from `state` to avoid future modules modifying that in-place.
 

@@ -15,8 +15,8 @@ class AddNoise(OptimizerModule):
         self.distribution: Distributions = distribution
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         alpha = self.get_group_key('alpha')
 
-        ascent_direction += ascent_direction.sample_like(alpha, self.distribution)
-        return ascent_direction
+        ascent += ascent.sample_like(alpha, self.distribution)
+        return ascent

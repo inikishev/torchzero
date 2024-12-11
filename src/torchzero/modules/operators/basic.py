@@ -11,8 +11,8 @@ class Clone(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
-        return ascent_direction.clone()
+    def _update(self, state, ascent):
+        return ascent.clone()
 
 
 class Lambda(OptimizerModule):
@@ -22,17 +22,17 @@ class Lambda(OptimizerModule):
         self.f = f
 
     @torch.no_grad()
-    def _update(self, state, ascent_direction):
-        return self.f(ascent_direction)
+    def _update(self, state, ascent):
+        return self.f(ascent)
 
 class Reciprocal(OptimizerModule):
     def __init__(self,):
         super().__init__({})
 
     @torch.no_grad()
-    def _update(self, state, ascent_direction):
-        ascent_direction.reciprocal_()
-        return ascent_direction
+    def _update(self, state, ascent):
+        ascent.reciprocal_()
+        return ascent
 
 class NanToNum(OptimizerModule):
     def __init__(self, nan=None, posinf=None, neginf=None):
@@ -42,6 +42,6 @@ class NanToNum(OptimizerModule):
         self.neginf = neginf
 
     @torch.no_grad()
-    def _update(self, state, ascent_direction):
-        ascent_direction.nan_to_num_(self.nan, self.posinf, self.neginf)
-        return ascent_direction
+    def _update(self, state, ascent):
+        ascent.nan_to_num_(self.nan, self.posinf, self.neginf)
+        return ascent

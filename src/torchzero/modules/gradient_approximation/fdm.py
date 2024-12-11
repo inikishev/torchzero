@@ -156,7 +156,7 @@ class FDM(OptimizerModule):
                 state.fx0_approx = self._finite_difference_(closure, idx, flat_param, flat_grad, eps, state.fx0, ) # type:ignore
 
         # update params or pass the gradients to the child.
-        state.ascent_direction = grads
+        state.ascent = grads
         return self._update_params_or_step_with_child(state, params)
 
     def step(self, state):
@@ -167,5 +167,5 @@ class FDM(OptimizerModule):
         if self.make_closure:
             return self._make_closure_step(state, params = params, epsilons = epsilons)
         else:
-            if state.ascent_direction is not None: raise ValueError('FDM with `make_closure=False` does not accept ascent direction.')
+            if state.ascent is not None: raise ValueError('FDM with `make_closure=False` does not accept ascent direction.')
             return self._make_ascent_direction_step(state, params = params, epsilons = epsilons)

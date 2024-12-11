@@ -42,7 +42,7 @@ class ScipyMinimizeScalarLS(LineSearchBase):
         try:
             res: scipy.optimize.OptimizeResult = scipy.optimize.minimize_scalar(
                 self._evaluate_lr_ensure_float,
-                args = (state.closure, state.ascent_direction, params),
+                args = (state.closure, state.ascent, params),
                 method = self.method,
                 tol = self.tol,
                 bracket = self.bracket,

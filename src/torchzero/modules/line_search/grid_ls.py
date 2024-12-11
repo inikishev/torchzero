@@ -26,14 +26,14 @@ class GridLS(LineSearchBase):
     @torch.no_grad
     def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
         if state.closure is None: raise ValueError("closure is not set")
-        if state.ascent_direction is None: raise ValueError("ascent_direction is not set")
+        if state.ascent is None: raise ValueError("ascent_direction is not set")
 
         if self.stop_on_improvement:
             if state.fx0 is None: state.fx0 = state.closure(False)
             self._lowest_loss = state.fx0
 
         for lr in self.lrs:
-            loss = self._evaluate_lr_(float(lr), state.closure, state.ascent_direction, params)
+            loss = self._evaluate_lr_(float(lr), state.closure, state.ascent, params)
 
             # if worsened
             if self.stop_on_worsened and loss != self._lowest_loss:

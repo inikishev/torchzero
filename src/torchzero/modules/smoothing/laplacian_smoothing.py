@@ -76,7 +76,7 @@ class LaplacianSmoothing(OptimizerModule):
 
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         params = self.get_params()
         sigmas = self.get_group_key('sigma')
 
@@ -93,7 +93,7 @@ class LaplacianSmoothing(OptimizerModule):
 
             # apply the smoothing
             smoothed_direction = TensorList()
-            for g, σ, den in zip(ascent_direction, sigmas, denominators):
+            for g, σ, den in zip(ascent, sigmas, denominators):
                 smoothed_direction.append(torch.fft.ifft(torch.fft.fft(g.view(-1)) / den).real.reshape(g.shape)) # pylint: disable = not-callable
             return smoothed_direction
 
@@ -101,8 +101,8 @@ class LaplacianSmoothing(OptimizerModule):
         else:
             # precompute full denominator
             if self.full_denominator is None:
-                self.full_denominator = _precompute_denominator(ascent_direction.to_vec(), self.sigma)
+                self.full_denominator = _precompute_denominator(ascent.to_vec(), self.sigma)
 
             # apply the smoothing
-            vec = ascent_direction.to_vec()
-            return ascent_direction.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
+            vec = ascent.to_vec()
+            return ascent.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable

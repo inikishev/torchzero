@@ -110,6 +110,6 @@ class LineSearchBase(OptimizerModule, ABC):
         # otherwise undo the update by setting lr to 0 and instead multiply ascent direction by lr.
         self._set_lr_(0, ascent_direction, params)
         ascent_direction.mul_(self._best_lr)
-        state.ascent_direction = ascent_direction
+        state.ascent = ascent_direction
         return self.child.step(state)
 

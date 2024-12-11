@@ -10,8 +10,8 @@ class LR(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         # multiply ascent direction by lr in-place
         lr = self.get_group_key('lr')
-        ascent_direction *= lr
-        return ascent_direction
+        ascent *= lr
+        return ascent

@@ -171,11 +171,11 @@ class RandomizedFDM(OptimizerModule):
 
         # FDM always passes the approximated gradients to its child.
         if self.child is None: raise ValueError("FDM requires a child.")
-        state.ascent_direction = grads
+        state.ascent = grads
         return self.child.step(state)
 
     def step(self, state):
-        if state.ascent_direction is not None: raise ValueError('FDM does not accept ascent direction.')
+        if state.ascent is not None: raise ValueError('FDM does not accept ascent direction.')
 
         params = self.get_params()
         epsilons = self.get_group_key('eps')

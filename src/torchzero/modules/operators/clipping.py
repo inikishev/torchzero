@@ -17,10 +17,10 @@ class ClipValue(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         value = self.get_group_key('value')
-        ascent_direction.clamp_(-value, value)
-        return ascent_direction
+        ascent.clamp_(-value, value)
+        return ascent
 
 def clip_grad_norm_(params: abc.Iterable[torch.Tensor], max_norm: float, ord:float=2):
     """Rescales gradients to the given norm if they exceed it."""
@@ -37,10 +37,10 @@ class ClipNorm(OptimizerModule):
         self.ord = ord
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
-        norm = ascent_direction.total_vector_norm(self.ord)
+    def _update(self, state, ascent):
+        norm = ascent.total_vector_norm(self.ord)
         if norm > self.max_norm:
-            ascent_direction.div_(norm / self.max_norm)
-        return ascent_direction
+            ascent.div_(norm / self.max_norm)
+        return ascent
 
 

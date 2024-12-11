@@ -23,19 +23,19 @@ class SGD(OptimizerModule):
         self.nesterov = nesterov
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
+    def _update(self, state, ascent):
         params = self.get_params()
         velocity = self.get_state_key('velocity')
         settings = self.get_all_group_keys()
 
         if any(i != 0 for i in settings['weight_decay']):
-            ascent_direction += params * settings['weight_decay']
+            ascent += params * settings['weight_decay']
 
-        ascent_direction *= settings['lr']
+        ascent *= settings['lr']
 
         if any(i != 0 for i in settings['momentum']):
             # nesterov step can be done in-place, polyak returns new direction
-            if self.nesterov: _nesterov_step_(ascent_direction, velocity, settings['momentum'], settings['dampening'])
-            else: ascent_direction = _polyak_step(ascent_direction, velocity, settings['momentum'], settings['dampening'])
+            if self.nesterov: _nesterov_step_(ascent, velocity, settings['momentum'], settings['dampening'])
+            else: ascent = _polyak_step(ascent, velocity, settings['momentum'], settings['dampening'])
 
-        return ascent_direction
+        return ascent

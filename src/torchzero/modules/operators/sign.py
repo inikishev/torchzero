@@ -15,6 +15,6 @@ class Sign(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent_direction):
-        ascent_direction.sign_()
-        return ascent_direction
+    def _update(self, state, ascent):
+        ascent.sign_()
+        return ascent

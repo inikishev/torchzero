@@ -17,7 +17,7 @@ class HvInvFDM(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         if state.closure is None: raise ValueError()
-        if state.ascent_direction is not None:
+        if state.ascent is not None:
             raise ValueError("DiagNewtonViaHessianGradientProduct doesn't accept ascent_direction")
 
         params = self.get_params()
@@ -33,5 +33,5 @@ class HvInvFDM(OptimizerModule):
         newton = grad_fx0 * ((grad_fx0 * eps) / (params.grad - grad_fx0))
         newton.nan_to_num_(0,0,0)
 
-        state.ascent_direction = newton
+        state.ascent = newton
         return self._update_params_or_step_with_child(state)

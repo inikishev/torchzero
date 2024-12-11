@@ -51,7 +51,7 @@ class QuadraticInterpolation2Point(LineSearchBase):
         closure = state.closure
         if state.fx0 is None: state.fx0 = state.closure(False)
         grad = state.grad
-        if grad is None: grad = state.ascent_direction # in case we used FDM
+        if grad is None: grad = state.ascent # in case we used FDM
         if grad is None: raise ValueError('QuardaticLS requires gradients.')
 
         params = self.get_params()

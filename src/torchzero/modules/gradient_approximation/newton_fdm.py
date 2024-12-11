@@ -122,7 +122,7 @@ class NewtonFDM(OptimizerModule):
     def step(self, state):
         """Returns a new ascent direction."""
         if state.closure is None: raise ValueError('NewtonFDM requires a closure.')
-        if state.ascent_direction is not None: raise ValueError('NewtonFDM got ascent direction')
+        if state.ascent is not None: raise ValueError('NewtonFDM got ascent direction')
 
         params = self.get_params()
         epsilons = self.get_group_key('eps')
@@ -179,18 +179,18 @@ class NewtonFDM(OptimizerModule):
                     newton_step, success = _fallback_gd(hessian, gvec)
 
         # update params or pass the gradients to the child.
-        state.ascent_direction = grads.from_vec(newton_step)
+        state.ascent = grads.from_vec(newton_step)
 
 
         # validate if newton step decreased loss
         if self.validate:
 
-            params.sub_(state.ascent_direction)
+            params.sub_(state.ascent)
             fx1 = state.closure(False)
-            params.add_(state.ascent_direction)
+            params.add_(state.ascent)
 
             # if loss increases, set ascent direction to gvec times lr
             if fx1 - state.fx0 > state.fx0 * self.tol:
-                state.ascent_direction = grads.from_vec(gvec) * self.gd_lr
+                state.ascent = grads.from_vec(gvec) * self.gd_lr
 
         return self._update_params_or_step_with_child(state, params)
