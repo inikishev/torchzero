@@ -38,7 +38,7 @@ There will be docs with a more exhaustive list and explanations. For now I hope 
 - Laplacian smoothing (*Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55*)
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
 - Projections into small random subspace (which is a part of things like *Gower, R., Kovalev, D., Lieder, F., & Richtárik, P. (2019). RSN: randomized subspace Newton. Advances in Neural Information Processing Systems, 32.*). Unfortunately that won't work with ExactNewton module (yet), but it works with NewtonFDM.
-- I've implemented pytorch-like SGD and Adam as composable modules as well, so if you ever wanted Adam with line search, you can now do it (but check out *Kenneweg, P., Kenneweg, T., Fumagalli, F., & Hammer, B. (2024, June). No learning rates needed: Introducing SALSA-Stable Armijo Line Search Adaptation. In 2024 International Joint Conference on Neural Networks (IJCNN) (pp. 1-8). IEEE.*)
+- I've implemented SGD/RProp/RMSProp/AdaGrad/Adam that exactly match pytorch versions as composable modules as well, so if you ever wanted Adam with line search, you can now do it (but check out *Kenneweg, P., Kenneweg, T., Fumagalli, F., & Hammer, B. (2024, June). No learning rates needed: Introducing SALSA-Stable Armijo Line Search Adaptation. In 2024 International Joint Conference on Neural Networks (IJCNN) (pp. 1-8). IEEE.*)
 
 All modules should be quite fast, especially on models with many different parameters, due to `_foreach` operations.
 
