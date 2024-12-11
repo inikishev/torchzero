@@ -497,9 +497,9 @@ class TensorList(list[torch.Tensor | T.Any]):
         torch._foreach_zero_(self)
         return self
 
-    def lerp(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+    def lerp(self, tensors1: TensorSequence, weight: "TensorSequence"):
         return self.__class__(torch._foreach_lerp(self, tensors1, weight))
-    def lerp_(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+    def lerp_(self, tensors1: TensorSequence, weight: "TensorSequence"):
         torch._foreach_lerp_(self, tensors1, weight)
         return self
 
