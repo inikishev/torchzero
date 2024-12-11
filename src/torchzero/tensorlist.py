@@ -73,7 +73,7 @@ class _TensorLikeFactory:
 def _maximum_(input:torch.Tensor, other: torch.Tensor):
     return torch.maximum(input, other, out = input)
 
-def _where_(condition: torch.Tensor, input: torch.Tensor, other: torch.Tensor):
+def _where_(input: torch.Tensor, condition: torch.Tensor, other: torch.Tensor):
     return torch.where(condition, input, other, out = input)
 
 # tensorlist must subclass list

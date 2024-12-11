@@ -34,4 +34,4 @@ class HvInvFDM(OptimizerModule):
         newton.nan_to_num_(0,0,0)
 
         state.ascent = newton
-        return self._update_params_or_step_with_child(state)
+        return self._update_params_or_step_with_next(state)

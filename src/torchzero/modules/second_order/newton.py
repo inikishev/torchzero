@@ -159,4 +159,4 @@ class ExactNewton(OptimizerModule):
                 state.ascent = grads.div_(grads.total_vector_norm(2) / self.gd_lr)
 
         # peform an update with the ascent direction, or pass it to the child.
-        return self._update_params_or_step_with_child(state, params=params)
+        return self._update_params_or_step_with_next(state, params=params)

@@ -193,4 +193,4 @@ class NewtonFDM(OptimizerModule):
             if fx1 - state.fx0 > state.fx0 * self.tol:
                 state.ascent = grads.from_vec(gvec) * self.gd_lr
 
-        return self._update_params_or_step_with_child(state, params)
+        return self._update_params_or_step_with_next(state, params)

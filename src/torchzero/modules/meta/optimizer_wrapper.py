@@ -26,7 +26,7 @@ class OptimizerWrapper(OptimizerModule):
         params = self.get_params()
         params.accumulate_grad_(state.ascent)
 
-        if self.child is None:
+        if self.next_module is None:
             state.fx0_approx = self.optimizer.step()
             return state.get_loss()
 
@@ -35,7 +35,7 @@ class OptimizerWrapper(OptimizerModule):
             state.fx0_approx = self.optimizer.step()
             state.ascent = params_before_step - params
             params.set_(params_before_step)
-            return self.child.step(state)
+            return self.next_module.step(state)
 
 class ClosureOptimizerWrapper(OptimizerModule):
     def __init__(self, optimizer: torch.optim.Optimizer):
@@ -56,7 +56,7 @@ class ClosureOptimizerWrapper(OptimizerModule):
         if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
         if state.ascent is not None: raise ValueError('ascent_direction must be None (maybe not???)')
 
-        if self.child is None:
+        if self.next_module is None:
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
             return state.get_loss()
 
@@ -66,7 +66,7 @@ class ClosureOptimizerWrapper(OptimizerModule):
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
             state.ascent = params_before_step - params
             params.set_(params_before_step)
-            return self.child.step(state)
+            return self.next_module.step(state)
 
 class UninitializedClosureOptimizerWrapper(OptimizerModule):
     def __init__[**K](
@@ -100,7 +100,7 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
         if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
         if state.ascent is not None: raise ValueError('ascent_direction must be None (maybe not???)')
 
-        if self.child is None:
+        if self.next_module is None:
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
             return state.get_loss()
 
@@ -110,6 +110,6 @@ class UninitializedClosureOptimizerWrapper(OptimizerModule):
             state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
             state.ascent = params_before_step - params
             params.set_(params_before_step)
-            return self.child.step(state)
+            return self.next_module.step(state)
 
 # TODO: optimizer whatevering

@@ -134,9 +134,9 @@ class FDM(OptimizerModule):
             return loss
 
         # FDM always passes the approximated gradients to its child.
-        if self.child is None: raise ValueError("FDM with `make_closure=True` requires a child.")
+        if self.next_module is None: raise ValueError("FDM with `make_closure=True` requires a child.")
         state.closure = fdm_closure
-        return self.child.step(state)
+        return self.next_module.step(state)
 
 
     @torch.no_grad
@@ -157,7 +157,7 @@ class FDM(OptimizerModule):
 
         # update params or pass the gradients to the child.
         state.ascent = grads
-        return self._update_params_or_step_with_child(state, params)
+        return self._update_params_or_step_with_next(state, params)
 
     def step(self, state):
 

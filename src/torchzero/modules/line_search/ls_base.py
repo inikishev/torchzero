@@ -103,7 +103,7 @@ class LineSearchBase(OptimizerModule, ABC):
             lr = self._best_lr
 
         # if child is None, set best lr which update params and return loss
-        if self.child is None:
+        if self.next_module is None:
             self._set_lr_(lr, ascent_direction, params)
             return self._lowest_loss
 
@@ -111,5 +111,5 @@ class LineSearchBase(OptimizerModule, ABC):
         self._set_lr_(0, ascent_direction, params)
         ascent_direction.mul_(self._best_lr)
         state.ascent = ascent_direction
-        return self.child.step(state)
+        return self.next_module.step(state)
 

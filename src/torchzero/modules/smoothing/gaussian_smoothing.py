@@ -85,4 +85,4 @@ class ApproxGaussianSmoothing(OptimizerModule):
 
         self.current_step += 1
         state.closure = smooth_closure
-        return self._update_params_or_step_with_child(state)
+        return self._update_params_or_step_with_next(state)

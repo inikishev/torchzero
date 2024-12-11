@@ -191,7 +191,7 @@ class Subspace(OptimizerModule):
 
     @torch.no_grad
     def step(self, state):
-        if self.child is None: raise ValueError('RandomProjection needs a child')
+        if self.next_module is None: raise ValueError('RandomProjection needs a child')
         if state.closure is None: raise ValueError('RandomProjection needs a closure')
         closure = state.closure
         params = self.get_params()
@@ -203,7 +203,7 @@ class Subspace(OptimizerModule):
             self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
 
             # child params is n scalars corresponding to each projection vector
-            self.projected_params = self.child._params[0] # type:ignore
+            self.projected_params = self.next_module._params[0] # type:ignore
 
         # closure that takes the projected params from the child, puts them into full space params, and evaluates the loss
         def projected_closure(backward = True):
@@ -231,7 +231,7 @@ class Subspace(OptimizerModule):
         state.ascent = None
         if state.grad is not None:
             state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
-        loss = self.child.step(state)
+        loss = self.next_module.step(state)
 
         # that is going to update child's paramers, which we now project back to the full parameter space
         residual = sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])

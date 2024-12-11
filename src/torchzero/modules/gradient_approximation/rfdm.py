@@ -146,9 +146,9 @@ class RandomizedFDM(OptimizerModule):
             return loss
 
         # RandomizedFDM always passes the approximated gradients to its child.
-        if self.child is None: raise ValueError("RandomizedFDM with `make_closure=True` requires a child.")
+        if self.next_module is None: raise ValueError("RandomizedFDM with `make_closure=True` requires a child.")
         state.closure = rfdm_closure
-        return self.child.step(state)
+        return self.next_module.step(state)
 
 
     @torch.no_grad
@@ -170,9 +170,9 @@ class RandomizedFDM(OptimizerModule):
             grads /= self.n_samples
 
         # FDM always passes the approximated gradients to its child.
-        if self.child is None: raise ValueError("FDM requires a child.")
+        if self.next_module is None: raise ValueError("FDM requires a child.")
         state.ascent = grads
-        return self.child.step(state)
+        return self.next_module.step(state)
 
     def step(self, state):
         if state.ascent is not None: raise ValueError('FDM does not accept ascent direction.')

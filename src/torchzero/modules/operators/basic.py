@@ -14,6 +14,13 @@ class Clone(OptimizerModule):
     def _update(self, state, ascent):
         return ascent.clone()
 
+class Noop(OptimizerModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__({})
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        return ascent
 
 class Lambda(OptimizerModule):
     """Applies a function to the ascent direction. The function must take a TensorList as the argument."""

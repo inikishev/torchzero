@@ -22,7 +22,7 @@ class NegateOnLossIncrease(OptimizerModule):
         state.fx0_approx = state.closure(False)
 
         # if this has no children, update params and return loss
-        if self.child is None:
+        if self.next_module is None:
             if params is None: params = self.get_params()
 
             if state.fx0_approx > state.fx0:
@@ -43,6 +43,6 @@ class NegateOnLossIncrease(OptimizerModule):
             else: ascent_direction.zero_()
 
         # otherwise undo the ascent direction and pass the updated ascent direction to the child
-        return self.child.step(state)
+        return self.next_module.step(state)
 
 

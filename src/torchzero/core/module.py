@@ -107,7 +107,10 @@ class OptimizerModule(TensorListOptimizer, ABC):
     """A module."""
     def __init__(self, defaults: dict[str, T.Any], make_closure = False): # pylint:disable = super-init-not-called
         self._defaults = defaults
+        self.next_module: OptimizerModule | None = None
+        """next module that takes this module's state and continues working on it."""
         self.children: list[OptimizerModule] = []
+        """children modules."""
         self._initialized = False
         self._make_closure = make_closure
 
@@ -133,23 +136,17 @@ class OptimizerModule(TensorListOptimizer, ABC):
         super().__init__(params, self._defaults)
         self._initialized = True
 
-    @property
-    def child(self):
-        """First child if it exists else None"""
-        if len(self.children) == 0: return None
-        return self.children[0]
-
     def _add_child_(self, child: "OptimizerModule"):
         """Add a child and initialize it's params."""
         self.children.append(child)
         if self._initialized:
             self._update_child_params_(child)
 
-    def _set_child_(self, child: "OptimizerModule"):
+    def _set_next_module(self, next_module: "OptimizerModule"):
         """Set this module's child, overwriting existing children, and initialize it's params."""
-        self.children = [child]
+        self.next_module = next_module
         if self._initialized:
-            self._update_child_params_(child)
+            self._update_child_params_(next_module)
 
     def _update_child_params_(self, child: "OptimizerModule"):
         """Initializes or updates child params with parameters of this module."""
@@ -171,10 +168,10 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
     def add_param_group(self, param_group: dict[str, T.Any]) -> None:
         super().add_param_group(param_group)
-        for c in self.children:
-            self._update_child_params_(c)
+        for c in [self.next_module] + self.children:
+            if c is not None: self._update_child_params_(c)
 
-    def _update_params_or_step_with_child(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:
+    def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:
         """If this has no children, update params and return loss. Otherwise step with the child.
 
         Optionally pass params to not recreate them if you've already made them.
@@ -183,14 +180,14 @@ class OptimizerModule(TensorListOptimizer, ABC):
             Loss (fx0 or fx0_approx)
         """
         # if this has no children, update params and return loss.
-        if self.child is None:
+        if self.next_module is None:
             if state.ascent is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
             if params is None: params = self.get_params()
             params -= state.ascent
             return state.get_loss()
 
         # otherwise pass the updated ascent direction to the child
-        return self.child.step(state)
+        return self.next_module.step(state)
 
     @torch.no_grad
     def _step_update_closure(self, state: OptimizationState) -> ScalarType | None:
@@ -215,11 +212,11 @@ class OptimizerModule(TensorListOptimizer, ABC):
             return loss
 
         # pass new closure to the child.
-        if self.child is None:
+        if self.next_module is None:
             raise ValueError(f'{self.__class__.__name__} has no child to step with (maybe set make_closure to False?).')
 
         state.closure = update_closure
-        return self.child.step(state)
+        return self.next_module.step(state)
 
 
     @torch.no_grad
@@ -231,7 +228,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         params = None
 
         # cases where we would need params
-        if state.ascent is None or self.child is None:
+        if state.ascent is None or self.next_module is None:
             params = self.get_params()
 
         # if this is the first module, it uses the gradients
@@ -242,7 +239,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         state.ascent = ascent_direction
 
         # peform an update with the ascent direction, or pass it to the child.
-        return self._update_params_or_step_with_child(state, params=params)
+        return self._update_params_or_step_with_next(state, params=params)
 
     @torch.no_grad
     def step( # type:ignore # pylint:disable=signature-differs # pylint:disable = arguments-renamed
