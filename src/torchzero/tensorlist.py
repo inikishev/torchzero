@@ -70,6 +70,12 @@ class _TensorLikeFactory:
     def __call__(self, x): return torch.tensor(x, dtype = self.dtype, device = self.device)
 
 
+def _maximum_(input:torch.Tensor, other: torch.Tensor):
+    return torch.maximum(input, other, out = input)
+
+def _where_(condition: torch.Tensor, input: torch.Tensor, other: torch.Tensor):
+    return torch.where(condition, input, other, out = input)
+
 # tensorlist must subclass list
 # UserList doesn't work with _foreach_xxx
 class TensorList(list[torch.Tensor | T.Any]):
@@ -305,7 +311,7 @@ class TensorList(list[torch.Tensor | T.Any]):
     def ones_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
     def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]):
         #return self.__class__(torch.full_like(i, fill_value=fill_value, **kwargs) for i in self)
-        return self.zipmap_args(torch.full_like, fill_value, **kwargs)
+        return self.zipmap(torch.full_like, fill_value, **kwargs)
 
     def rand_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
     def randn_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
@@ -538,12 +544,17 @@ class TensorList(list[torch.Tensor | T.Any]):
     def uniform_(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, generator = None):
         return self.zipmap_args_inplace_(MethodCallerWithArgs('uniform_'), low, high, generator = generator)
 
+    def maximum(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.maximum, other = other)
+    def maximum_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(_maximum_, other = other)
+
     def squeeze(self, dim = None):
         return self.__class__(i.squeeze(dim) for i in self)
 
     def squeeze_(self, dim = None):
         for i in self: i.squeeze_(dim)
         return self
+
+    def conj(self): return self.__class__(i.conj() for i in self)
 
     def nan_to_num_(self,nan: float | None = None,posinf: float | None = None,neginf: float | None = None):
         for i in self: torch.nan_to_num_(i, nan = nan, posinf = posinf, neginf = neginf)
@@ -561,9 +572,9 @@ class TensorList(list[torch.Tensor | T.Any]):
     def where(self, condition: torch.Tensor | TensorSequence, other: STOrSTSequence):
         """self where condition is true other otherwise"""
         return self.zipmap_args(MethodCallerWithArgs('where'), condition, other)
-    def where_(self, condition: torch.Tensor | TensorSequence, other: STOrSTSequence):
-        """self where condition is true other otherwise, note that this creates a new tensorlist and sets it."""
-        return self.set_(self.where(condition, other))
+    def where_(self, condition: torch.Tensor | TensorSequence, other: torch.Tensor | TensorSequence):
+        """self where condition is true other otherwise"""
+        return self.zipmap_args_inplace_(_where_, condition, other)
 
     def masked_fill(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
@@ -599,27 +610,27 @@ class NumberList(TensorList):
         return self
 
     def add(self, other: STOrSTSequence, alpha: Scalar = 1):
-        if alpha == 1: return self.zipmap_args(operator.add, other)
-        else: return self.zipmap_args(_alpha_add, other, alpha = alpha)
+        if alpha == 1: return self.zipmap(operator.add, other=other)
+        else: return self.zipmap(_alpha_add, other=other, alpha = alpha)
     def add_(self, other: STOrSTSequence, alpha: Scalar = 1):
         return self._set_to_method_result('add', other, alpha = alpha)
 
     def sub(self, other: "Scalar | STSequence", alpha: Scalar = 1):
-        if alpha == 1: return self.zipmap_args(operator.sub, other)
-        else: return self.zipmap_args(_alpha_add, other, alpha = -alpha)
+        if alpha == 1: return self.zipmap(operator.sub, other=other)
+        else: return self.zipmap(_alpha_add, other=other, alpha = -alpha)
     def sub_(self, other: "Scalar | STSequence", alpha: Scalar = 1):
         return self._set_to_method_result('sub', other, alpha = alpha)
 
     def neg(self): return self.__class__(-i for i in self)
     def neg_(self): return self._set_to_method_result('neg')
 
-    def mul(self, other: STOrSTSequence): return self.zipmap_args(operator.mul, other)
+    def mul(self, other: STOrSTSequence): return self.zipmap(operator.mul, other=other)
     def mul_(self, other: STOrSTSequence): return self._set_to_method_result('mul', other)
 
-    def div(self, other: STOrSTSequence) -> T.Self: return self.zipmap_args(operator.truediv, other)
+    def div(self, other: STOrSTSequence) -> T.Self: return self.zipmap(operator.truediv, other=other)
     def div_(self, other: STOrSTSequence): return self._set_to_method_result('div', other)
 
-    def pow(self, exponent: "Scalar | STSequence"): return self.zipmap_args(math.pow, exponent)
+    def pow(self, exponent: "Scalar | STSequence"): return self.zipmap(math.pow, other=exponent)
     def pow_(self, exponent: "Scalar | STSequence"): return self._set_to_method_result('pow_', exponent)
 
     def __rtruediv__(self, other: "Scalar | STSequence"):
