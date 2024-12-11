@@ -6,9 +6,9 @@ from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
 def _adagrad_step_(ascent: TensorList, grad_sum: TensorList, lr: TensorList, lr_decay: TensorList, eps: TensorList, step: int):
-    clr = lr / (1 + (step - 1) * lr_decay)
+    clr = lr / (1 + step * lr_decay)
     grad_sum.addcmul_(ascent, ascent)
-    return ascent.div_(grad_sum.sqrt().add_(eps).mul_(clr))
+    return ascent.div_(grad_sum.sqrt().add_(eps)).mul_(clr)
 
 class Adagrad(OptimizerModule):
     def __init__(self, lr: float = 1, lr_decay: float = 0, initial_accumulator_value: float = 0, eps: float = 1e-10, ):
