@@ -2,7 +2,7 @@ from collections import abc
 import torch
 
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationState
-from ..modules import Chain
+from ..modules import ChainReturn
 
 class ModularOptimizer(TensorListOptimizer):
     def __init__(self, params, modules: abc.Iterable[OptimizerModule] | OptimizerModule):
@@ -18,7 +18,7 @@ class ModularOptimizer(TensorListOptimizer):
 
         if isinstance(modules, OptimizerModule): modules = [modules]
         self.modules = list(modules)
-        self.chain = Chain(self.modules)
+        self.chain = ChainReturn(self.modules)
         self.chain._initialize_(params)
 
     def step(self, closure=None): # type:ignore

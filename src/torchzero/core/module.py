@@ -146,29 +146,34 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """Set this module's child, overwriting existing children, and initialize it's params."""
         self.next_module = next_module
         if self._initialized:
-            self._update_child_params_(next_module)
+            self._update_next_module_params_(next_module)
 
-    def _update_child_params_(self, child: "OptimizerModule"):
-        """Initializes or updates child params with parameters of this module."""
+    def _update_next_module_params_(self, next_module: "OptimizerModule"):
+        """Initializes or updates next module params with parameters of this module."""
         # Shouldn't forget that this method is overwritten by some modules
         # So if I update it I need to keep that in mind
 
         # if child is not initialized, torch.optim.Optimizer.__init__ is called on it by _initialize_ method
-        if not child._initialized:
-            child._initialize_(self._params)
+        if not next_module._initialized:
+            next_module._initialize_(self._params)
 
         # otherwise to avoid calling __init__ multiple twice, we erase the param groups and readd them
-        elif not child._has_custom_params:
-            child.param_groups = []
+        elif not next_module._has_custom_params:
+            next_module.param_groups = []
             for group in self.param_groups:
                 # it is important not to propagate all the settings
                 # for example if this module has `lr` setting, and the child has a different `lr` setting,
                 # we don't want to overwrite the child's `lr` setting
-                child.add_param_group({"params": group["params"]})
+                next_module.add_param_group({"params": group["params"]})
+
+    def _update_child_params_(self, child: "OptimizerModule"):
+        """Initializes or updates child params with parameters of this module."""
+        return self._update_next_module_params_(child)
 
     def add_param_group(self, param_group: dict[str, T.Any]) -> None:
         super().add_param_group(param_group)
-        for c in [self.next_module] + self.children:
+        if self.next_module is not None: self._update_next_module_params_(self.next_module)
+        for c in self.children:
             if c is not None: self._update_child_params_(c)
 
     def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:

@@ -62,4 +62,3 @@ class ChainReturn(OptimizerModule):
     def _set_next_module(self, next_module: "OptimizerModule"):
         raise ValueError("LastChain must be last.")
 
-

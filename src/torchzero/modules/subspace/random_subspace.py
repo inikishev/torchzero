@@ -6,7 +6,7 @@ import torch
 
 from ... import tl
 from ...core import OptimizationState, OptimizerModule
-
+from ..meta import ChainReturn, ReturnAscent
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
 
@@ -146,7 +146,12 @@ class ProjNormalize(Projection):
         return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)]
 
 class Subspace(OptimizerModule):
-    def __init__(self, projections: Projection | abc.Iterable[Projection], update_every: int = 1, ):
+    def __init__(
+        self,
+        modules: OptimizerModule | abc.Iterable[OptimizerModule],
+        projections: Projection | abc.Iterable[Projection],
+        update_every: int = 1,
+    ):
         """Optimizes parameters projected into a lower (or higher) dimensional subspace.
 
         The subspace is a bunch of projections that go through the current point. Projections can be random,
@@ -170,7 +175,9 @@ class Subspace(OptimizerModule):
         """
         super().__init__({})
         if isinstance(projections, Projection): projections = [projections]
+        if isinstance(modules, OptimizerModule): modules = [modules]
         self.projections = list(projections)
+        self._add_child_(ChainReturn(list(modules) + [ReturnAscent()]))
         self.update_every = update_every
         self.current_step = 0
 
@@ -191,7 +198,7 @@ class Subspace(OptimizerModule):
 
     @torch.no_grad
     def step(self, state):
-        if self.next_module is None: raise ValueError('RandomProjection needs a child')
+        #if self.next_module is None: raise ValueError('RandomProjection needs a child')
         if state.closure is None: raise ValueError('RandomProjection needs a closure')
         closure = state.closure
         params = self.get_params()
@@ -203,7 +210,7 @@ class Subspace(OptimizerModule):
             self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
 
             # child params is n scalars corresponding to each projection vector
-            self.projected_params = self.next_module._params[0] # type:ignore
+            self.projected_params = self.children[0]._params[0] # type:ignore
 
         # closure that takes the projected params from the child, puts them into full space params, and evaluates the loss
         def projected_closure(backward = True):
@@ -227,15 +234,16 @@ class Subspace(OptimizerModule):
         #     ascent_direction = tl.sum([ascent_direction*v for v in self.projection_vectors])
 
         # perform a step with the child
-        state.closure = projected_closure
-        state.ascent = None
-        if state.grad is not None:
-            state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
-        loss = self.next_module.step(state)
+        subspace_state = state.copy(False)
+        subspace_state.closure = projected_closure
+        subspace_state.ascent = None
+        if subspace_state.grad is not None:
+            subspace_state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
+        subspace_ascent: tl.TensorList = self.children[0].step(subspace_state) # type:ignore
 
         # that is going to update child's paramers, which we now project back to the full parameter space
-        residual = sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])
-        params.add_(residual)
+        residual = tl.sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])
+        state.ascent = residual.neg_()
 
         # projected_params are residuals that have been applied to actual params on previous step in some way
         # therefore they need to now become zero (otherwise they work like momentum with no decay).
@@ -244,4 +252,4 @@ class Subspace(OptimizerModule):
         self.projected_params.zero_()
 
         self.current_step += 1
-        return loss
+        return self._update_params_or_step_with_next(state)

@@ -1,6 +1,6 @@
 import torch
 
-from ...core import TensorListOptimizer
+from ...core import TensorListOptimizer, ClosureType
 
 
 class RandomSearch(TensorListOptimizer):
@@ -21,7 +21,7 @@ class RandomSearch(TensorListOptimizer):
         self.stochastic = stochastic
 
     @torch.no_grad
-    def step(self, closure): # type:ignore # pylint:disable=W0222
+    def step(self, closure: ClosureType): # type:ignore # pylint:disable=W0222
         if self.stochastic: self.lowest_loss = closure()
 
         settings = self.get_all_group_keys()
@@ -30,7 +30,7 @@ class RandomSearch(TensorListOptimizer):
         old_params = params.clone()
         new_params = params.uniform_like(settings['min'], settings['max'])
         params.set_(new_params)
-        loss = closure()
+        loss = closure(False)
 
         if loss < self.lowest_loss: self.lowest_loss = loss
         else: params.set_(old_params)
@@ -56,7 +56,7 @@ class CyclicRS(TensorListOptimizer):
         self.stochastic = stochastic
 
     @torch.no_grad
-    def step(self, closure): # type:ignore # pylint:disable=W0222
+    def step(self, closure: ClosureType): # type:ignore # pylint:disable=W0222
         if self.stochastic: self.lowest_loss = closure()
         settings = self.get_all_group_keys()
         params = self.get_params()
@@ -73,7 +73,7 @@ class CyclicRS(TensorListOptimizer):
         old_value = flat[self.cur_value].clone()
         flat[self.cur_value] = torch.rand(1).uniform_(settings['min'][self.cur_param], settings['max'][self.cur_param]) # type:ignore
 
-        loss = closure()
+        loss = closure(False)
         if loss < self.lowest_loss: self.lowest_loss = loss
         else:
             flat[self.cur_value] = old_value

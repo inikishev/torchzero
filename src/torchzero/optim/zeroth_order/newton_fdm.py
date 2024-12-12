@@ -125,8 +125,18 @@ class RandomSubspaceNewtonFDM(ModularOptimizer):
             if subspace_ndim % 2 == 1: projections.append(ProjRandom(1))
 
         modules: list[OptimizerModule] = [
-            Subspace(projections, update_every=randomize_every),
-            _NewtonFDM(eps = eps, diag = diag, solver=solver, fallback=fallback, validate=validate, tol=tol, gd_lr=gd_lr),
+            Subspace(
+                modules = _NewtonFDM(
+                    eps = eps,
+                    diag = diag,
+                    solver=solver,
+                    fallback=fallback,
+                    validate=validate,
+                    tol=tol,
+                    gd_lr=gd_lr
+                ),
+                projections = projections,
+                update_every=randomize_every),
         ]
         if max_norm is not None:
             modules.append(ClipNorm(max_norm))
