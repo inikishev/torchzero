@@ -25,8 +25,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
     ):
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
-            Subspace(ProjAscentRay(ray_width, n = n_rays)),
-            NewtonFDM(eps = eps),
+            Subspace(NewtonFDM(eps = eps), ProjAscentRay(ray_width, n = n_rays)),
         ]
         if lr != 1:
             modules.append(LR(lr))
@@ -35,36 +34,6 @@ class NewtonFDMRaySearch(ModularOptimizer):
             modules.append(get_line_search(line_search))
 
         super().__init__(params, modules)
-
-class HvInvFDMRaySearch(ModularOptimizer):
-    def __init__(
-        self,
-        params,
-        lr = 1e-2,
-        momentum:float = 0,
-        weight_decay:float = 0,
-        dampening: float = 0,
-        nesterov:bool = False,
-        n_rays = 24,
-        eps = 1e-2,
-        ray_width: float = 1e-1,
-        line_search: LineSearches | None = None,
-    ):
-
-        modules: list[OptimizerModule] = [
-            SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
-            Subspace(ProjAscentRay(ray_width, n = n_rays)),
-            HvInvFDM(eps = eps),
-        ]
-        if lr != 1:
-            modules.append(LR(lr))
-
-        if line_search is not None:
-            modules.append(get_line_search(line_search))
-
-        super().__init__(params, modules)
-
-
 
 
 class LBFGSRaySearch(ModularOptimizer):
@@ -86,11 +55,8 @@ class LBFGSRaySearch(ModularOptimizer):
         line_search_fn: T.Optional[str | T.Literal['strong_wolfe']] = None,
     ):
 
-        modules: list[OptimizerModule] = [
-            SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
-            Subspace(ProjAscentRay(ray_width, n = n_rays)),
-            UninitializedClosureOptimizerWrapper(
-                torch.optim.LBFGS, 
+        lbfgs = UninitializedClosureOptimizerWrapper(
+                torch.optim.LBFGS,
                 lr = lr,
                 max_iter = max_iter,
                 max_eval = max_eval,
@@ -98,7 +64,11 @@ class LBFGSRaySearch(ModularOptimizer):
                 tolerance_change = tolerance_change,
                 history_size = history_size,
                 line_search_fn = line_search_fn
-            ),
+            )
+        modules: list[OptimizerModule] = [
+            SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
+            Subspace(lbfgs, ProjAscentRay(ray_width, n = n_rays)),
+
         ]
 
         super().__init__(params, modules)

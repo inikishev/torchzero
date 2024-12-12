@@ -226,9 +226,7 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         momentum = 0.9,
     ):
 
-        modules = [
-            Subspace(projections),
-            UninitializedClosureOptimizerWrapper(
+        scopt = UninitializedClosureOptimizerWrapper(
                 ScipyMinimize,
                 method = method,
                 bounds = bounds,
@@ -239,9 +237,11 @@ class ScipyMinimizeSubspace(ModularOptimizer):
                 jac = jac,
                 hess = hess
             ),
+        modules = [
+            Subspace(scopt, projections),
         ]
 
         if momentum is not None and momentum != 0:
-            modules.insert(0, SGD(1, momentum = momentum))
+            modules.insert(0, SGD(1, momentum = momentum)) # type:ignore
 
         super().__init__(params, modules)
