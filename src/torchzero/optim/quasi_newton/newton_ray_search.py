@@ -5,7 +5,7 @@ import torch
 
 from ...core import OptimizerModule
 from ...modules import (SGD, HvInvFDM, LineSearches, NewtonFDM, Subspace,
-                        get_line_search, ProjAscentRay, UninitializedClosureOptimizerWrapper, LR)
+                        get_line_search, ProjAscentRay, ProjNormalize, UninitializedClosureOptimizerWrapper, LR)
 from ..modular import ModularOptimizer
 
 
@@ -25,7 +25,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
     ):
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
-            Subspace(NewtonFDM(eps = eps), ProjAscentRay(ray_width, n = n_rays)),
+            Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
         ]
         if lr != 1:
             modules.append(LR(lr))
@@ -67,7 +67,7 @@ class LBFGSRaySearch(ModularOptimizer):
             )
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
-            Subspace(lbfgs, ProjAscentRay(ray_width, n = n_rays)),
+            Subspace(lbfgs, ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
 
         ]
 

@@ -14,3 +14,4 @@ from .modular import ModularOptimizer
 from .quasi_newton import *
 from .zeroth_order import *
 from .second_order import *
+from .first_order import *

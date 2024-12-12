@@ -13,6 +13,7 @@ from ...modules import (SGD, Proj2Masks, ProjAscent, ProjGrad,
                         ProjGradAscentDifference, ProjLastAscentDifference,
                         ProjLastGradDifference, ProjNormalize, Subspace,
                         UninitializedClosureOptimizerWrapper)
+from ...modules.subspace.random_subspace import Projection
 from ...tensorlist import TensorList
 from ..modular import ModularOptimizer
 
@@ -205,7 +206,7 @@ class ScipyMinimizeSubspace(ModularOptimizer):
     def __init__(
         self,
         params,
-        projections = (
+        projections: Projection | abc.Iterable[Projection] = (
             Proj2Masks(5),
             ProjNormalize(
                 ProjGrad(),
