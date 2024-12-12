@@ -5,7 +5,7 @@ Most optimizers are modular, meaning you can chain them like this:
 ```py
 optimizer = torchzero.optim.ModularOptimizer(model.parameters(), [*list of modules*])`
 ```
-For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. 
+For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. Move `ClipNorm` to the end to clip the update instead of the gradients. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. 
 
 Or `[ExactNewton(), BacktrackingLS()]` for newton with backtracking line search. Something a bit more interesting - `[Subspace(ProjRandom(3)), NewtonFDM(1e-3)]` will perform a newton step via finite-difference approximated hessian in a small subspace defined by 3 random projections, making it feasible for large scale problems.
 
