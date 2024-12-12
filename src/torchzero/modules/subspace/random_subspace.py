@@ -175,9 +175,8 @@ class Subspace(OptimizerModule):
         """
         super().__init__({})
         if isinstance(projections, Projection): projections = [projections]
-        if isinstance(modules, OptimizerModule): modules = [modules]
         self.projections = list(projections)
-        self._add_child_(ChainReturn(list(modules) + [ReturnAscent()]))
+        self._add_child_(ChainReturn(modules))
         self.update_every = update_every
         self.current_step = 0
 
@@ -239,12 +238,15 @@ class Subspace(OptimizerModule):
         subspace_state.ascent = None
         if subspace_state.grad is not None:
             subspace_state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
-        subspace_ascent: tl.TensorList = self.children[0].step(subspace_state) # type:ignore
+        self.children[0].step(subspace_state) # type:ignore
 
         # that is going to update child's paramers, which we now project back to the full parameter space
         residual = tl.sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])
         state.ascent = residual.neg_()
 
+        # move fx0 and fx0 approx to state
+        if subspace_state.fx0 is not None: state.fx0 = subspace_state.fx0
+        if subspace_state.fx0_approx is not None: state.fx0 = subspace_state.fx0_approx
         # projected_params are residuals that have been applied to actual params on previous step in some way
         # therefore they need to now become zero (otherwise they work like momentum with no decay).
         # note: THIS WON'T WORK WITH INTEGRATIONS, UNLESS THEY PERFORM FULL MINIMIZATION EACH STEP

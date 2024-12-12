@@ -206,13 +206,9 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         self,
         params,
         projections = (
-            Proj2Masks(2),
+            Proj2Masks(5),
             ProjNormalize(
                 ProjGrad(),
-                ProjAscent(),
-                ProjLastGradDifference(),
-                ProjLastAscentDifference(),
-                ProjGradAscentDifference(),
             )
         ),
         method=None,
@@ -223,7 +219,6 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         options=None,
         jac: T.Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
-        momentum = 0.9,
     ):
 
         scopt = UninitializedClosureOptimizerWrapper(
@@ -240,8 +235,5 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         modules = [
             Subspace(scopt, projections),
         ]
-
-        if momentum is not None and momentum != 0:
-            modules.insert(0, SGD(1, momentum = momentum)) # type:ignore
 
         super().__init__(params, modules)
