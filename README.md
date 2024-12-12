@@ -34,6 +34,7 @@ There will be docs with a more exhaustive list and explanations. For now I hope 
 - Various line searches
 - Polyak momentum, nesterov momentum
 - Gradient clipping and normalization
+- Optimizer grafting (*Agarwal, N., Anil, R., Hazan, E., Koren, T., & Zhang, C. Learning Rate Grafting: Transferability of Optimizer Tuning.*)
 - Learning rate droput (*Lin, H., Zeng, W., Zhuang, Y., Ding, X., Huang, Y., & Paisley, J. (2022). Learning rate dropout. IEEE Transactions on Neural Networks and Learning Systems, 34(11), 9029-9039.*).
 - Laplacian smoothing (*Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55*)
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
