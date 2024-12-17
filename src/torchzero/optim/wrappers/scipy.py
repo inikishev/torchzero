@@ -7,12 +7,9 @@ import scipy.optimize
 import torch
 
 from ...core import ClosureType, TensorListOptimizer
-from ...grad.derivatives import (hessian, hessian_list_to_mat,
-                                 jacobian_and_hessian, jacobian_list_to_vec)
-from ...modules import (SGD, Proj2Masks, ProjAscent, ProjGrad,
-                        ProjGradAscentDifference, ProjLastAscentDifference,
-                        ProjLastGradDifference, ProjNormalize, Subspace,
-                        UninitializedClosureOptimizerWrapper)
+from ...grad.derivatives import hessian, hessian_list_to_mat
+from ...modules import (OptimizerWrapper, Proj2Masks, ProjGrad, ProjNormalize,
+                        Subspace)
 from ...modules.subspace.random_subspace import Projection
 from ...tensorlist import TensorList
 from ..modular import ModularOptimizer
@@ -222,8 +219,9 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
     ):
 
-        scopt = UninitializedClosureOptimizerWrapper(
+        scopt = OptimizerWrapper(
                 ScipyMinimize,
+                pass_closure = True,
                 method = method,
                 bounds = bounds,
                 constraints = constraints,

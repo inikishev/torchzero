@@ -11,8 +11,8 @@ def l2_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     """Adds L2 weight regularization term to the gradients.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): _description_
-        lr (float, optional): _description_. Defaults to 1e-2.
+        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
     """
     p = TensorList(params).with_requires_grad()
     p.ensure_grad_()
@@ -22,15 +22,21 @@ def l1_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     """Adds L1 weight regularization term to the gradients.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): _description_
-        lr (float, optional): _description_. Defaults to 1e-2.
+        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
     """
     p = TensorList(params).with_requires_grad()
     p.ensure_grad_()
     p.grad.add_(p.sign(), alpha = alpha)
 
 def weight_decay_penalty(params: abc.Iterable[torch.Tensor], alpha: float, ord = 2):
-    """Calculate the weight decay penalty term that can be added to the loss."""
+    """Calculate the weight decay penalty term that can be added to the loss.
+
+    Args:
+        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        alpha (float): multiplier to the regularizer.
+        ord (int, optional): order of the norm. Defaults to 2.
+    """
     return TensorList(params).total_vector_norm(ord) * alpha
 
 
@@ -38,8 +44,10 @@ class WeightDecay(OptimizerModule):
     def __init__(self, alpha: float = 1e-2, ord:T.Literal[1, 2] = 2, make_closure = False):
         """Adds weight decay term (L1 or L2 regularization) to the ascent direction.
 
+        Put this at the end to make it decoupled.
+
         Args:
-            alpha (float, optional): Learning rate, or multiplier to the weight decay. Defaults to 1e-2.
+            alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
             ord (T.Literal[1, 2], optional): Order, 1 and 2 are currently supported (L1 and L2 regularization).
                 Defaults to 2.
             make_closure (bool, optional): if True, instead of directly changing ascent direction,

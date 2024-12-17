@@ -1,4 +1,4 @@
-import typing as T
+import typing
 from collections import abc
 
 import torch
@@ -19,7 +19,7 @@ class CautiousAdam(ModularOptimizer):
         amsgrad=False,
         c_eps = 1e-6,
         normalize = True,
-        set_to_grad = False,
+        mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'
     ):
         """Cautious adam.
 
@@ -33,10 +33,10 @@ class CautiousAdam(ModularOptimizer):
                 On the Convergence of Adam and Beyond (default: False).
         """
         modules: list[OptimizerModule] = [
-            Adam(lr = 1 if set_to_grad else lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
-            Cautious(normalize = normalize, eps = c_eps, set_to_grad = set_to_grad),
+            Adam(lr = 1 if mode == 'grad' else lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
-        if set_to_grad: modules.append(LR(lr))
+        if mode == 'grad': modules.append(LR(lr))
 
         super().__init__(params, modules)
 
@@ -52,7 +52,7 @@ class CautiousSGD(ModularOptimizer):
         nesterov: bool = True,
         c_eps = 1e-6,
         normalize = True,
-        set_to_grad = False,
+        mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'
     ):
         """Cautious SGD with momentum (without momentum this is just SGD)
 
@@ -65,10 +65,10 @@ class CautiousSGD(ModularOptimizer):
             nesterov (bool, optional): _description_. Defaults to True.
         """
         modules: list[OptimizerModule] = [
-            SGD(lr = 1 if set_to_grad else lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay, nesterov = nesterov),
-            Cautious(normalize = normalize, eps = c_eps, set_to_grad = set_to_grad),
+            SGD(lr = 1 if mode == 'grad' else lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay, nesterov = nesterov),
+            Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
-        if set_to_grad: modules.append(LR(lr))
+        if mode == 'grad': modules.append(LR(lr))
 
         super().__init__(params, modules)
 

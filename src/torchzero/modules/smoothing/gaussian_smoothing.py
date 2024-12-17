@@ -29,11 +29,11 @@ class ApproxGaussianSmoothing(OptimizerModule):
         This effectively applies smoothing to the function.
 
         Args:
-            n_samples (int, optional): _description_. Defaults to 4.
-            sigma (float, optional): _description_. Defaults to 0.5.
-            distribution (tl.Distributions, optional): _description_. Defaults to "normal".
+            n_samples (int, optional): number of gradient samples from around current position. Defaults to 4.
+            sigma (float, optional): how far from current position to sample from. Defaults to 0.1.
+            distribution (tl.Distributions, optional): distribution for random positions. Defaults to "normal".
             sample_x0 (bool, optional): 1st sample will be x0. Defaults to False.
-            randomize_every (int, optional): _description_. Defaults to 1.
+            randomize_every (int, optional): randomizes the points every n steps. Defaults to 1.
         """
         defaults = dict(sigma = sigma)
         super().__init__(defaults)

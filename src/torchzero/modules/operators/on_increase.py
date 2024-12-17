@@ -5,8 +5,13 @@ from ...core import OptimizerModule, _get_loss
 
 class NegateOnLossIncrease(OptimizerModule):
     def __init__(self, backtrack = True):
-        """Does one additional evaluation to check if ascent increases the loss.
-        Subtracts the ascent direction, and if loss didn't decrease, zeroes or negates the ascent direction."""
+        """Performs an additional evaluation to check if update increases the loss. If it does,
+        negates or backtracks the update.
+
+        Args:
+            backtrack (bool, optional):
+                if True, sets update to minus update, otherwise sets it to zero. Defaults to True.
+        """
         super().__init__({})
         self.backtrack = backtrack
 

@@ -8,8 +8,6 @@ from ..momentum.polyak_momentum import _polyak_step
 
 
 class SGD(OptimizerModule):
-    """Same as torch.optim.SGD but as an optimizer module."""
-
     def __init__(
         self,
         lr: float = 1e-3,
@@ -18,6 +16,15 @@ class SGD(OptimizerModule):
         weight_decay: float = 0,
         nesterov: bool = False,
     ):
+        """Same as torch.optim.SGD but as an optimizer module.
+
+        Args:
+            lr (float, optional): _description_. Defaults to 1e-3.
+            momentum (float, optional): _description_. Defaults to 0.
+            dampening (float, optional): _description_. Defaults to 0.
+            weight_decay (float, optional): _description_. Defaults to 0.
+            nesterov (bool, optional): _description_. Defaults to False.
+        """
         defaults = dict(lr=lr, momentum=momentum, dampening=dampening, weight_decay=weight_decay,)
         super().__init__(defaults)
         self.nesterov = nesterov

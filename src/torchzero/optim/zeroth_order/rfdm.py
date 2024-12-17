@@ -4,7 +4,7 @@ from collections import abc
 import torch
 
 from ...tensorlist import Distributions
-from ...modules import SGD, ClosureOptimizerWrapper
+from ...modules import SGD, OptimizerWrapper
 from ...modules import RandomizedFDM as _RandomizedFDM
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import ModularOptimizer
@@ -193,6 +193,6 @@ class RandomizedFDMWrapper(ModularOptimizer):
                 randomize_every=randomize_every,
                 randomize_closure = randomize_closure,
             ),
-            ClosureOptimizerWrapper(optimizer)
+            OptimizerWrapper(optimizer, pass_closure=True)
         ]
         super().__init__(params, modules)

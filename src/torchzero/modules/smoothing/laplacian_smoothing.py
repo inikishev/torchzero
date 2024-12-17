@@ -19,15 +19,19 @@ def vector_laplacian_smoothing(input: torch.Tensor, sigma: float = 1) -> torch.T
     return torch.fft.ifft(numerator / denominator).real # pylint: disable = not-callable
 
 def gradient_laplacian_smoothing_(params: abc.Iterable[torch.Tensor], sigma: float = 1, layerwise=True, min_numel = 4):
-    """Applies laplacian smoothing to the gradients of the given parameters in-place.
+    """Applies laplacian smoothing to gradients of an iterable of parameters.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): parameters to modify.
+        params (abc.Iterable[torch.Tensor]): an iterable of Tensors that will have gradients smoothed.
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.
         layerwise (bool, optional): If True, applies smoothing to each parameter's gradient separately,
             Otherwise applies it to all gradients, concatenated into a single vector. Defaults to True.
         min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
             Only has effect if `layerwise` is True. Defaults to 4.
+
+    Reference:
+        *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
+        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
     """
     grads = TensorList(params).get_existing_grads()
     if layerwise:
@@ -49,11 +53,7 @@ def _precompute_denominator(tensor: torch.Tensor, sigma) -> torch.Tensor:
 
 class LaplacianSmoothing(OptimizerModule):
     def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, make_closure = False):
-        """Applies laplacian smoothing via fast Fourier transform as described in
-
-        *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
-        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
-
+        """Applies laplacian smoothing via fast Fourier transform.
 
         Args:
             sigma (float, optional): controls the amount of smoothing. Defaults to 1.
@@ -62,6 +62,11 @@ class LaplacianSmoothing(OptimizerModule):
             min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
                 Only has effect if `layerwise` is True. Defaults to 4.
             make_closure (bool, optional): Set to True to use with things like LBFGS. Defaults to False.
+
+        Reference:
+            *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
+            Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
+
         """
         # sigma from defaults is used in layerwise case
         # otherwise self.sigma is used

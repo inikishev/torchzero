@@ -5,11 +5,7 @@ import nevergrad as ng
 import numpy as np
 import torch
 
-from ...core import ClosureType, TensorListOptimizer
-from ...modules import (Proj2Masks, ProjGrad, ProjLastGradDifference,
-                        ProjNormalize, Subspace,
-                        UninitializedClosureOptimizerWrapper)
-from ..modular import ModularOptimizer
+from ...core import TensorListOptimizer
 
 
 def _ensure_float(x):

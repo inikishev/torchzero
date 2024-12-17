@@ -5,7 +5,7 @@ import torch
 
 from ...core import OptimizerModule
 from ...modules import (SGD, HvInvFDM, LineSearches, NewtonFDM, Subspace,
-                        get_line_search, ProjAscentRay, ProjNormalize, UninitializedClosureOptimizerWrapper, LR)
+                        get_line_search, ProjAscentRay, ProjNormalize, LR, OptimizerWrapper)
 from ..modular import ModularOptimizer
 
 
@@ -56,15 +56,16 @@ class LBFGSRaySearch(ModularOptimizer):
         line_search_fn: str | T.Literal['strong_wolfe'] | None = None,
     ):
         """experimental (probably failed) please don't use"""
-        lbfgs = UninitializedClosureOptimizerWrapper(
+        lbfgs = OptimizerWrapper(
                 torch.optim.LBFGS,
+                pass_closure = True,
                 lr = lr,
                 max_iter = max_iter,
                 max_eval = max_eval,
                 tolerance_grad = tolerance_grad,
                 tolerance_change = tolerance_change,
                 history_size = history_size,
-                line_search_fn = line_search_fn
+                line_search_fn = line_search_fn,
             )
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),

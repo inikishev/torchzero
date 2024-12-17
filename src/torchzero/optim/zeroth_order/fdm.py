@@ -3,7 +3,7 @@ from collections import abc
 
 import torch
 
-from ...modules import FDM as _FDM, SGD, ClosureOptimizerWrapper
+from ...modules import FDM as _FDM, SGD, OptimizerWrapper
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import ModularOptimizer
 
@@ -77,6 +77,6 @@ class FDMWrapper(ModularOptimizer):
         """
         modules = [
             _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),
-            ClosureOptimizerWrapper(optimizer)
+            OptimizerWrapper(optimizer, pass_closure=True)
         ]
         super().__init__(params, modules)
