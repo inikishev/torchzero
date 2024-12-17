@@ -2,7 +2,7 @@ r"""
 This module includes various basic operators, notable LR for setting the learning rate,
 as well as gradient/update clipping and normalization.
 """
-from .basic import Clone, Lambda, Reciprocal, NanToNum, Noop
+from .basic import Clone, Lambda, Reciprocal, NanToNum, Noop, Mul, Div, Add, AddSign, Pow, PowSign
 from .clipping import ClipNorm, ClipValue
 from .lr import LR
 from .normalization import Normalize, normalize_grad_

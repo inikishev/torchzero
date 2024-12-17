@@ -7,9 +7,7 @@ TensorList is similar to TensorDict (https://github.com/pytorch/tensordict).
 If you want to get the most performance out of a collection of tensors, use TensorDict and lock it.
 However I found that *creating* a TensorDict is quite slow. In fact it negates the benefits of using it
 in an optimizer when you have to create one from parameters on each step. The solution could be to create
-it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
-
-This is where a TensorList is perfect because creating it has practically no overhead.
+it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states..
 """
 import builtins
 import collections.abc as A
@@ -337,13 +335,13 @@ class TensorList(list[torch.Tensor | T.Any]):
     def sample_like(self, eps: "Scalar | ScalarSequence" = 1, distribution: Distributions = 'normal'):
         """Sample around 0."""
         if distribution == 'normal': return self.randn_like() * eps
-        elif distribution == 'uniform':
+        if distribution == 'uniform':
             if isinstance(eps, (list,tuple)):
                 return self.uniform_like([-i/2 for i in eps], [i/2 for i in eps]) # type:ignore
-            else:
-                return self.uniform_like(-eps/2, eps/2)
-        elif distribution == 'sphere': return self.sphere_like(eps)
-        elif distribution == 'rademacher': return self.rademacher_like() * eps
+            return self.uniform_like(-eps/2, eps/2)
+        if distribution == 'sphere': return self.sphere_like(eps)
+        if distribution == 'rademacher': return self.rademacher_like() * eps
+        raise ValueError(f'Unknow distribution {distribution}')
 
     def eq(self, other: STOrSTSequence): return self.zipmap(torch.eq, other)
     def eq_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('eq_'), other)
@@ -376,7 +374,7 @@ class TensorList(list[torch.Tensor | T.Any]):
 
     def add(self, other: STOrSTSequence, alpha: Scalar = 1):
         if alpha == 1: return self.__class__(torch._foreach_add(self, other))
-        else: return self.__class__(torch._foreach_add(self, other, alpha = alpha)) # type:ignore
+        return self.__class__(torch._foreach_add(self, other, alpha = alpha)) # type:ignore
     def add_(self, other: STOrSTSequence, alpha: Scalar = 1):
         if alpha == 1: torch._foreach_add_(self, other)
         else: torch._foreach_add_(self, other, alpha = alpha) # type:ignore
@@ -385,7 +383,7 @@ class TensorList(list[torch.Tensor | T.Any]):
 
     def sub(self, other: "Scalar | STSequence", alpha: Scalar = 1):
         if alpha == 1: return self.__class__(torch._foreach_sub(self, other))
-        else: return self.__class__(torch._foreach_sub(self, other, alpha = alpha)) # type:ignore
+        return self.__class__(torch._foreach_sub(self, other, alpha = alpha)) # type:ignore
     def sub_(self, other: "Scalar | STSequence", alpha: Scalar = 1):
         if alpha == 1: torch._foreach_sub_(self, other)
         else: torch._foreach_sub_(self, other, alpha = alpha) # type:ignore
@@ -437,6 +435,8 @@ class TensorList(list[torch.Tensor | T.Any]):
         torch._foreach_sign_(self)
         return self
 
+    def signbit(self): return self.__class__(torch.signbit(i) for i in self)
+
     def sin(self): return self.__class__(torch._foreach_sin(self))
     def sin_(self):
         torch._foreach_sin_(self)
@@ -475,6 +475,9 @@ class TensorList(list[torch.Tensor | T.Any]):
         if dim is None and not keepdim: return self.__class__(torch._foreach_max(self.neg())).neg()
         return self.__class__(i.min(dim=dim, keepdim=keepdim) for i in self)
 
+    def norm(self, ord: Scalar, dtype=None):
+        return self.__class__(torch._foreach_norm(self, ord, dtype))
+
     def mean(self, dim = None, keepdim = False): return self.__class__(i.mean(dim=dim, keepdim=keepdim) for i in self)
     def sum(self, dim = None, keepdim = False): return self.__class__(i.sum(dim=dim, keepdim=keepdim) for i in self)
     def prod(self, dim = None, keepdim = False): return self.__class__(i.prod(dim=dim, keepdim=keepdim) for i in self)
@@ -497,6 +500,13 @@ class TensorList(list[torch.Tensor | T.Any]):
         if min is not None: self.clamp_min_(min)
         if max is not None: self.clamp_max_(max)
         return self
+
+    def clamp_magnitude(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+        return self.abs().clamp_(min, max) * self.sign().add_(0.5).sign_() # believe it or not this prevents zeros
+    def clamp_magnitude_(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+        sign = self.sign().add_(0.5).sign_()
+        return self.abs_().clamp_(min, max).mul_(sign)
+
 
     def floor(self): return self.__class__(torch._foreach_floor(self))
     def floor_(self):
@@ -569,16 +579,16 @@ class TensorList(list[torch.Tensor | T.Any]):
     def fill(self, value: STOrSTSequence): return self.zipmap(torch.fill, other = value)
     def fill_(self, value: STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
 
-    def where(self, condition: torch.Tensor | TensorSequence, other: STOrSTSequence):
+    def where(self, condition: "torch.Tensor | TensorSequence", other: STOrSTSequence):
         """self where condition is true other otherwise"""
         return self.zipmap_args(MethodCallerWithArgs('where'), condition, other)
-    def where_(self, condition: torch.Tensor | TensorSequence, other: torch.Tensor | TensorSequence):
+    def where_(self, condition: "torch.Tensor | TensorSequence", other: "torch.Tensor | TensorSequence"):
         """self where condition is true other otherwise"""
         return self.zipmap_args_inplace_(_where_, condition, other)
 
-    def masked_fill(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
+    def masked_fill(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
-    def masked_fill_(self, mask: torch.Tensor | TensorSequence, fill_value: STOrSTSequence):
+    def masked_fill_(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
         return self.zipmap_args_inplace_(MethodCallerWithArgs('masked_fill_'), mask, fill_value)
 
     def select_set_(self, mask: TensorSequence, value: STOrSTSequence):
@@ -586,6 +596,11 @@ class TensorList(list[torch.Tensor | T.Any]):
         if not isinstance(value, (list,tuple)): value = [value]*len(self) # type:ignore
         for tensor, m, v in zip(self, mask, value): # type:ignore
             tensor[m] = v
+
+    def masked_set_(self, mask: TensorSequence, value: TensorSequence):
+        """Same as tensor[mask] = value[mask]"""
+        for tensor, m, v in zip(self, mask, value):
+            tensor[m] = v[m]
 
     def flatiter(self) -> A.Generator[torch.Tensor]:
         for tensor in self:
@@ -606,18 +621,19 @@ class NumberList(TensorList):
         """Sets each element of the tensorlist to the result of calling the specified method on the corresponding element.
         This is used to support/mimic in-place operations."""
         res = getattr(self, method)(*args, **kwargs)
-        for i in range(len(self)): self[i] = res[i]
+        for i,v in enumerate(res): self[i] = v
         return self
 
     def add(self, other: STOrSTSequence, alpha: Scalar = 1):
         if alpha == 1: return self.zipmap(operator.add, other=other)
-        else: return self.zipmap(_alpha_add, other=other, alpha = alpha)
+        return self.zipmap(_alpha_add, other=other, alpha = alpha)
     def add_(self, other: STOrSTSequence, alpha: Scalar = 1):
         return self._set_to_method_result('add', other, alpha = alpha)
 
     def sub(self, other: "Scalar | STSequence", alpha: Scalar = 1):
         if alpha == 1: return self.zipmap(operator.sub, other=other)
-        else: return self.zipmap(_alpha_add, other=other, alpha = -alpha)
+        return self.zipmap(_alpha_add, other=other, alpha = -alpha)
+
     def sub_(self, other: "Scalar | STSequence", alpha: Scalar = 1):
         return self._set_to_method_result('sub', other, alpha = alpha)
 

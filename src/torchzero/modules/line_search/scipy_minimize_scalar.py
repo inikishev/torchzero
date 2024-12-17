@@ -11,11 +11,11 @@ from .ls_base import LineSearchBase, MaxIterReached
 class ScipyMinimizeScalarLS(LineSearchBase):
     def __init__(
         self,
-        method: T.Optional[str] = None,
-        maxiter: T.Optional[int] = None,
+        method: str | None = None,
+        maxiter: int | None = None,
         bracket = None,
         bounds = None,
-        tol: T.Optional[float] = None,
+        tol: float | None = None,
         options = None,
         log_lrs = False,
     ):

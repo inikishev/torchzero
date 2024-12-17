@@ -18,6 +18,17 @@ class GridLS(LineSearchBase):
         stop_on_worsened=False,
         log_lrs = False
     ):
+        """Test all `lrs` and pick best.
+
+        Args:
+            lrs (abc.Sequence[float] | np.ndarray | torch.Tensor): sequence of lrs to test.
+            stop_on_improvement (bool, optional): stops if loss improves compared to current loss. Defaults to False.
+            stop_on_worsened (bool, optional):
+                stops if next lr loss is worse than previous one.
+                this assumes that lrs are in ascending order. Defaults to False.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging). 
+                Defaults to False.
+        """
         super().__init__({}, make_closure=False, maxiter=None, log_lrs=log_lrs)
         self.lrs = lrs
         self.stop_on_improvement = stop_on_improvement
@@ -56,6 +67,19 @@ class MultiplicativeLS(GridLS):
         stop_on_improvement=False,
         stop_on_worsened=True,
     ):
+        """tests `init` lr. Then keeps multiplying it by `mul` until loss stops decreasing.
+
+        Args:
+            init (float, optional): initial lr. Defaults to 0.001.
+            mul (float, optional): lr multiplier. Defaults to 2.
+            num (int, optional): maximum number of multiplication steps. Defaults to 10.
+            stop_on_improvement (bool, optional): stops if loss improves compared to current loss. Defaults to False.
+            stop_on_worsened (bool, optional):
+                stops if next lr loss is worse than previous one.
+                this assumes that lrs are in ascending order. Defaults to False.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging). 
+                Defaults to False.
+        """
         super().__init__(
             [init * mul**i for i in range(num)],
             stop_on_improvement=stop_on_improvement,
@@ -70,11 +94,29 @@ class BacktrackingLS(GridLS):
         num=10,
         stop_on_improvement=True,
         stop_on_worsened=False,
+        log_lrs = False,
     ):
+        """tests `init` lr, and keeps multiplying it by `mul` until loss decreases compared to initial loss.
+
+        note: this doesn't include Armijo–Goldstein condition.
+
+        Args:
+            init (float, optional): initial lr. Defaults to 1.
+            mul (float, optional): lr multiplier. Defaults to 0.5.
+            num (int, optional): maximum number of multiplication steps. Defaults to 10.
+            stop_on_improvement (bool, optional): stops if loss improves compared to current loss. Defaults to False.
+            stop_on_worsened (bool, optional):
+                stops if next lr loss is worse than previous one.
+                this assumes that lrs are in ascending order. Defaults to False.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging). 
+                Defaults to False.
+
+        """
         super().__init__(
             [init * mul**i for i in range(num)],
             stop_on_improvement=stop_on_improvement,
             stop_on_worsened=stop_on_worsened,
+            log_lrs = log_lrs,
         )
 
 class LinspaceLS(GridLS):
@@ -86,6 +128,7 @@ class LinspaceLS(GridLS):
         stop_on_improvement=False,
         stop_on_worsened=False,
     ):
+        """Test all learning rates from a linspace and pick best."""
         super().__init__(
             torch.linspace(start, end, steps),
             stop_on_improvement=stop_on_improvement,
@@ -101,6 +144,7 @@ class ArangeLS(GridLS):
         stop_on_improvement=False,
         stop_on_worsened=False,
     ):
+        """Test all learning rates from a range and pick best."""
         super().__init__(
             torch.arange(start, end, step),
             stop_on_improvement=stop_on_improvement,

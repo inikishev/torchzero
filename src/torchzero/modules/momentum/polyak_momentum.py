@@ -19,6 +19,12 @@ def _polyak_step(ascent, velocity: TensorList, momentum, dampening: TensorList):
 
 class PolyakMomentum(OptimizerModule):
     def __init__(self, momentum: float = 0.9, dampening: float = 0, ):
+        """Polyak's (heavyball) momentum.
+
+        Args:
+            decay (float, optional): momentum decay. Defaults to 0.9.
+            dampening (float, optional): momentum dampening. Defaults to 0.
+        """
         defaults = dict(momentum = momentum, dampening = dampening)
         super().__init__(defaults)
 

@@ -4,15 +4,14 @@ Line searches.
 
 import typing as T
 
-from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
-                      MaxIterReached, MultiplicativeLS)
-from .quadratic_ls import MinimizeQuadraticLS, MinimizeQuadratic3PointsLS
-from .quad_interp import QuadraticInterpolation2Point
-from .scipy_minimize_scalar import ScipyMinimizeScalarLS
+from ...core import OptimizerModule
 from ..meta import Chain
 from ..operators import Normalize
-
-from ...core import OptimizerModule
+from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
+                      MultiplicativeLS)
+from .quad_interp import QuadraticInterpolation2Point
+from .quadratic_ls import MinimizeQuadratic3PointsLS, MinimizeQuadraticLS
+from .scipy_minimize_scalar import ScipyMinimizeScalarLS
 
 LineSearches = T.Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative'] | OptimizerModule
 

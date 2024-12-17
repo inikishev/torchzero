@@ -19,7 +19,34 @@ def _ensure_float(x):
     return float(x)
 
 class MinimizeQuadraticLS(LineSearchBase):
-    def __init__(self, lr=1e-2, max_dist = 1e4, validate_step = True, log_lrs = False,):
+    def __init__(self, lr:float=1e-2, max_dist: float | None = 1e4, validate_step = True, log_lrs = False,):
+        """Minimizes a parabola in the direction of the gradient via one additional forward pass,
+        and uses another forward pass to make sure it didn't overstep.
+        So in total this performs three forward passes and one backward.
+
+        This can only be used either as the first module or after FDM, as it requires ascent to
+        be the gradient.
+
+        First forward and backward pass is used to calculate the value and gradient at initial parameters.
+        Then a gradient descent step is performed with `lr` learning rate, and loss is recalculated
+        with new parameters. A quadratic is fitted to two points and gradient,
+        if it has positive curvature, this makes a step towards the minimum, and checks if lr decreased
+        with an additional forward pass.
+
+        Args:
+            lr (float, optional):
+                learning rate. Since you shouldn't put this module after LR(), you have to specify
+                the learning rate in this argument. Defaults to 1e-2.
+            max_dist (float | None, optional): maximum distance to step when minimizing quadratic.
+                If minimum is further than this distance, minimization is not performed. Defaults to 1e4.
+            validate_step (bool, optional): uses an additional forward pass to check
+                if step towards the minimum actually decreased the loss. Defaults to True.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging).
+                Defaults to False.
+
+        Note:
+            While lr scheduling is supported, this uses lr of the first parameter for all parameters.
+        """
         super().__init__({"lr": lr}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
@@ -105,9 +132,35 @@ def _newton_step_3points(
     return xneg - dx / ddx, ddx
 
 class MinimizeQuadratic3PointsLS(LineSearchBase):
-    def __init__(self, max_dist = 1e4, validate_step = True, log_lrs = False,):
-        super().__init__({}, make_closure=False, maxiter=None, log_lrs=log_lrs)
+    def __init__(self, lr: float = 1, max_dist: float | None = 1e4, validate_step = True, log_lrs = False,):
+        """Minimizes a parabola in the direction of the update via two additional forward passe,
+        and uses another forward pass to make sure it didn't overstep.
+        So in total this performs four forward passes.
 
+        Unlike MinimizeQuadraticLS, this can be used with any update,
+        at the expense of requiring an additional forward pass.
+
+        Two steps are performed in the direction of the update with `lr` learning rate.
+        A quadratic is fitted to three points, if it has positive curvature,
+        this makes a step towards the minimum, and checks if lr decreased
+        with an additional forward pass.
+
+        Args:
+            lr (float, optional):
+                learning rate. Defaults to 1.
+            max_dist (float | None, optional): maximum distance to step when minimizing quadratic.
+                If minimum is further than this distance, minimization is not performed. Defaults to 1e4.
+            validate_step (bool, optional): uses an additional forward pass to check
+                if step towards the minimum actually decreased the loss. Defaults to True.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging).
+                Defaults to False.
+
+        Note:
+            While lr scheduling is supported, this uses lr of the first parameter for all parameters.
+        """
+        super().__init__(dict(lr = lr), make_closure=False, maxiter=None, log_lrs=log_lrs)
+
+        self.lr = lr
         self.max_dist = max_dist
         self.validate_step = validate_step
 
@@ -117,6 +170,7 @@ class MinimizeQuadratic3PointsLS(LineSearchBase):
         closure = state.closure
         ascent_direction = state.ascent
         if ascent_direction is None: raise ValueError('Ascent direction is None')
+        lr: float = self.get_first_group_key('lr')
 
         if state.fx0 is None: state.fx0 = state.closure(False)
         params = self.get_params()

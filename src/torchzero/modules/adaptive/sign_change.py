@@ -11,12 +11,15 @@ class ScaleLRBySignChange(OptimizerModule):
         """
         learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign,
         or `nminus` if it did.
+
+        This is part of RProp update rule.
+
         Args:
-            lr (float): _description_
-            nplus (float): _description_
-            nminus (float): _description_
-            lb (float): _description_
-            ub (float): _description_
+            lr (float): initial learning rate.
+            nplus (float): learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign
+            nminus (float): learning rate gets multiplied by `nminus` if ascent/gradient changed the sign
+            lb (float): lower bound for lr.
+            ub (float): upper bound for lr.
 
         Note:
             If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
@@ -65,14 +68,23 @@ class ScaleLRBySignChange(OptimizerModule):
 
 class NegateOnSignChange(OptimizerModule):
     # todo: add momentum to negation (to cautious as well and rprop negation as well)
-    def __init__(self, normalize = True, eps=1e-6, use_grad = True, backtrack = True):
-        """
-        Negates or undoes update for parameters where where gradient or update sign changes.
+    def __init__(self, normalize = False, eps=1e-6, use_grad = False, backtrack = True):
+        """Negates or undoes update for parameters where where gradient or update sign changes.
+
+        This is part of RProp update rule.
 
         Note:
             If you use this after modules that estimate gradients, e.g. FDM and `use_grad` is True,
             they need to have `make_closure` set to True so that they write to `grad` attribute.
 
+
+        Args:
+            normalize (bool, optional): renormalize update after masking. Defaults to False.
+            eps (_type_, optional): epsilon for normalization. Defaults to 1e-6.
+            use_grad (bool, optional): if True, tracks sign change of the gradient,
+                otherwise track sign change of the update. Defaults to True.
+            backtrack (bool, optional): if True, undoes the update when sign changes, otherwise negates it.
+                Defaults to True.
         """
         super().__init__({})
         self.eps = eps
@@ -96,8 +108,8 @@ class NegateOnSignChange(OptimizerModule):
 
         # mask will be > 0 for parameters where both signs are the same
         mask = (cur * prev) < 0
-        if self.backtrack: ascent.select_set_(mask, prev) # type:ignore
-        else: ascent.select_set_(mask, 0) # type:ignore
+        if self.backtrack: ascent.select_set_(mask, prev)
+        else: ascent.select_set_(mask, 0)
 
         prev.set_(cur)
         self.current_step += 1

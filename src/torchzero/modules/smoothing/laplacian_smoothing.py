@@ -51,8 +51,8 @@ class LaplacianSmoothing(OptimizerModule):
     def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, make_closure = False):
         """Applies laplacian smoothing via fast Fourier transform as described in
 
-        **Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
-        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.**
+        *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
+        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
 
 
         Args:
@@ -97,12 +97,12 @@ class LaplacianSmoothing(OptimizerModule):
                 smoothed_direction.append(torch.fft.ifft(torch.fft.fft(g.view(-1)) / den).real.reshape(g.shape)) # pylint: disable = not-callable
             return smoothed_direction
 
+        # else
         # full laplacian smoothing
-        else:
-            # precompute full denominator
-            if self.full_denominator is None:
-                self.full_denominator = _precompute_denominator(ascent.to_vec(), self.sigma)
+        # precompute full denominator
+        if self.full_denominator is None:
+            self.full_denominator = _precompute_denominator(ascent.to_vec(), self.sigma)
 
-            # apply the smoothing
-            vec = ascent.to_vec()
-            return ascent.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
+        # apply the smoothing
+        vec = ascent.to_vec()
+        return ascent.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable

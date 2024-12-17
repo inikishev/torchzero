@@ -23,6 +23,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
         ray_width: float = 1e-1,
         line_search: LineSearches | None = 'brent'
     ):
+        """experimental (probably failed) please don't use"""
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
@@ -48,13 +49,13 @@ class LBFGSRaySearch(ModularOptimizer):
         n_rays = 24,
         ray_width: float = 1e-1,
         max_iter: int = 20,
-        max_eval: T.Optional[int] = None,
+        max_eval: int | None = None,
         tolerance_grad: float = 1e-7,
         tolerance_change: float = 1e-9,
         history_size: int = 100,
-        line_search_fn: T.Optional[str | T.Literal['strong_wolfe']] = None,
+        line_search_fn: str | T.Literal['strong_wolfe'] | None = None,
     ):
-
+        """experimental (probably failed) please don't use"""
         lbfgs = UninitializedClosureOptimizerWrapper(
                 torch.optim.LBFGS,
                 lr = lr,

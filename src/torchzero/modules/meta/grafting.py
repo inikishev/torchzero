@@ -16,6 +16,7 @@ class Grafting(OptimizerModule):
         ord = 2,
         eps = 1e-8,
         layerwise=False,
+        # TODO: channelwise
     ):
         """
         Optimizer grafting (magnitude#direction).
@@ -55,8 +56,8 @@ class Grafting(OptimizerModule):
         direction: TensorList = self.children[1].step(state) # type:ignore
 
         if self.layerwise:
-            M = magnitude.abs_().pow_(self.ord).sum().pow_(1/self.ord)
-            D = direction.abs().pow_(self.ord).sum().pow_(1/self.ord)
+            M = magnitude.norm(self.ord)
+            D = direction.norm(self.ord)
             D.select_set_(D == 0, M)
 
         else:

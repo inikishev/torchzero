@@ -55,8 +55,8 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
             if key not in state:
                 if callable(init): state[key] = init(p)
                 elif isinstance(init, TensorList): state[key] = init[pi]
-                elif init == 'params': state[key] = params.clone()
-                elif init == 'grad': state[key] = params.grad.clone()
+                elif init == 'params': state[key] = p.clone()
+                elif init == 'grad': state[key] = p.grad.clone() if p.grad is not None else torch.zeros_like(p)
                 else: raise ValueError(f'unknown init - {init}')
             value.append(state[key])
         return value

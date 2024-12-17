@@ -18,6 +18,12 @@ def _nesterov_step_(ascent, velocity: TensorList, momentum, dampening,):
 
 class NesterovMomentum(OptimizerModule):
     def __init__(self, decay: float = 0.9, dampening: float = 0, ):
+        """Nesterov momentum.
+
+        Args:
+            decay (float, optional): momentum decay. Defaults to 0.9.
+            dampening (float, optional): momentum dampening. Defaults to 0.
+        """
         defaults = dict(momentum = decay, dampening = dampening)
         super().__init__(defaults)
 

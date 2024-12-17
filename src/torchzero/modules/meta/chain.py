@@ -10,7 +10,11 @@ from .set_grad import ReturnAscent, SetGrad
 
 class Chain(OptimizerModule):
     def __init__(self, modules: OptimizerModule | abc.Iterable[OptimizerModule]):
-        """Chains multiple modules together."""
+        """Chains multiple modules together.
+
+        Note:
+            The last module will return the ascent direction, which is passed to the child.
+        """
         super().__init__({})
         if isinstance(modules, OptimizerModule): modules = [modules]
         else: modules = list(modules)

@@ -106,6 +106,14 @@ class OptimizationState:
 class OptimizerModule(TensorListOptimizer, ABC):
     """A module."""
     def __init__(self, defaults: dict[str, T.Any], make_closure = False): # pylint:disable = super-init-not-called
+        """Initialize this module.
+
+        Args:
+            defaults (dict): dictionary with default parameters for the module.
+            make_closure (bool, optional):
+                if True, _update method functions as a closure,
+                otherwise it updates the ascent directly. Defaults to False.
+        """
         self._defaults = defaults
         self.next_module: OptimizerModule | None = None
         """next module that takes this module's state and continues working on it."""
@@ -174,7 +182,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         super().add_param_group(param_group)
         if self.next_module is not None: self._update_next_module_params_(self.next_module)
         for c in self.children:
-            if c is not None: self._update_child_params_(c)
+            self._update_child_params_(c)
 
     def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:
         """If this has no children, update params and return loss. Otherwise step with the child.

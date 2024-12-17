@@ -41,7 +41,10 @@ class ExactNewton(ModularOptimizer):
                 what to do if solver fails. Defaults to "safe_diag"
                 (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
             max_norm (float, optional):
-                clips the newton step to L2 norm to avoid instability by giant steps. Defaults to None.
+                clips the newton step to L2 norm to avoid instability by giant steps.
+                A mauch better way is to use trust region methods. I haven't implemented any
+                but you can use `tz.optim.wrappers.scipy.ScipyMinimize` with one of the trust region methods.
+                Defaults to None.
             validate (bool, optional):
                 validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
                 If not, undo the step and perform a gradient descent step.

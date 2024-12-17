@@ -100,8 +100,8 @@ class ProjGradAscentDifference(Projection):
         grad = state.maybe_compute_grad_(params)
         if self.normalize:
             return [state.ascent / state.ascent.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
-        else:
-            return [state.ascent - grad] # type:ignore
+
+        return [state.ascent - grad] # type:ignore
 
 class ProjLastGradDifference(Projection):
     def __init__(self):
@@ -111,11 +111,11 @@ class ProjLastGradDifference(Projection):
         if self.last_grad is None:
             self.last_grad = state.maybe_compute_grad_(params)
             return [self.last_grad]
-        else:
-            grad = state.maybe_compute_grad_(params)
-            diff = grad - self.last_grad
-            self.last_grad = grad
-            return [diff]
+
+        grad = state.maybe_compute_grad_(params)
+        diff = grad - self.last_grad
+        self.last_grad = grad
+        return [diff]
 
 class ProjLastAscentDifference(Projection):
     def __init__(self):
@@ -126,10 +126,10 @@ class ProjLastAscentDifference(Projection):
         if self.last_direction is None:
             self.last_direction: tl.TensorList = state.ascent # type:ignore
             return [self.last_direction]
-        else:
-            diff = state.ascent - self.last_direction # type:ignore
-            self.last_direction = state.ascent # type:ignore
-            return [diff]
+
+        diff = state.ascent - self.last_direction # type:ignore
+        self.last_direction = state.ascent # type:ignore
+        return [diff]
 
 class ProjNormalize(Projection):
     def __init__(self, *projections: Projection):
@@ -150,7 +150,7 @@ class Subspace(OptimizerModule):
         self,
         modules: OptimizerModule | abc.Iterable[OptimizerModule],
         projections: Projection | abc.Iterable[Projection],
-        update_every: int = 1,
+        update_every: int | None = 1,
     ):
         """Optimizes parameters projected into a lower (or higher) dimensional subspace.
 
@@ -203,7 +203,7 @@ class Subspace(OptimizerModule):
         params = self.get_params()
 
         # every `regenerate_every` steps we generate new random projections.
-        if self.current_step % self.update_every == 0:
+        if self.current_step == 0 or (self.update_every is not None and self.current_step % self.update_every == 0):
 
             # generate n projection vetors
             self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
@@ -213,7 +213,7 @@ class Subspace(OptimizerModule):
 
         # closure that takes the projected params from the child, puts them into full space params, and evaluates the loss
         def projected_closure(backward = True):
-            residual = sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])
+            residual = sum(vec * p for vec, p in zip(self.projection_vectors, self.projected_params))
 
             # this in-place operation prevents autodiff from working
             # we manually calculate the gradients as they are just a product

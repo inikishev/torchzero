@@ -20,12 +20,30 @@ class LineSearchBase(OptimizerModule, ABC):
         maxiter=None,
         log_lrs=False,
     ):
+        """Base linesearch class. This is an abstract class, please don't use it as the optimizer.
+
+        When inheriting from this class the easiest way is to override `_find_best_lr`, which should
+        return the final lr to use.
+
+        Args:
+            defaults (dict): dictionary with default parameters for the module.
+            make_closure (bool, optional):
+                if True, _update method functions as a closure,
+                otherwise it updates the ascent directly. Defaults to False.
+            maxiter (_type_, optional): maximum line search iterations
+                (useful for things like scipy.optimize.minimize_scalar) as it doesn't have
+                an exact iteration limit. Defaults to None.
+            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging).
+                Defaults to False.
+        """
         super().__init__(defaults, make_closure=make_closure)
         self._reset()
 
         self.maxiter = maxiter
         self.log_lrs = log_lrs
         self._lrs: list[dict[float, ScalarType]] = []
+        """this only gets filled if `log_lrs` is True. On each step, a dictionary is added to this list,
+        with all lrs tested at that step as keys and corresponding losses as values."""
 
     def _reset(self):
         """Resets `_last_lr`, `_lowest_loss`, `_best_lr`, `_fx0_approx` and `_current_iter`."""
@@ -60,7 +78,7 @@ class LineSearchBase(OptimizerModule, ABC):
 
         # set new lr and evaluate loss with it
         self._set_lr_(lr, ascent_direction, params = params)
-        with torch.enable_grad() if backward else nullcontext(): self._fx0_approx = closure(backward)
+        with torch.enable_grad() if backward else torch.no_grad(): self._fx0_approx = closure(backward)
 
         # if it is the best so far, record it
         if self._fx0_approx < self._lowest_loss:
