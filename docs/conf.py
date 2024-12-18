@@ -2,6 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.abspath("."))
 sys.path.insert(0, os.path.abspath("../"))
+sys.path.insert(0, os.path.abspath("../src"))
 
 
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
@@ -15,6 +16,7 @@ release = '0.1.0'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
+    # 'sphinx_rtd_theme',
 ]
 
 autosummary_generate = True

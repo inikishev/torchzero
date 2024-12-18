@@ -4,7 +4,7 @@ torchzero
 Introduction
 ============
 
-.. include:: Introduction.rst
+.. include:: introduction.rst
 
 automodule
 ===============
