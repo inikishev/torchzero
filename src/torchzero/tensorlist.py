@@ -7,7 +7,7 @@ TensorList is similar to TensorDict (https://github.com/pytorch/tensordict).
 If you want to get the most performance out of a collection of tensors, use TensorDict and lock it.
 However I found that *creating* a TensorDict is quite slow. In fact it negates the benefits of using it
 in an optimizer when you have to create one from parameters on each step. The solution could be to create
-it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states..
+it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
 """
 import builtins
 import collections.abc as A
@@ -34,7 +34,6 @@ class _NewTensorKwargs(T.TypedDict, total = False):
     requires_grad: bool
 
 # _foreach_methods = {attr.replace('_foreach_', ''):getattr(torch, attr) for attr in dir(torch) if attr.startswith('_foreach_')}
-
 class MethodCallerWithArgs:
     """Return a callable object that calls the given method on its operand.
 

@@ -18,13 +18,13 @@ def _polyak_step(ascent, velocity: TensorList, momentum, dampening: TensorList):
     return updated_direction
 
 class PolyakMomentum(OptimizerModule):
-    def __init__(self, momentum: float = 0.9, dampening: float = 0, ):
-        """Polyak's (heavyball) momentum.
+    """Polyak's (heavyball) momentum. Exactly matches pytorch SGD `momentum` option.
 
-        Args:
-            decay (float, optional): momentum decay. Defaults to 0.9.
-            dampening (float, optional): momentum dampening. Defaults to 0.
-        """
+    Args:
+        decay (float, optional): momentum decay. Defaults to 0.9.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+    """
+    def __init__(self, momentum: float = 0.9, dampening: float = 0, ):
         defaults = dict(momentum = momentum, dampening = dampening)
         super().__init__(defaults)
 

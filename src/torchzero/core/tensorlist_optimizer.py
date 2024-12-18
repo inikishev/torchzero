@@ -10,13 +10,13 @@ from torchzero.tensorlist import TensorList, NumberList
 
 _StateInit = T.Literal['params', 'grad'] | abc.Callable | TensorList
 class TensorListOptimizer(torch.optim.Optimizer, ABC):
-    def __init__(self, params: ParamsT, defaults):
-        """torch.optim.Optimizer with some additional methods related to TensorList.
+    """torch.optim.Optimizer with some additional methods related to TensorList.
 
-        Args:
-            params (ParamsT): iterable of parameters.
-            defaults (_type_): dictionary with default parameters for the optimizer.
-        """
+    Args:
+        params (ParamsT): iterable of parameters.
+        defaults (_type_): dictionary with default parameters for the optimizer.
+    """
+    def __init__(self, params: ParamsT, defaults):
         super().__init__(params, defaults)
         self._params: list[torch.Tensor] = [param for group in self.param_groups for param in group['params']]
 

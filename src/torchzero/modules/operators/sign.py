@@ -14,8 +14,8 @@ def sign_grad_(params: abc.Iterable[torch.Tensor]):
     TensorList(params).get_existing_grads().sign_()
 
 class Sign(OptimizerModule):
+    """Applies sign function to the update"""
     def __init__(self):
-        """applies sign function to the update"""
         super().__init__({})
 
     @torch.no_grad

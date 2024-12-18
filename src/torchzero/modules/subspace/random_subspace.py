@@ -6,7 +6,7 @@ import torch
 
 from ... import tl
 from ...core import OptimizationState, OptimizerModule
-from ..meta import ChainReturn, ReturnAscent
+from ..meta.chain import Chain
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
 
@@ -146,37 +146,37 @@ class ProjNormalize(Projection):
         return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)]
 
 class Subspace(OptimizerModule):
+    """Optimizes parameters projected into a lower (or higher) dimensional subspace.
+
+    The subspace is a bunch of projections that go through the current point. Projections can be random,
+    or face in the direction of the gradient, or difference between last two gradients, etc. The projections
+    are updated every `update_every` steps.
+
+    Notes:
+        This doesn't work with anything that directly calculates the hessian or other quantities via `torch.autograd.grad`,
+        like `ExactNewton`. I will have to manually implement a subspace version for it.
+
+        This also zeroes parameters after each step, meaning it won't work with some integrations like nevergrad
+        (as they store their own parameters which don't get zeroed). It does however work with integrations like
+        `scipy.optimize` because they performs a full minimization on each step.
+    Another version of this which doesn't zero the params is under way.
+
+    Args:
+        projections (Projection | Iterable[Projection]):
+            list of projections - `Projection` objects that define the directions of the projections.
+            Each Projection object may generate one or multiple directions.
+        update_every (int, optional): generates new projections every n steps. Defaults to 1.
+    """
     def __init__(
         self,
         modules: OptimizerModule | abc.Iterable[OptimizerModule],
         projections: Projection | abc.Iterable[Projection],
         update_every: int | None = 1,
     ):
-        """Optimizes parameters projected into a lower (or higher) dimensional subspace.
-
-        The subspace is a bunch of projections that go through the current point. Projections can be random,
-        or face in the direction of the gradient, or difference between last two gradients, etc. The projections
-        are updated every `update_every` steps.
-
-        Notes:
-            This doesn't work with anything that directly calculates the hessian or other quantities via `torch.autograd.grad`,
-            like `ExactNewton`. I will have to manually implement a subspace version for it.
-
-            This also zeroes parameters after each step, meaning it won't work with some integrations like nevergrad
-            (as they store their own parameters which don't get zeroed). It does however work with integrations like
-            `scipy.optimize` because they performs a full minimization on each step.
-        Another version of this which doesn't zero the params is under way.
-
-        Args:
-            projections (Projection | Iterable[Projection]):
-                list of projections - `Projection` objects that define the directions of the projections.
-                Each Projection object may generate one or multiple directions.
-            update_every (int, optional): generates new projections every n steps. Defaults to 1.
-        """
         super().__init__({})
         if isinstance(projections, Projection): projections = [projections]
         self.projections = list(projections)
-        self._add_child_(ChainReturn(modules))
+        self._set_child_('subspace', Chain(modules))
         self.update_every = update_every
         self.current_step = 0
 
@@ -209,7 +209,7 @@ class Subspace(OptimizerModule):
             self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
 
             # child params is n scalars corresponding to each projection vector
-            self.projected_params = self.children[0]._params[0] # type:ignore
+            self.projected_params = self.children['subspace']._params[0] # type:ignore
 
         # closure that takes the projected params from the child, puts them into full space params, and evaluates the loss
         def projected_closure(backward = True):
@@ -238,7 +238,7 @@ class Subspace(OptimizerModule):
         subspace_state.ascent = None
         if subspace_state.grad is not None:
             subspace_state.grad = tl.TensorList([torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])])
-        self.children[0].step(subspace_state) # type:ignore
+        self.children['subspace'].step(subspace_state) # type:ignore
 
         # that is going to update child's paramers, which we now project back to the full parameter space
         residual = tl.sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])

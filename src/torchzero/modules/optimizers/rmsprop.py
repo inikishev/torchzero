@@ -16,21 +16,24 @@ def _centered_rmsprop_step_(ascent: TensorList, mean_sqr: TensorList, mean: Tens
     return ascent.div_(mean_sqr.addcmul(mean, mean, value=-1).sqrt_().add_(eps))
 
 class RMSProp(OptimizerModule):
+    """
+    Divides ascent direction by running average of its mean square root.
+
+    Exactly matches pytorch RMSProp.
+
+    Args:
+        alpha (float, optional): smoothing constant (decay of ascent mean square root running average).
+            Defaults to 0.99.
+        eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-8.
+        centered (float, optional):
+            if True, compute the centered RMSProp, the gradient is normalized by an estimation of its variance.
+            Defaults to False.
+
+    reference
+        https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
+    """
     def __init__(self, alpha: float = 0.99, eps: float = 1e-8, centered=False):
-        """https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
 
-        Divides ascent direction by running average of its mean square root.
-
-        Exactly matches pytorch RMSProp.
-
-        Args:
-            alpha (float, optional): smoothing constant (decay of ascent mean square root running average).
-                Defaults to 0.99.
-            eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-8.
-            centered (float, optional):
-                if True, compute the centered RMSProp, the gradient is normalized by an estimation of its variance.
-                Defaults to False.
-        """
         defaults = dict(alpha = alpha, eps = eps)
         super().__init__(defaults)
         self.centered = centered

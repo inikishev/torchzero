@@ -4,7 +4,7 @@ from ...core import OptimizerModule
 
 
 class LR(OptimizerModule):
-    """Multiplies the ascent direction by the learning rate."""
+    """Multiplies update by the learning rate."""
     def __init__(self, lr = 1e-3):
         defaults = dict(lr = lr)
         super().__init__(defaults)

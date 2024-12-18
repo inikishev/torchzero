@@ -1,6 +1,6 @@
-import typing as T
+from typing import Any
 from abc import ABC, abstractmethod
-from collections import abc
+from collections.abc import Callable, Sequence
 
 import torch
 
@@ -14,8 +14,7 @@ def _get_loss(fx0, fx0_approx):
     if fx0 is None: return fx0_approx
     return fx0
 
-ClosureType = abc.Callable[..., ScalarType] #
-
+ClosureType = Callable[..., ScalarType] #
 """
 Closure example:
 ```
@@ -28,7 +27,9 @@ def closure(backward = True, **k):
 ```
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
 """
+
 class OptimizationState:
+    """Holds optimization state. This is usually automatically created by `torchzero.optim.Modular`."""
     def __init__(self, closure: ClosureType | None, model: torch.nn.Module | None):
 
         self.closure: ClosureType | None = closure
@@ -104,20 +105,19 @@ class OptimizationState:
         return state
 
 class OptimizerModule(TensorListOptimizer, ABC):
-    """A module."""
-    def __init__(self, defaults: dict[str, T.Any], make_closure = False): # pylint:disable = super-init-not-called
-        """Initialize this module.
+    r"""Base class for all modules.
 
-        Args:
-            defaults (dict): dictionary with default parameters for the module.
-            make_closure (bool, optional):
-                if True, _update method functions as a closure,
-                otherwise it updates the ascent directly. Defaults to False.
-        """
+    Args:
+        defaults (dict): dictionary with default parameters for the module.
+        make_closure (bool, optional):
+            if True, `_update` method functions as a closure,
+            otherwise it updates the ascent directly. Defaults to False.
+    """
+    def __init__(self, defaults: dict[str, Any], make_closure = False): # pylint:disable = super-init-not-called
         self._defaults = defaults
         self.next_module: OptimizerModule | None = None
         """next module that takes this module's state and continues working on it."""
-        self.children: list[OptimizerModule] = []
+        self.children: dict[Any, OptimizerModule] = {}
         """children modules."""
         self._initialized = False
         self._make_closure = make_closure
@@ -128,7 +128,14 @@ class OptimizerModule(TensorListOptimizer, ABC):
         nothing will happen, as this module already has parameters set."""
 
     def set_params(self, params: ParamsT):
-        """Set parameters to this module. Use this to set per-parameter group settings."""
+        """
+        Set parameters to this module. Use this to set per-parameter group settings.
+
+        .. warning::
+            (Warning from pytorch) Parameters need to be specified as collections that have a deterministic
+            ordering that is consistent between runs. Examples of objects that don't
+            satisfy those properties are sets and iterators over values of dictionaries.
+        """
         self._initialize_(params)
         self._has_custom_params = True
         return self
@@ -144,9 +151,9 @@ class OptimizerModule(TensorListOptimizer, ABC):
         super().__init__(params, self._defaults)
         self._initialized = True
 
-    def _add_child_(self, child: "OptimizerModule"):
-        """Add a child and initialize it's params."""
-        self.children.append(child)
+    def _set_child_(self, name, child: "OptimizerModule"):
+        """Set a child and initialize it's params."""
+        self.children[name] = child
         if self._initialized:
             self._update_child_params_(child)
 
@@ -178,7 +185,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """Initializes or updates child params with parameters of this module."""
         return self._update_next_module_params_(child)
 
-    def add_param_group(self, param_group: dict[str, T.Any]) -> None:
+    def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
         if self.next_module is not None: self._update_next_module_params_(self.next_module)
         for c in self.children:

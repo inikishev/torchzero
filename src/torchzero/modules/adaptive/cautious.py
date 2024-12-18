@@ -4,32 +4,33 @@ import torch
 from ...core import OptimizerModule
 
 class Cautious(OptimizerModule):
+    """Negates update for parameters where update and gradient sign is inconsistent.
+    Also normalizes ascent direction by the number of parameters that are not masked.
+    This is meant to be used after any momentum-based modules.
+
+    Args:
+        normalize (bool, optional):
+            renormalize update after masking.
+            only has effect when mode is 'zero'. Defaults to True.
+        eps (float, optional): epsilon for normalization. Defaults to 1e-6.
+        mode (str, optional): 
+            what to do with updates with inconsistent signs.
+
+            "zero" - set them to zero (as in paper)
+
+            "grad" - set them to the gradient
+
+            "negate" - negate them (same as using update magnitude and gradient sign)
+
+    .. warning::
+        If you use this after modules that estimate gradients, e.g. FDM,
+        hey need to have `make_closure` set to True so that they write to `grad` attribute.
+
+    reference
+        *Cautious Optimizers: Improving Training with One Line of Code.
+        Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
+    """
     def __init__(self, normalize = True, eps=1e-6, mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'):
-        """Negates update for parameters where update and gradient sign is inconsistent.
-        Also normalizes ascent direction by the number of parameters that are not masked.
-        This is meant to be used after any momentum-based modules.
-
-        Args:
-            normalize (bool, optional):
-                renormalize update after masking.
-                only has effect when mode is 'zero'. Defaults to True.
-            eps (_type_, optional): epsilon for normalization. Defaults to 1e-6.
-            mode (str, optional): what to do with updates with inconsistent signs.
-
-                "zero" - set them to zero (as in paper)
-
-                "grad" - set them to the gradient
-
-                "negate" - negate them (same as using update magnitude and gradient sign)
-
-        Note:
-            If you use this after modules that estimate gradients, e.g. FDM,
-            hey need to have `make_closure` set to True so that they write to `grad` attribute.
-
-        Reference:
-            *Cautious Optimizers: Improving Training with One Line of Code.
-            Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
-        """
         super().__init__({})
         self.eps = eps
         self.normalize = normalize

@@ -13,6 +13,23 @@ from ...python_tools import ScalarType
 class MaxIterReached(Exception): pass
 
 class LineSearchBase(OptimizerModule, ABC):
+    """Base linesearch class. This is an abstract class, please don't use it as the optimizer.
+
+    When inheriting from this class the easiest way is to override `_find_best_lr`, which should
+    return the final lr to use.
+
+    Args:
+        defaults (dict): dictionary with default parameters for the module.
+        make_closure (bool, optional):
+            if True, _update method functions as a closure,
+            otherwise it updates the ascent directly. Defaults to False.
+        maxiter (_type_, optional): maximum line search iterations
+            (useful for things like scipy.optimize.minimize_scalar) as it doesn't have
+            an exact iteration limit. Defaults to None.
+        log_lrs (bool, optional):
+            saves lrs and losses with them into optimizer._lrs (for debugging).
+            Defaults to False.
+    """
     def __init__(
         self,
         defaults: dict,
@@ -20,22 +37,6 @@ class LineSearchBase(OptimizerModule, ABC):
         maxiter=None,
         log_lrs=False,
     ):
-        """Base linesearch class. This is an abstract class, please don't use it as the optimizer.
-
-        When inheriting from this class the easiest way is to override `_find_best_lr`, which should
-        return the final lr to use.
-
-        Args:
-            defaults (dict): dictionary with default parameters for the module.
-            make_closure (bool, optional):
-                if True, _update method functions as a closure,
-                otherwise it updates the ascent directly. Defaults to False.
-            maxiter (_type_, optional): maximum line search iterations
-                (useful for things like scipy.optimize.minimize_scalar) as it doesn't have
-                an exact iteration limit. Defaults to None.
-            log_lrs (bool, optional): saves lrs and losses with them into optimizer._lrs (for debugging).
-                Defaults to False.
-        """
         super().__init__(defaults, make_closure=make_closure)
         self._reset()
 
@@ -59,15 +60,15 @@ class LineSearchBase(OptimizerModule, ABC):
         self._last_lr = lr
 
     # lr is first here so that we can use a partial
-    def _evaluate_lr_(self, lr: float, closure: ClosureType, ascent_direction: tl.TensorList, params: tl.TensorList, backward=False):
+    def _evaluate_lr_(self, lr: float, closure: ClosureType, ascent: tl.TensorList, params: tl.TensorList, backward=False):
         """Evaluate `lr`, if loss is better than current lowest loss,
         overrides `self._lowest_loss` and `self._best_lr`.
 
         Args:
-            closure (ClosureType): _description_
-            params (tl.TensorList): _description_
-            ascent_direction (tl.TensorList): _description_
-            lr (float): _description_
+            closure (ClosureType): closure.
+            params (tl.TensorList): params.
+            ascent_direction (tl.TensorList): ascent.
+            lr (float): lr to evaluate.
 
         Returns:
             Loss with evaluated lr.
@@ -77,7 +78,7 @@ class LineSearchBase(OptimizerModule, ABC):
         self._current_iter += 1
 
         # set new lr and evaluate loss with it
-        self._set_lr_(lr, ascent_direction, params = params)
+        self._set_lr_(lr, ascent, params = params)
         with torch.enable_grad() if backward else torch.no_grad(): self._fx0_approx = closure(backward)
 
         # if it is the best so far, record it
@@ -95,11 +96,11 @@ class LineSearchBase(OptimizerModule, ABC):
         self,
         lr: float,
         closure: ClosureType,
-        ascent_direction: tl.TensorList,
+        ascent: tl.TensorList,
         params: tl.TensorList,
     ) -> float:
         """Same as _evaluate_lr_ but ensures that the loss value is float."""
-        v = self._evaluate_lr_(lr, closure, ascent_direction, params)
+        v = self._evaluate_lr_(lr, closure, ascent, params)
         if isinstance(v, torch.Tensor): return v.detach().cpu().item()
         return float(v)
 

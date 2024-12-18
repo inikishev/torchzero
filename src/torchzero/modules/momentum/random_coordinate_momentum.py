@@ -6,14 +6,14 @@ from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
 class RandomCoordinateMomentum(OptimizerModule):
-    def __init__(self, p: float = 0.1, nesterov=True):
-        """Only uses `p` random coordinates of the new update. Other coordinates remain from previous update.
-        This works but I don't know if it is any good.
+    """Only uses `p` random coordinates of the new update. Other coordinates remain from previous update.
+    This works but I don't know if it is any good.
 
-        Args:
-            p (float, optional): probability to update velocity with a new weigh value. Defaults to 0.1.
-            nesterov (bool, optional): if False, update uses delayed momentum. Defaults to True.
-        """
+    Args:
+        p (float, optional): probability to update velocity with a new weigh value. Defaults to 0.1.
+        nesterov (bool, optional): if False, update uses delayed momentum. Defaults to True.
+    """
+    def __init__(self, p: float = 0.1, nesterov=True):
         defaults = dict(p=p)
         super().__init__(defaults)
         self.nesterov = nesterov

@@ -11,7 +11,7 @@ def l2_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     """Adds L2 weight regularization term to the gradients.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
         alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
     """
     p = TensorList(params).with_requires_grad()
@@ -22,7 +22,7 @@ def l1_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     """Adds L1 weight regularization term to the gradients.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
         alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
     """
     p = TensorList(params).with_requires_grad()
@@ -33,7 +33,7 @@ def weight_decay_penalty(params: abc.Iterable[torch.Tensor], alpha: float, ord =
     """Calculate the weight decay penalty term that can be added to the loss.
 
     Args:
-        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+        params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
         alpha (float): multiplier to the regularizer.
         ord (int, optional): order of the norm. Defaults to 2.
     """
@@ -41,18 +41,20 @@ def weight_decay_penalty(params: abc.Iterable[torch.Tensor], alpha: float, ord =
 
 
 class WeightDecay(OptimizerModule):
+    """Adds weight decay term (L1 or L2 regularization) to the ascent direction.
+
+    Put this at the end to make it decoupled.
+
+    Args:
+        alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
+        ord (Literal[1, 2], optional):
+            order of the penalty, 1 and 2 are currently supported (L1 and L2 regularization).
+            Defaults to 2.
+        make_closure (bool, optional):
+            if True, instead of directly changing ascent direction,
+            this creates a new closure that adds the penalty to the update. Defaults to False.
+    """
     def __init__(self, alpha: float = 1e-2, ord:T.Literal[1, 2] = 2, make_closure = False):
-        """Adds weight decay term (L1 or L2 regularization) to the ascent direction.
-
-        Put this at the end to make it decoupled.
-
-        Args:
-            alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
-            ord (T.Literal[1, 2], optional): Order, 1 and 2 are currently supported (L1 and L2 regularization).
-                Defaults to 2.
-            make_closure (bool, optional): if True, instead of directly changing ascent direction,
-                this creates a new closure that adds the penalty to the update. Defaults to False.
-        """
         defaults = dict(alpha = alpha)
         super().__init__(defaults, make_closure=make_closure)
         self.ord = ord

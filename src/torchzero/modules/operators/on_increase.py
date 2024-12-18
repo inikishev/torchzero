@@ -4,14 +4,14 @@ from ...core import OptimizerModule, _get_loss
 
 
 class NegateOnLossIncrease(OptimizerModule):
-    def __init__(self, backtrack = True):
-        """Performs an additional evaluation to check if update increases the loss. If it does,
-        negates or backtracks the update.
+    """Performs an additional evaluation to check if update increases the loss. If it does,
+    negates or backtracks the update.
 
-        Args:
-            backtrack (bool, optional):
-                if True, sets update to minus update, otherwise sets it to zero. Defaults to True.
-        """
+    Args:
+        backtrack (bool, optional):
+            if True, sets update to minus update, otherwise sets it to zero. Defaults to True.
+    """
+    def __init__(self, backtrack = True):
         super().__init__({})
         self.backtrack = backtrack
 

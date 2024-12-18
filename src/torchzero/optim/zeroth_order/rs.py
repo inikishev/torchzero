@@ -4,17 +4,18 @@ from ...core import TensorListOptimizer, ClosureType
 
 
 class RandomSearch(TensorListOptimizer):
-    def __init__(self, params, min:float = -10, max:float = 10, stochastic = False):
-        """Pure random search.
+    """Pure random search.
 
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            min (float, optional): lower bound of the search space. Defaults to -10.
-            max (float, optional): upper bound of the search space. Defaults to 10.
-            stochastic (bool, optional): evaluate function twice per step,
-                and only accept new params if they decreased the loss.
-                Defaults to False.
-        """
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        min (float, optional): lower bound of the search space. Defaults to -10.
+        max (float, optional): upper bound of the search space. Defaults to 10.
+        stochastic (bool, optional):
+            evaluate function twice per step,
+            and only accept new params if they decreased the loss.
+            Defaults to False.
+    """
+    def __init__(self, params, min:float = -10, max:float = 10, stochastic = False):
         defaults = dict(min=min, max = max)
         super().__init__(params, defaults)
         self.lowest_loss = float('inf')
@@ -37,17 +38,19 @@ class RandomSearch(TensorListOptimizer):
         return loss
 
 class CyclicRS(TensorListOptimizer):
-    def __init__(self, params, min:float = -10, max:float = 10, stochastic = False):
-        """Performs random search on each coordinate. Works surprisingly well on low dimensional problems.
+    """Performs random search cycling through each coordinate.
+    Works surprisingly well on up to ~100 dimensional problems.
 
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            min (float, optional): lower bound of the search space. Defaults to -10.
-            max (float, optional): upper bound of the search space. Defaults to 10.
-            stochastic (bool, optional): evaluate function twice per step,
-                and only accept new params if they decreased the loss.
-                Defaults to False.
-        """
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        min (float, optional): lower bound of the search space. Defaults to -10.
+        max (float, optional): upper bound of the search space. Defaults to 10.
+        stochastic (bool, optional):
+            evaluate function twice per step,
+            and only accept new params if they decreased the loss.
+            Defaults to False.
+    """
+    def __init__(self, params, min:float = -10, max:float = 10, stochastic = False):
         defaults = dict(min=min, max = max)
         super().__init__(params, defaults)
         self.lowest_loss = float('inf')

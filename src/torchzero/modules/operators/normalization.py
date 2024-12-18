@@ -49,7 +49,8 @@ def normalize_grad_(
         min (float, optional):
             won't normalize when gradient is below this norm, you can increase this
             to avoid amplifying extremely small gradients. Defaults to 0.
-        mode (str, optional): what to normalize.
+        mode (str, optional):
+            what to normalize.
 
             - "global": normalize the entire gradient, as if it was a single vector.
 
@@ -74,6 +75,27 @@ def normalize_grad_(
     )
 
 class Normalize(OptimizerModule):
+    """Normalizes update to the given norm value.
+
+    Args:
+        norm_value (float, optional): value to normalize to. Defaults to 1.
+        ord (float, optional): order of the norm. Defaults to 2.
+        min (float, optional):
+            won't normalize when gradient is below this norm, you can increase this
+            to avoid amplifying extremely small gradients. Defaults to 0.
+        mode (str, optional):
+            what to normalize.
+
+            - "global": normalize the entire gradient, as if it was a single vector.
+
+            - "param": normalize each param's gradient (default).
+
+            - "channel": normalize gradient of each channel of each param.
+        min_numel (int, optional):
+            skips parameters with less than this many elements. This avoids the issue where
+            parameters that have a single element always get set to the value of 1.
+            Ignored when mode is 'global'.
+    """
     def __init__(
         self,
         norm_value: float = 1,
@@ -82,26 +104,6 @@ class Normalize(OptimizerModule):
         mode: typing.Literal["global", "param", "channel"] = "global",
         min_numel=2,
     ):
-        """Normalizes update to the given norm value.
-
-        Args:
-            norm_value (float, optional): value to normalize to. Defaults to 1.
-            ord (float, optional): order of the norm. Defaults to 2.
-            min (float, optional):
-                won't normalize when gradient is below this norm, you can increase this
-                to avoid amplifying extremely small gradients. Defaults to 0.
-            mode (str, optional): what to normalize.
-
-                - "global": normalize the entire gradient, as if it was a single vector.
-
-                - "param": normalize each param's gradient (default).
-
-                - "channel": normalize gradient of each channel of each param.
-            min_numel (int, optional):
-                skips parameters with less than this many elements. This avoids the issue where
-                parameters that have a single element always get set to the value of 1.
-                Ignored when mode is 'global'.
-        """
         super().__init__({})
         self.norm_value = norm_value
         self.ord = ord
@@ -150,7 +152,8 @@ def centralize_grad_(
 
     Args:
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to centralize.
-        mode (str, optional): what to centralize.
+        mode (str, optional): 
+            what to centralize.
 
             - "global": centralize the entire gradient (uses mean of entire gradient).
 
@@ -166,8 +169,11 @@ def centralize_grad_(
             bias usually has 1 dimension and you don't want to centralize it.
             Ignored when mode is 'global'.
 
-    Reference:
-        Yong, H., Huang, J., Hua, X., & Zhang, L. (2020). Gradient centralization: A new optimization technique for deep neural networks. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing.
+    reference
+        *Yong, H., Huang, J., Hua, X., & Zhang, L. (2020).
+        Gradient centralization: A new optimization technique for deep neural networks.
+        In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK,
+        August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing.*
 
     Example:
         >>> centralize_grad_(model.parameters())
@@ -180,34 +186,38 @@ def centralize_grad_(
     )
 
 class Centralize(OptimizerModule):
+    """Centralizes the update.
+
+    Args:
+        mode (str, optional): 
+            what to centralize.
+
+            - "global": centralize the entire gradient (uses mean of entire gradient).
+
+            - "param": centralize each param's gradient.
+
+            - "channel": centralize gradient of each channel of each param (default).
+        min_numel (int, optional):
+            skips parameters with less than this many elements. This avoids negating updates for
+            parameters that have a single element since subtracting mean always makes it 0.
+            Ignored when mode is 'global'.
+        min_ndim (int, optional):
+            skips parameters with less than this many dimensions.
+            bias usually has 1 dimension and you don't want to centralize it.
+            Ignored when mode is 'global'.
+
+    reference
+        *Yong, H., Huang, J., Hua, X., & Zhang, L. (2020).
+        Gradient centralization: A new optimization technique for deep neural networks.
+        In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK,
+        August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing.*
+    """
     def __init__(
         self,
         mode: typing.Literal["global", "param", "channel"] = "channel",
         min_ndim=2,
         min_numel=2,
     ):
-        """Centralizes the update.
-
-        Args:
-            mode (str, optional): what to centralize.
-
-                - "global": centralize the entire gradient (uses mean of entire gradient).
-
-                - "param": centralize each param's gradient.
-
-                - "channel": centralize gradient of each channel of each param (default).
-            min_numel (int, optional):
-                skips parameters with less than this many elements. This avoids negating updates for
-                parameters that have a single element since subtracting mean always makes it 0.
-                Ignored when mode is 'global'.
-            min_ndim (int, optional):
-                skips parameters with less than this many dimensions.
-                bias usually has 1 dimension and you don't want to centralize it.
-                Ignored when mode is 'global'.
-
-        Reference:
-            Yong, H., Huang, J., Hua, X., & Zhang, L. (2020). Gradient centralization: A new optimization technique for deep neural networks. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing.
-        """
         super().__init__({})
         self.mode: typing.Literal["global", "param", "channel"] = mode
         self.min_ndim = min_ndim

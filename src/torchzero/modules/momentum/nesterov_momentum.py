@@ -17,13 +17,14 @@ def _nesterov_step_(ascent, velocity: TensorList, momentum, dampening,):
 
 
 class NesterovMomentum(OptimizerModule):
-    def __init__(self, decay: float = 0.9, dampening: float = 0, ):
-        """Nesterov momentum.
+    """Nesterov momentum. Exactly matches pytorch SGD with `nesterov=True`,
+    except this also supports dampening.
 
-        Args:
-            decay (float, optional): momentum decay. Defaults to 0.9.
-            dampening (float, optional): momentum dampening. Defaults to 0.
-        """
+    Args:
+        decay (float, optional): momentum decay. Defaults to 0.9.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+    """
+    def __init__(self, decay: float = 0.9, dampening: float = 0, ):
         defaults = dict(momentum = decay, dampening = dampening)
         super().__init__(defaults)
 

@@ -7,24 +7,24 @@ from ...core import OptimizerModule
 
 
 class ScaleLRBySignChange(OptimizerModule):
+    """
+    learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign,
+    or `nminus` if it did.
+
+    This is part of RProp update rule.
+
+    Args:
+        lr (float): initial learning rate.
+        nplus (float): learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign
+        nminus (float): learning rate gets multiplied by `nminus` if ascent/gradient changed the sign
+        lb (float): lower bound for lr.
+        ub (float): upper bound for lr.
+
+    .. warning::
+        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
+        they need to have `make_closure` set to True so that they write to `grad` attribute.
+    """
     def __init__(self, lr: float = 1, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, use_grad=False):
-        """
-        learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign,
-        or `nminus` if it did.
-
-        This is part of RProp update rule.
-
-        Args:
-            lr (float): initial learning rate.
-            nplus (float): learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign
-            nminus (float): learning rate gets multiplied by `nminus` if ascent/gradient changed the sign
-            lb (float): lower bound for lr.
-            ub (float): upper bound for lr.
-
-        Note:
-            If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-            they need to have `make_closure` set to True so that they write to `grad` attribute.
-        """
         defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub)
         super().__init__(defaults)
         self.current_step = 0
@@ -67,25 +67,25 @@ class ScaleLRBySignChange(OptimizerModule):
 
 
 class NegateOnSignChange(OptimizerModule):
+    """Negates or undoes update for parameters where where gradient or update sign changes.
+
+    This is part of RProp update rule.
+
+    Args:
+        normalize (bool, optional): renormalize update after masking. Defaults to False.
+        eps (_type_, optional): epsilon for normalization. Defaults to 1e-6.
+        use_grad (bool, optional): if True, tracks sign change of the gradient,
+            otherwise track sign change of the update. Defaults to True.
+        backtrack (bool, optional): if True, undoes the update when sign changes, otherwise negates it.
+            Defaults to True.
+
+    .. warning::
+        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
+        they need to have `make_closure` set to True so that they write to `grad` attribute.
+
+    """
     # todo: add momentum to negation (to cautious as well and rprop negation as well)
     def __init__(self, normalize = False, eps=1e-6, use_grad = False, backtrack = True):
-        """Negates or undoes update for parameters where where gradient or update sign changes.
-
-        This is part of RProp update rule.
-
-        Note:
-            If you use this after modules that estimate gradients, e.g. FDM and `use_grad` is True,
-            they need to have `make_closure` set to True so that they write to `grad` attribute.
-
-
-        Args:
-            normalize (bool, optional): renormalize update after masking. Defaults to False.
-            eps (_type_, optional): epsilon for normalization. Defaults to 1e-6.
-            use_grad (bool, optional): if True, tracks sign change of the gradient,
-                otherwise track sign change of the update. Defaults to True.
-            backtrack (bool, optional): if True, undoes the update when sign changes, otherwise negates it.
-                Defaults to True.
-        """
         super().__init__({})
         self.eps = eps
         self.normalize = normalize

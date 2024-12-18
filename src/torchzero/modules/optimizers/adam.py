@@ -22,17 +22,17 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
 
 
 class Adam(OptimizerModule):
-    def __init__(self, lr: float = 1, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, amsgrad=False):
-        """Adam. Combines momentum and RMSProp. Exactly matches pytorch adam.
+    """Adam. Combines momentum and RMSProp. Exactly matches pytorch adam.
 
-        Args:
-            lr (float, optional): learning rate. Defaults to 1.
-            beta1 (float, optional): exponential decay rate of gradient moving average. Defaults to 0.9.
-            beta2 (float, optional): exponential decay rate of squared gradient moving average. Defaults to 0.999.
-            eps (float, optional): epsilon for numerical stability. Defaults to 1e-8.
-            amsgrad (bool, optional): whether to use the AMSGrad variant of this algorithm from the paper
-                On the Convergence of Adam and Beyond (default: False).
-        """
+    Args:
+        lr (float, optional): learning rate. Defaults to 1.
+        beta1 (float, optional): exponential decay rate of gradient moving average. Defaults to 0.9.
+        beta2 (float, optional): exponential decay rate of squared gradient moving average. Defaults to 0.999.
+        eps (float, optional): epsilon for numerical stability. Defaults to 1e-8.
+        amsgrad (bool, optional): whether to use the AMSGrad variant of this algorithm from the paper
+            On the Convergence of Adam and Beyond (default: False).
+    """
+    def __init__(self, lr: float = 1, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, amsgrad=False):
         defaults = dict(lr = lr, beta1=beta1, beta2=beta2, eps=eps)
         super().__init__(defaults)
 

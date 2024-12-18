@@ -52,22 +52,22 @@ def _precompute_denominator(tensor: torch.Tensor, sigma) -> torch.Tensor:
     return 1 - sigma * torch.fft.fft(v) # pylint: disable = not-callable
 
 class LaplacianSmoothing(OptimizerModule):
+    """Applies laplacian smoothing via fast Fourier transform.
+
+    Args:
+        sigma (float, optional): controls the amount of smoothing. Defaults to 1.
+        layerwise (bool, optional): If True, applies smoothing to each parameter's gradient separately,
+            Otherwise applies it to all gradients, concatenated into a single vector. Defaults to True.
+        min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
+            Only has effect if `layerwise` is True. Defaults to 4.
+        make_closure (bool, optional): Set to True to use with things like LBFGS. Defaults to False.
+
+    Reference:
+        *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
+        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
+
+    """
     def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, make_closure = False):
-        """Applies laplacian smoothing via fast Fourier transform.
-
-        Args:
-            sigma (float, optional): controls the amount of smoothing. Defaults to 1.
-            layerwise (bool, optional): If True, applies smoothing to each parameter's gradient separately,
-                Otherwise applies it to all gradients, concatenated into a single vector. Defaults to True.
-            min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
-                Only has effect if `layerwise` is True. Defaults to 4.
-            make_closure (bool, optional): Set to True to use with things like LBFGS. Defaults to False.
-
-        Reference:
-            *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
-            Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
-
-        """
         # sigma from defaults is used in layerwise case
         # otherwise self.sigma is used
         defaults = dict(sigma = sigma)

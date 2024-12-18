@@ -67,6 +67,17 @@ def _three_point_bd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: t
 
 
 class FDM(OptimizerModule):
+    """Gradient approximation via finite difference.
+
+    Args:
+        eps (float, optional): finite difference epsilon. Defaults to 1e-5.
+        formula (_FD_Formulas, optional): finite difference formula. Defaults to 'forward'.
+        n_points (T.Literal[2, 3], optional): number of points, 2 or 3. Defaults to 2.
+        make_closure (bool, optional):
+            if True, this makes a new closure that sets .grad attribute on each call
+            with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
+            Note that with `True` this will perform 1 additional evaluation per step with the `central` formula.
+    """
     def __init__(
         self,
         eps: float = 1e-5,
@@ -74,16 +85,7 @@ class FDM(OptimizerModule):
         n_points: T.Literal[2, 3] = 2,
         make_closure=False,
     ):
-        """Gradient approximation via finite difference.
 
-        Args:
-            eps (float, optional): finite difference epsilon. Defaults to 1e-5.
-            formula (_FD_Formulas, optional): finite difference formula. Defaults to 'forward'.
-            n_points (T.Literal[2, 3], optional): number of points, 2 or 3. Defaults to 2.
-            make_closure (bool, optional): if True, this makes a new closure that sets .grad attribute on each call
-                with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
-                Note that with `True` this will perform 1 additional evaluation per step with the `central` formula.
-        """
         defaults = dict(eps = eps)
         super().__init__(defaults)
 
