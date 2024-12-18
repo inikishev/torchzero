@@ -1,2 +1,6 @@
 sphinx
 sphinx_rtd_theme
+torch
+numpy
+scipy
+nevergrad
