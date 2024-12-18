@@ -1,22 +1,20 @@
-Title
-=====
+torchzero
+===========================
 
-Section
--------
+Introduction
+============
 
-Subsection
-~~~~~~~~~~
+.. include:: Introduction.rst
 
-A cool bit of code::
+automodule
+===============
 
-   Some cool Code
+.. automodule:: torchzero
+   :members:
+   :show-inheritance:
 
-.. code-block:: rst
+autosummary
+=============
 
-   A bit of **rst** which should be *highlighted* properly.
-
-.. toctree::
-   :maxdepth: 2
-
-   install
-   support
+.. autosummary::
+   :toctree: _autosummary
