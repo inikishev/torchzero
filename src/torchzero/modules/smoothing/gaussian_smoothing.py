@@ -13,8 +13,7 @@ def _numpy_or_torch_mean(losses: list):
     """Returns the mean of a list of losses, which can be either numpy arrays or torch tensors."""
     if isinstance(losses[0], torch.Tensor):
         return torch.mean(torch.stack(losses))
-    else:
-        return np.mean(losses).item()
+    return np.mean(losses).item()
 
 class ApproxGaussianSmoothing(OptimizerModule):
     """Samples and averages value and gradients in multiple random points around current position.
@@ -25,7 +24,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
         sigma (float, optional): how far from current position to sample from. Defaults to 0.1.
         distribution (tl.Distributions, optional): distribution for random positions. Defaults to "normal".
         sample_x0 (bool, optional): 1st sample will be x0. Defaults to False.
-        randomize_every (int, optional): randomizes the points every n steps. Defaults to 1.
+        randomize_every (int | None, optional): randomizes the points every n steps. Defaults to 1.
     """
     def __init__(
         self,
@@ -33,7 +32,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
         sigma: float = 0.1,
         distribution: tl.Distributions = "normal",
         sample_x0 = False,
-        randomize_every: int = 1,
+        randomize_every: int | None = 1,
     ):
         defaults = dict(sigma = sigma)
         super().__init__(defaults)
@@ -52,7 +51,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
         sigmas = self.get_group_key('sigma')
 
         # generate random perturbations
-        if self.current_step % self.randomize_every == 0:
+        if self.perturbations is None or (self.randomize_every is not None and self.current_step % self.randomize_every == 0):
             if self.sample_x0:
                 self.perturbations = [params.sample_like(sigmas, distribution=self.distribution) for _ in range(self.n_samples-1)]
             else:

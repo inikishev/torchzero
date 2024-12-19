@@ -27,9 +27,9 @@ class ReduceOutwardLR(OptimizerModule):
         if self.use_grad: cur = state.maybe_compute_grad_(params)
         else: cur = ascent
 
-        # mask of weights where sign matches with update sign, multiplied by `mul`.
-        mask = (params * cur).le_(0).mul_(mul)
-        ascent.mul_(mask)
+        # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
+        mask = (params * cur) < 0
+        ascent.masked_set_(mask, ascent*mul)
 
         return ascent
 

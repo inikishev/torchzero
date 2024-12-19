@@ -101,7 +101,7 @@ class Normalize(OptimizerModule):
         norm_value: float = 1,
         ord: float = 2,
         min: float = 0,
-        mode: typing.Literal["global", "param", "channel"] = "global",
+        mode: typing.Literal["global", "param", "channel"] = "param",
         min_numel=2,
     ):
         super().__init__({})
@@ -121,6 +121,7 @@ class Normalize(OptimizerModule):
             mode = self.mode,
             min_numel = self.min_numel,
         )
+        return ascent
 
 
 def _centralize_grad_(
@@ -231,6 +232,7 @@ class Centralize(OptimizerModule):
             min_ndim = self.min_ndim,
             min_numel = self.min_numel,
         )
+        return ascent
 
 
 def clip_grad_value_(params: abc.Iterable[torch.Tensor], value:float):
@@ -323,3 +325,4 @@ class ClipNorm(OptimizerModule):
             ord = self.ord,
             mode = self.mode,
         )
+        return ascent

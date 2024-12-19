@@ -30,11 +30,11 @@ class Cautious(OptimizerModule):
         *Cautious Optimizers: Improving Training with One Line of Code.
         Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
     """
-    def __init__(self, normalize = False, eps=1e-6, mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'):
+    def __init__(self, normalize = False, eps=1e-6, mode: typing.Literal['zero', 'grad', 'backtrack'] = 'zero'):
         super().__init__({})
         self.eps = eps
         self.normalize = normalize
-        self.mode = mode
+        self.mode: typing.Literal['zero', 'grad', 'backtrack'] = mode
 
     @torch.no_grad
     def _update(self, state, ascent):
@@ -49,15 +49,22 @@ class Cautious(OptimizerModule):
                 fmask /= fmask.total_mean() + self.eps
             else:
                 fmask = mask
+
             ascent *= fmask
 
             if self.mode == 'grad':
+                print(f'before {ascent = }')
+                print(f'{grad = }')
+                print(f'{mask = }')
+                print(f'{grad * mask.logical_not() = }')
                 ascent += grad * mask.logical_not_()
+                print(f'after {ascent = }')
+                print()
 
             return ascent
 
-        # mode = 'negate'
-        ascent -= ascent.mul(2).mul_(mask)
+        # mode = 'backtrack'
+        ascent -= ascent.mul(2).mul_(mask.logical_not_())
         return ascent
 
 

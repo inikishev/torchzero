@@ -134,6 +134,10 @@ class OptimizerModule(TensorListOptimizer, ABC):
         When this is True, when parent calls :any:`_update_child_params_` with this module as child,
         nothing will happen, as this module already has parameters set."""
 
+    def __repr__(self):
+        if self._initialized: return super().__repr__()
+        return f"uninitialized {self.__class__.__name__}()"
+
     def set_params(self, params: ParamsT):
         """
         Set parameters to this module. Use this to set per-parameter group settings.
@@ -195,7 +199,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
     def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
         if self.next_module is not None: self._update_next_module_params_(self.next_module)
-        for c in self.children:
+        for c in self.children.values():
             self._update_child_params_(c)
 
     def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:

@@ -602,6 +602,10 @@ class TensorList(list[torch.Tensor | T.Any]):
         for tensor, m, v in zip(self, mask, value):
             tensor[m] = v[m]
 
+    def select(self, idx: STOrSTSequence):
+        if not isinstance(idx, (list,tuple)): return self.__class__(t[idx] for t in self)
+        return self.__class__(t[i] for t,i in zip(self, idx))
+
     def flatiter(self) -> A.Generator[torch.Tensor]:
         for tensor in self:
             yield from tensor.view(-1)

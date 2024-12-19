@@ -19,7 +19,7 @@ class CautiousAdam(Modular):
         amsgrad=False,
         c_eps = 1e-6,
         normalize = True,
-        mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'
+        mode: typing.Literal['zero', 'grad', 'backtrack'] = 'zero'
     ):
         modules: list[OptimizerModule] = [
             Adam(lr = 1 if mode == 'grad' else lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
@@ -41,7 +41,7 @@ class CautiousSGD(Modular):
         nesterov: bool = True,
         c_eps = 1e-6,
         normalize = True,
-        mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'
+        mode: typing.Literal['zero', 'grad', 'backtrack'] = 'zero'
     ):
         modules: list[OptimizerModule] = [
             SGD(lr = 1 if mode == 'grad' else lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay, nesterov = nesterov),
