@@ -7,7 +7,7 @@ from .adaptive import *
 from .line_search import *
 from .meta import *
 from .momentum import *
-from .operators import *
+from .misc import *
 from .quasi_newton import *
 from .regularization import *
 from .second_order import *

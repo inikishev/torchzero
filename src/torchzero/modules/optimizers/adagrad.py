@@ -11,21 +11,19 @@ def _adagrad_step_(ascent: TensorList, grad_sum: TensorList, lr: TensorList, lr_
     return ascent.div_(grad_sum.sqrt().add_(eps)).mul_(clr)
 
 class Adagrad(OptimizerModule):
-    """UNTESTED, PLEASE DONT USE YET!
-
-    https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
-
+    """
     Divides ascent direction by mean square root of the sum of all past ascent directions.
 
-    (Exactly matches pytorch Adagrad (NOT YET!!!)).
-
-    *Duchi, J., Hazan, E., & Singer, Y. (2011). Adaptive subgradient methods for online learning and stochastic optimization. Journal of machine learning research, 12(7).*
+    Exactly matches pytorch Adagrad.
 
     Args:
         lr (float, optional): learning rate. Defaults to 1.
         lr_decay (float, optional): learning rate decay. Defaults to 0.
         initial_accumulator_value (float, optional): initial value of the sum of squares of gradients. Defaults to 0.
         eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-10.
+
+    reference
+        https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
     """
     def __init__(self, lr: float = 1, lr_decay: float = 0, initial_accumulator_value: float = 0, eps: float = 1e-10, ):
         defaults = dict(lr = lr, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value, eps = eps)

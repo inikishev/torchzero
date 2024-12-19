@@ -308,7 +308,7 @@ class TensorList(list[torch.Tensor | T.Any]):
     def ones_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
     def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]):
         #return self.__class__(torch.full_like(i, fill_value=fill_value, **kwargs) for i in self)
-        return self.zipmap(torch.full_like, fill_value, **kwargs)
+        return self.zipmap(torch.full_like, other=fill_value, **kwargs)
 
     def rand_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
     def randn_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
@@ -594,6 +594,7 @@ class TensorList(list[torch.Tensor | T.Any]):
         """Same as tensor[mask] = value"""
         if not isinstance(value, (list,tuple)): value = [value]*len(self) # type:ignore
         for tensor, m, v in zip(self, mask, value): # type:ignore
+            print(tensor, m, v)
             tensor[m] = v
 
     def masked_set_(self, mask: TensorSequence, value: TensorSequence):

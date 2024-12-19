@@ -1,6 +1,6 @@
 import torch
 
-from ...core import OptimizerModule, _get_loss
+from ...core import OptimizerModule
 
 
 class NegateOnLossIncrease(OptimizerModule):

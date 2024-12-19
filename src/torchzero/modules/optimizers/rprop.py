@@ -20,7 +20,6 @@ class Rprop(OptimizerModule):
     Compared to pytorch this also implements backtracking update when sign changes.
     To make this behave exactly the same as `torch.optim.Rprop`, set `backtrack` to False.
 
-    *Riedmiller, M., & Braun, H. (1993, March). A direct adaptive method for faster backpropagation learning: The RPROP algorithm. In IEEE international conference on neural networks (pp. 586-591). IEEE.*
 
     Args:
         lr (float): learning rate (default: 1).
@@ -31,6 +30,10 @@ class Rprop(OptimizerModule):
         backtrack (float):
             if True, when ascent sign changes, undoes last weight update, otherwise sets update to 0.
             When this is False, this exactly matches pytorch Rprop. (default: True)
+
+    reference
+        *Riedmiller, M., & Braun, H. (1993, March). A direct adaptive method for faster backpropagation learning:
+        The RPROP algorithm. In IEEE international conference on neural networks (pp. 586-591). IEEE.*
     """
     def __init__(
         self,
@@ -60,29 +63,29 @@ class Rprop(OptimizerModule):
 
         # initialize on 1st step
         if self.current_step == 0:
-            magnitudes.fill_(self.defaults['lr'])
+            magnitudes.fill_(self.defaults['lr']).clamp_(lb, ub)
             ascent = magnitudes * sign
             prev.copy_(ascent)
             self.current_step += 1
             return ascent
 
-        mask = (sign * prev).mul_(allowed)
+        mul = (sign * prev).mul_(allowed)
 
-        sign_changed = mask < 0
-        sign_same = mask > 0
-        zeroes = mask == 0
+        sign_changed = mul < 0
+        sign_same = mul > 0
+        zeroes = mul == 0
 
-        # multiply magnitudes where sign didn't change
-        magnitudes.select_set_(sign_same, magnitudes * nplus)
-        # multiply magnitudes where sign changed
-        magnitudes.select_set_(sign_changed, magnitudes * nminus)
-        # bounds
-        magnitudes.clamp_(lb, ub)
+        mul.fill_(1)
+        mul.masked_fill_(sign_changed, nminus)
+        mul.masked_fill_(sign_same, nplus)
+
+        # multiply magnitudes based on sign change and clamp to bounds
+        magnitudes.mul_(mul).clamp_(lb, ub)
 
         # revert update if sign changed
         if self.backtrack:
             ascent = sign.mul_(magnitudes)
-            ascent.select_set_(sign_changed, prev.neg_())
+            ascent.masked_set_(sign_changed, prev.neg_())
         else:
             ascent = sign.mul_(magnitudes * ~sign_changed)
 

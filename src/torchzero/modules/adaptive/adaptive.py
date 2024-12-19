@@ -1,9 +1,101 @@
-from collections import abc
-
+import typing
 import torch
 
-from ...tensorlist import TensorList, where
 from ...core import OptimizerModule
+
+class Cautious(OptimizerModule):
+    """Negates update for parameters where update and gradient sign is inconsistent.
+    Optionally normalizes the update by the number of parameters that are not masked.
+    This is meant to be used after any momentum-based modules.
+
+    Args:
+        normalize (bool, optional):
+            renormalize update after masking.
+            only has effect when mode is 'zero'. Defaults to False.
+        eps (float, optional): epsilon for normalization. Defaults to 1e-6.
+        mode (str, optional):
+            what to do with updates with inconsistent signs.
+
+            "zero" - set them to zero (as in paper)
+
+            "grad" - set them to the gradient
+
+            "negate" - negate them (same as using update magnitude and gradient sign)
+
+    .. warning::
+        If you use this after modules that estimate gradients, e.g. FDM,
+        hey need to have `make_closure` set to True so that they write to `grad` attribute.
+
+    reference
+        *Cautious Optimizers: Improving Training with One Line of Code.
+        Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
+    """
+    def __init__(self, normalize = False, eps=1e-6, mode: typing.Literal['zero', 'grad', 'negate'] = 'zero'):
+        super().__init__({})
+        self.eps = eps
+        self.normalize = normalize
+        self.mode = mode
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        params = self.get_params()
+        grad = state.maybe_compute_grad_(params)
+
+        # mask will be > 0 for parameters where both signs are the same
+        mask = (ascent * grad) > 0
+        if self.mode in ('zero', 'grad'):
+            if self.normalize and self.mode == 'zero':
+                fmask = mask.to(ascent[0].dtype)
+                fmask /= fmask.total_mean() + self.eps
+            else:
+                fmask = mask
+            ascent *= fmask
+
+            if self.mode == 'grad':
+                ascent += grad * mask.logical_not_()
+
+            return ascent
+
+        # mode = 'negate'
+        ascent -= ascent.mul(2).mul_(mask)
+        return ascent
+
+
+class UseGradSign(OptimizerModule):
+    """
+    Uses update magnitude but gradient sign.
+
+    .. warning::
+        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
+        they need to have `make_closure` set to True so that they write to `grad` attribute.
+    """
+    def __init__(self):
+        super().__init__({})
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        params = self.get_params()
+        grad = state.maybe_compute_grad_(params)
+
+        return ascent.abs_().mul_(grad.sign())
+
+class UseGradMagnitude(OptimizerModule):
+    """
+    Uses update sign but gradient magnitude.
+
+    .. warning::
+        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
+        they need to have `make_closure` set to True so that they write to `grad` attribute.
+    """
+    def __init__(self):
+        super().__init__({})
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        params = self.get_params()
+        grad = state.maybe_compute_grad_(params)
+
+        return ascent.sign_().mul_(grad.abs())
 
 
 class ScaleLRBySignChange(OptimizerModule):
@@ -34,8 +126,8 @@ class ScaleLRBySignChange(OptimizerModule):
     def _update(self, state, ascent):
         params = self.get_params()
 
-        if self.use_grad: cur = ascent
-        else: cur = state.maybe_compute_grad_(params)
+        if self.use_grad: cur = state.maybe_compute_grad_(params)
+        else: cur = ascent
 
         nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
         prev, lrs = self.get_state_keys(['prev_ascent', 'lrs'], params=params)
@@ -53,9 +145,9 @@ class ScaleLRBySignChange(OptimizerModule):
         sign_same = mask > 0
 
         # multiply magnitudes where sign didn't change
-        lrs.select_set_(sign_same, lrs * nplus)
+        lrs.masked_set_(sign_same, lrs * nplus)
         # multiply magnitudes where sign changed
-        lrs.select_set_(sign_changed, lrs * nminus)
+        lrs.masked_set_(sign_changed, lrs * nminus)
         # bounds
         lrs.clamp_(lb, ub)
 
@@ -96,8 +188,10 @@ class NegateOnSignChange(OptimizerModule):
     @torch.no_grad
     def _update(self, state, ascent):
         params = self.get_params()
+
         if self.use_grad: cur = state.maybe_compute_grad_(params)
         else: cur = ascent
+
         prev = self.get_state_key('prev')
 
         # initialize on first step
@@ -108,7 +202,7 @@ class NegateOnSignChange(OptimizerModule):
 
         # mask will be > 0 for parameters where both signs are the same
         mask = (cur * prev) < 0
-        if self.backtrack: ascent.select_set_(mask, prev)
+        if self.backtrack: ascent.masked_set_(mask, prev)
         else: ascent.select_set_(mask, 0)
 
         prev.set_(cur)

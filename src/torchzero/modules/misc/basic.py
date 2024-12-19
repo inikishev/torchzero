@@ -1,7 +1,23 @@
+from collections.abc import Callable, Iterable
+
 import torch
+
 from torchzero.tensorlist import TensorList
-from collections.abc import Callable
-from ...core import OptimizerModule, _get_loss
+
+from ...core import OptimizerModule
+
+class LR(OptimizerModule):
+    """Multiplies update by the learning rate."""
+    def __init__(self, lr = 1e-3):
+        defaults = dict(lr = lr)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        # multiply ascent direction by lr in-place
+        lr = self.get_group_key('lr')
+        ascent *= lr
+        return ascent
 
 
 class Clone(OptimizerModule):
@@ -12,6 +28,7 @@ class Clone(OptimizerModule):
 
     @torch.no_grad
     def _update(self, state, ascent): return ascent.clone()
+
 class Identity(OptimizerModule):
     """Does nothing."""
     def __init__(self, *args, **kwargs):
@@ -19,6 +36,7 @@ class Identity(OptimizerModule):
 
     @torch.no_grad
     def _update(self, state, ascent): return ascent
+
 class Lambda(OptimizerModule):
     """Applies a function to the ascent direction.
     The function must take a TensorList as the argument, and return the modified tensorlist.
@@ -113,3 +131,23 @@ class NanToNum(OptimizerModule):
 
     @torch.no_grad()
     def _update(self, state, ascent): return ascent.nan_to_num_(self.nan, self.posinf, self.neginf)
+
+
+
+def sign_grad_(params: Iterable[torch.Tensor]):
+    """Apply sign function to gradients of an iterable of parameters.
+
+    Args:
+        params (abc.Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
+    """
+    TensorList(params).get_existing_grads().sign_()
+
+class Sign(OptimizerModule):
+    """Applies sign function to the update"""
+    def __init__(self):
+        super().__init__({})
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        ascent.sign_()
+        return ascent

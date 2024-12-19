@@ -17,19 +17,19 @@ def _get_loss(fx0, fx0_approx):
 ClosureType = Callable[..., ScalarType] #
 """
 Closure example:
-```
-def closure(backward = True, **k):
-    loss = model(inputs)
-    if backward:
-        optimizer.zero_grad()
-        loss.backward(**k)
-    return loss
-```
+.. code-block:: python
+    def closure(backward = True, **k):
+        loss = model(inputs)
+        if backward:
+            optimizer.zero_grad()
+            loss.backward(**k)
+        return loss
+
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
 """
 
 class OptimizationState:
-    """Holds optimization state. This is usually automatically created by `torchzero.optim.Modular`."""
+    """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""
     def __init__(self, closure: ClosureType | None, model: torch.nn.Module | None):
 
         self.closure: ClosureType | None = closure
@@ -104,13 +104,20 @@ class OptimizationState:
 
         return state
 
+    def update_attrs_(self, state: "OptimizationState"):
+        """Updates attributes of this state with attributes of another state."""
+        if state.grad is not None: self.grad = state.grad
+        if state.fx0 is not None: self.fx0 = state.fx0
+        if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
+
+
 class OptimizerModule(TensorListOptimizer, ABC):
     r"""Base class for all modules.
 
     Args:
         defaults (dict): dictionary with default parameters for the module.
         make_closure (bool, optional):
-            if True, `_update` method functions as a closure,
+            if True, :any:`_update` method functions as a closure,
             otherwise it updates the ascent directly. Defaults to False.
     """
     def __init__(self, defaults: dict[str, Any], make_closure = False): # pylint:disable = super-init-not-called
@@ -123,8 +130,8 @@ class OptimizerModule(TensorListOptimizer, ABC):
         self._make_closure = make_closure
 
         self._has_custom_params = False
-        """Signifies that `self.set_params` was called on this to set custom params.
-        When this is True, when parent calls `_update_child_params_` with this module as child,
+        """Signifies that :any:`self.set_params` was called on this to set custom params.
+        When this is True, when parent calls :any:`_update_child_params_` with this module as child,
         nothing will happen, as this module already has parameters set."""
 
     def set_params(self, params: ParamsT):

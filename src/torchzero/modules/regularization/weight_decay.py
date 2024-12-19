@@ -1,5 +1,5 @@
-import typing as T
-from collections import abc
+from typing import Literal
+from collections.abc import Iterable
 
 import torch
 
@@ -7,8 +7,8 @@ from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
 
-def l2_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
-    """Adds L2 weight regularization term to the gradients.
+def l2_regularize_(params: Iterable[torch.Tensor], alpha: float = 1e-2):
+    """Adds L2 weight regularization term to the gradients in-place.
 
     Args:
         params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
@@ -18,8 +18,8 @@ def l2_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     p.ensure_grad_()
     p.grad.add_(p, alpha = alpha)
 
-def l1_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
-    """Adds L1 weight regularization term to the gradients.
+def l1_regularize_(params: Iterable[torch.Tensor], alpha: float = 1e-2):
+    """Adds L1 weight regularization term to the gradients in-place.
 
     Args:
         params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor.
@@ -29,7 +29,7 @@ def l1_regularize_(params: abc.Iterable[torch.Tensor], alpha: float = 1e-2):
     p.ensure_grad_()
     p.grad.add_(p.sign(), alpha = alpha)
 
-def weight_decay_penalty(params: abc.Iterable[torch.Tensor], alpha: float, ord = 2):
+def weight_decay_penalty(params: Iterable[torch.Tensor], alpha: float = 1e-2, ord:float = 2):
     """Calculate the weight decay penalty term that can be added to the loss.
 
     Args:
@@ -37,7 +37,21 @@ def weight_decay_penalty(params: abc.Iterable[torch.Tensor], alpha: float, ord =
         alpha (float): multiplier to the regularizer.
         ord (int, optional): order of the norm. Defaults to 2.
     """
-    return TensorList(params).total_vector_norm(ord) * alpha
+    return TensorList(params).norm(ord) * alpha
+
+def decay_weights_(params: Iterable[torch.Tensor], alpha: float = 1e-2, ord:Literal[1, 2] = 2):
+    """Apply weight decay directly to parameters in-place.
+
+    Args:
+        params (Iterable[torch.Tensor]): an iterable of Tensors or a single Tensor to decay.
+        alpha (float): by how much to decay parameters (default: 1e-2)
+        ord (float, optional):
+            order of the penalty, 1 and 2 are currently supported (L1 and L2 regularization) (default: 2)
+    """
+    params = TensorList(params)
+    if ord == 2: params.mul_(1-alpha)
+    elif ord == 1: params.sub_(params.sign().mul_(alpha))
+    else: raise NotImplementedError(f'order {ord} is not supported')
 
 
 class WeightDecay(OptimizerModule):
@@ -46,7 +60,7 @@ class WeightDecay(OptimizerModule):
     Put this at the end to make it decoupled.
 
     Args:
-        alpha (float, optional): multiplier to the regularizer. Defaults to 1e-2.
+        alpha (float, optional): multiplier to the regularizer (default: 1e-2)
         ord (Literal[1, 2], optional):
             order of the penalty, 1 and 2 are currently supported (L1 and L2 regularization).
             Defaults to 2.
@@ -54,7 +68,7 @@ class WeightDecay(OptimizerModule):
             if True, instead of directly changing ascent direction,
             this creates a new closure that adds the penalty to the update. Defaults to False.
     """
-    def __init__(self, alpha: float = 1e-2, ord:T.Literal[1, 2] = 2, make_closure = False):
+    def __init__(self, alpha: float = 1e-2, ord:Literal[1, 2] = 2, make_closure = False):
         defaults = dict(alpha = alpha)
         super().__init__(defaults, make_closure=make_closure)
         self.ord = ord
