@@ -75,6 +75,8 @@ def test_sgd(lr, momentum, dampening, weight_decay, nesterov):
         lambda p: torch.optim.SGD(p, lr, momentum, dampening, weight_decay, nesterov),
     )
 
+_devices = ['cpu']
+if torch.cuda.is_available(): _devices.append('cuda')
 
 # with adam we also test all dtypes and devices
 @pytest.mark.parametrize('lr', [1e-1, 1e-4])
@@ -83,7 +85,7 @@ def test_sgd(lr, momentum, dampening, weight_decay, nesterov):
 @pytest.mark.parametrize('amsgrad', [True, False])
 @pytest.mark.parametrize('weight_decay', [0, 0.1])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
-@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('device', _devices)
 def test_adam(lr, betas, eps, amsgrad, weight_decay, dtype, device):
     """torch.optim.Adam"""
     # note! it is necessary NOT to pre-initialize modules! because they will keep buffers and produce bogus results!
