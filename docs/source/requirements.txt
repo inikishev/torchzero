@@ -4,4 +4,4 @@ scipy
 nevergrad
 git+https://github.com/inikishev/torchzero.git
 furo
-autoapi
+sphinx-autoapi
