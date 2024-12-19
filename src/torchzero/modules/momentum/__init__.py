@@ -1,4 +1,4 @@
 """
 Modules that implement momentum.
 """
-from .momentum import HeavyBallMomentum, NesterovMomentum, RandomCoordinateMomentum, GradientAveraging
+from .momentum import HeavyBall, NesterovMomentum, RandomCoordinateMomentum, GradientAveraging

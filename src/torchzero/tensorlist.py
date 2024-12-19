@@ -10,26 +10,26 @@ in an optimizer when you have to create one from parameters on each step. The so
 it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
 """
 import builtins
-import collections.abc as A
+from collections.abc import Callable, Sequence, Iterable, Generator
 import math
 import operator
-import typing as T
+from typing import TypeAlias, Any, Literal, TypedDict, Self, Unpack
 
 import torch
 
 Scalar = int | float | bool | complex
 AnyTensor = torch.Tensor | torch.nn.Parameter
 TensorSequence = list[AnyTensor] | tuple[AnyTensor, ...]
-ScalarSequence: T.TypeAlias = "list[Scalar] | tuple[Scalar] | TensorList"
-STSequence: T.TypeAlias = "TensorSequence | ScalarSequence"
-STOrSTSequence: T.TypeAlias = "Scalar | torch.Tensor | torch.nn.Parameter | STSequence"
+ScalarSequence: TypeAlias = "list[Scalar] | tuple[Scalar] | TensorList"
+STSequence: TypeAlias = "TensorSequence | ScalarSequence"
+STOrSTSequence: TypeAlias = "Scalar | torch.Tensor | torch.nn.Parameter | STSequence"
 
-Distributions = T.Literal['normal', 'uniform', 'sphere', 'rademacher']
-class _NewTensorKwargs(T.TypedDict, total = False):
-    memory_format: T.Any
-    dtype: T.Any
-    layout: T.Any
-    device: T.Any
+Distributions = Literal['normal', 'uniform', 'sphere', 'rademacher']
+class _NewTensorKwargs(TypedDict, total = False):
+    memory_format: Any
+    dtype: Any
+    layout: Any
+    device: Any
     pin_memory: bool
     requires_grad: bool
 
@@ -75,7 +75,7 @@ def _where_(input: torch.Tensor, condition: torch.Tensor, other: torch.Tensor):
 
 # tensorlist must subclass list
 # UserList doesn't work with _foreach_xxx
-class TensorList(list[torch.Tensor | T.Any]):
+class TensorList(list[torch.Tensor | Any]):
     @classmethod
     def complex(cls, real: TensorSequence, imag: TensorSequence):
         """Create a complex TensorList from real and imaginary tensor sequences."""
@@ -136,21 +136,21 @@ class TensorList(list[torch.Tensor | T.Any]):
             self.get_existing_grads().zero_()
         return self
 
-    def __add__(self, other: STOrSTSequence) -> T.Self: return self.add(other) # type:ignore
-    def __radd__(self, other: STOrSTSequence) -> T.Self: return self.add(other)
-    def __iadd__(self, other: STOrSTSequence) -> T.Self: return self.add_(other) # type:ignore
+    def __add__(self, other: STOrSTSequence) -> Self: return self.add(other) # type:ignore
+    def __radd__(self, other: STOrSTSequence) -> Self: return self.add(other)
+    def __iadd__(self, other: STOrSTSequence) -> Self: return self.add_(other) # type:ignore
 
-    def __sub__(self, other: "Scalar | STSequence") -> T.Self: return self.sub(other)
-    def __rsub__(self, other: "Scalar | STSequence") -> T.Self: return - self.sub(other)
-    def __isub__(self, other: "Scalar | STSequence") -> T.Self: return self.sub_(other)
+    def __sub__(self, other: "Scalar | STSequence") -> Self: return self.sub(other)
+    def __rsub__(self, other: "Scalar | STSequence") -> Self: return - self.sub(other)
+    def __isub__(self, other: "Scalar | STSequence") -> Self: return self.sub_(other)
 
-    def __mul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
-    def __rmul__(self, other: STOrSTSequence) -> T.Self: return self.mul(other) # type:ignore
-    def __imul__(self, other: STOrSTSequence) -> T.Self: return self.mul_(other) # type:ignore
+    def __mul__(self, other: STOrSTSequence) -> Self: return self.mul(other) # type:ignore
+    def __rmul__(self, other: STOrSTSequence) -> Self: return self.mul(other) # type:ignore
+    def __imul__(self, other: STOrSTSequence) -> Self: return self.mul_(other) # type:ignore
 
-    def __truediv__(self, other: "Scalar | STSequence") -> T.Self: return self.div(other)
-    def __rtruediv__(self, other: "Scalar | STSequence") -> T.Self: return other * self.reciprocal() # type:ignore
-    def __itruediv__(self, other: "Scalar | STSequence") -> T.Self: return self.div_(other)
+    def __truediv__(self, other: "Scalar | STSequence") -> Self: return self.div(other)
+    def __rtruediv__(self, other: "Scalar | STSequence") -> Self: return other * self.reciprocal() # type:ignore
+    def __itruediv__(self, other: "Scalar | STSequence") -> Self: return self.div_(other)
 
     def __floordiv__(self, other: STOrSTSequence): return self.floor_divide(other)
     #def __rfloordiv__(self, other: "TensorList"): return other.floor_divide(self)
@@ -182,27 +182,27 @@ class TensorList(list[torch.Tensor | T.Any]):
     def __xor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor(other)
     def __ixor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor_(other)
 
-    def map(self, fn: A.Callable[..., torch.Tensor], *args, **kwargs):
+    def map(self, fn: Callable[..., torch.Tensor], *args, **kwargs):
         """Applies `fn` to all elements of this TensorList
         and returns a new TensorList with return values of the callable."""
         return self.__class__(fn(i, *args, **kwargs) for i in self)
-    def map_inplace_(self, fn: A.Callable[..., T.Any], *args, **kwargs):
+    def map_inplace_(self, fn: Callable[..., Any], *args, **kwargs):
         """Applies an in-place `fn` to all elements of this TensorList."""
         for i in self: fn(i, *args, **kwargs)
         return self
 
-    def filter(self, fn: A.Callable[..., bool], *args, **kwargs):
+    def filter(self, fn: Callable[..., bool], *args, **kwargs):
         """Returns a TensorList with all elements for which `fn` returned True."""
         return self.__class__(i for i in self if fn(i, *args, **kwargs))
 
-    def zipmap(self, fn: A.Callable, other: T.Any | list | tuple, *args, **kwargs):
+    def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
         """If `other` is list/tuple, applies `fn` to this TensorList zipped with `other`.
         Otherwise applies `fn` to this TensorList and `other`.
         Returns a new TensorList with return values of the callable."""
         if isinstance(other, (list, tuple)): return self.__class__(fn(i, j, *args, **kwargs) for i, j in zip(self, other))
         return self.__class__(fn(i, other, *args, **kwargs) for i in self)
 
-    def zipmap_inplace_(self, fn: A.Callable[..., T.Any], other: T.Any | list | tuple, *args, **kwargs):
+    def zipmap_inplace_(self, fn: Callable[..., Any], other: Any | list | tuple, *args, **kwargs):
         """If `other` is list/tuple, applies `fn` to this TensorList zipped with `other`.
         Otherwise applies `fn` to this TensorList and `other`.
         The callable must modify elements in-place."""
@@ -212,13 +212,13 @@ class TensorList(list[torch.Tensor | T.Any]):
             for i in self: fn(i, other, *args, **kwargs)
         return self
 
-    def zipmap_args(self, fn: A.Callable[..., T.Any], *others, **kwargs):
+    def zipmap_args(self, fn: Callable[..., Any], *others, **kwargs):
         """If `args` is list/tuple, applies `fn` to this TensorList zipped with `others`.
         Otherwise applies `fn` to this TensorList and `other`."""
         others = [i if isinstance(i, (list, tuple)) else [i]*len(self) for i in others]
         return self.__class__(fn(*z, **kwargs) for z in zip(self, *others))
 
-    def zipmap_args_inplace_(self, fn: A.Callable[..., T.Any], *others, **kwargs):
+    def zipmap_args_inplace_(self, fn: Callable[..., Any], *others, **kwargs):
         """If `args` is list/tuple, applies `fn` to this TensorList zipped with `other`.
         Otherwise applies `fn` to this TensorList and `other`.
         The callable must modify elements in-place."""
@@ -226,11 +226,11 @@ class TensorList(list[torch.Tensor | T.Any]):
         for z in zip(self, *others): fn(*z, **kwargs)
         return self
 
-    def _foreach_apply(self, fn: A.Callable[[list[torch.Tensor]], list[torch.Tensor]], *args, **kwargs):
+    def _foreach_apply(self, fn: Callable[[list[torch.Tensor]], list[torch.Tensor]], *args, **kwargs):
         """Applies a torch._foreach_xxx function to self and converts returned list back to TensorList or subclass."""
         return self.__class__(fn(self), *args, **kwargs)
 
-    # def __getattr__(self, name: str) -> A.Callable:
+    # def __getattr__(self, name: str) -> Callable:
     #     if name == '__torch_function__' or name == '_ipython_canary_method_should_not_exist_': raise AttributeError('who ？？？')
     #     if name in _foreach_methods:
     #         method = partial(self._foreach_apply, _foreach_methods[name])
@@ -255,7 +255,7 @@ class TensorList(list[torch.Tensor | T.Any]):
     def copy_(self, src: TensorSequence, non_blocking = False):
         """Copies the elements from src tensors into self tensors."""
         torch._foreach_copy_(self, src, non_blocking=non_blocking)
-    def set_(self, storage: A.Iterable[torch.Tensor | torch.types.Storage]):
+    def set_(self, storage: Iterable[torch.Tensor | torch.types.Storage]):
         """Sets elements of this TensorList to the values of a list of tensors."""
         for i, j in zip(self, storage): i.set_(j) # type:ignore
         return self
@@ -303,23 +303,23 @@ class TensorList(list[torch.Tensor | T.Any]):
     def total_numel(self):
         return builtins.sum(self.numel())
 
-    def empty_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.empty_like(i, **kwargs) for i in self)
-    def zeros_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.zeros_like(i, **kwargs) for i in self)
-    def ones_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
-    def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]):
+    def empty_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.empty_like(i, **kwargs) for i in self)
+    def zeros_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.zeros_like(i, **kwargs) for i in self)
+    def ones_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
+    def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
         #return self.__class__(torch.full_like(i, fill_value=fill_value, **kwargs) for i in self)
         return self.zipmap(torch.full_like, other=fill_value, **kwargs)
 
-    def rand_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
-    def randn_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
+    def rand_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
+    def randn_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
 
-    def randint_like(self, low: "Scalar | ScalarSequence", high: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]):
+    def randint_like(self, low: "Scalar | ScalarSequence", high: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
         return self.zipmap_args(torch.randint_like, low, high, **kwargs)
-    def uniform_like(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, **kwargs: T.Unpack[_NewTensorKwargs]):
+    def uniform_like(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, **kwargs: Unpack[_NewTensorKwargs]):
         res = self.empty_like(**kwargs)
         res.uniform_(low, high)
         return res
-    def sphere_like(self, radius: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]) -> T.Self:
+    def sphere_like(self, radius: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]) -> Self:
         r = self.randn_like(**kwargs)
         return (r * radius) / r.total_vector_norm() # type:ignore
     def bernoulli(self):
@@ -398,7 +398,7 @@ class TensorList(list[torch.Tensor | T.Any]):
         torch._foreach_mul_(self, other)
         return self
 
-    def div(self, other: STOrSTSequence) -> T.Self: return self.__class__(torch._foreach_div(self, other))
+    def div(self, other: STOrSTSequence) -> Self: return self.__class__(torch._foreach_div(self, other))
     def div_(self, other: STOrSTSequence):
         torch._foreach_div_(self, other)
         return self
@@ -539,14 +539,14 @@ class TensorList(list[torch.Tensor | T.Any]):
         """`lerp_` but supports python number sequence as weight and implemented through other operations"""
         return self.add_(TensorList(tensors1).sub(self).mul_(weight))
 
-    def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
+    def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcmul(self, tensors1, tensor2, value))
-    def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
+    def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         torch._foreach_addcmul_(self, tensors1, tensor2, value)
         return self
-    def addcdiv(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
+    def addcdiv(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcdiv(self, tensors1, tensor2, value))
-    def addcdiv_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | A.Sequence[Scalar] | torch.Tensor" = 1):
+    def addcdiv_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         torch._foreach_addcdiv_(self, tensors1, tensor2, value)
         return self
 
@@ -602,11 +602,11 @@ class TensorList(list[torch.Tensor | T.Any]):
         for tensor, m, v in zip(self, mask, value):
             tensor[m] = v[m]
 
-    def select(self, idx: STOrSTSequence):
+    def select(self, idx: Any):
         if not isinstance(idx, (list,tuple)): return self.__class__(t[idx] for t in self)
         return self.__class__(t[i] for t,i in zip(self, idx))
 
-    def flatiter(self) -> A.Generator[torch.Tensor]:
+    def flatiter(self) -> Generator[torch.Tensor]:
         for tensor in self:
             yield from tensor.view(-1)
 
@@ -647,7 +647,7 @@ class NumberList(TensorList):
     def mul(self, other: STOrSTSequence): return self.zipmap(operator.mul, other=other)
     def mul_(self, other: STOrSTSequence): return self._set_to_method_result('mul', other)
 
-    def div(self, other: STOrSTSequence) -> T.Self: return self.zipmap(operator.truediv, other=other)
+    def div(self, other: STOrSTSequence) -> Self: return self.zipmap(operator.truediv, other=other)
     def div_(self, other: STOrSTSequence): return self._set_to_method_result('div', other)
 
     def pow(self, exponent: "Scalar | STSequence"): return self.zipmap(math.pow, other=exponent)
@@ -658,15 +658,15 @@ class NumberList(TensorList):
         if isinstance(other, (tuple,list)): return self.__class__(o / i for o, i in zip(self, other))
         return self.__class__(other / i for i in self)
 
-def stack(tensorlists: A.Iterable[TensorList], dim = 0):
+def stack(tensorlists: Iterable[TensorList], dim = 0):
     """Returns a tensorlist with the same elements as the input tensorlists, but stacked along the specified dimension."""
     return TensorList(torch.stack(i, dim = dim) for i in zip(*tensorlists))
 
-def mean(tensorlists: A.Iterable[TensorList]):
+def mean(tensorlists: Iterable[TensorList]):
     """Returns a tensorlist which is the mean of given tensorlists."""
     return stack(tensorlists).mean(0)
 
-def sum(tensorlists: A.Iterable[TensorList]):
+def sum(tensorlists: Iterable[TensorList]):
     """Returns a tensorlist which is the sum of given tensorlists."""
     return stack(tensorlists).sum(0)
 

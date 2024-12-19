@@ -59,6 +59,14 @@ class Reciprocal(OptimizerModule):
     @torch.no_grad()
     def _update(self, state, ascent): return ascent.reciprocal_()
 
+class Negate(OptimizerModule):
+    """Negates the update (-update)"""
+    def __init__(self,):
+        super().__init__({})
+
+    @torch.no_grad()
+    def _update(self, state, ascent): return ascent.neg_()
+
 class Add(OptimizerModule):
     """Adds `value` to the update."""
     def __init__(self, value):

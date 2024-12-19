@@ -14,7 +14,7 @@ class Adagrad(OptimizerModule):
     """
     Divides ascent direction by mean square root of the sum of all past ascent directions.
 
-    Exactly matches pytorch Adagrad.
+    Exactly matches `torch.optim.Adagrad`.
 
     Args:
         lr (float, optional): learning rate. Defaults to 1.

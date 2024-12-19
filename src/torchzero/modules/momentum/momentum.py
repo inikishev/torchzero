@@ -9,7 +9,7 @@ def _heavyball_step(ascent, velocity: TensorList, momentum, dampening: TensorLis
     velocity.mul_(momentum).add_(ascent * (1 - dampening))
     return velocity.clone()
 
-class HeavyBallMomentum(OptimizerModule):
+class HeavyBall(OptimizerModule):
     """Polyak's (heavy ball) momentum. Exactly matches pytorch SGD `momentum` option.
 
     Args:

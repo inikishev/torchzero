@@ -8,6 +8,7 @@ description = ""
 
 version = "0.0.1"
 dependencies = [
+  "torch",
   "numpy",
 ]
 requires-python = ">= 3.12"

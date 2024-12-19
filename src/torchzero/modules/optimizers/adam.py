@@ -22,7 +22,7 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
 
 
 class Adam(OptimizerModule):
-    """Adam. Combines momentum and RMSProp. Exactly matches pytorch adam.
+    """Adam. Combines momentum and RMSProp. Exactly matches `torch.optim.Adam`.
 
     Args:
         lr (float, optional): learning rate. Defaults to 1.

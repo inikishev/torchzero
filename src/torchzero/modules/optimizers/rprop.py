@@ -20,7 +20,6 @@ class Rprop(OptimizerModule):
     Compared to pytorch this also implements backtracking update when sign changes.
     To make this behave exactly the same as `torch.optim.Rprop`, set `backtrack` to False.
 
-
     Args:
         lr (float): learning rate (default: 1).
         nplus (float): multiplicative increase factor for when ascent didn't change sign (default: 1.2).

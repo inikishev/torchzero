@@ -6,7 +6,8 @@ from ...core import OptimizerModule
 from ..momentum.momentum import _heavyball_step, _nesterov_step_
 
 class SGD(OptimizerModule):
-    """Same as torch.optim.SGD but as an optimizer module.
+    """Same as `torch.optim.SGD` but as an optimizer module. Exactly matches `torch.optim.SGD`, except
+    nesterov momentum additionally supports dampening, and negative momentum is allowed.
 
     Args:
         lr (float, optional): learning rate. Defaults to 1e-3.

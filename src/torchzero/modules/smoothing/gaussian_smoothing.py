@@ -40,7 +40,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
         self.distribution: tl.Distributions = distribution
         self.randomize_every = randomize_every
         self.current_step = 0
-        self.perturbations = T.cast(list[tl.TensorList], None)
+        self.perturbations = None
         self.sample_x0 = sample_x0
 
     @torch.no_grad()
@@ -70,6 +70,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
 
             # sample gradients from points around current params
             # and average them
+            if self.perturbations is None: raise ValueError('who set perturbations to None???')
             for p in self.perturbations:
                 params.add_(p)
                 with torch.enable_grad() if backward else nullcontext():

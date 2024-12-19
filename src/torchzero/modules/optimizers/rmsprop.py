@@ -19,7 +19,7 @@ class RMSProp(OptimizerModule):
     """
     Divides ascent direction by running average of its mean square root.
 
-    Exactly matches pytorch RMSProp.
+    Exactly matches `torch.optim.RMSProp`.
 
     Args:
         alpha (float, optional): smoothing constant (decay of ascent mean square root running average).

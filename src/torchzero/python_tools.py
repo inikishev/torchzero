@@ -1,9 +1,8 @@
 import functools
 import operator
 import typing as T
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable
 
-import numpy as np
 import torch
 
 def _flatten_no_check(iterable: Iterable) -> list[T.Any]:
