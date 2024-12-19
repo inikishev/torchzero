@@ -6,6 +6,33 @@ import torch
 from ...core import OptimizerModule, _get_loss, OptimizationState
 
 class OptimizerWrapper(OptimizerModule):
+    """
+    Wraps any torch.optim.Optimizer.
+
+    Sets .grad attribute to the current update and steps with the `optimizer`.
+
+    Additionally, if this is not the last module, this takes the update of `optimizer`,
+    undoes it and passes to the next module instead. That means you can chain multiple
+    optimizers together.
+
+    Args:
+        optimizer (torch.optim.Optimizer): optimizer to wrap,
+            or a callable (class) that constructs the optimizer.
+        pass_closure (torch.optim.Optimizer): passes modified closure to that optimizer.
+            The modified closure might use something like finite differences to approximate the gradient,
+            and it will do that on each closure evaluation, meaning you can use optimizers like torch.optim.LBFGS.
+        kwargs:
+            if class is passed, kwargs are passed to the constructor.
+            parameters are passed separately and automatically
+            which is the point of passing a constructor
+            instead of an optimizer directly.
+
+    This can be constructed in two ways.
+    .. code-block:: python
+        wrapper = OptimizerWrapper(torch.optim.SGD(model.parameters(), lr = 0.1))
+        # or
+        wrapper = OptimizerWrapper(torch.optim.SGD, lr = 0.1)
+    """
     @typing.overload
     def __init__(self, optimizer: torch.optim.Optimizer, pass_closure: bool = False): ...
     @typing.overload
@@ -17,27 +44,6 @@ class OptimizerWrapper(OptimizerModule):
         **kwargs: K.kwargs,
     ): ...
     def __init__(self, optimizer, pass_closure: bool = False, *args, **kwargs):
-        """
-        Wraps any torch.optim.Optimizer.
-
-        Sets .grad attribute to the current update and steps with the `optimizer`.
-
-        Additionally, if this is not the last module, this takes the update of `optimizer`,
-        undoes it and passes to the next module instead. That means you can chain multiple
-        optimizers together.
-
-        Args:
-            optimizer (torch.optim.Optimizer): optimizer to wrap,
-                or a callable (class) that constructs the optimizer.
-            pass_closure (torch.optim.Optimizer): passes modified closure to that optimizer.
-                The modified closure might use something like finite differences to approximate the gradient,
-                and it will do that on each closure evaluation, meaning you can use optimizers like torch.optim.LBFGS.
-            kwargs:
-                if class is passed, kwargs are passed to the constructor.
-                parameters are passed separately and automatically
-                which is the point of passing a constructor
-                instead of an optimizer directly.
-        """
 
         super().__init__({})
         self._optimizer_cls: torch.optim.Optimizer | abc.Callable[..., torch.optim.Optimizer] = optimizer

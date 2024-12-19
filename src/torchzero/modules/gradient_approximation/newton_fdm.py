@@ -74,6 +74,32 @@ def _three_point_2cd_(
 
 
 class NewtonFDM(OptimizerModule):
+    """Newton method with gradient and hessian approximated via finite difference.
+
+    Args:
+        eps (float, optional):
+            epsilon for finite difference.
+            Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
+        diag (bool, optional):
+            whether to only approximate diagonal elements of the hessian.
+            If true, ignores `solver` and `fallback`. Defaults to False.
+        solver (LinearSystemSolvers, optional):
+            solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
+        fallback (FallbackLinearSystemSolvers, optional):
+            what to do if solver fails. Defaults to "safe_diag"
+            (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
+        validate (bool, optional):
+            validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
+            If not, undo the step and perform a gradient descent step.
+        tol (float, optional):
+            only has effect if `validate` is enabled.
+            If loss increased by `loss * tol`, perform gradient descent step.
+            Set this to 0 to guarantee that loss always decreases. Defaults to 1.
+        gd_lr (float, optional):
+            only has effect if `validate` is enabled.
+            Gradient descent step learning rate. Defaults to 1e-2.
+
+    """
     def __init__(
         self,
         eps: float = 1e-2,
@@ -84,30 +110,6 @@ class NewtonFDM(OptimizerModule):
         tol: float = 1,
         gd_lr = 1e-2,
     ):
-        """Newton method with gradient and hessian approximated via finite difference.
-
-        Args:
-            eps (float, optional): epsilon for finite difference.
-                Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
-            diag (bool, optional): whether to only approximate diagonal elements of the hessian.
-                If true, ignores `solver` and `fallback`. Defaults to False.
-            solver (LinearSystemSolvers, optional):
-                solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
-            fallback (FallbackLinearSystemSolvers, optional):
-                what to do if solver fails. Defaults to "safe_diag"
-                (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
-            validate (bool, optional):
-                validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
-                If not, undo the step and perform a gradient descent step.
-            tol (float, optional):
-                only has effect if `validate` is enabled.
-                If loss increased by `loss * tol`, perform gradient descent step.
-                Set this to 0 to guarantee that loss always decreases. Defaults to 1.
-            gd_lr (float, optional):
-                only has effect if `validate` is enabled.
-                Gradient descent step learning rate. Defaults to 1e-2.
-
-        """
         defaults = dict(eps = eps)
         super().__init__(defaults)
         self.diag = diag

@@ -7,7 +7,7 @@ TensorList is similar to TensorDict (https://github.com/pytorch/tensordict).
 If you want to get the most performance out of a collection of tensors, use TensorDict and lock it.
 However I found that *creating* a TensorDict is quite slow. In fact it negates the benefits of using it
 in an optimizer when you have to create one from parameters on each step. The solution could be to create
-it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states..
+it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
 """
 import builtins
 import collections.abc as A
@@ -34,7 +34,6 @@ class _NewTensorKwargs(T.TypedDict, total = False):
     requires_grad: bool
 
 # _foreach_methods = {attr.replace('_foreach_', ''):getattr(torch, attr) for attr in dir(torch) if attr.startswith('_foreach_')}
-
 class MethodCallerWithArgs:
     """Return a callable object that calls the given method on its operand.
 
@@ -309,7 +308,7 @@ class TensorList(list[torch.Tensor | T.Any]):
     def ones_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
     def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: T.Unpack[_NewTensorKwargs]):
         #return self.__class__(torch.full_like(i, fill_value=fill_value, **kwargs) for i in self)
-        return self.zipmap(torch.full_like, fill_value, **kwargs)
+        return self.zipmap(torch.full_like, other=fill_value, **kwargs)
 
     def rand_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
     def randn_like(self, **kwargs: T.Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
@@ -595,6 +594,7 @@ class TensorList(list[torch.Tensor | T.Any]):
         """Same as tensor[mask] = value"""
         if not isinstance(value, (list,tuple)): value = [value]*len(self) # type:ignore
         for tensor, m, v in zip(self, mask, value): # type:ignore
+            print(tensor, m, v)
             tensor[m] = v
 
     def masked_set_(self, mask: TensorSequence, value: TensorSequence):

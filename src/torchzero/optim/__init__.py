@@ -10,7 +10,7 @@ Ready to use optimizers.
 :any:`torchzero.optim.second_order` - exact 2nd order optimizers.
 
 """
-from .modular import ModularOptimizer
+from .modular import Modular
 from .quasi_newton import *
 from .zeroth_order import *
 from .second_order import *

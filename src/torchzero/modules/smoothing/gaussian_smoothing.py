@@ -17,6 +17,16 @@ def _numpy_or_torch_mean(losses: list):
         return np.mean(losses).item()
 
 class ApproxGaussianSmoothing(OptimizerModule):
+    """Samples and averages value and gradients in multiple random points around current position.
+    This effectively applies smoothing to the function.
+
+    Args:
+        n_samples (int, optional): number of gradient samples from around current position. Defaults to 4.
+        sigma (float, optional): how far from current position to sample from. Defaults to 0.1.
+        distribution (tl.Distributions, optional): distribution for random positions. Defaults to "normal".
+        sample_x0 (bool, optional): 1st sample will be x0. Defaults to False.
+        randomize_every (int, optional): randomizes the points every n steps. Defaults to 1.
+    """
     def __init__(
         self,
         n_samples: int = 4,
@@ -25,16 +35,6 @@ class ApproxGaussianSmoothing(OptimizerModule):
         sample_x0 = False,
         randomize_every: int = 1,
     ):
-        """Samples and averages value and gradients in multiple random points around current position.
-        This effectively applies smoothing to the function.
-
-        Args:
-            n_samples (int, optional): number of gradient samples from around current position. Defaults to 4.
-            sigma (float, optional): how far from current position to sample from. Defaults to 0.1.
-            distribution (tl.Distributions, optional): distribution for random positions. Defaults to "normal".
-            sample_x0 (bool, optional): 1st sample will be x0. Defaults to False.
-            randomize_every (int, optional): randomizes the points every n steps. Defaults to 1.
-        """
         defaults = dict(sigma = sigma)
         super().__init__(defaults)
         self.n_samples = n_samples

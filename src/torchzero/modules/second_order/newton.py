@@ -57,6 +57,37 @@ LINEAR_SYSTEM_SOLVERS = {
 }
 
 class ExactNewton(OptimizerModule):
+    """Peforms an exact Newton step using batched autograd.
+
+    Note that this doesn't support per-group settings.
+
+    Args:
+        tikhonov (float, optional):
+            tikhonov regularization (constant value added to the diagonal of the hessian). 
+            Also known as Levenberg-Marquardt regularization. Defaults to 0.
+        solver (Solvers, optional):
+            solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
+        fallback (Solvers, optional):
+            what to do if solver fails. Defaults to "safe_diag"
+            (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
+        validate (bool, optional):
+            validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
+            If not, undo the step and perform a gradient descent step.
+        tol (float, optional):
+            only has effect if `validate` is enabled.
+            If loss increased by `loss * tol`, perform gradient descent step.
+            Set this to 0 to guarantee that loss always decreases. Defaults to 1.
+        gd_lr (float, optional):
+            only has effect if `validate` is enabled.
+            Gradient descent step learning rate. Defaults to 1e-2.
+        batched_hessian (bool, optional):
+            whether to use experimental pytorch vmap-vectorized hessian calculation. As per pytorch docs,
+            should be faster, but this feature being experimental, there may be performance cliffs.
+            Defaults to True.
+        diag (False, optional):
+            only use the diagonal of the hessian. This will still calculate the full hessian!
+            This is mainly useful for benchmarking.
+    """
     def __init__(
         self,
         tikhonov: float = 0.0,
@@ -68,37 +99,6 @@ class ExactNewton(OptimizerModule):
         batched_hessian=True,
         diag: T.Literal[False] = False,
     ):
-        """Peforms an exact Newton step using batched autograd.
-
-        Note that this doesn't support per-group settings.
-
-        Args:
-            tikhonov (float, optional):
-                tikhonov regularization (constant value added to the diagonal of the hessian). 
-                Also known as Levenberg-Marquardt regularization. Defaults to 0.
-            solver (Solvers, optional):
-                solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
-            fallback (Solvers, optional):
-                what to do if solver fails. Defaults to "safe_diag"
-                (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
-            validate (bool, optional):
-                validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
-                If not, undo the step and perform a gradient descent step.
-            tol (float, optional):
-                only has effect if `validate` is enabled.
-                If loss increased by `loss * tol`, perform gradient descent step.
-                Set this to 0 to guarantee that loss always decreases. Defaults to 1.
-            gd_lr (float, optional):
-                only has effect if `validate` is enabled.
-                Gradient descent step learning rate. Defaults to 1e-2.
-            batched_hessian (bool, optional):
-                whether to use experimental pytorch vmap-vectorized hessian calculation. As per pytorch docs,
-                should be faster, but this feature being experimental, there may be performance cliffs.
-                Defaults to True.
-            diag (False, optional):
-                only use the diagonal of the hessian. This will still calculate the full hessian!
-                This is mainly useful for benchmarking.
-        """
         super().__init__({})
         self.tikhonov = tikhonov
         self.batched_hessian = batched_hessian

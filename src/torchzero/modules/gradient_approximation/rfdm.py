@@ -62,6 +62,21 @@ def _two_point_rbd_(closure: ClosureType, params: TensorList, perturbation: Tens
 
 
 class RandomizedFDM(OptimizerModule):
+    """Gradient approximation via randomized finite difference.
+
+    Args:
+        eps (float, optional): finite difference epsilon. Defaults to 1e-5.
+        formula (_FD_Formulas, optional): Finite difference formula. Defaults to 'forward'.
+        n_samples (int, optional): number of times gradient is approximated and then averaged. Defaults to 1.
+        distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
+        make_closure (bool, optional):
+            if True, this makes a new closure that sets .grad attribute on each call
+            with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
+        randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
+        randomize_closure (int, optional):
+            whether to generate a new random perturbation each time closure
+            is evaluated with `backward=True` (this ignores `randomize_every`). Defaults to False.
+    """
     def __init__(
         self,
         eps: float = 1e-5,
@@ -72,19 +87,6 @@ class RandomizedFDM(OptimizerModule):
         randomize_every: int = 1,
         randomize_closure: bool = False,
     ):
-        """Gradient approximation via randomized finite difference.
-
-        Args:
-            eps (float, optional): finite difference epsilon. Defaults to 1e-5.
-            formula (_FD_Formulas, optional): Finite difference formula. Defaults to 'forward'.
-            n_samples (int, optional): number of times gradient is approximated and then averaged. Defaults to 1.
-            distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
-            make_closure (bool, optional): if True, this makes a new closure that sets .grad attribute on each call
-                with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
-            randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
-            randomize_closure (int, optional): whether to generate a new random perturbation each time closure
-                is evaluated with `backward=True` (this ignores `randomize_every`). Defaults to False.
-        """
         defaults = dict(eps = eps)
         super().__init__(defaults)
 

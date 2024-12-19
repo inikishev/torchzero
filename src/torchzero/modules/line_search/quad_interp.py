@@ -32,15 +32,16 @@ def _step_2poins(x1, f1, df1, x2, f2):
     return -b / (2 * a), a
 
 class QuadraticInterpolation2Point(LineSearchBase):
-    def __init__(self, lr=1e-2, log_lrs = False, max_evals = 2, min_dist = 1e-2,):
-        """This is WIP, please don't use yet! Use `MinimizeQuadraticLS` and `MinimizeQuadratic3PointsLS` instead.
+    """This is WIP, please don't use yet!
+    Use `torchzero.modules.MinimizeQuadraticLS` and `torchzero.modules.MinimizeQuadratic3PointsLS` instead.
 
-        Args:
-            lr (_type_, optional): _description_. Defaults to 1e-2.
-            log_lrs (bool, optional): _description_. Defaults to False.
-            max_evals (int, optional): _description_. Defaults to 2.
-            min_dist (_type_, optional): _description_. Defaults to 1e-2.
-        """
+    Args:
+        lr (_type_, optional): _description_. Defaults to 1e-2.
+        log_lrs (bool, optional): _description_. Defaults to False.
+        max_evals (int, optional): _description_. Defaults to 2.
+        min_dist (_type_, optional): _description_. Defaults to 1e-2.
+    """
+    def __init__(self, lr=1e-2, log_lrs = False, max_evals = 2, min_dist = 1e-2,):
         super().__init__({"lr": lr}, maxiter=None, log_lrs=log_lrs)
         self.max_evals = max_evals
         self.min_dist = min_dist
@@ -82,7 +83,7 @@ class QuadraticInterpolation2Point(LineSearchBase):
                 return lr
 
             # TODO: handle negative curvature
-            # if curvature < 0: 
+            # if curvature < 0:
             #     if points[0].x == 0: return lr
             #     return points[0].x
 

@@ -20,7 +20,6 @@ def _jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor]
 
 
 
-
 def _jacobian_batched(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False):
     flat_input = torch.cat([i.reshape(-1) for i in input])
     return torch.autograd.grad(
@@ -39,8 +38,8 @@ def jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor],
     Each tensor will have the shape `(*input.shape, *wrt[i].shape)`.
 
     Args:
-        input (abc.Sequence[torch.Tensor]): input sequence of tensors.
-        wrt (abc.Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
             allowing to compute higher order derivative products. Default: False.
@@ -59,8 +58,8 @@ def hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], 
     If you need a hessian matrix out of that sequence, pass it to `hessian_list_to_mat`.
 
     Args:
-        input (abc.Sequence[torch.Tensor]): input sequence of tensors.
-        wrt (abc.Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
             allowing to compute higher order derivative products. Default: False.
@@ -77,8 +76,8 @@ def jacobian_and_hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[to
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
 
     Args:
-        input (abc.Sequence[torch.Tensor]): input sequence of tensors.
-        wrt (abc.Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
             allowing to compute higher order derivative products. Default: False.

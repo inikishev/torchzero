@@ -12,7 +12,7 @@ from ...modules import (OptimizerWrapper, Proj2Masks, ProjGrad, ProjNormalize,
                         Subspace)
 from ...modules.subspace.random_subspace import Projection
 from ...tensorlist import TensorList
-from ..modular import ModularOptimizer
+from ..modular import Modular
 
 
 def _ensure_float(x):
@@ -21,45 +21,45 @@ def _ensure_float(x):
     return float(x)
 
 class ScipyMinimize(TensorListOptimizer):
+    """Use scipy.minimize.optimize as pytorch optimizer. Note that this performs full minimization on each step,
+    so usually you would want to perform a single step, although performing multiple steps will refine the
+    solution.
+
+    Please refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
+    for a detailed description of args.
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        method (str | None, optional): type of solver.
+            If None, scipy will select one of BFGS, L-BFGS-B, SLSQP,
+            depending on whether or not the problem has constraints or bounds.
+            Defaults to None.
+        bounds (optional): bounds on variables. Defaults to None.
+        constraints (tuple, optional): constraints definition. Defaults to ().
+        tol (float | None, optional): Tolerance for termination. Defaults to None.
+        callback (Callable | None, optional): A callable called after each iteration. Defaults to None.
+        options (dict | None, optional): A dictionary of solver options. Defaults to None.
+        jac (str, optional): Method for computing the gradient vector.
+            Only for CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr.
+            In addition to scipy options, this supports 'autograd', which uses pytorch autograd.
+            This setting is ignored for methods that don't require gradient. Defaults to 'autograd'.
+        hess (str, optional):
+            Method for computing the Hessian matrix.
+            Only for Newton-CG, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr.
+            This setting is ignored for methods that don't require hessian. Defaults to 'autograd'.
+    """
     def __init__(
         self,
         params,
-        method=None,
-        bounds=None,
-        constraints=(),
-        tol=None,
-        callback=None,
-        options=None,
+        method: str | None = None,
+        bounds = None,
+        constraints = (),
+        tol: float | None = None,
+        callback = None,
+        options = None,
         jac: T.Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd'
     ):
-        """Use scipy.minimize.optimize as pytorch optimizer. Note that this performs full minimization on each step,
-        so usually you would want to perform a single step, although performing multiple steps will refine the
-        solution.
-
-        Please refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
-        for a detailed description of args.
-
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            method (_type_, optional): type of solver.
-                If None, scipy will select one of BFGS, L-BFGS-B, SLSQP,
-                depending on whether or not the problem has constraints or bounds.
-                Defaults to None.
-            bounds (_type_, optional): bounds on variables. Defaults to None.
-            constraints (tuple, optional): constraints definition. Defaults to ().
-            tol (_type_, optional): Tolerance for termination. Defaults to None.
-            callback (_type_, optional): A callable called after each iteration. Defaults to None.
-            options (_type_, optional): A dictionary of solver options. Defaults to None.
-            jac (str, optional): Method for computing the gradient vector.
-                Only for CG, BFGS, Newton-CG, L-BFGS-B, TNC, SLSQP, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr.
-                In addition to scipy options, this supports 'autograd', which uses pytorch autograd.
-                This setting is ignored for methods that don't require gradient. Defaults to 'autograd'.
-            hess (str, optional):
-                Method for computing the Hessian matrix.
-                Only for Newton-CG, dogleg, trust-ncg, trust-krylov, trust-exact and trust-constr.
-                This setting is ignored for methods that don't require hessian. Defaults to 'autograd'.
-        """
         super().__init__(params, {})
         self.method = method
         self.bounds = bounds
@@ -134,6 +134,20 @@ class ScipyMinimize(TensorListOptimizer):
 
 
 class ScipyDE(TensorListOptimizer):
+    """Use scipy.minimize.differential_evolution as pytorch optimizer. Note that this performs full minimization on each step,
+    so usually you would want to perform a single step. This also requires bounds to be specified.
+
+    Please refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html
+    for all other args.
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        bounds (tuple[float,float], optional): tuple with lower and upper bounds.
+            DE requires bounds to be specified. Defaults to None.
+
+        other args:
+            refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html
+    """
     def __init__(
         self,
         params,
@@ -157,19 +171,6 @@ class ScipyDE(TensorListOptimizer):
         integrality = None,
 
     ):
-        """Use scipy.minimize.differential_evolution as pytorch optimizer. Note that this performs full minimization on each step,
-        so usually you would want to perform a single step. This also requires bounds to be specified.
-
-        Please refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html
-        for all other args.
-
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            bounds (tuple[float,float], optional): tuple with lower and upper bounds.
-                DE requires bounds to be specified. Defaults to None.
-
-        other args: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html
-        """
         super().__init__(params, {})
 
         kwargs = locals().copy()
@@ -199,7 +200,7 @@ class ScipyDE(TensorListOptimizer):
         return res.fun
 
 
-class ScipyMinimizeSubspace(ModularOptimizer):
+class ScipyMinimizeSubspace(Modular):
     def __init__(
         self,
         params,
@@ -216,8 +217,9 @@ class ScipyMinimizeSubspace(ModularOptimizer):
         callback=None,
         options=None,
         jac: T.Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
-        hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
+        hess: T.Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = '2-point',
     ):
+        """experimental seems to be very slow maybe don't use yet"""
 
         scopt = OptimizerWrapper(
                 ScipyMinimize,

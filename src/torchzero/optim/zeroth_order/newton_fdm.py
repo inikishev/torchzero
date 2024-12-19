@@ -8,10 +8,39 @@ from ...modules import (LR, BacktrackingLS, FallbackLinearSystemSolvers,
                         LinearSystemSolvers, LineSearches, ClipNorm)
 from ...modules import NewtonFDM as _NewtonFDM
 from ...modules import Proj2Masks, ProjRandom, Subspace, get_line_search
-from ..modular import ModularOptimizer
+from ..modular import Modular
 
 
-class NewtonFDM(ModularOptimizer):
+class NewtonFDM(Modular):
+    """Newton method with gradient and hessian approximated via finite difference.
+
+    This performs approximately `4 * n^2 + 1` evaluations per step;
+    if `diag` is True, performs `n * 2 + 1` evaluations per step.
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        lr (float, optional): learning rate.
+        eps (float, optional): epsilon for finite difference.
+            Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
+        diag (bool, optional): whether to only approximate diagonal elements of the hessian.
+            This also ignores `solver` if True. Defaults to False.
+        solver (LinearSystemSolvers, optional):
+            solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
+        fallback (FallbackLinearSystemSolvers, optional):
+            what to do if solver fails. Defaults to "safe_diag"
+            (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
+        validate (bool, optional):
+            validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
+            If not, undo the step and perform a gradient descent step.
+        tol (float, optional):
+            only has effect if `validate` is enabled.
+            If loss increased by `loss * tol`, perform gradient descent step.
+            Set this to 0 to guarantee that loss always decreases. Defaults to 1.
+        gd_lr (float, optional):
+            only has effect if `validate` is enabled.
+            Gradient descent step learning rate. Defaults to 1e-2.
+        line_search (OptimizerModule | None, optional): line search module, can be None. Defaults to 'brent'.
+    """
     def __init__(
         self,
         params,
@@ -26,35 +55,6 @@ class NewtonFDM(ModularOptimizer):
         gd_lr = 1e-2,
         line_search: LineSearches | None = 'brent',
     ):
-        """Newton method with gradient and hessian approximated via finite difference.
-
-        This performs approximately `4 * n^2 + 1` evaluations per step;
-        if `diag` is True, performs `n * 2 + 1` evaluations per step.
-
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            lr (float, optional): learning rate.
-            eps (float, optional): epsilon for finite difference.
-                Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
-            diag (bool, optional): whether to only approximate diagonal elements of the hessian.
-                This also ignores `solver` if True. Defaults to False.
-            solver (LinearSystemSolvers, optional):
-                solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
-            fallback (FallbackLinearSystemSolvers, optional):
-                what to do if solver fails. Defaults to "safe_diag"
-                (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
-            validate (bool, optional):
-                validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
-                If not, undo the step and perform a gradient descent step.
-            tol (float, optional):
-                only has effect if `validate` is enabled.
-                If loss increased by `loss * tol`, perform gradient descent step.
-                Set this to 0 to guarantee that loss always decreases. Defaults to 1.
-            gd_lr (float, optional):
-                only has effect if `validate` is enabled.
-                Gradient descent step learning rate. Defaults to 1e-2.
-            line_search (OptimizerModule | None, optional): line search module, can be None. Defaults to 'brent'.
-        """
         modules: list[OptimizerModule] = [
             _NewtonFDM(eps = eps, diag = diag, solver=solver, fallback=fallback, validate=validate, tol=tol, gd_lr=gd_lr),
         ]
@@ -71,7 +71,38 @@ class NewtonFDM(ModularOptimizer):
         super().__init__(params, modules)
 
 
-class RandomSubspaceNewtonFDM(ModularOptimizer):
+class RandomSubspaceNewtonFDM(Modular):
+    """This projects the parameters into a smaller dimensional subspace,
+    making approximating the hessian via finite difference feasible.
+
+    This performs approximately `4 * subspace_ndim^2 + 1` evaluations per step;
+    if `diag` is True, performs `subspace_ndim * 2 + 1` evaluations per step.
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        subspace_ndim (float, optional): number of random subspace dimensions.
+        lr (float, optional): learning rate.
+        eps (float, optional): epsilon for finite difference.
+            Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
+        diag (bool, optional): whether to only approximate diagonal elements of the hessian.
+        solver (LinearSystemSolvers, optional):
+            solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
+        fallback (FallbackLinearSystemSolvers, optional):
+            what to do if solver fails. Defaults to "safe_diag"
+            (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
+        validate (bool, optional):
+            validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
+            If not, undo the step and perform a gradient descent step.
+        tol (float, optional):
+            only has effect if `validate` is enabled.
+            If loss increased by `loss * tol`, perform gradient descent step.
+            Set this to 0 to guarantee that loss always decreases. Defaults to 1.
+        gd_lr (float, optional):
+            only has effect if `validate` is enabled.
+            Gradient descent step learning rate. Defaults to 1e-2.
+        line_search (OptimizerModule | None, optional): line search module, can be None. Defaults to BacktrackingLS().
+        randomize_every (float, optional): generates new random projections every n steps. Defaults to 1.
+    """
     def __init__(
         self,
         params,
@@ -88,37 +119,6 @@ class RandomSubspaceNewtonFDM(ModularOptimizer):
         line_search: LineSearches | None = 'brent',
         randomize_every: int = 1,
     ):
-        """This projects the parameters into a smaller dimensional subspace,
-        making approximating the hessian via finite difference feasible.
-
-        This performs approximately `4 * subspace_ndim^2 + 1` evaluations per step;
-        if `diag` is True, performs `subspace_ndim * 2 + 1` evaluations per step.
-
-        Args:
-            params: iterable of parameters to optimize or dicts defining parameter groups.
-            subspace_ndim (float, optional): number of random subspace dimensions.
-            lr (float, optional): learning rate.
-            eps (float, optional): epsilon for finite difference.
-                Note that with float32 this needs to be quite high to avoid numerical instability. Defaults to 1e-2.
-            diag (bool, optional): whether to only approximate diagonal elements of the hessian.
-            solver (LinearSystemSolvers, optional):
-                solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
-            fallback (FallbackLinearSystemSolvers, optional):
-                what to do if solver fails. Defaults to "safe_diag"
-                (takes nonzero diagonal elements, or fallbacks to gradient descent if all elements are 0).
-            validate (bool, optional):
-                validate if the step didn't increase the loss by `loss * tol` with an additional forward pass.
-                If not, undo the step and perform a gradient descent step.
-            tol (float, optional):
-                only has effect if `validate` is enabled.
-                If loss increased by `loss * tol`, perform gradient descent step.
-                Set this to 0 to guarantee that loss always decreases. Defaults to 1.
-            gd_lr (float, optional):
-                only has effect if `validate` is enabled.
-                Gradient descent step learning rate. Defaults to 1e-2.
-            line_search (OptimizerModule | None, optional): line search module, can be None. Defaults to BacktrackingLS().
-            randomize_every (float, optional): generates new random projections every n steps. Defaults to 1.
-        """
         if subspace_ndim == 1: projections = [ProjRandom(1)]
         else:
             projections: list[T.Any] = [Proj2Masks(subspace_ndim//2)]

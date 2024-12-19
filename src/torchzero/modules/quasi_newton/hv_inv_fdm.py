@@ -3,15 +3,15 @@ import torch
 from ...core import OptimizerModule
 
 class HvInvFDM(OptimizerModule):
-    def __init__(self, eps=1e-3):
-        """Experimental (maybe don't use yet).
-        This should approximate the hessian via just two backward passes
-        but it only works if hessian is purely diagonal.
-        Otherwise I don't really know what happens and I am looking into it.
+    """Experimental (maybe don't use yet).
+    This should approximate the hessian via just two backward passes
+    but it only works if hessian is purely diagonal.
+    Otherwise I don't really know what happens and I am looking into it.
 
-        Args:
-            eps (float, optional): finite difference epsilon. Defaults to 1e-3.
-        """
+    Args:
+        eps (float, optional): finite difference epsilon. Defaults to 1e-3.
+    """
+    def __init__(self, eps=1e-3):
         super().__init__(dict(eps=eps))
 
     @torch.no_grad

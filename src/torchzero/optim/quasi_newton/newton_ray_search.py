@@ -4,12 +4,12 @@ from collections import abc
 import torch
 
 from ...core import OptimizerModule
-from ...modules import (SGD, HvInvFDM, LineSearches, NewtonFDM, Subspace,
+from ...modules import (SGD, LineSearches, NewtonFDM, Subspace,
                         get_line_search, ProjAscentRay, ProjNormalize, LR, OptimizerWrapper)
-from ..modular import ModularOptimizer
+from ..modular import Modular
 
 
-class NewtonFDMRaySearch(ModularOptimizer):
+class NewtonFDMRaySearch(Modular):
     def __init__(
         self,
         params,
@@ -23,7 +23,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
         ray_width: float = 1e-1,
         line_search: LineSearches | None = 'brent'
     ):
-        """experimental (probably failed) please don't use"""
+        """This is is an experiment and might not work well, maybe don't use yet"""
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
@@ -37,7 +37,7 @@ class NewtonFDMRaySearch(ModularOptimizer):
         super().__init__(params, modules)
 
 
-class LBFGSRaySearch(ModularOptimizer):
+class LBFGSRaySearch(Modular):
     def __init__(
         self,
         params,
@@ -55,7 +55,7 @@ class LBFGSRaySearch(ModularOptimizer):
         history_size: int = 100,
         line_search_fn: str | T.Literal['strong_wolfe'] | None = None,
     ):
-        """experimental (probably failed) please don't use"""
+        """This is is an experiment and might not work well, maybe don't use yet"""
         lbfgs = OptimizerWrapper(
                 torch.optim.LBFGS,
                 pass_closure = True,

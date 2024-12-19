@@ -5,8 +5,8 @@ Line searches.
 import typing as T
 
 from ...core import OptimizerModule
-from ..meta import Chain
-from ..operators import Normalize
+from ..meta.chain import Chain
+from ..misc import Normalize
 from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
                       MultiplicativeLS)
 from .quad_interp import QuadraticInterpolation2Point
