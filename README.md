@@ -1,3 +1,4 @@
+![example workflow](https://github.com/inikishev/torchzero/actions/workflows/tests.yml/badge.svg)
 # torchzero
 This is a work-in-progress general purpose optimization library for pytorch. We have zeroth, first, second order and quasi newton methods, gradient approximation, line searches and a whole lot of other stuff.
 
