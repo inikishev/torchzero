@@ -3,7 +3,7 @@ This is a work-in-progress general purpose optimization library for pytorch. We 
 
 Most optimizers are modular, meaning you can chain them like this:
 ```py
-optimizer = torchzero.optim.ModularOptimizer(model.parameters(), [*list of modules*])`
+optimizer = torchzero.optim.Modular(model.parameters(), [*list of modules*])`
 ```
 For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. Move `ClipNorm` to the end to clip the update instead of the gradients. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. 
 

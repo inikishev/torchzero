@@ -136,3 +136,17 @@ def test_adagrad(lr, lr_decay, initial_accumulator_value, eps):
         lambda p: tz.optim.Modular(p, tz.m.Adagrad(lr, lr_decay, initial_accumulator_value, eps)),
         lambda p: torch.optim.Adagrad(p, lr, lr_decay, initial_accumulator_value = initial_accumulator_value, eps = eps), # type:ignore
     )
+
+@pytest.mark.parametrize('lr', [1e-1])
+@pytest.mark.parametrize('compare', ['ascent', 'grad', tz.m.Mul(1)])
+@pytest.mark.parametrize('normalize', [True, False])
+@pytest.mark.parametrize('mode', ['zero', 'grad', 'backtrack'])
+@pytest.mark.parametrize('modular', [True, False])
+def test_cautious_vs_intermodule(lr, compare,normalize, mode,modular):
+    """tests IntermoduleCautious"""
+    if modular: opt1 = lambda p: tz.optim.Modular(p, tz.m.Adam(lr), tz.m.Cautious(normalize=normalize, mode=mode))
+    else: opt1 = lambda p: tz.optim.CautiousAdam(p, lr, normalize=normalize, mode=mode)
+    _test_against_reference(
+        opt1,
+        lambda p: tz.optim.Modular(p, tz.m.IntermoduleCautious(tz.m.Adam(lr), compare, normalize=normalize, mode=mode)), # type:ignore
+    )

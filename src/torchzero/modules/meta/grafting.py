@@ -125,6 +125,8 @@ class IntermoduleCautious(OptimizerModule):
             main module or sequence of modules to chain, which update will be used with a consistency mask applied.
         compare_module (OptimizerModule | Iterable[OptimizerModule]):
             module or sequence of modules to chain, which update will be used to compute a consistency mask.
+            Can also be set to `ascent` to compare to update that is passed `main_module`, or `grad` to compare
+            to gradients.
         normalize (bool, optional):
             renormalize update after masking.
             only has effect when mode is 'zero'. Defaults to False.
@@ -143,18 +145,21 @@ class IntermoduleCautious(OptimizerModule):
     def __init__(
         self,
         main_module: OptimizerModule | Iterable[OptimizerModule],
-        compare_module: OptimizerModule | Iterable[OptimizerModule],
+        compare_module: OptimizerModule | Iterable[OptimizerModule] | Literal['ascent', 'grad'],
         normalize=False,
         eps=1e-6,
-        mode: Literal["zero", "grad", "negate", "compare_module"] = "zero",
+        mode: Literal["zero", "grad", "backtrack", "compare_module"] = "zero",
     ):
         super().__init__({})
 
         self._set_child_('main', Chain(main_module, ReturnAscent()))
-        self._set_child_('compare', Chain(compare_module, ReturnAscent()))
+        if isinstance(compare_module, str): self.compare_mode = compare_module
+        else:
+            self._set_child_('compare', Chain(compare_module, ReturnAscent()))
+            self.compare_mode = 'module'
         self.eps = eps
         self.normalize = normalize
-        self.mode: Literal["zero", "grad", "negate", "compare_module"]  = mode
+        self.mode: Literal["zero", "grad", "backtrack", "compare_module"]  = mode
 
     @torch.no_grad
     def step(self, state):
@@ -163,13 +168,18 @@ class IntermoduleCautious(OptimizerModule):
         ascent: TensorList = self.children['main'].step(state_copy) # type:ignore
         state.update_attrs_(state_copy)
 
-        compare: TensorList = self.children['compare'].step(state) # type:ignore
+        if self.compare_mode == 'module': compare: TensorList = self.children['compare'].step(state) # type:ignore
+        else:
+            params = self.get_params()
+            if self.compare_mode == 'ascent': compare: TensorList = state.maybe_use_grad_(params)
+            elif self.compare_mode == 'grad': compare: TensorList = state.maybe_compute_grad_(params)
+            else: raise ValueError(f'Invalid compare_module: {self.compare_mode}')
 
         # mask will be > 0 for parameters where both signs are the same
         mask = (ascent * compare) > 0
 
-        if self.mode == 'negate':
-            ascent -= ascent.mul(2).mul_(mask)
+        if self.mode == 'backtrack':
+            ascent -= ascent.mul(2).mul_(mask.logical_not_())
 
         else:
             # normalize if mode is `zero`
@@ -191,3 +201,4 @@ class IntermoduleCautious(OptimizerModule):
 
         state.ascent = ascent
         return self._update_params_or_step_with_next(state, params)
+

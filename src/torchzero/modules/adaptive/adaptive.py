@@ -53,13 +53,7 @@ class Cautious(OptimizerModule):
             ascent *= fmask
 
             if self.mode == 'grad':
-                print(f'before {ascent = }')
-                print(f'{grad = }')
-                print(f'{mask = }')
-                print(f'{grad * mask.logical_not() = }')
                 ascent += grad * mask.logical_not_()
-                print(f'after {ascent = }')
-                print()
 
             return ascent
 
