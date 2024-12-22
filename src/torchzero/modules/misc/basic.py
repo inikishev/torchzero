@@ -76,13 +76,20 @@ class Add(OptimizerModule):
     def _update(self, state, ascent): return ascent.add_(self.value)
 
 class AddMagnitude(OptimizerModule):
-    """Add `value` multiplied by sign of the ascent, i.e. this adds `value` to the magnitude of the update."""
-    def __init__(self, value):
+    """Add `value` multiplied by sign of the ascent, i.e. this adds `value` to the magnitude of the update.
+
+    Args:
+        value (_type_): value to add to magnitude.
+        add_to_zero (bool, optional): if True, adds `value` to 0s. Otherwise, zeros remain zero. Defaults to True.
+    """
+    def __init__(self, value, add_to_zero=True):
         super().__init__({})
         self.value = value
+        self.add_to_zero = add_to_zero
     @torch.no_grad()
     def _update(self, state, ascent):
-        return ascent.add_(ascent.clamp_magnitude(min=1).sign_().mul_(self.value))
+        if self.add_to_zero: return ascent.add_(ascent.clamp_magnitude(min=1).sign_().mul_(self.value))
+        return ascent.add_(ascent.sign_().mul_(self.value))
 
 class Mul(OptimizerModule):
     """Multiplies the update by `value`."""

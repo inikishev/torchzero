@@ -1,16 +1,17 @@
 import typing
 from collections import abc
 
-import nevergrad as ng
 import numpy as np
 import torch
+
+import nevergrad as ng
 
 from ...core import TensorListOptimizer
 
 
 def _ensure_float(x):
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    elif isinstance(x, np.ndarray): return x.item()
+    if isinstance(x, np.ndarray): return x.item()
     return float(x)
 
 class NevergradOptimizer(TensorListOptimizer):
@@ -44,25 +45,37 @@ class NevergradOptimizer(TensorListOptimizer):
         opt_cls:"type[ng.optimizers.base.Optimizer] | abc.Callable[..., ng.optimizers.base.Optimizer]",
         budget: int | None = None,
         mutable_sigma = False,
+        lb: float | None = None,
+        ub: float | None = None,
         use_init = True,
     ):
-        super().__init__(params, {})
+        defaults = dict(lb=lb, ub=ub, use_init=use_init, mutable_sigma=mutable_sigma)
+        super().__init__(params, defaults)
         self.opt_cls = opt_cls
         self.opt = None
         self.budget = budget
-        self.mutable_sigma = mutable_sigma
-        self.use_init = use_init
 
     @torch.no_grad
     def step(self, closure): # type:ignore # pylint:disable=signature-differs
         params = self.get_params()
         if self.opt is None:
+            ng_params = []
+            for group in self.param_groups:
+                params = group['params']
+                mutable_sigma = group['mutable_sigma']
+                use_init = group['use_init']
+                lb = group['lb']
+                ub = group['ub']
+                for p in params:
+                    if p.requires_grad:
+                        if use_init:
+                            ng_params.append(
+                                ng.p.Array(init = p.detach().cpu().numpy(), lower=lb, upper=ub, mutable_sigma=mutable_sigma))
+                        else:
+                            ng_params.append(
+                                ng.p.Array(shape = p.shape, lower=lb, upper=ub, mutable_sigma=mutable_sigma))
 
-            if self.use_init:
-                parametrization = ng.p.Tuple(*(ng.p.Array(init = p.detach().cpu().numpy(), mutable_sigma=self.mutable_sigma) for p in params))
-            else:
-                parametrization = ng.p.Tuple(*(ng.p.Array(shape = p.shape, mutable_sigma=self.mutable_sigma) for p in params))
-
+            parametrization = ng.p.Tuple(*ng_params)
             self.opt = self.opt_cls(parametrization, budget=self.budget)
 
         x: ng.p.Tuple = self.opt.ask() # type:ignore

@@ -1,4 +1,4 @@
-import typing as T
+from typing import Literal
 from collections import abc
 
 import torch
@@ -44,8 +44,15 @@ def _fallback_safe_diag(hessian:torch.Tensor, grad:torch.Tensor, lr = 1e-2):
     return grad.mul_(diag * lr), True
 
 
-LinearSystemSolvers = T.Literal['cholesky', 'lu', 'cholesky_lu', 'lstsq']
-FallbackLinearSystemSolvers = T.Literal['lstsq', 'safe_diag', 'gd']
+def regularize_hessian_(hessian: torch.Tensor, value: float | Literal['eig']):
+    """regularize hessian matrix in-place"""
+    if value == 'eig':
+        hessian.add_(torch.eye(hessian.shape[0], device=hessian.device, dtype=hessian.dtype), alpha=torch.linalg.eigvalsh(hessian).min()) # pylint:disable=not-callable
+    elif value != 0:
+        hessian.add_(torch.eye(hessian.shape[0], device=hessian.device,dtype=hessian.dtype), alpha = value)
+
+LinearSystemSolvers = Literal['cholesky', 'lu', 'cholesky_lu', 'lstsq']
+FallbackLinearSystemSolvers = Literal['lstsq', 'safe_diag', 'gd']
 
 LINEAR_SYSTEM_SOLVERS = {
     "cholesky": _cholesky_solve,
@@ -64,7 +71,8 @@ class ExactNewton(OptimizerModule):
     Args:
         tikhonov (float, optional):
             tikhonov regularization (constant value added to the diagonal of the hessian). 
-            Also known as Levenberg-Marquardt regularization. Defaults to 0.
+            Also known as Levenberg-Marquardt regularization. Can be set to 'eig', so it will be set
+            to the smallest eigenvalue of the hessian if that value is negative. Defaults to 0.
         solver (Solvers, optional):
             solver for Hx = g. Defaults to "cholesky_lu" (cholesky or LU if it fails).
         fallback (Solvers, optional):
@@ -90,17 +98,17 @@ class ExactNewton(OptimizerModule):
     """
     def __init__(
         self,
-        tikhonov: float = 0.0,
+        tikhonov: float | Literal['eig'] = 0.0,
         solver: LinearSystemSolvers = "cholesky_lu",
         fallback: FallbackLinearSystemSolvers = "safe_diag",
         validate=False,
         tol: float = 1,
         gd_lr = 1e-2,
         batched_hessian=True,
-        diag: T.Literal[False] = False,
+        diag: bool = False,
     ):
         super().__init__({})
-        self.tikhonov = tikhonov
+        self.tikhonov: float | Literal['eig'] = tikhonov
         self.batched_hessian = batched_hessian
 
         self.solver: abc.Callable = LINEAR_SYSTEM_SOLVERS[solver]
@@ -131,8 +139,7 @@ class ExactNewton(OptimizerModule):
         numel = gvec.numel()
 
         # tikhonov regularization
-        if self.tikhonov != 0:
-            hessian += torch.eye(numel, device=hessian.device,dtype=hessian.dtype) * self.tikhonov
+        regularize_hessian_(hessian, self.tikhonov)
 
         # calculate newton step
         if self.diag:

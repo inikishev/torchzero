@@ -1,4 +1,4 @@
-import typing as T
+from typing import Literal
 from collections import abc
 
 import torch
@@ -51,7 +51,7 @@ class ExactNewton(Modular):
         self,
         params,
         lr: float = 1,
-        tikhonov: float = 0.,
+        tikhonov: float | Literal['eig'] = 0.0,
         solver: LinearSystemSolvers = "cholesky_lu",
         fallback: FallbackLinearSystemSolvers = "safe_diag",
         max_norm: float | None = None,
@@ -61,7 +61,7 @@ class ExactNewton(Modular):
         line_search: LineSearches | None = None,
         batched_hessian = True,
 
-        diag: T.Literal[False] = False,
+        diag: bool = False,
     ):
         modules: list[OptimizerModule] = [
             _ExactNewton(
