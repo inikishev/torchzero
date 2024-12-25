@@ -9,9 +9,8 @@ import scipy.optimize
 
 from ...core import ClosureType, TensorListOptimizer
 from ...grad.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
-from ...modules import (OptimizerWrapper, Proj2Masks, ProjGrad, ProjNormalize,
-                        Subspace)
-from ...modules.subspace.random_subspace import Projection
+from ...modules import OptimizerWrapper
+from ...modules.experimental.subspace import Projection, Proj2Masks, ProjGrad, ProjNormalize, Subspace
 from ...modules.second_order.newton import regularize_hessian_
 from ...tensorlist import TensorList
 from ..modular import Modular
@@ -61,7 +60,8 @@ class ScipyMinimize(TensorListOptimizer):
         self,
         params,
         method: str | None = None,
-        bounds = None,
+        lb = None,
+        ub = None,
         constraints = (),
         tol: float | None = None,
         callback = None,
@@ -70,9 +70,9 @@ class ScipyMinimize(TensorListOptimizer):
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
         tikhonov: float | Literal['eig'] = 0,
     ):
-        super().__init__(params, {})
+        defaults = dict(lb=lb, ub=ub)
+        super().__init__(params, defaults)
         self.method = method
-        self.bounds = bounds
         self.constraints = constraints
         self.tol = tol
         self.callback = callback
@@ -126,6 +126,12 @@ class ScipyMinimize(TensorListOptimizer):
 
         x0 = params.to_vec().detach().cpu().numpy()
 
+        # make bounds
+        lb, ub = self.get_group_keys(['lb', 'ub'], cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
+
         if self.method is not None and (self.method.lower() == 'tnc' or self.method.lower() == 'slsqp'):
             x0 = x0.astype(np.float64) # those methods error without this
 
@@ -133,7 +139,7 @@ class ScipyMinimize(TensorListOptimizer):
             partial(self._objective, params = params, closure = closure),
             x0 = x0,
             method=self.method,
-            bounds=self.bounds,
+            bounds=bounds,
             constraints=self.constraints,
             tol=self.tol,
             callback=self.callback,
@@ -211,7 +217,7 @@ class ScipyRoot(TensorListOptimizer):
 
 
 class ScipyRootOptimization(TensorListOptimizer):
-    """Optimization via finding roots of the gradient with `scipy.optimize.root`.
+    """Optimization via finding roots of the gradient with `scipy.optimize.root` (experimental).
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.

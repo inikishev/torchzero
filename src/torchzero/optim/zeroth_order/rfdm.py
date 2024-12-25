@@ -1,12 +1,12 @@
-import typing as T
-from collections import abc
+from typing import Literal, Unpack
 
 import torch
 
-from ...tensorlist import Distributions
 from ...modules import SGD, OptimizerWrapper
 from ...modules import RandomizedFDM as _RandomizedFDM
+from ...modules import _CommonKwargs, _make_common_modules
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
+from ...tensorlist import Distributions
 from ..modular import Modular
 
 
@@ -20,10 +20,6 @@ class RandomizedFDM(Modular):
         params: iterable of parameters to optimize or dicts defining parameter groups.
         lr (float, optional): learning rate. Defaults to 1e-3.
         eps (float, optional): finite difference epsilon. Defaults to 1e-3.
-        momentum (float, optional): momentum factor. Defaults to 0.
-        weight_decay (float, optional): weight decay (L2 penalty). Defaults to 0.
-        dampening (float, optional): dampening for momentum. Defaults to 0.
-        nesterov (bool, optional): enables Nesterov momentum (supports dampening). Defaults to False.
         formula (_FD_Formulas, optional): finite difference formula. Defaults to "forward".
         n_samples (int, optional): number of random gradient approximations that will be averaged. Defaults to 1.
         distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
@@ -34,25 +30,20 @@ class RandomizedFDM(Modular):
         params,
         lr: float = 1e-3,
         eps: float = 1e-3,
-        momentum:float = 0,
-        weight_decay:float = 0,
-        dampening: float = 0,
-        nesterov:bool = False,
         formula: _FD_Formulas = "forward",
         n_samples: int = 1,
         distribution: Distributions = "normal",
         randomize_every: int = 1,
+        **kwargs: Unpack[_CommonKwargs],
     ):
-        modules = [
-            _RandomizedFDM(
-                eps=eps,
-                formula=formula,
-                n_samples=n_samples,
-                distribution=distribution,
-                randomize_every=randomize_every,
-            ),
-            SGD(lr = lr, momentum = momentum, weight_decay = weight_decay, dampening = dampening, nesterov = nesterov)
-        ]
+        main = _RandomizedFDM(
+            eps=eps,
+            formula=formula,
+            n_samples=n_samples,
+            distribution=distribution,
+            randomize_every=randomize_every,
+        )
+        modules = _make_common_modules(main, lr, kwargs)
         super().__init__(params, modules)
 
 
@@ -85,27 +76,21 @@ class SPSA(RandomizedFDM):
         params,
         lr: float = 1e-3,
         eps: float = 1e-3,
-        momentum:float = 0,
-        weight_decay:float = 0,
-        dampening: float = 0,
-        nesterov:bool = False,
         formula: _FD_Formulas = "central",
         n_samples: int = 1,
         distribution: Distributions = 'rademacher',
         randomize_every: int = 1,
+        **kwargs: Unpack[_CommonKwargs],
     ):
         super().__init__(
             params = params,
             lr = lr,
             eps = eps,
-            momentum = momentum,
-            weight_decay = weight_decay,
-            dampening = dampening,
-            nesterov = nesterov,
             formula = formula,
             n_samples = n_samples,
             distribution = distribution,
             randomize_every=randomize_every,
+            **kwargs,
         )
 
 
@@ -139,27 +124,21 @@ class RandomGaussianSmoothing(RandomizedFDM):
         params,
         lr: float = 1e-2,
         eps: float = 1e-2,
-        momentum:float = 0,
-        weight_decay:float = 0,
-        dampening: float = 0,
-        nesterov:bool = False,
         formula: _FD_Formulas = "forward",
         n_samples: int = 10,
         distribution: Distributions = 'normal',
         randomize_every: int = 1,
+        **kwargs: Unpack[_CommonKwargs],
     ):
         super().__init__(
             params = params,
             lr = lr,
             eps = eps,
-            momentum = momentum,
-            weight_decay = weight_decay,
-            dampening = dampening,
-            nesterov = nesterov,
             formula = formula,
             n_samples = n_samples,
             distribution = distribution,
             randomize_every=randomize_every,
+            **kwargs,
         )
 
 class RandomizedFDMWrapper(Modular):

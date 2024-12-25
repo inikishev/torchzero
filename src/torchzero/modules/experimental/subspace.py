@@ -4,7 +4,7 @@ from collections import abc
 
 import torch
 
-from ... import tl
+from ... import tensorlist as tl
 from ...core import OptimizationState, OptimizerModule
 from ..meta.chain import Chain
 # this whole thing can also be implemented via parameter vectors.

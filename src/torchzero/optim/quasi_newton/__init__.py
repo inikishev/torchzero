@@ -1,2 +1,1 @@
-# from .hv_inv_fdm import HvInvFDM
-# from .newton_ray_search import NewtonFDMRaySearch, LBFGSRaySearch
+from .directional_newton import DirectionalNewton

@@ -18,7 +18,7 @@ def _ensure_float(x):
     elif isinstance(x, np.ndarray): return x.item()
     return float(x)
 
-class MinimizeQuadraticLS(LineSearchBase):
+class DirectionalNewton(LineSearchBase):
     """Minimizes a parabola in the direction of the gradient via one additional forward pass,
     and uses another forward pass to make sure it didn't overstep.
     So in total this performs three forward passes and one backward.
@@ -49,7 +49,7 @@ class MinimizeQuadraticLS(LineSearchBase):
     Note:
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
-    def __init__(self, lr:float=1e-2, max_dist: float | None = 1e4, validate_step = True, log_lrs = False,):
+    def __init__(self, lr:float=1e-2, max_dist: float | None = 1e5, validate_step = True, log_lrs = False,):
         super().__init__({"lr": lr}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
@@ -134,7 +134,7 @@ def _newton_step_3points(
     # xneg is actually x0
     return xneg - dx / ddx, ddx
 
-class MinimizeQuadratic3PointsLS(LineSearchBase):
+class DirectionalNewton3Points(LineSearchBase):
     """Minimizes a parabola in the direction of the update via two additional forward passe,
     and uses another forward pass to make sure it didn't overstep.
     So in total this performs four forward passes.

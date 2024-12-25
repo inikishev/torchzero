@@ -6,8 +6,8 @@ import torch
 from ...core import OptimizerModule
 from ...modules import (LR, BacktrackingLS, FallbackLinearSystemSolvers,
                         LinearSystemSolvers, LineSearches, ClipNorm)
-from ...modules import NewtonFDM as _NewtonFDM
-from ...modules import Proj2Masks, ProjRandom, Subspace, get_line_search
+from ...modules import NewtonFDM as _NewtonFDM, get_line_search
+from ...modules.experimental.subspace import Proj2Masks, ProjRandom, Subspace
 from ..modular import Modular
 
 

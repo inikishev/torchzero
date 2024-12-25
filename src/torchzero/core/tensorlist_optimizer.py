@@ -19,11 +19,12 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
     def __init__(self, params: ParamsT, defaults):
         super().__init__(params, defaults)
         self._params: list[torch.Tensor] = [param for group in self.param_groups for param in group['params']]
+        self.has_complex = any(torch.is_complex(x) for x in self._params)
 
     def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
         self._params: list[torch.Tensor] = [param for group in self.param_groups for param in group['params']]
-
+        self.has_complex = any(torch.is_complex(x) for x in self._params)
 
     def get_params[CLS: Any](self, cls: type[CLS] = TensorList) -> CLS:
         return cls(p for p in self._params if p.requires_grad)

@@ -39,12 +39,8 @@ class Grafting(OptimizerModule):
         # TODO: channelwise
     ):
         super().__init__({})
-
-        if not isinstance(magnitude, Iterable): magnitude = [magnitude]
-        if not isinstance(direction, Iterable): direction = [direction]
-
-        self._set_child_('magnitude', Chain([*magnitude, ReturnAscent()]))
-        self._set_child_('direction', Chain([*direction, ReturnAscent()]))
+        self._set_child_('magnitude', Chain(magnitude))
+        self._set_child_('direction', Chain(direction))
         self.ord = ord
         self.eps = eps
         self.layerwise = layerwise
@@ -53,13 +49,13 @@ class Grafting(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         state_copy = state.copy(clone_ascent=True)
-        magnitude: TensorList = self.children['magnitude'].step(state_copy) # type:ignore
+        magnitude = self.children['magnitude'].return_ascent(state_copy)
 
         if state_copy.grad is not None: state.grad = state_copy.grad
         if state_copy.fx0 is not None: state.fx0 = state_copy.fx0
         if state_copy.fx0_approx is not None: state.fx0_approx = state_copy.fx0_approx
 
-        direction: TensorList = self.children['direction'].step(state) # type:ignore
+        direction = self.children['direction'].return_ascent(state)
 
         if self.layerwise:
             M = magnitude.norm(self.ord)
@@ -95,22 +91,19 @@ class SignGrafting(OptimizerModule):
     ):
         super().__init__({})
 
-        if not isinstance(magnitude, Iterable): magnitude = [magnitude]
-        if not isinstance(sign, Iterable): sign = [sign]
-
-        self._set_child_('magnitude', Chain([*magnitude, ReturnAscent()]))
-        self._set_child_('sign', Chain([*sign, ReturnAscent()]))
+        self._set_child_('magnitude', Chain(magnitude))
+        self._set_child_('sign', Chain(sign))
 
 
     @torch.no_grad
     def step(self, state):
         state_copy = state.copy(clone_ascent=True)
-        magnitude: TensorList = self.children['magnitude'].step(state_copy).abs_() # type:ignore
+        magnitude = self.children['magnitude'].return_ascent(state_copy).abs_()
 
         # make sure to store grad and fx0 if it was calculated
         state.update_attrs_(state_copy)
 
-        sign: TensorList = self.children['sign'].step(state).sign_() # type:ignore
+        sign = self.children['sign'].return_ascent(state).sign_()
 
         state.ascent = magnitude.mul_(sign)
         return self._update_params_or_step_with_next(state)
@@ -152,10 +145,10 @@ class IntermoduleCautious(OptimizerModule):
     ):
         super().__init__({})
 
-        self._set_child_('main', Chain(main_module, ReturnAscent()))
+        self._set_child_('main', Chain(main_module))
         if isinstance(compare_module, str): self.compare_mode = compare_module
         else:
-            self._set_child_('compare', Chain(compare_module, ReturnAscent()))
+            self._set_child_('compare', Chain(compare_module))
             self.compare_mode = 'module'
         self.eps = eps
         self.normalize = normalize
@@ -165,10 +158,10 @@ class IntermoduleCautious(OptimizerModule):
     def step(self, state):
         params = None
         state_copy = state.copy(clone_ascent=True)
-        ascent: TensorList = self.children['main'].step(state_copy) # type:ignore
+        ascent = self.children['main'].return_ascent(state_copy)
         state.update_attrs_(state_copy)
 
-        if self.compare_mode == 'module': compare: TensorList = self.children['compare'].step(state) # type:ignore
+        if self.compare_mode == 'module': compare = self.children['compare'].return_ascent(state)
         else:
             params = self.get_params()
             if self.compare_mode == 'ascent': compare: TensorList = state.maybe_use_grad_(params)

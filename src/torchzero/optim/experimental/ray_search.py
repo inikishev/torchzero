@@ -1,11 +1,11 @@
-import typing as T
-from collections import abc
+from typing import Literal, Any
 
 import torch
 
 from ...core import OptimizerModule
-from ...modules import (SGD, LineSearches, NewtonFDM, Subspace,
-                        get_line_search, ProjAscentRay, ProjNormalize, LR, OptimizerWrapper)
+from ...modules import (SGD, LineSearches, NewtonFDM,
+                        get_line_search, LR, OptimizerWrapper)
+from ...modules.experimental.subspace import Subspace, ProjNormalize, ProjAscentRay
 from ..modular import Modular
 
 
@@ -24,7 +24,7 @@ class NewtonFDMRaySearch(Modular):
         line_search: LineSearches | None = 'brent'
     ):
         """This is is an experiment and might not work well, maybe don't use yet"""
-        modules: list[OptimizerModule] = [
+        modules: list[Any] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
         ]
@@ -53,7 +53,7 @@ class LBFGSRaySearch(Modular):
         tolerance_grad: float = 1e-7,
         tolerance_change: float = 1e-9,
         history_size: int = 100,
-        line_search_fn: str | T.Literal['strong_wolfe'] | None = None,
+        line_search_fn: str | Literal['strong_wolfe'] | None = None,
     ):
         """This is is an experiment and might not work well, maybe don't use yet"""
         lbfgs = OptimizerWrapper(

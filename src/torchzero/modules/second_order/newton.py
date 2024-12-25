@@ -46,8 +46,8 @@ def _fallback_safe_diag(hessian:torch.Tensor, grad:torch.Tensor, lr = 1e-2):
 
 def regularize_hessian_(hessian: torch.Tensor, value: float | Literal['eig']):
     """regularize hessian matrix in-place"""
-    if value == 'eig':
-        hessian.add_(torch.eye(hessian.shape[0], device=hessian.device, dtype=hessian.dtype), alpha=torch.linalg.eigvalsh(hessian).min()) # pylint:disable=not-callable
+    if value == 'eig': 
+        value = torch.linalg.eigvalsh(hessian).min().clamp_(max=0).neg_() # pylint:disable=not-callable
     elif value != 0:
         hessian.add_(torch.eye(hessian.shape[0], device=hessian.device,dtype=hessian.dtype), alpha = value)
 
@@ -135,8 +135,6 @@ class ExactNewton(OptimizerModule):
             state.grad = grads = TensorList(grads).squeeze_(0)
             gvec = grads.to_vec()
             hessian = hessian_list_to_mat(hessian)
-
-        numel = gvec.numel()
 
         # tikhonov regularization
         regularize_hessian_(hessian, self.tikhonov)

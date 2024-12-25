@@ -1,9 +1,8 @@
-import typing as T
-from collections import abc
+from typing import Literal, Unpack
 
 import torch
 
-from ...modules import FDM as _FDM, SGD, OptimizerWrapper
+from ...modules import FDM as _FDM, OptimizerWrapper, _make_common_modules, _CommonKwargs
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import Modular
 
@@ -21,10 +20,6 @@ class FDM(Modular):
         params: iterable of parameters to optimize or dicts defining parameter groups.
         lr (float, optional): learning rate. Defaults to 1e-3.
         eps (float, optional): finite difference epsilon. Defaults to 1e-3.
-        momentum (float, optional): momentum factor. Defaults to 0.
-        weight_decay (float, optional): weight decay (L2 penalty). Defaults to 0.
-        dampening (float, optional): dampening for momentum. Defaults to 0.
-        nesterov (bool, optional): enables Nesterov momentum (supports dampening). Defaults to False.
         formula (_FD_Formulas, optional): finite difference formula. Defaults to "forward".
         n_points (T.Literal[2, 3], optional): number of points for finite difference formula, 2 or 3. Defaults to 2.
     """
@@ -33,17 +28,12 @@ class FDM(Modular):
         params,
         lr: float = 1e-3,
         eps: float = 1e-3,
-        momentum:float = 0,
-        weight_decay:float = 0,
-        dampening: float = 0,
-        nesterov:bool = False,
         formula: _FD_Formulas = "forward",
-        n_points: T.Literal[2, 3] = 2,
+        n_points: Literal[2, 3] = 2,
+        **kwargs: Unpack[_CommonKwargs],
     ):
-        modules = [
-            _FDM(eps = eps, formula=formula, n_points=n_points),
-            SGD(lr = lr, momentum = momentum, weight_decay = weight_decay, dampening = dampening, nesterov = nesterov)
-        ]
+        main = _FDM(eps = eps, formula=formula, n_points=n_points)
+        modules = _make_common_modules(main, lr, kwargs)
         super().__init__(params, modules)
 
 
@@ -72,7 +62,7 @@ class FDMWrapper(Modular):
         optimizer: torch.optim.Optimizer,
         eps: float = 1e-3,
         formula: _FD_Formulas = "forward",
-        n_points: T.Literal[2, 3] = 2,
+        n_points: Literal[2, 3] = 2,
     ):
         modules = [
             _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),

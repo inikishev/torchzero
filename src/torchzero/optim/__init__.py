@@ -15,3 +15,4 @@ from .quasi_newton import *
 from .zeroth_order import *
 from .second_order import *
 from .first_order import *
+from .experimental import *

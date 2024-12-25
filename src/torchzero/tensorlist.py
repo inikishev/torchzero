@@ -102,6 +102,26 @@ class TensorList(list[torch.Tensor | Any]):
     @property
     def imag(self): return self.__class__(i.imag for i in self)
 
+    def view_as_real(self): return self.__class__(torch.view_as_real(i) for i in self)
+    def view_as_complex(self): return self.__class__(torch.view_as_complex(i) for i in self)
+
+    def to_real_views(self):
+        """Turns all complex tensors into real views, ignoring non-complex tensors, and sets an attribute `_tl_is_complex` to True or False,
+        which `from_real_views` method can use to convert real views back into complex tensors"""
+        tl = TensorList()
+        for p in self:
+            if torch.is_complex(p):
+                p._tl_is_complex = True # type:ignore
+                tl.append(torch.view_as_real(p))
+            else:
+                p._tl_is_complex = False # type:ignore
+                tl.append(p)
+        return tl
+
+    def from_real_views(self):
+        """undoes `to_real_views`."""
+        return self.__class__(torch.view_as_complex(p) if p._tl_is_complex else p for p in self) # type:ignore
+
     def get_existing_grads(self):
         """Returns all gradients that are not None."""
         return self.__class__(i.grad for i in self if i is not None)

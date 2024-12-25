@@ -110,7 +110,6 @@ class OptimizationState:
         if state.fx0 is not None: self.fx0 = state.fx0
         if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
 
-
 class OptimizerModule(TensorListOptimizer, ABC):
     r"""Base class for all modules.
 
@@ -272,6 +271,14 @@ class OptimizerModule(TensorListOptimizer, ABC):
         # peform an update with the ascent direction, or pass it to the child.
         return self._update_params_or_step_with_next(state, params=params)
 
+    def return_ascent(self, state: OptimizationState, params=None) -> TensorList:
+        if params is None: params = self.get_params()
+        true_next = self.next_module
+        self.next_module = _ReturnAscent(params) # type:ignore
+        ascent: TensorList = self.step(state) # type:ignore
+        self.next_module = true_next
+        return ascent
+
     @torch.no_grad
     def step( # type:ignore # pylint:disable=signature-differs # pylint:disable = arguments-renamed
         self,
@@ -293,3 +300,12 @@ class OptimizerModule(TensorListOptimizer, ABC):
         if this module has no child, ascent direction will be subtracted from params.
         Otherwise everything is passed to the child."""
         raise NotImplementedError()
+
+class _ReturnAscent:
+    def __init__(self, params):
+        self.params = params
+
+    @torch.no_grad
+    def step(self, state: OptimizationState) -> TensorList: # type:ignore
+        update = state.maybe_use_grad_(self.params) # this will execute the closure which might be modified
+        return update

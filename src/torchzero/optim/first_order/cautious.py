@@ -1,10 +1,7 @@
-import typing
-from collections import abc
-
-import torch
+from typing import Literal, Unpack
 
 from ...core import OptimizerModule
-from ...modules import Cautious, Adam, SGD, LR
+from ...modules import Cautious, Adam, SGD, _make_common_modules, _CommonKwargs, _get_lr_and_lr_module
 from ..modular import Modular
 
 
@@ -19,13 +16,16 @@ class CautiousAdam(Modular):
         amsgrad=False,
         c_eps = 1e-6,
         normalize = False,
-        mode: typing.Literal['zero', 'grad', 'backtrack'] = 'zero'
+        mode: Literal['zero', 'grad', 'backtrack'] = 'zero',
+        **kwargs: Unpack[_CommonKwargs],
     ):
-        modules: list[OptimizerModule] = [
+        lr, lr_module = _get_lr_and_lr_module(lr, kwargs)
+
+        main: list[OptimizerModule] = [
             Adam(lr = lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
             Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
-
+        modules = _make_common_modules(main, lr_module, kwargs)
         super().__init__(params, modules)
 
 
@@ -40,12 +40,16 @@ class CautiousSGD(Modular):
         nesterov: bool = True,
         c_eps = 1e-6,
         normalize = True,
-        mode: typing.Literal['zero', 'grad', 'backtrack'] = 'zero'
+        mode: Literal['zero', 'grad', 'backtrack'] = 'zero',
+        **kwargs: Unpack[_CommonKwargs], # type:ignore
     ):
-        modules: list[OptimizerModule] = [
+        lr, lr_module = _get_lr_and_lr_module(lr, kwargs)
+
+        main: list[OptimizerModule] = [
             SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay, nesterov = nesterov),
             Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
 
-        super().__init__(params, modules)
+        modules = _make_common_modules(main, lr_module, kwargs)
 
+        super().__init__(params, modules)
