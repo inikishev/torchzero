@@ -335,31 +335,31 @@ class TensorList(list[torch.Tensor | Any]):
 
     def randint_like(self, low: "Scalar | ScalarSequence", high: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
         return self.zipmap_args(torch.randint_like, low, high, **kwargs)
-    def uniform_like(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, **kwargs: Unpack[_NewTensorKwargs]):
+    def uniform_like(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         res = self.empty_like(**kwargs)
-        res.uniform_(low, high)
+        res.uniform_(low, high, generator=generator)
         return res
     def sphere_like(self, radius: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]) -> Self:
         r = self.randn_like(**kwargs)
         return (r * radius) / r.total_vector_norm() # type:ignore
-    def bernoulli(self):
-        return self.__class__(torch.bernoulli(i) for i in self)
-    def bernoulli_like(self, p: "Scalar | ScalarSequence" = 0.5):
+    def bernoulli(self, generator = None):
+        return self.__class__(torch.bernoulli(i, generator=generator) for i in self)
+    def bernoulli_like(self, p: "Scalar | ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be 0."""
-        return self.__class__(torch.bernoulli(i) for i in self.full_like(p))
-    def rademacher_like(self, p: "Scalar | ScalarSequence" = 0.5):
+        return self.__class__(torch.bernoulli(i, generator = generator) for i in self.full_like(p, **kwargs))
+    def rademacher_like(self, p: "Scalar | ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be -1."""
-        return self.bernoulli_like(p) * 2 - 1
+        return self.bernoulli_like(p, generator=generator, **kwargs) * 2 - 1
 
-    def sample_like(self, eps: "Scalar | ScalarSequence" = 1, distribution: Distributions = 'normal'):
+    def sample_like(self, eps: "Scalar | ScalarSequence" = 1, distribution: Distributions = 'normal', generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         """Sample around 0."""
-        if distribution == 'normal': return self.randn_like() * eps
+        if distribution == 'normal': return self.randn_like(**kwargs) * eps # TODO: generator
         if distribution == 'uniform':
             if isinstance(eps, (list,tuple)):
-                return self.uniform_like([-i/2 for i in eps], [i/2 for i in eps]) # type:ignore
-            return self.uniform_like(-eps/2, eps/2)
-        if distribution == 'sphere': return self.sphere_like(eps)
-        if distribution == 'rademacher': return self.rademacher_like() * eps
+                return self.uniform_like([-i/2 for i in eps], [i/2 for i in eps], generator=generator, **kwargs) # type:ignore
+            return self.uniform_like(-eps/2, eps/2, generator=generator, **kwargs)
+        if distribution == 'sphere': return self.sphere_like(eps, **kwargs)
+        if distribution == 'rademacher': return self.rademacher_like(generator=generator, **kwargs) * eps
         raise ValueError(f'Unknow distribution {distribution}')
 
     def eq(self, other: STOrSTSequence): return self.zipmap(torch.eq, other)
