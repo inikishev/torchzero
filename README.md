@@ -21,7 +21,7 @@ def closure(backward = True):
   loss = loss_fn(preds, targets)
 
   # if you can't call loss.backward() and use gradient-free methods, they always call closure with backward=False.
-  # so you can remove the part below but keep the unused backward argument.
+  # so you can remove the part below, but keep the unused backward argument.
   if backward:
     optimizer.zero_grad()
     loss.backward()
