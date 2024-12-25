@@ -30,7 +30,7 @@ This closure will also work with all built in pytorch optimizers, including LBFG
 
 # Contents
 There will be docs with a more exhaustive list and explanations. A preliminary list of all modules is available here https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html#classes. For now I hope that everything should be reasonably straightforward to use.
-- SGD/RProp/RMSProp/AdaGrad/Adam as composable modules
+- SGD/Rprop/RMSProp/AdaGrad/Adam as composable modules. They are also tested to exactly match built in pytorch versions.
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
 - Optimizer grafting (https://openreview.net/forum?id=FpKgG31Z_i9)
 - Laplacian smoothing (https://arxiv.org/abs/1806.06317)
