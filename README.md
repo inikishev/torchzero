@@ -20,7 +20,8 @@ def closure(backward = True):
   preds = model(inputs)
   loss = loss_fn(preds, targets)
 
-  # skip this part if you have no gradients and use zeroth order methods, but keep the unused backward argument.
+  # zeroth order methods always call with backward = False so you can remove this part if you use them,
+  # but keep the unused backward argument
   if backward:
     optimizer.zero_grad()
     loss.backward()
