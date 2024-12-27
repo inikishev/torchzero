@@ -1,24 +1,28 @@
 ![example workflow](https://github.com/inikishev/torchzero/actions/workflows/tests.yml/badge.svg)
 # torchzero
-This is a work-in-progress general purpose optimization library for pytorch. We have zeroth, first, second order and quasi newton methods, gradient approximation, line searches and a whole lot of other stuff.
+This is a work-in-progress optimizers library for pytorch with composable zeroth, first, second order and quasi newton methods, gradient approximation, line searches and a whole lot of other stuff.
 
 Most optimizers are modular, meaning you can chain them like this:
 ```py
 optimizer = torchzero.optim.Modular(model.parameters(), [*list of modules*])`
 ```
-For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. Move `ClipNorm` to the end to clip the update instead of the gradients. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. 
+For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. Move `ClipNorm` to the end to clip the update instead of the gradients. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. Add `Cautious()` to make the optimizer cautious.
 
-Or `[ExactNewton(), BacktrackingLS()]` for newton with backtracking line search. Something a bit more interesting - `[Subspace(ProjRandom(3)), NewtonFDM(1e-3)]` will perform a newton step via finite-difference approximated hessian in a small subspace defined by 3 random projections, making it feasible for large scale problems.
+Each new module takes previous module update and works on it. That way there is no need to reimplement stuff like laplacian smoothing for all optimizers, and it is easy to experiment with grafting, interpolation between different optimizers, and perhaps some weirder combinations like nested momentum. 
 
 # How to use
 
 All modules are defined in `torchzero.modules`. You can generally mix and match them however you want. Some pre-made optimizers are available in `torchzero.optim`.
 
-Many optimizers require closure, which should look like this:
+Some optimizers require closure, which should look like this:
 ```py
 def closure(backward = True):
   preds = model(inputs)
   loss = loss_fn(preds, targets)
+
+  # if you can't call loss.backward(), and instead use gradient-free methods,
+  # they always call closure with backward=False.
+  # so you can remove the part below, but keep the unused backward argument.
   if backward:
     optimizer.zero_grad()
     loss.backward()
@@ -26,30 +30,30 @@ def closure(backward = True):
 
 optimizer.step(closure)
 ```
-This code will also work with all built in pytorch optimizers, including LBFGS, all optimizers in this library, as well as most custom ones.
+This closure will also work with all built in pytorch optimizers, including LBFGS, all optimizers in this library, as well as most custom ones.
 
-# Stuff i've implemented
+# Contents
 There will be docs with a more exhaustive list and explanations. A preliminary list of all modules is available here https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html#classes. For now I hope that everything should be reasonably straightforward to use.
-- Gradient approximation via finite difference or randomized finite difference (which includes SPSA and Gaussian smoothing algorithm described in *Nesterov, Y., & Spokoiny, V. (2017). Random gradient-free minimization of convex functions. Foundations of Computational Mathematics, 17(2), 527-566.*)
-- Exact Newton's method (with Levenberg-Marquardt regularization), and newton with hessian approximation via finite difference.
-- Various line searches
-- Polyak momentum, nesterov momentum
-- Gradient clipping and normalization
-- Optimizer grafting (*Agarwal, N., Anil, R., Hazan, E., Koren, T., & Zhang, C. Learning Rate Grafting: Transferability of Optimizer Tuning.*)
-- Learning rate droput (*Lin, H., Zeng, W., Zhuang, Y., Ding, X., Huang, Y., & Paisley, J. (2022). Learning rate dropout. IEEE Transactions on Neural Networks and Learning Systems, 34(11), 9029-9039.*).
-- Laplacian smoothing (*Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55*)
+- SGD/Rprop/RMSProp/AdaGrad/Adam as composable modules. They are also tested to exactly match built in pytorch versions.
 - Cautious Optimizers (https://huggingface.co/papers/2411.16085)
-- Projections into small random subspace (which is a part of things like *Gower, R., Kovalev, D., Lieder, F., & Richtárik, P. (2019). RSN: randomized subspace Newton. Advances in Neural Information Processing Systems, 32.*). Unfortunately that won't work with ExactNewton module (yet), but it works with NewtonFDM.
-- I've implemented SGD/RProp/RMSProp/AdaGrad/Adam that exactly match pytorch versions as composable modules as well, so if you ever wanted Adam with line search, you can now do it (but check out *Kenneweg, P., Kenneweg, T., Fumagalli, F., & Hammer, B. (2024, June). No learning rates needed: Introducing SALSA-Stable Armijo Line Search Adaptation. In 2024 International Joint Conference on Neural Networks (IJCNN) (pp. 1-8). IEEE.*)
+- Optimizer grafting (https://openreview.net/forum?id=FpKgG31Z_i9)
+- Laplacian smoothing (https://arxiv.org/abs/1806.06317)
+- Polyak momentum, nesterov momentum
+- Gradient norm and value clipping, gradient normalization
+- Gradient centralization (https://arxiv.org/abs/2004.01461)
+- Learning rate droput (https://pubmed.ncbi.nlm.nih.gov/35286266/).
+- Forward gradients (https://arxiv.org/abs/2202.08587)
+- Gradient approximation via finite difference or randomized finite difference, which includes SPSA, RDSA, FDSA and Gaussian smoothing (https://arxiv.org/abs/2211.13566v3)
+- Various line searches
+- Exact Newton's method (with Levenberg-Marquardt regularization), newton with hessian approximation via finite difference, subspace finite differences newton.
+- Directional newton via one additional forward pass
 
 All modules should be quite fast, especially on models with many different parameters, due to `_foreach` operations.
 
-Also due to the modular nature of those implementations, they usually turn out to have reasonably clean code and might be good as reference implementations.
-
-But the code is still highly experimental, untested and subject to change, so feel free but be careful if using this for actual project.
+I am getting to the point where I can start focusing on good docs and tests. As of now, the code should be considered experimental, untested and subject to change, so feel free but be careful if using this for actual project.
 
 
-# other stuff
+# Wrappers
 ### scipy.optimize.minimize wrapper
 scipy.optimize.minimize wrapper with support for both gradient and hessian via batched autograd
 ```py
