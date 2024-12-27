@@ -1,8 +1,8 @@
-from collections import abc
+from collections.abc import Sequence, Iterable
 
 import torch
 
-def _jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False):
+def _jacobian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
     flat_input = torch.cat([i.reshape(-1) for i in input])
     grad_ouputs = torch.eye(len(flat_input), device=input[0].device, dtype=input[0].dtype)
     jac = []
@@ -20,7 +20,7 @@ def _jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor]
 
 
 
-def _jacobian_batched(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False):
+def _jacobian_batched(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
     flat_input = torch.cat([i.reshape(-1) for i in input])
     return torch.autograd.grad(
         flat_input,
@@ -32,7 +32,7 @@ def _jacobian_batched(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch
         is_grads_batched=True,
     )
 
-def jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False, batched=True) -> abc.Sequence[torch.Tensor]:
+def jacobian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
     """Calculate jacobian of a sequence of tensors w.r.t another sequence of tensors.
     Returns a sequence of tensors with the length as `wrt`.
     Each tensor will have the shape `(*input.shape, *wrt[i].shape)`.
@@ -52,7 +52,7 @@ def jacobian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor],
     if batched: return _jacobian_batched(input, wrt, create_graph)
     return _jacobian(input, wrt, create_graph)
 
-def hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False, batched=True):
+def hessian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate hessian of a sequence of tensors w.r.t another sequence of tensors.
     Returns a sequence of tensors with the length as `wrt`.
     If you need a hessian matrix out of that sequence, pass it to `hessian_list_to_mat`.
@@ -70,7 +70,7 @@ def hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], 
     """
     return jacobian(jacobian(input, wrt, create_graph=True, batched=batched), wrt, create_graph=create_graph, batched=batched)
 
-def jacobian_and_hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[torch.Tensor], create_graph=False, batched=True):
+def jacobian_and_hessian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
     Calculating hessian requires calculating the jacobian. So this function is more efficient than
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
@@ -89,11 +89,11 @@ def jacobian_and_hessian(input: abc.Sequence[torch.Tensor], wrt: abc.Sequence[to
     jac = jacobian(input, wrt, create_graph=True, batched = batched)
     return jac, jacobian(jac, wrt, batched = batched, create_graph=create_graph)
 
-def jacobian_list_to_vec(jacobians: abc.Iterable[torch.Tensor]):
+def jacobian_list_to_vec(jacobians: Iterable[torch.Tensor]):
     """flattens and concatenates a sequence of tensors."""
     return torch.cat([i.ravel() for i in jacobians], 0)
 
-def hessian_list_to_mat(hessians: abc.Sequence[torch.Tensor]):
+def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
     """takes output of `hessian` and returns the 2D hessian matrix.
     Note - I only tested this for cases where input is a scalar."""
     return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)

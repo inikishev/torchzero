@@ -266,6 +266,7 @@ class TensorList(list[torch.Tensor | Any]):
     def short(self): return self.__class__(i.short() for i in self)
     def clone(self): return self.__class__(i.clone() for i in self)
     def detach(self): return self.__class__(i.detach() for i in self)
+    def detach_(self): return self.__class__(i.detach_() for i in self)
 
     # apparently I can't use float for typing if I call a method "float"
     def as_float(self): return self.__class__(i.float() for i in self)
@@ -625,6 +626,10 @@ class TensorList(list[torch.Tensor | Any]):
     def select(self, idx: Any):
         if not isinstance(idx, (list,tuple)): return self.__class__(t[idx] for t in self)
         return self.__class__(t[i] for t,i in zip(self, idx))
+
+    def swap_tensors(self, other: TensorSequence):
+        for s, o in zip(self, other):
+            torch.utils.swap_tensors(s, o)
 
     def flatiter(self) -> Generator[torch.Tensor]:
         for tensor in self:
