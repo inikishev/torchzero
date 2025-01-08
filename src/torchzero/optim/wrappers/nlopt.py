@@ -9,6 +9,7 @@ from ...core import TensorListOptimizer
 
 class NLOptOptimizer(TensorListOptimizer):
     def __init__(self, *args, **kwargs):
+        """i haven't made this one yet"""
         super().__init__(*args, **kwargs)
         self._optimizer = None
 

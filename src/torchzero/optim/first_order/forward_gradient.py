@@ -5,7 +5,7 @@ from ...core import OptimizationState, OptimizerModule
 from ...tensorlist import Distributions
 
 class ForwardGradientsModular(Modular):
-    """EXPERIMENTAL (WILL TEST TOMORROW).
+    """EXPERIMENTAL (WILL TEST TOMORROW (ha ha ha)).
 
     Evaluates jacobian-vector product with a random vector using forward mode autodiff (torch.func.jvp), which is
     the true directional derivative in the direction of that vector.

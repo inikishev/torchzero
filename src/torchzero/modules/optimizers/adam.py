@@ -29,7 +29,8 @@ class Adam(OptimizerModule):
         beta1 (float, optional): exponential decay rate of gradient moving average. Defaults to 0.9.
         beta2 (float, optional): exponential decay rate of squared gradient moving average. Defaults to 0.999.
         eps (float, optional): epsilon for numerical stability. Defaults to 1e-8.
-        amsgrad (bool, optional): whether to use the AMSGrad variant of this algorithm from the paper
+        amsgrad (bool, optional): 
+            whether to use the AMSGrad variant of this algorithm from
             On the Convergence of Adam and Beyond (default: False).
     """
     def __init__(self, lr: float = 1, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, amsgrad=False):

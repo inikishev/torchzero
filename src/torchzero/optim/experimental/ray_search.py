@@ -23,7 +23,9 @@ class NewtonFDMRaySearch(Modular):
         ray_width: float = 1e-1,
         line_search: LineSearches | None = 'brent'
     ):
-        """This is is an experiment and might not work well, maybe don't use yet"""
+        """for experiments, unlikely to work well on most problems.
+
+        explanation - like a fancy line search, instead of a line searches in a cone using FDM newton."""
         modules: list[Any] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
@@ -55,7 +57,9 @@ class LBFGSRaySearch(Modular):
         history_size: int = 100,
         line_search_fn: str | Literal['strong_wolfe'] | None = None,
     ):
-        """This is is an experiment and might not work well, maybe don't use yet"""
+        """for experiments, unlikely to work well on most problems.
+
+        explanation - like a fancy line search, instead of a line searches in a cone using LBFGS."""
         lbfgs = OptimizerWrapper(
                 torch.optim.LBFGS,
                 pass_closure = True,

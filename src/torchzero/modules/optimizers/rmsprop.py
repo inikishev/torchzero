@@ -22,7 +22,8 @@ class RMSProp(OptimizerModule):
     Exactly matches `torch.optim.RMSProp`.
 
     Args:
-        alpha (float, optional): smoothing constant (decay of ascent mean square root running average).
+        alpha (float, optional): 
+            smoothing constant (decay of ascent mean square root running average).
             Defaults to 0.99.
         eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-8.
         centered (float, optional):

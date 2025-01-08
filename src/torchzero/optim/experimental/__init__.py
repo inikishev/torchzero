@@ -1,1 +1,1 @@
-from .experimental import ReciprocalSGD, RandomCoordinateMomentum, NestedNesterov, GradMin
+from .experimental import ReciprocalSGD, RandomCoordinateMomentum, GradMin

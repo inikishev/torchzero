@@ -217,7 +217,7 @@ class ScipyRoot(TensorListOptimizer):
 
 
 class ScipyRootOptimization(TensorListOptimizer):
-    """Optimization via finding roots of the gradient with `scipy.optimize.root` (experimental).
+    """Optimization via finding roots of the gradient with `scipy.optimize.root` (for experiments, won't work well on most problems).
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.
@@ -389,7 +389,7 @@ class ScipyMinimizeSubspace(Modular):
         jac: Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = '2-point',
     ):
-        """experimental seems to be very slow maybe don't use yet"""
+        """for experiments and won't work well on most problems"""
 
         scopt = OptimizerWrapper(
                 ScipyMinimize,

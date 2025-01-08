@@ -1,17 +1,24 @@
-from typing import Literal, Any
 from collections import abc
+from typing import Any, Literal
 
 import torch
 
 from ...core import OptimizerModule, TensorListOptimizer
-from ...modules import LR, ClipNorm
+from ...modules import (
+    LR,
+    ClipNorm,
+    FallbackLinearSystemSolvers,
+    LinearSystemSolvers,
+    LineSearches,
+    get_line_search,
+)
 from ...modules import ExactNewton as _ExactNewton
-from ...modules import (FallbackLinearSystemSolvers, LinearSystemSolvers,
-                        LineSearches, get_line_search)
 from ..modular import Modular
 
+
 class ExactNewton(Modular):
-    """Peforms an exact Newton step using batched autograd.
+    """Peforms an exact Newton step using batched autograd. Note that torch.func would be way more efficient
+    but much more restrictive to what operations are allowed (I will add it at some point).
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.

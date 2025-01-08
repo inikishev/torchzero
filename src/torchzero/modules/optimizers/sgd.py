@@ -19,7 +19,7 @@ class SGD(OptimizerModule):
     """
     def __init__(
         self,
-        lr: float = 1e-3,
+        lr: float = 1,
         momentum: float = 0,
         dampening: float = 0,
         weight_decay: float = 0,
