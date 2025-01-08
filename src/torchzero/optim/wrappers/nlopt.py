@@ -1,11 +1,10 @@
 import typing
-from collections import abc
+from collections.abc import Mapping, Callable
 
 import numpy as np
 import torch
 
-import nevergrad as ng
-
+import nlopt
 from ...core import TensorListOptimizer
 
 class NLOptOptimizer(TensorListOptimizer):
@@ -13,5 +12,5 @@ class NLOptOptimizer(TensorListOptimizer):
         super().__init__(*args, **kwargs)
         self._optimizer = None
 
-    def _get_optimizer(self, loss_fn: typing.Callable[[torch.Tensor], torch.Tensor]) -> abc.Mapping:
-        if self._optimizer is None:
+    def _get_optimizer(self, loss_fn: Callable[[torch.Tensor], torch.Tensor]) -> Mapping:
+        if self._optimizer is None: ...

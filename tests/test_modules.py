@@ -27,10 +27,10 @@ def _test_optimizer(lmbda, tol=1e-1):
     for i in range(100):
         loss = opt.step(closure)
         losses.append(loss)
-        assert isinstance(loss, torch.Tensor), (i, type(loss), loss)
-        assert torch.isfinite(loss), (i, loss)
+        assert isinstance(loss, torch.Tensor), (opt.__class__.__name__, i, type(loss), loss)
+        assert torch.isfinite(loss), (opt.__class__.__name__, i, loss)
         
-    assert loss <= tol, (tol, loss, [i.detach().cpu().item() for i in losses])
+    assert loss <= tol, (opt.__class__.__name__, tol, loss, [i.detach().cpu().item() for i in losses])
     if PRINT_LOSSES: print(opt.__class__.__name__, loss.detach().cpu().item())
     
     
@@ -48,10 +48,10 @@ OPTS = [
     lambda p: tz.optim.RMSProp(p, 10),
     lambda p: tz.optim.Adam(p, 0.9),
     lambda p: tz.optim.Grams(p, 1),
-    lambda p: tz.optim.Lion(p, 1e-1),
+    lambda p: tz.optim.Lion(p, 1),
     lambda p: tz.optim.CautiousAdam(p, 1),
     lambda p: tz.optim.CautiousSGD(p, 1e-2),
-    lambda p: tz.optim.CautiousLion(p, 1e-1),
+    lambda p: tz.optim.CautiousLion(p, 1),
     lambda p: tz.optim.DirectionalNewton(p, 1e-2),
     lambda p: tz.optim.ExactNewton(p, 1),
     lambda p: tz.optim.NestedNesterov(p, 0.01,),
@@ -66,13 +66,13 @@ OPTS = [
     
     # ---------------------------------- MODULES --------------------------------- #
     lambda p: tz.optim.Modular(p, tz.m.ScipyMinimizeScalarLS()),
-    lambda p: tz.optim.Modular(p, [tz.m.Grafting(tz.m.Lion(), tz.m.Adam()), tz.m.LR(2e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.SignGrafting(tz.m.Lion(), tz.m.Adam()), tz.m.LR(4e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.IntermoduleCautious(tz.m.Lion(), tz.m.Adam()), tz.m.LR(4e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.Sum([tz.m.Lion(), tz.m.Adam()]), tz.m.LR(4e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.Mean([tz.m.Lion(), tz.m.Adam()]), tz.m.LR(8e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.Subtract(tz.m.Lion(), tz.m.Adam()), tz.m.LR(8e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.Interpolate(tz.m.Lion(), tz.m.Adam(), 0.5), tz.m.LR(8e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Grafting(tz.m.Grad(), tz.m.Adam()), tz.m.LR(2e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.SignGrafting(tz.m.Lion(), tz.m.Adam()), tz.m.LR(3e-1)]),
+    lambda p: tz.optim.Modular(p, [tz.m.IntermoduleCautious(tz.m.Lion(), tz.m.Adam()), tz.m.LR(5e-1)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Sum(tz.m.Rprop(), tz.m.Adam()), tz.m.LR(1e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Mean(tz.m.Rprop(), tz.m.Adam()), tz.m.LR(2e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Subtract(tz.m.Rprop(), tz.m.Adam(20)), tz.m.LR(1e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Interpolate(tz.m.Rprop(), tz.m.Adam(), 0.5), tz.m.LR(3e-1)]),
     # note
     # gradient centralization and laplacian smoothing (and as I understand whitening if I add it)
     # will need to be tested separately as they won't work with 2 scalars.

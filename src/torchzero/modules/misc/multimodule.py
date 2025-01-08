@@ -11,10 +11,9 @@ from ..meta.chain import Chain
 class Sum(OptimizerModule):
     def __init__(
         self,
-        modules: Iterable[OptimizerModule | Iterable[OptimizerModule]],
+        *modules: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        modules = list(modules)
         for i,module in enumerate(modules):
             self._set_child_(i, Chain(module))
 
@@ -41,10 +40,9 @@ class Sum(OptimizerModule):
 class Mean(OptimizerModule):
     def __init__(
         self,
-        modules: Iterable[OptimizerModule | Iterable[OptimizerModule]],
+        *modules: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        modules = list(modules)
         for i,module in enumerate(modules):
             self._set_child_(i, Chain(module))
 
@@ -72,10 +70,9 @@ class Mean(OptimizerModule):
 class Product(OptimizerModule):
     def __init__(
         self,
-        modules: Iterable[OptimizerModule | Iterable[OptimizerModule]],
+        *modules: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        modules = list(modules)
         for i,module in enumerate(modules):
             self._set_child_(i, Chain(module))
 

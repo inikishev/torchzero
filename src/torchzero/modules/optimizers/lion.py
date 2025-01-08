@@ -5,10 +5,9 @@ from ...tensorlist import TensorList
 
 
 def _lion_step_(ascent: TensorList, ema: TensorList, beta1, beta2,):
-    update = (ema * beta1).mul_(ascent * (1 - beta1)).sign_()
-    ema.lerp_compat_(update, 1-beta2)
-    ascent += update
-
+    update = (ema * beta1).add_(ascent * (1 - beta1)).sign_()
+    ema.lerp_compat_(ascent, 1-beta2)
+    return update
 
 class Lion(OptimizerModule):
     """evolved sign momentum https://arxiv.org/abs/2302.06675"""
