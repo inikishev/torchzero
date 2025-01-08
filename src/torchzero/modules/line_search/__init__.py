@@ -12,8 +12,9 @@ from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
 from .quad_interp import QuadraticInterpolation2Point
 from .directional_newton import DirectionalNewton3Points, DirectionalNewton
 from .scipy_minimize_scalar import ScipyMinimizeScalarLS
+from .armijo import ArmijoLS
 
-LineSearches = T.Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative', 'newton', 'newton-grad'] | OptimizerModule
+LineSearches = T.Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative', 'newton', 'newton-grad', 'armijo'] | OptimizerModule
 
 def get_line_search(name:str | OptimizerModule) -> OptimizerModule | list[OptimizerModule]:
     if isinstance(name, str):
@@ -25,5 +26,6 @@ def get_line_search(name:str | OptimizerModule) -> OptimizerModule | list[Optimi
         if name == 'brent-norm': return [Normalize(), ScipyMinimizeScalarLS(maxiter=16)]
         if name == 'newton': return DirectionalNewton3Points(1)
         if name == 'newton-grad': return DirectionalNewton(1)
+        if name == 'armijo': return ArmijoLS(1)
         raise ValueError(f"Unknown line search method: {name}")
     return name

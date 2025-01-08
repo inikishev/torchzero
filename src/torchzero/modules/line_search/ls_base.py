@@ -130,5 +130,6 @@ class LineSearchBase(OptimizerModule, ABC):
         self._set_lr_(0, ascent_direction, params)
         ascent_direction.mul_(self._best_lr)
         state.ascent = ascent_direction
+        if state.fx0_approx is None: state.fx0_approx = self._lowest_loss
         return self.next_module.step(state)
 

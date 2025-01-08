@@ -19,12 +19,9 @@ def _ensure_float(x):
     return float(x)
 
 class DirectionalNewton(LineSearchBase):
-    """Minimizes a parabola in the direction of the gradient via one additional forward pass,
-    and uses another forward pass to make sure it didn't overstep.
+    """Minimizes a parabola in the direction of the update via one additional forward pass,
+    and uses another forward pass to make sure it didn't overstep (optionally).
     So in total this performs three forward passes and one backward.
-
-    This can only be used either as the first module or after FDM, as it requires ascent to
-    be the gradient.
 
     First forward and backward pass is used to calculate the value and gradient at initial parameters.
     Then a gradient descent step is performed with `lr` learning rate, and loss is recalculated
@@ -59,19 +56,19 @@ class DirectionalNewton(LineSearchBase):
     def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
         if state.closure is None: raise ValueError('QuardaticLS requires closure')
         closure = state.closure
-        if state.fx0 is None: state.fx0 = state.closure(False)
-        grad = state.grad
-        if grad is None: grad = state.ascent # in case we used FDM
-        if grad is None: raise ValueError('QuardaticLS requires gradients.')
 
         params = self.get_params()
+        grad = state.maybe_compute_grad_(params)
+        ascent = state.maybe_use_grad_(params)
+        if state.fx0 is None: state.fx0 = state.closure(False) # at this stage maybe_compute_grad could've evaluated fx0
+        
         lr: float = self.get_first_group_key('lr') # this doesn't support variable lrs but we still want to support schedulers
 
         # directional f'(x1)
-        y1_prime = grad.total_vector_norm(2)
+        y1_prime = (grad * ascent).total_sum()
 
         # f(x2)
-        y2 = self._evaluate_lr_(lr, closure, grad, params)
+        y2 = self._evaluate_lr_(lr, closure, ascent, params)
 
         # if gradients weren't 0
         if y1_prime != 0:
@@ -79,13 +76,13 @@ class DirectionalNewton(LineSearchBase):
                 x1=0,
                 y1=state.fx0,
                 y1_prime=-y1_prime,
-                x2=lr * y1_prime,
+                x2=lr,
                 # we stepped in the direction of minus gradient times lr.
                 # which is why y1_prime is negative and we multiply x2 by lr.
                 y2=y2
             )
             # so we obtained xmin in lr*grad units. We need in lr units.
-            xmin = _ensure_float(xmin / y1_prime)
+            xmin = _ensure_float(xmin)
 
             # make sure curvature is positive
             if a > 0:
@@ -95,7 +92,7 @@ class DirectionalNewton(LineSearchBase):
 
                     # if validate_step is enabled, make sure loss didn't increase
                     if self.validate_step:
-                        y_val = self._evaluate_lr_(xmin, closure, grad, params)
+                        y_val = self._evaluate_lr_(xmin, closure, ascent, params)
                         # if it increased, move back to y2.
                         if y_val > y2:
                             return float(lr)
@@ -135,8 +132,8 @@ def _newton_step_3points(
     return xneg - dx / ddx, ddx
 
 class DirectionalNewton3Points(LineSearchBase):
-    """Minimizes a parabola in the direction of the update via two additional forward passe,
-    and uses another forward pass to make sure it didn't overstep.
+    """Minimizes a parabola in the direction of the update via two additional forward pass,
+    and uses another forward pass to make sure it didn't overstep (optionally).
     So in total this performs four forward passes.
 
     Unlike MinimizeQuadraticLS, this can be used with any update,
@@ -181,22 +178,20 @@ class DirectionalNewton3Points(LineSearchBase):
         if state.fx0 is None: state.fx0 = state.closure(False)
         params = self.get_params()
 
-        magn = ascent_direction.total_vector_norm(2)
-
         # make a step in the direction and evaluate f(x2)
-        y2 = self._evaluate_lr_(1, closure, ascent_direction, params)
+        y2 = self._evaluate_lr_(lr, closure, ascent_direction, params)
 
         # make a step in the direction and evaluate f(x3)
-        y3 = self._evaluate_lr_(2, closure, ascent_direction, params)
+        y3 = self._evaluate_lr_(lr*2, closure, ascent_direction, params)
 
         # if gradients weren't 0
         xmin, a = _newton_step_3points(
             0, state.fx0,
             # we stepped in the direction of minus ascent_direction.
-            magn, y2,
-            magn * 2, y3
+            lr, y2,
+            lr * 2, y3
         )
-        xmin = _ensure_float(xmin / magn)
+        xmin = _ensure_float(xmin)
 
         # make sure curvature is positive
         if a > 0:
@@ -209,10 +204,10 @@ class DirectionalNewton3Points(LineSearchBase):
                     y_val = self._evaluate_lr_(xmin, closure, ascent_direction, params)
                     # if it increased, move back to y2.
                     if y_val > y2 or y_val > y3:
-                        if y3 > y2: return 1
-                        else: return 2
+                        if y3 > y2: return lr
+                        else: return lr * 2
 
                 return xmin
 
-        if y3 > y2: return 1
-        else: return 2
+        if y3 > y2: return lr
+        else: return lr * 2

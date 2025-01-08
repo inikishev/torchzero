@@ -552,7 +552,7 @@ class TensorList(list[torch.Tensor | Any]):
         
         `out = self + weight * (tensors1 - self)`."""
         return self.add_(TensorList(tensors1).sub(self).mul_(weight))
-
+    
     def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcmul(self, tensors1, tensor2, value))
     def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):

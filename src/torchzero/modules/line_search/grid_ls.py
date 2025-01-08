@@ -1,5 +1,5 @@
-import typing as T
-from collections import abc
+from typing import Any, Literal
+from collections.abc import Sequence
 
 import numpy as np
 import torch
@@ -23,7 +23,7 @@ class GridLS(LineSearchBase):
     """
     def __init__(
         self,
-        lrs: abc.Sequence[float] | np.ndarray | torch.Tensor,
+        lrs: Sequence[float] | np.ndarray | torch.Tensor,
         stop_on_improvement=False,
         stop_on_worsened=False,
         log_lrs = False,

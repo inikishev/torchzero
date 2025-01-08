@@ -217,7 +217,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
     @torch.no_grad
     def _step_update_closure(self, state: OptimizationState) -> ScalarType | None:
-        """Create a new closure which applies the `_update` method and pass it to the child."""
+        """Create a new closure which applies the `_update` method and passes it to the next module."""
         if state.closure is None: raise ValueError('If `make_closure` is True, closure must be provided')
 
         params = self.get_params()

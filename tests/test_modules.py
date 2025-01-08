@@ -1,7 +1,11 @@
 """Sanity check on booth function. All optimizers should converge."""
 import pytest
 import torch
+import numpy as np
 import torchzero as tz
+import importlib.util
+
+PRINT_LOSSES = True
 
 def booth(x,y):
     return (x + 2 * y - 7) ** 2 + (2 * x + y - 5) ** 2
@@ -9,9 +13,13 @@ def booth(x,y):
 x0 = (0, -8)
 
 __pylance = torch.tensor(float('inf'))
-PRINT_LOSSES = True
 
-def _test_optimizer(lmbda, tol=1e-1):
+def _ensure_float(x):
+    if isinstance(x,torch.Tensor): return x.detach().cpu().item()
+    if isinstance(x, np.ndarray): return x.item()
+    return x
+
+def _test_optimizer(lmbda, tol=1e-1, niter=100, allow_non_tensor=False):
     params = torch.tensor(x0, dtype=torch.float32, requires_grad=True)
     opt = lmbda([params])
     
@@ -24,15 +32,20 @@ def _test_optimizer(lmbda, tol=1e-1):
     
     loss = __pylance
     losses = []
-    for i in range(100):
+    for i in range(niter):
         loss = opt.step(closure)
         losses.append(loss)
-        assert isinstance(loss, torch.Tensor), (opt.__class__.__name__, i, type(loss), loss)
-        assert torch.isfinite(loss), (opt.__class__.__name__, i, loss)
+        
+        if allow_non_tensor: 
+            assert isinstance(loss, (torch.Tensor, np.ndarray, int, float)), (opt.__class__.__name__, i, type(loss), loss)
+        else:
+            assert isinstance(loss, torch.Tensor), (opt.__class__.__name__, i, type(loss), loss)
+    
+        if isinstance(loss, torch.Tensor): assert torch.isfinite(loss), (opt.__class__.__name__, i, loss)
+        else: assert np.isfinite(loss), (opt.__class__.__name__, i, loss)
         
     assert loss <= tol, (opt.__class__.__name__, tol, loss, [i.detach().cpu().item() for i in losses])
-    if PRINT_LOSSES: print(opt.__class__.__name__, loss.detach().cpu().item())
-    
+    if PRINT_LOSSES: print(opt.__class__.__name__, _ensure_float(loss))
     
 OPTS = [
     # -------------------------------- OPTIMIZERS -------------------------------- #
@@ -81,3 +94,19 @@ OPTS = [
 @pytest.mark.parametrize('opt', OPTS)
 def test_optimizer(opt):
     _test_optimizer(opt)
+    
+
+def test_scipy_wrapper():
+    from torchzero.optim.wrappers.scipy import ScipyMinimize
+    _test_optimizer(ScipyMinimize, niter=1, allow_non_tensor=True)
+    
+def test_nevergrad_wrapper():
+    if importlib.util.find_spec('nevergrad') is not None:
+        import nevergrad as ng
+        from torchzero.optim.wrappers.nevergrad import NevergradOptimizer
+        _test_optimizer(lambda p: NevergradOptimizer(p, ng.optimizers.OnePlusOne), niter=500, allow_non_tensor=True)
+        
+
+def test_nlopt_wrapper():
+    if importlib.util.find_spec('nlopt') is not None:
+        pass
