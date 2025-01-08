@@ -176,6 +176,7 @@ class RandomizedFDMWrapper(Modular):
                 distribution=distribution,
                 randomize_every=randomize_every,
                 randomize_closure = randomize_closure,
+                make_closure=True,
             ),
             OptimizerWrapper(optimizer, pass_closure=True)
         ]

@@ -16,3 +16,4 @@ from .zeroth_order import *
 from .second_order import *
 from .first_order import *
 from .experimental import *
+from .wrappers.scipy import ScipyMinimize

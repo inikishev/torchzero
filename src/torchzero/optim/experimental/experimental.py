@@ -3,7 +3,7 @@ from typing import Unpack
 
 from ...modules import AddMagnitude, NanToNum, NesterovMomentum, Normalize, Interpolate
 from ...modules import RandomCoordinateMomentum as _RandomCoordinateMomentum
-from ...modules import (Reciprocal, _CommonKwargs, _get_lr_and_lr_module,
+from ...modules import (Reciprocal, _CommonKwargs, _get_baked_in_and_module_lr,
                         _make_common_modules)
 from ...modules.experimental.gradmin import GradMin as _GradMin
 from ...modules.experimental.squared_grad_norm_fdm import \
@@ -32,7 +32,7 @@ class ReciprocalSGD(Modular):
         eps: float = 1e-2,
         **kwargs: Unpack[_CommonKwargs]
     ):
-        lr, lr_module = _get_lr_and_lr_module(lr, kwargs)
+        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
         main = [AddMagnitude(eps), Reciprocal(), NanToNum(0,0,0), Normalize(lr)]
         modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
         super().__init__(params, modules)

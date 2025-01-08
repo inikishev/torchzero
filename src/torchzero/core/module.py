@@ -140,11 +140,6 @@ class OptimizerModule(TensorListOptimizer, ABC):
     def set_params(self, params: ParamsT):
         """
         Set parameters to this module. Use this to set per-parameter group settings.
-
-        .. warning::
-            (Warning from pytorch) Parameters need to be specified as collections that have a deterministic
-            ordering that is consistent between runs. Examples of objects that don't
-            satisfy those properties are sets and iterators over values of dictionaries.
         """
         self._initialize_(params)
         self._has_custom_params = True
@@ -167,8 +162,12 @@ class OptimizerModule(TensorListOptimizer, ABC):
         if self._initialized:
             self._update_child_params_(child)
 
+    def _update_child_params_(self, child: "OptimizerModule"):
+        """Initializes or updates child params with parameters of this module."""
+        return self._update_next_module_params_(child)
+    
     def _set_next_module(self, next_module: "OptimizerModule"):
-        """Set this module's child, overwriting existing children, and initialize it's params."""
+        """Set next module and initialize it's params."""
         self.next_module = next_module
         if self._initialized:
             self._update_next_module_params_(next_module)
@@ -191,9 +190,6 @@ class OptimizerModule(TensorListOptimizer, ABC):
                 # we don't want to overwrite the child's `lr` setting
                 next_module.add_param_group({"params": group["params"]})
 
-    def _update_child_params_(self, child: "OptimizerModule"):
-        """Initializes or updates child params with parameters of this module."""
-        return self._update_next_module_params_(child)
 
     def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
@@ -202,7 +198,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
             self._update_child_params_(c)
 
     def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:
-        """If this has no children, update params and return loss. Otherwise step with the child.
+        """If this has no children, update params and return loss. Otherwise step with the next module.
 
         Optionally pass params to not recreate them if you've already made them.
 
@@ -271,14 +267,6 @@ class OptimizerModule(TensorListOptimizer, ABC):
         # peform an update with the ascent direction, or pass it to the child.
         return self._update_params_or_step_with_next(state, params=params)
 
-    def return_ascent(self, state: OptimizationState, params=None) -> TensorList:
-        if params is None: params = self.get_params()
-        true_next = self.next_module
-        self.next_module = _ReturnAscent(params) # type:ignore
-        ascent: TensorList = self.step(state) # type:ignore
-        self.next_module = true_next
-        return ascent
-
     @torch.no_grad
     def step( # type:ignore # pylint:disable=signature-differs # pylint:disable = arguments-renamed
         self,
@@ -301,6 +289,15 @@ class OptimizerModule(TensorListOptimizer, ABC):
         Otherwise everything is passed to the child."""
         raise NotImplementedError()
 
+    def return_ascent(self, state: OptimizationState, params=None) -> TensorList:
+        """step with this module and return the ascent as tensorlist"""
+        if params is None: params = self.get_params()
+        true_next = self.next_module
+        self.next_module = _ReturnAscent(params) # type:ignore
+        ascent: TensorList = self.step(state) # type:ignore
+        self.next_module = true_next
+        return ascent
+    
 class _ReturnAscent:
     def __init__(self, params):
         self.params = params

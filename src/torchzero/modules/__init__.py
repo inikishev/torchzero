@@ -93,16 +93,30 @@ def _should_decouple_lr(kwargs: _CommonKwargs):
     decoupled_modules = {"update_norm", "update_sign", "update_clip_norm", "update_clip_value"}
     return any(m in kwargs for m in decoupled_modules)
 
-def _get_lr_and_lr_module(lr: float, kwargs: _CommonKwargs):
+def _get_baked_in_and_module_lr(lr: float, kwargs: _CommonKwargs):
+    """some optimizers like adam have `lr` baked in because it is slightly more efficient than using `LR(lr)` module.
+    But some modules like update norm require lr to be 1, so an LR(lr) needs to be put after them. Using this basically checks
+    if any of those modules are being used and if they are, it sets lr to 1 and appends an LR(lr) module.
+    
+    .. code:: py
+        lr, lr_module = _get_lr_and_lr_module(lr, kwargs)
+        main: list[OptimizerModule] = [
+            Adam(lr = lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            Cautious(normalize = normalize, eps = c_eps, mode = mode),
+        ]
+        modules = _make_common_modules(main, lr_module, kwargs)
+        super().__init__(params, modules)
+
+    """
     if _should_decouple_lr(kwargs): return 1, lr
     return lr, None
 
 def _make_common_modules(main: OptimizerModule | Iterable[OptimizerModule] | None, lr_module: float | None, kwargs: _CommonKwargs):
     """common modules, this is used to add common things to all torchzero.optim optimizers
 
-    l1 and l2 depend on learning rate of the optimizer, and are applied before the update rule.
+    l1 and l2 are applied to the gradient. So in that way they depend on the learning rate of the optimizer.
 
-    Decoupled versions also do not depend on learning rate and are applied after the update rule.
+    Decoupled versions do not depend on learning rate and are applied after the update rule.
 
     Update modules, such as update_clip_norm, do not depend on lr either.
     """

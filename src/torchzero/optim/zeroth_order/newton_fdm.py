@@ -1,6 +1,4 @@
-import typing as T
-from collections import abc
-
+from typing import Any, Literal
 import torch
 
 from ...core import OptimizerModule
@@ -55,7 +53,7 @@ class NewtonFDM(Modular):
         gd_lr = 1e-2,
         line_search: LineSearches | None = 'brent',
     ):
-        modules: list[OptimizerModule] = [
+        modules: list[Any] = [
             _NewtonFDM(eps = eps, diag = diag, solver=solver, fallback=fallback, validate=validate, tol=tol, gd_lr=gd_lr),
         ]
 
@@ -121,10 +119,10 @@ class RandomSubspaceNewtonFDM(Modular):
     ):
         if subspace_ndim == 1: projections = [ProjRandom(1)]
         else:
-            projections: list[T.Any] = [Proj2Masks(subspace_ndim//2)]
+            projections: list[Any] = [Proj2Masks(subspace_ndim//2)]
             if subspace_ndim % 2 == 1: projections.append(ProjRandom(1))
 
-        modules: list[OptimizerModule] = [
+        modules: list[Any] = [
             Subspace(
                 modules = _NewtonFDM(
                     eps = eps,

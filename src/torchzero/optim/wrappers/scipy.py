@@ -8,7 +8,7 @@ import torch
 import scipy.optimize
 
 from ...core import ClosureType, TensorListOptimizer
-from ...grad.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
+from ...utils.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
 from ...modules import OptimizerWrapper
 from ...modules.experimental.subspace import Projection, Proj2Masks, ProjGrad, ProjNormalize, Subspace
 from ...modules.second_order.newton import regularize_hessian_
@@ -380,7 +380,8 @@ class ScipyMinimizeSubspace(Modular):
             )
         ),
         method=None,
-        bounds=None,
+        lb = None,
+        ub = None,
         constraints=(),
         tol=None,
         callback=None,
@@ -394,7 +395,8 @@ class ScipyMinimizeSubspace(Modular):
                 ScipyMinimize,
                 pass_closure = True,
                 method = method,
-                bounds = bounds,
+                lb = lb,
+                ub = ub,
                 constraints = constraints,
                 tol = tol,
                 callback = callback,

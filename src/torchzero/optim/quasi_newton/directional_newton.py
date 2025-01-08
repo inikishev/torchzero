@@ -2,7 +2,7 @@ from typing import Literal, Unpack
 
 from ...core import OptimizerModule
 from ...modules import DirectionalNewton as _DirectionalNewton
-from ...modules import (_CommonKwargs, _get_lr_and_lr_module,
+from ...modules import (_CommonKwargs, _get_baked_in_and_module_lr,
                         _make_common_modules)
 from ..modular import Modular
 

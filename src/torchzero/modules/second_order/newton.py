@@ -3,7 +3,7 @@ from collections import abc
 
 import torch
 
-from ...grad.derivatives import hessian_list_to_mat, jacobian_and_hessian
+from ...utils.derivatives import hessian_list_to_mat, jacobian_and_hessian
 from ...tensorlist import TensorList
 from ...core import OptimizerModule
 

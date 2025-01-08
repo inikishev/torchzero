@@ -15,7 +15,7 @@ from .scipy_minimize_scalar import ScipyMinimizeScalarLS
 
 LineSearches = T.Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative', 'newton', 'newton-grad'] | OptimizerModule
 
-def get_line_search(name:str | OptimizerModule):
+def get_line_search(name:str | OptimizerModule) -> OptimizerModule | list[OptimizerModule]:
     if isinstance(name, str):
         name = name.strip().lower()
         if name == 'backtracking': return BacktrackingLS()

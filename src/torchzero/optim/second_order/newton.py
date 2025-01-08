@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Any
 from collections import abc
 
 import torch
@@ -63,7 +63,7 @@ class ExactNewton(Modular):
 
         diag: bool = False,
     ):
-        modules: list[OptimizerModule] = [
+        modules: list[Any] = [
             _ExactNewton(
                 tikhonov=tikhonov,
                 batched_hessian=batched_hessian,

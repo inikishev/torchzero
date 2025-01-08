@@ -1,7 +1,7 @@
 import torch
 
 from ...core import OptimizerModule
-from ...grad.derivatives import jacobian
+from ...utils.derivatives import jacobian
 from ...tensorlist import TensorList
 
 class GradMin(OptimizerModule):

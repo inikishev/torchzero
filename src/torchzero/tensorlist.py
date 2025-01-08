@@ -1,7 +1,7 @@
 r"""
 TensorList is a data type that can be used to manipulate a sequence of tensors such as model parameters,
-with the same methods that you use for normal tensors, plus some additional convenience features.
-Whenever possible, we use _foreach methods and other tricks to speed up computation.
+with the same methods that normal tensors have, plus some additional convenience features.
+Whenever possible, I used _foreach methods and other tricks to speed up computation.
 
 TensorList is similar to TensorDict (https://github.com/pytorch/tensordict).
 If you want to get the most performance out of a collection of tensors, use TensorDict and lock it.
@@ -54,17 +54,6 @@ class MethodCallerWithArgs:
 
     def __reduce__(self):
         return self.__class__, self._name
-
-class _TensorLikeFactory:
-    """_foreach_lerp_ doesn't accept list of scalars, so I have to convert them to tensors
-    meaning I have to give them appropriate dtype and device.
-
-    So this takes a tensor and returns a callable that converts anything to a tensor with same device and dtype"""
-    __slots__ = ("device", "dtype")
-    def __init__(self, tensor):
-        self.device = tensor.device
-        self.dtype = tensor.dtype
-    def __call__(self, x): return torch.tensor(x, dtype = self.dtype, device = self.device)
 
 
 def _maximum_(input:torch.Tensor, other: torch.Tensor):
@@ -522,7 +511,7 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     def clamp_magnitude(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
-        return self.abs().clamp_(min, max) * self.sign().add_(0.5).sign_() # believe it or not this prevents zeros
+        return self.abs().clamp_(min, max) * self.sign().add_(0.5).sign_() # this prevents zeros
     def clamp_magnitude_(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
         sign = self.sign().add_(0.5).sign_()
         return self.abs_().clamp_(min, max).mul_(sign)
@@ -554,10 +543,14 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     def lerp_compat(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
-        """`lerp` but supports python number sequence as weight and implemented through other operations"""
+        """`lerp` but supports python number sequence as weight and implemented through other operations
+        
+        `out = self + weight * (tensors1 - self)`."""
         return self + weight * (TensorList(tensors1) - self)
     def lerp_compat_(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
-        """`lerp_` but supports python number sequence as weight and implemented through other operations"""
+        """`lerp_` but supports python number sequence as weight and implemented through other operations
+        
+        `out = self + weight * (tensors1 - self)`."""
         return self.add_(TensorList(tensors1).sub(self).mul_(weight))
 
     def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
@@ -607,8 +600,10 @@ class TensorList(list[torch.Tensor | Any]):
         return self.zipmap_args_inplace_(_where_, condition, other)
 
     def masked_fill(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
+        """Same as tensor[mask] = value (not in-place), where value must be scalar/scalars"""
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
     def masked_fill_(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
+        """Same as tensor[mask] = value, where value must be scalar/scalars"""
         return self.zipmap_args_inplace_(MethodCallerWithArgs('masked_fill_'), mask, fill_value)
 
     def select_set_(self, mask: TensorSequence, value: STOrSTSequence):
@@ -624,6 +619,7 @@ class TensorList(list[torch.Tensor | Any]):
             tensor[m] = v[m]
 
     def select(self, idx: Any):
+        """same as tensor[idx]"""
         if not isinstance(idx, (list,tuple)): return self.__class__(t[idx] for t in self)
         return self.__class__(t[i] for t,i in zip(self, idx))
 
