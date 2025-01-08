@@ -164,5 +164,6 @@ class Interpolate(OptimizerModule):
         end = self.children['end'].return_ascent(state)
 
         state.ascent = input.lerp_(end, weight = self.weight)
+        
         return self._update_params_or_step_with_next(state)
 
