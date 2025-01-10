@@ -3,22 +3,23 @@
 r"""
 This submodule contains composable optimizer "building blocks".
 """
-from typing import TypedDict, Any, get_type_hints, Literal
-
 from collections.abc import Iterable, Sequence
-from .gradient_approximation import *
+from typing import Any, Literal, TypedDict, get_type_hints
+
+from ..core.module import OptimizerModule
 from .adaptive import *
+from .gradient_approximation import *
 from .line_search import *
 from .meta import *
-from .momentum import *
 from .misc import *
+from .momentum import *
+from .operations import *
+from .optimizers import *
 from .quasi_newton import *
 from .regularization import *
 from .second_order import *
-from .optimizers import *
 from .smoothing import *
 
-from ..core.module import OptimizerModule
 # from .experimental.subspace import *
 
 Modules = OptimizerModule | Sequence[OptimizerModule]
@@ -97,7 +98,7 @@ def _get_baked_in_and_module_lr(lr: float, kwargs: _CommonKwargs):
     """some optimizers like adam have `lr` baked in because it is slightly more efficient than using `LR(lr)` module.
     But some modules like update norm require lr to be 1, so an LR(lr) needs to be put after them. Using this basically checks
     if any of those modules are being used and if they are, it sets lr to 1 and appends an LR(lr) module.
-    
+
     .. code:: py
         lr, lr_module = _get_lr_and_lr_module(lr, kwargs)
         main: list[OptimizerModule] = [

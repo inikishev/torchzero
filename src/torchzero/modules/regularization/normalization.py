@@ -6,7 +6,7 @@ from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
 
-def _normalize_grad(
+def _normalize_grad_(
     grads: abc.Iterable[torch.Tensor],
     norm_value: float = 1,
     ord: float = 2,
@@ -17,11 +17,11 @@ def _normalize_grad(
     if mode in ('param', 'channel'):
         for grad in grads:
             if grad.numel() >= min_numel:
-                if mode == 'channel':
+                if mode == 'channel' and grad.ndim >= 2:
                     norm = torch.linalg.vector_norm(grad, ord, dim=tuple(range(1, grad.ndim)), keepdim=True) # pylint:disable=not-callable
                     norm[norm<=min] = 1
                     grad /= norm / norm_value
-                else: # mode = 'param'
+                else: # mode = 'param' or 1d grad
                     norm = torch.linalg.vector_norm(grad, ord) # pylint:disable=not-callable
                     if norm > min:
                         grad /= norm / norm_value
@@ -65,7 +65,7 @@ def normalize_grad_(
     Example:
         >>> normalize_grad_(model.parameters())
     """
-    _normalize_grad(
+    _normalize_grad_(
         (p.grad for p in params if p.grad is not None),
         norm_value = norm_value,
         ord = ord,
@@ -113,7 +113,7 @@ class Normalize(OptimizerModule):
 
     @torch.no_grad
     def _update(self, state, ascent):
-        _normalize_grad(
+        _normalize_grad_(
             ascent,
             norm_value = self.norm_value,
             ord = self.ord,
@@ -153,7 +153,7 @@ def centralize_grad_(
 
     Args:
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to centralize.
-        mode (str, optional): 
+        mode (str, optional):
             what to centralize.
 
             - "global": centralize the entire gradient (uses mean of entire gradient).
@@ -190,7 +190,7 @@ class Centralize(OptimizerModule):
     """Centralizes the update.
 
     Args:
-        mode (str, optional): 
+        mode (str, optional):
             what to centralize.
 
             - "global": centralize the entire gradient (uses mean of entire gradient).
@@ -287,7 +287,7 @@ def clip_grad_norm_(
     Example:
         >>> clip_grad_norm_(model.parameters())
     """
-    _normalize_grad(
+    _normalize_grad_(
         (p.grad for p in params if p.grad is not None),
         norm_value = max_norm,
         min = max_norm,
@@ -318,7 +318,7 @@ class ClipNorm(OptimizerModule):
 
     @torch.no_grad
     def _update(self, state, ascent):
-        _normalize_grad(
+        _normalize_grad_(
             ascent,
             norm_value = self.max_norm,
             min = self.max_norm,

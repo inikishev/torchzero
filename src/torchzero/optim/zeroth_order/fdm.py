@@ -2,7 +2,7 @@ from typing import Literal, Unpack
 
 import torch
 
-from ...modules import FDM as _FDM, OptimizerWrapper, _make_common_modules, _CommonKwargs
+from ...modules import FDM as _FDM, Wrap, _make_common_modules, _CommonKwargs
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import Modular
 
@@ -66,6 +66,6 @@ class FDMWrapper(Modular):
     ):
         modules = [
             _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),
-            OptimizerWrapper(optimizer, pass_closure=True)
+            Wrap(optimizer, pass_closure=True)
         ]
         super().__init__(optimizer.param_groups, modules)

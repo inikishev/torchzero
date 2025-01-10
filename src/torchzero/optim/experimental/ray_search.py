@@ -4,7 +4,7 @@ import torch
 
 from ...core import OptimizerModule
 from ...modules import (SGD, LineSearches, NewtonFDM,
-                        get_line_search, LR, OptimizerWrapper)
+                        get_line_search, LR, Wrap)
 from ...modules.experimental.subspace import Subspace, ProjNormalize, ProjAscentRay
 from ..modular import Modular
 
@@ -60,7 +60,7 @@ class LBFGSRaySearch(Modular):
         """for experiments, unlikely to work well on most problems.
 
         explanation - like a fancy line search, instead of a line searches in a cone using LBFGS."""
-        lbfgs = OptimizerWrapper(
+        lbfgs = Wrap(
                 torch.optim.LBFGS,
                 pass_closure = True,
                 lr = lr,

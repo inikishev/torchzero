@@ -150,7 +150,7 @@ class TensorList(list[torch.Tensor | Any]):
     def __iadd__(self, other: STOrSTSequence) -> Self: return self.add_(other) # type:ignore
 
     def __sub__(self, other: "Scalar | STSequence") -> Self: return self.sub(other)
-    def __rsub__(self, other: "Scalar | STSequence") -> Self: return - self.sub(other)
+    def __rsub__(self, other: "Scalar | STSequence") -> Self: return self.sub(other).neg_()
     def __isub__(self, other: "Scalar | STSequence") -> Self: return self.sub_(other)
 
     def __mul__(self, other: STOrSTSequence) -> Self: return self.mul(other) # type:ignore
@@ -170,7 +170,7 @@ class TensorList(list[torch.Tensor | Any]):
     def __imod__(self, other: STOrSTSequence):return self.remainder_(other)
 
     def __pow__(self, other: "Scalar | STSequence"): return self.pow(other)
-    #def __rpow__(self, other: Scalar | STSequence): return self.pow(other)
+    def __rpow__(self, other: "Scalar | TensorSequence"): return self.rpow(other)
     def __ipow__(self, other: "Scalar | STSequence"): return self.pow_(other)
 
     def __neg__(self): return self.neg()
@@ -418,6 +418,11 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_pow_(self, exponent)
         return self
 
+    def rpow(self, input: Scalar | TensorSequence): return self.__class__(torch._foreach_pow(input, self))
+    def rpow_(self, input: TensorSequence):
+        torch._foreach_pow_(input, self)
+        return self
+
     def sqrt(self): return self.__class__(torch._foreach_sqrt(self))
     def sqrt_(self):
         torch._foreach_sqrt_(self)
@@ -474,6 +479,51 @@ class TensorList(list[torch.Tensor | Any]):
     def atan(self): return self.__class__(torch._foreach_atan(self))
     def atan_(self):
         torch._foreach_atan_(self)
+        return self
+
+    def sinh(self): return self.__class__(torch._foreach_sinh(self))
+    def sinh_(self):
+        torch._foreach_sinh_(self)
+        return self
+
+    def cosh(self): return self.__class__(torch._foreach_cosh(self))
+    def cosh_(self):
+        torch._foreach_cosh_(self)
+        return self
+
+    def tanh(self): return self.__class__(torch._foreach_tanh(self))
+    def tanh_(self):
+        torch._foreach_tanh_(self)
+        return self
+
+    def log(self): return self.__class__(torch._foreach_log(self))
+    def log_(self):
+        torch._foreach_log_(self)
+        return self
+
+    def log10(self): return self.__class__(torch._foreach_log10(self))
+    def log10_(self):
+        torch._foreach_log10_(self)
+        return self
+
+    def log2(self): return self.__class__(torch._foreach_log2(self))
+    def log2_(self):
+        torch._foreach_log2_(self)
+        return self
+
+    def log1p(self): return self.__class__(torch._foreach_log1p(self))
+    def log1p_(self):
+        torch._foreach_log1p_(self)
+        return self
+
+    def erf(self): return self.__class__(torch._foreach_erf(self))
+    def erf_(self):
+        torch._foreach_erf_(self)
+        return self
+
+    def erfc(self): return self.__class__(torch._foreach_erfc(self))
+    def erfc_(self):
+        torch._foreach_erfc_(self)
         return self
 
     def max(self, dim = None, keepdim = False):
@@ -544,15 +594,15 @@ class TensorList(list[torch.Tensor | Any]):
 
     def lerp_compat(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
         """`lerp` but supports python number sequence as weight and implemented through other operations
-        
+
         `out = self + weight * (tensors1 - self)`."""
         return self + weight * (TensorList(tensors1) - self)
     def lerp_compat_(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
         """`lerp_` but supports python number sequence as weight and implemented through other operations
-        
+
         `out = self + weight * (tensors1 - self)`."""
         return self.add_(TensorList(tensors1).sub(self).mul_(weight))
-    
+
     def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcmul(self, tensors1, tensor2, value))
     def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
@@ -627,12 +677,17 @@ class TensorList(list[torch.Tensor | Any]):
         for s, o in zip(self, other):
             torch.utils.swap_tensors(s, o)
 
+    def unbind_channels(self, dim=0):
+        """returns a new tensorlist where tensors with 2 or more dimensions are split into slices along 1st dimension"""
+        return self.__class__(ch for t in self for ch in (t.unbind(dim) if t.ndim >= 2 else (t,)) )
+
     def flatiter(self) -> Generator[torch.Tensor]:
         for tensor in self:
             yield from tensor.view(-1)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({super().__repr__()})"
+
 
 def _alpha_add(x, other, alpha):
     return x + other * alpha

@@ -9,7 +9,7 @@ import scipy.optimize
 
 from ...core import ClosureType, TensorListOptimizer
 from ...utils.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
-from ...modules import OptimizerWrapper
+from ...modules import Wrap
 from ...modules.experimental.subspace import Projection, Proj2Masks, ProjGrad, ProjNormalize, Subspace
 from ...modules.second_order.newton import regularize_hessian_
 from ...tensorlist import TensorList
@@ -370,6 +370,9 @@ class ScipyDE(TensorListOptimizer):
 
 
 class ScipyMinimizeSubspace(Modular):
+    """for experiments and won't work well on most problems.
+
+    explanation - optimizes in a small subspace using scipy.optimize.minimize, but doesnt seem to work well"""
     def __init__(
         self,
         params,
@@ -389,9 +392,8 @@ class ScipyMinimizeSubspace(Modular):
         jac: Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = '2-point',
     ):
-        """for experiments and won't work well on most problems"""
 
-        scopt = OptimizerWrapper(
+        scopt = Wrap(
                 ScipyMinimize,
                 pass_closure = True,
                 method = method,

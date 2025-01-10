@@ -18,11 +18,11 @@ ClosureType = Callable[..., ScalarType] #
 """
 Closure example:
 .. code-block:: python
-    def closure(backward = True, **k):
+    def closure(backward = True):
         loss = model(inputs)
         if backward:
             optimizer.zero_grad()
-            loss.backward(**k)
+            loss.backward()
         return loss
 
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
@@ -36,7 +36,7 @@ class OptimizationState:
         """A closure that reevaluates the model and returns the loss.
         The closure should accept `backward` boolean argument that is True by default, which,
         if True, sets `.grad` attributes of all learnable params, for example via `loss.backward()`.
-        Closure can be None for some first order optimizers."""
+        Closure can be None for most first order optimizers."""
 
         self.ascent: TensorList | None = None
         """Ascent direction, for example the gradients.
@@ -52,13 +52,15 @@ class OptimizationState:
         This is mainly used as the return value of the step method when fx0 is None."""
 
         self.grad: TensorList | None = None
-        """Gradient if it has been computed, otherwise None."""
+        """Gradient if it has been computed, otherwise None.
+
+        Gradient must be evaluated strictly with initial parameters of the current step"""
 
         self.model = model
         """Model (for higher order derivatives)"""
 
     def maybe_compute_grad_(self, params: TensorList) -> TensorList:
-        """Computes gradient if it hasn't been computed already."""
+        """Computes gradient if it hasn't been computed already, and returns it"""
         if self.grad is None:
 
             if self.closure is not None:
@@ -68,8 +70,8 @@ class OptimizationState:
         return self.grad
 
     def maybe_use_grad_(self, params: TensorList | None) -> TensorList:
-        """If ascent direction is None, use cloned gradient as ascent direction.
-        otherwise returns existing ascent direction.
+        """If ascent direction is None, use cloned gradient as ascent direction and returns it.
+        Otherwise does nothing and returns existing ascent direction.
         If gradient hasn't been computed, this also sets `fx0`."""
         if self.ascent is None:
             if params is None: raise ValueError()
@@ -105,7 +107,9 @@ class OptimizationState:
         return state
 
     def update_attrs_(self, state: "OptimizationState"):
-        """Updates attributes of this state with attributes of another state."""
+        """Updates attributes of this state with attributes of another state.
+
+        This updates `grad`, `fx0` and `fx0_approx`."""
         if state.grad is not None: self.grad = state.grad
         if state.fx0 is not None: self.fx0 = state.fx0
         if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
@@ -165,7 +169,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
     def _update_child_params_(self, child: "OptimizerModule"):
         """Initializes or updates child params with parameters of this module."""
         return self._update_next_module_params_(child)
-    
+
     def _set_next_module(self, next_module: "OptimizerModule"):
         """Set next module and initialize it's params."""
         self.next_module = next_module
@@ -297,7 +301,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         ascent: TensorList = self.step(state) # type:ignore
         self.next_module = true_next
         return ascent
-    
+
 class _ReturnAscent:
     def __init__(self, params):
         self.params = params

@@ -2,7 +2,7 @@ from typing import Literal, Unpack
 
 import torch
 
-from ...modules import SGD, OptimizerWrapper
+from ...modules import SGD, Wrap
 from ...modules import RandomizedFDM as _RandomizedFDM
 from ...modules import _CommonKwargs, _make_common_modules
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
@@ -178,6 +178,6 @@ class RandomizedFDMWrapper(Modular):
                 randomize_closure = randomize_closure,
                 make_closure=True,
             ),
-            OptimizerWrapper(optimizer, pass_closure=True)
+            Wrap(optimizer, pass_closure=True)
         ]
         super().__init__(optimizer.param_groups, modules)

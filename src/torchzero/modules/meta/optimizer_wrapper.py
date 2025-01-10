@@ -3,9 +3,9 @@ from collections import abc
 
 import torch
 
-from ...core import OptimizerModule, _get_loss, OptimizationState
+from ...core import OptimizerModule
 
-class OptimizerWrapper(OptimizerModule):
+class Wrap(OptimizerModule):
     """
     Wraps any torch.optim.Optimizer.
 

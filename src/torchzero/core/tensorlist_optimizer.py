@@ -20,6 +20,7 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         super().__init__(params, defaults)
         self._params: list[torch.Tensor] = [param for group in self.param_groups for param in group['params']]
         self.has_complex = any(torch.is_complex(x) for x in self._params)
+        """True if any of the params are complex"""
 
     def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
@@ -27,6 +28,7 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         self.has_complex = any(torch.is_complex(x) for x in self._params)
 
     def get_params[CLS: Any](self, cls: type[CLS] = TensorList) -> CLS:
+        """returns all params with `requires_grad = True` as a TensorList."""
         return cls(p for p in self._params if p.requires_grad)
 
     def ensure_grad_(self):
@@ -35,16 +37,14 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
             if p.requires_grad and p.grad is None: p.grad = torch.zeros_like(p)
 
     def get_state_key[CLS: MutableSequence](self, key: str, init: _StateInit = torch.zeros_like, params=None, cls: type[CLS] = TensorList) -> CLS:
-        """Returns a TensorList with the `key` states of all `params` that currently have grad or require grad,
-        depending on `mode` passed on `__init__`. Creates the states if they don't exist.
-        This guarantees that the returned TensorList is the same shape as params, so
-        models where some parameters don't have a gradient sometimes will still work.
+        """Returns a tensorlist of all `key` states of all params with `requires_grad = True`.
 
         Args:
             key (str): key to create/access.
             init: Initial value if key doesn't exist. Can be `params`, `grad`, or callable such as `torch.zeros_like`.
                 Defaults to torch.zeros_like.
-            params (_type_, optional): optionally pass params if you already created them. Defaults to None.
+            params (optional): optionally pass params if you already created them. Defaults to None.
+            cls (optional): optionally specify any other MutableSequence subclass to use instead of TensorList.
 
         Returns:
             TensorList: TensorList with the `key` state. Those tensors are stored in the optimizer, so modify them in-place.

@@ -2,6 +2,7 @@ torch
 numpy
 scipy
 nevergrad
+nlopt
 git+https://github.com/inikishev/torchzero.git
 furo
 sphinx-autoapi

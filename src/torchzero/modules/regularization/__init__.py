@@ -1,7 +1,22 @@
 r"""
 This includes regularization modules like weight decay.
 """
-from .weight_decay import l1_regularize_, l2_regularize_, weight_decay_penalty, WeightDecay
-from .noise import AddNoise
 from .dropout import Dropout
 from .lr_scaling import ReduceOutwardLR
+from .noise import AddNoise
+from .normalization import (
+    Centralize,
+    ClipNorm,
+    ClipValue,
+    Normalize,
+    centralize_grad_,
+    clip_grad_norm_,
+    clip_grad_value_,
+    normalize_grad_,
+)
+from .weight_decay import (
+    WeightDecay,
+    l1_regularize_,
+    l2_regularize_,
+    weight_decay_penalty,
+)

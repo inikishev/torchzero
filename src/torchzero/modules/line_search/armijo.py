@@ -34,16 +34,16 @@ class ArmijoLS(LineSearchBase):
     @torch.no_grad
     def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
         if state.closure is None: raise ValueError("closure is not set")
-        if state.ascent is None: raise ValueError("ascent_direction is not set")
+        ascent = state.maybe_use_grad_()
         grad = state.maybe_compute_grad_(params)
         lr = self.get_first_group_key('lr')
         if state.fx0 is None: state.fx0 = state.closure(False)
 
         # loss decrease per lr=1 if function was linear
-        decrease_per_lr = (grad*state.ascent).total_sum()
+        decrease_per_lr = (grad*ascent).total_sum()
 
         for _ in range(self.max_iter):
-            loss = self._evaluate_lr_(lr, state.closure, state.ascent, params)
+            loss = self._evaluate_lr_(lr, state.closure, ascent, params)
 
             # expected decrease
             expected_decrease = decrease_per_lr * lr

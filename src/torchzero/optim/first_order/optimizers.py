@@ -96,15 +96,15 @@ class NormSGD(Modular):
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.
         lr (float): learning rate (default: 1e-3)
-        centralize (bool, optional): whether to centralize gradients. Defaults to False.
+        centralize (bool, optional): whether to centralize gradients (default: True).
         norm_mode (str, optional):
             what to normalize.
 
             - "global": normalize the entire gradient, as if it was a single vector.
 
-            - "param": normalize each param's gradient (default).
+            - "param": normalize each param's gradient.
 
-            - "channel": normalize gradient of each channel of each param.
+            - "channel": normalize gradient of each channel of each param (default).
         centralize_mode (str, optional): what to centralize (same options as `norm_mode`). Defaults to 'channel'.
         min_numel (int, optional):
             skips parameters with less than this many elements. This avoids the issue where
@@ -114,9 +114,9 @@ class NormSGD(Modular):
     def __init__(
         self,
         params,
-        lr: float = 1e-3,
-        centralize=False,
-        norm_mode: Literal["global", "param", "channel"] = 'param',
+        lr: float = 1e-1,
+        centralize=True,
+        norm_mode: Literal["global", "param", "channel"] = 'channel',
         centralize_mode: Literal["global", "param", "channel"] = 'channel',
         min_numel=2,
         **kwargs: Unpack[_CommonKwargs], # type:ignore

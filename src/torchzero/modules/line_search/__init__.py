@@ -6,7 +6,7 @@ import typing as T
 
 from ...core import OptimizerModule
 from ..meta.chain import Chain
-from ..misc import Normalize
+from ..regularization import Normalize
 from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
                       MultiplicativeLS)
 from .quad_interp import QuadraticInterpolation2Point
