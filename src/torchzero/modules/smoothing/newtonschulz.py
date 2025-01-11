@@ -69,7 +69,7 @@ def zeropower_via_newtonschulz_(params: Iterable[torch.Tensor], steps, compiled 
 
 
 class ZeropowerViaNewtonSchulz(OptimizerModule):
-    """Uses newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
+    """Uses Newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "newtonshultz" = False.
     The Muon page says that embeddings and classifier heads should not be orthogonalized.
@@ -77,9 +77,11 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
     The orthogonalization code is taken from https://github.com/KellerJordan/Muon.
 
     Note that unlike this module, Muon also uses Adam for gradients that are not orthogonalized,
-    so I'd still recommend using it. Maybe use `Wrap` to wrap it into a module.
+    so I'd still recommend using it. Maybe use `Wrap` to wrap it into a module (I will make muon
+    with selectable modules to optimize non-muon params soon)
 
-    On the other hand this (version with no adam) seems to slightly beat Muon on a tiny CIFAR10 model.
+    However not using Adam, or putting Adam module after this to apply it to ALL updates, both seem
+    to work quite well too.
 
     Args:
         ns_steps (int, optional):
@@ -102,3 +104,4 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
                 asc.set_(self._zeropower_via_newtonschulz5(asc.view(asc.shape[0], -1), steps).reshape_as(asc).to(asc, copy=False)) # type:ignore
 
         return ascent
+
