@@ -1,4 +1,3 @@
-import typing as T
 from contextlib import nullcontext
 
 import numpy as np

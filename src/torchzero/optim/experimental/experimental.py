@@ -19,9 +19,11 @@ from ...modules import (
     NanToNum,
     NesterovMomentum,
     Normalize,
+    Random,
     RDiv,
     Reciprocal,
     ReduceOutwardLR,
+    UseGradSign,
     WeightDecay,
 )
 from ...modules import RandomCoordinateMomentum as _RandomCoordinateMomentum
@@ -30,6 +32,7 @@ from ...modules.experimental import (
     HVPDiagNewton as _HVPDiagNewton,
 )
 from ...modules.experimental import MinibatchRprop as _MinibatchRprop
+from ...random import Distributions
 from ..modular import Modular
 
 
@@ -74,6 +77,30 @@ class ReciprocalSGD(Modular):
 
         super().__init__(params, modules)
 
+class NoiseSign(Modular):
+    """for experiments, unlikely to work well on most problems.
+
+    explanation - uses random vector with gradient sign, and works quite well despite being completely random."""
+    def __init__(
+        self,
+        params,
+        lr: float = 1e-2,
+        distribution: Distributions = 'normal',
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=True,
+    ):
+        modules: list = [
+            Random(1, distribution),
+            UseGradSign(),
+            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+        ]
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(2, WeightDecay(weight_decay))
+
+        super().__init__(params, modules)
 
 class MomentumNumerator(Modular):
     """for experiments, unlikely to work well on most problems. (somewhat promising)

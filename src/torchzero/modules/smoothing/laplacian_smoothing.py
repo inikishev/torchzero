@@ -21,6 +21,8 @@ def vector_laplacian_smoothing(input: torch.Tensor, sigma: float = 1) -> torch.T
 def gradient_laplacian_smoothing_(params: abc.Iterable[torch.Tensor], sigma: float = 1, layerwise=True, min_numel = 4):
     """Applies laplacian smoothing to gradients of an iterable of parameters.
 
+    This updates gradients in-place.
+
     Args:
         params (abc.Iterable[torch.Tensor]): an iterable of Tensors that will have gradients smoothed.
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.

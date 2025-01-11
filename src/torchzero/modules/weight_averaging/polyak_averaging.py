@@ -11,7 +11,7 @@ from ...core import OptimizerModule
 class PolyakAveraging(OptimizerModule):
     """Every n steps this sets parameters to the average over last n steps.
 
-    The position of this module among other modules doesn't matter.
+    Please put this module at the end, after all other modules.
 
     Args:
         n_steps (int): number of steps (batches).
@@ -22,7 +22,10 @@ class PolyakAveraging(OptimizerModule):
         self.n_steps = n_steps
         self.cur_step = 0
 
+    @torch.no_grad
     def step(self, state):
+        if self.next_module is not None:
+            warn(f'PolyakAveraging should usually be the last module, but {self.next_module.__class__.__name__} is after it.')
         self.cur_step += 1
 
         params = self.get_params()
@@ -43,7 +46,7 @@ class PolyakAveraging(OptimizerModule):
 class EMA(OptimizerModule):
     """Uses exponential moving average of past weights.
 
-    The position of this module among other modules doesn't matter.
+    Please put this module at the end, after all other modules.
 
     Args:
         n_steps (int): number of steps (batches).
@@ -55,7 +58,10 @@ class EMA(OptimizerModule):
         self.cur_step = 0
         self.update_every = update_every
 
+    @torch.no_grad
     def step(self, state):
+        if self.next_module is not None:
+            warn(f'EMA should usually be the last module, but {self.next_module.__class__.__name__} is after it.')
         self.cur_step += 1
 
         params = self.get_params()

@@ -25,6 +25,7 @@ class Accumulate(OptimizerModule):
         self.mean = mean
         self.cur_step = 0
 
+    @torch.no_grad
     def step(self, state):
         self.cur_step += 1
 
