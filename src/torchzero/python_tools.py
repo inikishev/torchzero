@@ -21,4 +21,4 @@ def reduce_dim[X](x:Iterable[Iterable[X]]) -> list[X]: # pylint:disable=E0602
     """Reduces one level of nesting. Takes an iterable of iterables of X, and returns an iterable of X."""
     return functools.reduce(operator.iconcat, x, [])
 
-ScalarType = float | torch.Tensor
+_ScalarLoss = int | float | bool | torch.Tensor

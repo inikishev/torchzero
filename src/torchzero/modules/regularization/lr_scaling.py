@@ -13,11 +13,12 @@ class ReduceOutwardLR(OptimizerModule):
         If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
         they need to have `make_closure` set to True so that they write to `grad` attribute.
     """
-    def __init__(self, mul = 0.5, use_grad=False):
+    def __init__(self, mul = 0.5, use_grad=False, invert=False):
         defaults = dict(mul = mul)
         super().__init__(defaults)
 
         self.use_grad = use_grad
+        self.invert = invert
 
     @torch.no_grad
     def _update(self, state, ascent):
@@ -28,7 +29,8 @@ class ReduceOutwardLR(OptimizerModule):
         else: cur = ascent
 
         # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
-        mask = (params * cur) < 0
+        if self.invert: mask = (params * cur) > 0
+        else: mask = (params * cur) < 0
         ascent.masked_set_(mask, ascent*mul)
 
         return ascent

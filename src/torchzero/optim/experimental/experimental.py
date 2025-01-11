@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from typing import Literal, Unpack
 
 from ...modules import (
+    LR,
     SGD,
     Abs,
     Adam,
@@ -14,36 +15,35 @@ from ...modules import (
     HeavyBall,
     Interpolate,
     Lerp,
+    Multistep,
     NanToNum,
     NesterovMomentum,
     Normalize,
     RDiv,
     Reciprocal,
     ReduceOutwardLR,
-    _CommonKwargs,
-    _get_baked_in_and_module_lr,
-    _make_common_modules,
+    WeightDecay,
 )
 from ...modules import RandomCoordinateMomentum as _RandomCoordinateMomentum
-from ...modules.experimental.gradmin import GradMin as _GradMin
-from ...modules.experimental.squared_grad_norm_fdm import (
-    SquaredGradientNormFDM as _SquaredGradientNormFDM,
+from ...modules.experimental import GradMin as _GradMin
+from ...modules.experimental import (
+    HVPDiagNewton as _HVPDiagNewton,
 )
+from ...modules.experimental import MinibatchRprop as _MinibatchRprop
 from ..modular import Modular
 
 
-class SquaredGradientNormFDM(Modular):
+class HVPDiagNewton(Modular):
     """for experiments, unlikely to work well on most problems.
 
     explanation - this should approximate newton method with 2 backward passes, but only if hessian is purely diagonal"""
     def __init__(
         self,
         params,
-        lr: float = 1,
+        lr: float = 1e-1,
         eps: float = 1e-2,
-        **kwargs: Unpack[_CommonKwargs]
     ):
-        modules = _make_common_modules(_SquaredGradientNormFDM(eps = eps), lr_module = lr, kwargs=kwargs)
+        modules = [_HVPDiagNewton(eps = eps), LR(lr)]
         super().__init__(params, modules)
 
 
@@ -56,22 +56,27 @@ class ReciprocalSGD(Modular):
         params,
         lr: float = 1e-2,
         eps: float = 1e-2,
-        **kwargs: Unpack[_CommonKwargs]
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-
-        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
-        main = [
+        modules: list = [
             AddMagnitude(eps, add_to_zero=False),
             Reciprocal(),
             NanToNum(0,0,0),
-            Normalize(lr)
+            Normalize(1),
+            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
         ]
-        modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
+
         super().__init__(params, modules)
 
 
 class MomentumNumerator(Modular):
-    """for experiments, unlikely to work well on most problems. (this one is promising)
+    """for experiments, unlikely to work well on most problems. (somewhat promising)
 
     explanation - momentum divided by gradient."""
     def __init__(
@@ -81,18 +86,18 @@ class MomentumNumerator(Modular):
         momentum: float = 0.9,
         nesterov: bool = True,
         eps: float = 1e-2,
-        **kwargs: Unpack[_CommonKwargs] # type:ignore
-    ):
+        weight_decay: float = 0,
+        decoupled=True,    ):
 
-        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
-        main = [
+        modules: list = [
             Divide(
-                numerator = SGD(1, momentum, nesterov=nesterov),
+                numerator = SGD(lr = 1, momentum = momentum, nesterov=nesterov),
                 denominator=[Abs(), Add(eps)]
             ),
             Normalize(lr)
         ]
-        modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 class MomentumDenominator(Modular):
@@ -106,15 +111,15 @@ class MomentumDenominator(Modular):
         momentum: float = 0.9,
         nesterov: bool = True,
         eps: float = 1e-2,
-        **kwargs: Unpack[_CommonKwargs] # type:ignore
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-
-        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
-        main = [
-            Div([SGD(1, momentum, nesterov=nesterov), Abs(), Add(eps), Normalize(1)]),
+        modules: list = [
+            Div([SGD(lr = 1, momentum=momentum, nesterov=nesterov), Abs(), Add(eps), Normalize(1)]),
             Normalize(lr)
         ]
-        modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 
@@ -129,19 +134,22 @@ class ExaggeratedNesterov(Modular):
         momentum: float = 0.9,
         dampening: float = 0,
         strength: float = 5,
-        **kwargs: Unpack[_CommonKwargs] # type:ignore
+        weight_decay: float = 0,
+        decoupled=True,
     ):
 
-        main = [
+        modules: list = [
             Interpolate(HeavyBall(momentum, dampening), NesterovMomentum(momentum, dampening), strength),
+            LR(lr),
         ]
-        modules = _make_common_modules(main, lr_module = lr, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 class ExtraCautiousAdam(Modular):
     """for experiments, unlikely to work well on most problems.
 
-    explanation - exaggerates caution."""
+    explanation - caution with true backtracking."""
     def __init__(
         self,
         params,
@@ -154,14 +162,15 @@ class ExtraCautiousAdam(Modular):
         c_eps = 1e-6,
         mode: Literal['zero', 'grad', 'backtrack'] = 'zero',
         strength = 5,
-        **kwargs: Unpack[_CommonKwargs],
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
-        main = [
+        modules: list = [
             Adam(lr, beta1, beta2, eps, amsgrad),
             Lerp(Cautious(normalize, c_eps, mode), strength),
         ]
-        modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 class InwardSGD(Modular):
@@ -174,21 +183,73 @@ class InwardSGD(Modular):
         lr: float = 1e-3,
         momentum: float = 0,
         dampening: float = 0,
-        weight_decay: float = 0,
         nesterov: bool = False,
         mul = 0.5,
         use_grad=False,
-        **kwargs: Unpack[_CommonKwargs], # type:ignore
+        invert=False,
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-        lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs)
-
-        main = [
-            SGD(lr, momentum, dampening, weight_decay, nesterov),
-            ReduceOutwardLR(mul, use_grad)
+        modules: list = [
+            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            ReduceOutwardLR(mul, use_grad, invert)
         ]
-        modules = _make_common_modules(main, lr_module = lr_module, kwargs=kwargs)
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
+class MultistepSGD(Modular):
+    """for experiments, unlikely to work well on most problems.
+
+    explanation - perform multiple steps per batch. Momentum applies to the total update over multiple step"""
+    def __init__(
+        self,
+        params,
+        lr: float = 1e-3,
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        num_steps=2,
+        weight_decay: float = 0,
+        decoupled=True,
+    ):
+        # lr, lr_module = _get_baked_in_and_module_lr(lr, kwargs) # multistep must use lr
+
+        modules: list = [
+            Multistep(LR(lr), num_steps=num_steps),
+            SGD(lr = 1, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+        ]
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
+        super().__init__(params, modules)
+
+
+class MinibatchRprop(Modular):
+    """
+    for experiments, unlikely to work well on most problems.
+
+    explanation: does 2 steps per batch, applies rprop rule on the second step.
+    """
+    def __init__(
+        self,
+        params,
+        lr: float = 1,
+        nplus: float = 1.2,
+        nminus: float = 0.5,
+        lb: float | None = 1e-6,
+        ub: float | None = 50,
+        backtrack=True,
+        next_mode = 'continue',
+        increase_mul = 0.5,
+        weight_decay: float = 0,
+        decoupled=True,
+    ):
+        modules: list = [
+            _MinibatchRprop(lr, nplus=nplus,nminus=nminus,lb=lb,ub=ub,backtrack=backtrack,next_mode=next_mode,increase_mul=increase_mul)
+        ]
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
+        super().__init__(params, modules)
 
 
 class RandomCoordinateMomentum(Modular):
@@ -211,10 +272,12 @@ class RandomCoordinateMomentum(Modular):
         lr: float = 1e-3,
         p: float = 0.1,
         nesterov: bool = True,
-        **kwargs: Unpack[_CommonKwargs] # type:ignore
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-        main = _RandomCoordinateMomentum(p, nesterov)
-        modules = _make_common_modules(main, lr_module = lr, kwargs=kwargs)
+        modules: list = [_RandomCoordinateMomentum(p, nesterov), LR(lr)]
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 class GradMin(Modular):
@@ -226,13 +289,22 @@ class GradMin(Modular):
         self,
         params,
         lr: float = 1e-2,
-        add_loss: float = 1,
+        loss_term: float = 1,
         square: bool = False,
         maximize_grad: bool = False,
-        **kwargs: Unpack[_CommonKwargs],
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=True,
     ):
-        main = _GradMin(add_loss, square, maximize_grad)
-        modules = _make_common_modules(main, lr_module = lr, kwargs=kwargs)
+        modules: list = [
+            _GradMin(loss_term, square, maximize_grad),
+            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+
+        ]
+        if decoupled: modules.append(WeightDecay(weight_decay))
+        else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 

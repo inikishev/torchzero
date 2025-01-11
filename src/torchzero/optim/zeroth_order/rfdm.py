@@ -4,7 +4,7 @@ import torch
 
 from ...modules import SGD, Wrap
 from ...modules import RandomizedFDM as _RandomizedFDM
-from ...modules import _CommonKwargs, _make_common_modules
+from ...modules import WeightDecay
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ...tensorlist import Distributions
 from ..modular import Modular
@@ -24,6 +24,13 @@ class RandomizedFDM(Modular):
         n_samples (int, optional): number of random gradient approximations that will be averaged. Defaults to 1.
         distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
         randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
+        momentum (float, optional): momentum. Defaults to 0.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        nesterov (bool, optional):
+            enables nesterov momentum, otherwise uses heavyball momentum. Defaults to False.
+        weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.
+        decoupled (bool, optional):
+            decouples weight decay from gradient. If True, weight decay doesn't depend on learning rate.
     """
     def __init__(
         self,
@@ -34,16 +41,23 @@ class RandomizedFDM(Modular):
         n_samples: int = 1,
         distribution: Distributions = "normal",
         randomize_every: int = 1,
-        **kwargs: Unpack[_CommonKwargs],
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=False,
     ):
-        main = _RandomizedFDM(
-            eps=eps,
-            formula=formula,
-            n_samples=n_samples,
-            distribution=distribution,
-            randomize_every=randomize_every,
-        )
-        modules = _make_common_modules(main, lr, kwargs)
+        modules: list = [
+            _RandomizedFDM(
+                eps=eps,
+                formula=formula,
+                n_samples=n_samples,
+                distribution=distribution,
+                randomize_every=randomize_every,
+            ),
+            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+        ]
+        if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)
 
 
@@ -66,6 +80,13 @@ class SPSA(RandomizedFDM):
         n_samples (int, optional): number of random gradient approximations that will be averaged. Defaults to 1.
         distribution (Distributions, optional): distribution for random perturbations. Defaults to "rademacher".
         randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
+        momentum (float, optional): momentum. Defaults to 0.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        nesterov (bool, optional):
+            enables nesterov momentum, otherwise uses heavyball momentum. Defaults to False.
+        weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.
+        decoupled (bool, optional):
+            decouples weight decay from gradient. If True, weight decay doesn't depend on learning rate.
 
     reference
         *Spall, J. C. (1992), “Multivariate Stochastic Approximation Using a Simultaneous Perturbation
@@ -80,8 +101,11 @@ class SPSA(RandomizedFDM):
         n_samples: int = 1,
         distribution: Distributions = 'rademacher',
         randomize_every: int = 1,
-        **kwargs: Unpack[_CommonKwargs],
-    ):
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=False,    ):
         super().__init__(
             params = params,
             lr = lr,
@@ -90,7 +114,11 @@ class SPSA(RandomizedFDM):
             n_samples = n_samples,
             distribution = distribution,
             randomize_every=randomize_every,
-            **kwargs,
+            momentum = momentum,
+            dampening = dampening,
+            nesterov = nesterov,
+            weight_decay = weight_decay,
+            decoupled = decoupled,
         )
 
 
@@ -112,6 +140,13 @@ class RandomGaussianSmoothing(RandomizedFDM):
         n_samples (int, optional): number of random gradient approximations that will be averaged. Defaults to 1.
         distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
         randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
+        momentum (float, optional): momentum. Defaults to 0.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        nesterov (bool, optional):
+            enables nesterov momentum, otherwise uses heavyball momentum. Defaults to False.
+        weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.
+        decoupled (bool, optional):
+            decouples weight decay from gradient. If True, weight decay doesn't depend on learning rate.
 
     reference
         *Nesterov, Y., & Spokoiny, V. (2017).
@@ -128,7 +163,11 @@ class RandomGaussianSmoothing(RandomizedFDM):
         n_samples: int = 10,
         distribution: Distributions = 'normal',
         randomize_every: int = 1,
-        **kwargs: Unpack[_CommonKwargs],
+        momentum: float = 0,
+        dampening: float = 0,
+        nesterov: bool = False,
+        weight_decay: float = 0,
+        decoupled=False
     ):
         super().__init__(
             params = params,
@@ -138,7 +177,11 @@ class RandomGaussianSmoothing(RandomizedFDM):
             n_samples = n_samples,
             distribution = distribution,
             randomize_every=randomize_every,
-            **kwargs,
+            momentum = momentum,
+            dampening = dampening,
+            nesterov = nesterov,
+            weight_decay = weight_decay,
+            decoupled = decoupled,
         )
 
 class RandomizedFDMWrapper(Modular):

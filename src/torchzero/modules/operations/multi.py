@@ -2,7 +2,6 @@ from collections.abc import Iterable
 import torch
 
 from ...core import OptimizerModule
-from ..meta.chain import Chain
 
 _Value = int | float | OptimizerModule | Iterable[OptimizerModule]
 
@@ -12,7 +11,7 @@ class Add(OptimizerModule):
         super().__init__({})
 
         if not isinstance(value, (int, float)):
-            self._set_child_('value', Chain(value))
+            self._set_child_('value', value)
 
         self.value = value
 
@@ -32,7 +31,7 @@ class Sub(OptimizerModule):
         super().__init__({})
 
         if not isinstance(subtrahend, (int, float)):
-            self._set_child_('subtrahend', Chain(subtrahend))
+            self._set_child_('subtrahend', subtrahend)
 
         self.subtrahend = subtrahend
 
@@ -51,7 +50,7 @@ class RSub(OptimizerModule):
         super().__init__({})
 
         if not isinstance(minuend, (int, float)):
-            self._set_child_('minuend', Chain(minuend))
+            self._set_child_('minuend', minuend)
 
         self.minuend = minuend
 
@@ -72,8 +71,8 @@ class Subtract(OptimizerModule):
         subtrahend: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        self._set_child_('minuend', Chain(minuend))
-        self._set_child_('subtrahend', Chain(subtrahend))
+        self._set_child_('minuend', minuend)
+        self._set_child_('subtrahend', subtrahend)
 
     @torch.no_grad
     def step(self, state):
@@ -91,7 +90,7 @@ class Mul(OptimizerModule):
         super().__init__({})
 
         if not isinstance(value, (int, float)):
-            self._set_child_('value', Chain(value))
+            self._set_child_('value', value)
 
         self.value = value
 
@@ -111,7 +110,7 @@ class Div(OptimizerModule):
         super().__init__({})
 
         if not isinstance(denominator, (int, float)):
-            self._set_child_('denominator', Chain(denominator))
+            self._set_child_('denominator', denominator)
 
         self.denominator = denominator
 
@@ -130,7 +129,7 @@ class RDiv(OptimizerModule):
         super().__init__({})
 
         if not isinstance(numerator, (int, float)):
-            self._set_child_('numerator', Chain(numerator))
+            self._set_child_('numerator', numerator)
 
         self.numerator = numerator
 
@@ -151,8 +150,8 @@ class Divide(OptimizerModule):
         denominator: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        self._set_child_('numerator', Chain(numerator))
-        self._set_child_('denominator', Chain(denominator))
+        self._set_child_('numerator', numerator)
+        self._set_child_('denominator', denominator)
 
     @torch.no_grad
     def step(self, state):
@@ -171,7 +170,7 @@ class Pow(OptimizerModule):
         super().__init__({})
 
         if not isinstance(power, (int, float)):
-            self._set_child_('power', Chain(power))
+            self._set_child_('power', power)
 
         self.power = power
 
@@ -190,7 +189,7 @@ class RPow(OptimizerModule):
         super().__init__({})
 
         if not isinstance(base, (int, float)):
-            self._set_child_('base', Chain(base))
+            self._set_child_('base', base)
 
         self.base = base
 
@@ -211,8 +210,8 @@ class Power(OptimizerModule):
         power: OptimizerModule | Iterable[OptimizerModule],
     ):
         super().__init__({})
-        self._set_child_('base', Chain(base))
-        self._set_child_('power', Chain(power))
+        self._set_child_('base', base)
+        self._set_child_('power', power)
 
     @torch.no_grad
     def step(self, state):
@@ -232,7 +231,7 @@ class Lerp(OptimizerModule):
     def __init__(self, end: OptimizerModule | Iterable[OptimizerModule], weight: float):
         super().__init__({})
 
-        self._set_child_('end', Chain(end))
+        self._set_child_('end', end)
         self.weight = weight
 
     @torch.no_grad()
@@ -255,8 +254,8 @@ class Interpolate(OptimizerModule):
         weight: float,
     ):
         super().__init__({})
-        self._set_child_('input', Chain(input))
-        self._set_child_('end', Chain(end))
+        self._set_child_('input', input)
+        self._set_child_('end', end)
         self.weight = weight
 
     @torch.no_grad
@@ -283,7 +282,7 @@ class AddMagnitude(OptimizerModule):
         super().__init__({})
 
         if not isinstance(value, (int, float)):
-            self._set_child_('value', Chain(value))
+            self._set_child_('value', value)
 
         self.value = value
         self.add_to_zero = add_to_zero

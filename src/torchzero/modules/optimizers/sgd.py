@@ -39,7 +39,8 @@ class SGD(OptimizerModule):
         if any(i != 0 for i in settings['weight_decay']):
             ascent += params * settings['weight_decay']
 
-        ascent *= settings['lr']
+        if any(i != 1 for i in settings['lr']):
+            ascent *= settings['lr']
 
         if any(i != 0 for i in settings['momentum']):
             velocity = self.get_state_key('velocity', init = torch.zeros_like if self.nesterov else ascent)

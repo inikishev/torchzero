@@ -5,7 +5,6 @@ Line searches.
 import typing as T
 
 from ...core import OptimizerModule
-from ..meta.chain import Chain
 from ..regularization import Normalize
 from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
                       MultiplicativeLS)

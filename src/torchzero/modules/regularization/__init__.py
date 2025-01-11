@@ -3,7 +3,7 @@ This includes regularization modules like weight decay.
 """
 from .dropout import Dropout
 from .lr_scaling import ReduceOutwardLR
-from .noise import AddNoise
+from .noise import AddNoise, Random, add_noise_
 from .normalization import (
     Centralize,
     ClipNorm,

@@ -5,8 +5,7 @@ from collections import abc
 import torch
 
 from ... import tensorlist as tl
-from ...core import OptimizationState, OptimizerModule
-from ..meta.chain import Chain
+from ...core import OptimizationState, OptimizerModule, Chain
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
 
@@ -146,7 +145,9 @@ class ProjNormalize(Projection):
         return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)]
 
 class Subspace(OptimizerModule):
-    """Optimizes parameters projected into a lower (or higher) dimensional subspace.
+    """This is pretty inefficient, I thought of a much better way to do this via jvp and I will rewrite this soon.
+
+    Optimizes parameters projected into a lower (or higher) dimensional subspace.
 
     The subspace is a bunch of projections that go through the current point. Projections can be random,
     or face in the direction of the gradient, or difference between last two gradients, etc. The projections
@@ -176,7 +177,7 @@ class Subspace(OptimizerModule):
         super().__init__({})
         if isinstance(projections, Projection): projections = [projections]
         self.projections = list(projections)
-        self._set_child_('subspace', Chain(modules))
+        self._set_child_('subspace', modules)
         self.update_every = update_every
         self.current_step = 0
 

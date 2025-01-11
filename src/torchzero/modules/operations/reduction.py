@@ -1,12 +1,8 @@
 from collections.abc import Callable, Iterable
-from operator import methodcaller
-from typing import cast, overload, Any
 import numpy as np
 import torch
 
 from ...core import OptimizerModule
-from ...tensorlist import TensorList
-from ..meta.chain import Chain
 
 _Value = int | float | OptimizerModule | Iterable[OptimizerModule]
 
@@ -27,7 +23,7 @@ class Sum(OptimizerModule):
         self.scalar = sum(scalars) if len(scalars) > 0 else None
 
         for i,module in enumerate(i for i in modules if not isinstance(i, (int, float))):
-            self._set_child_(i, Chain(module))
+            self._set_child_(i, module)
 
     @torch.no_grad
     def step(self, state):
@@ -70,7 +66,7 @@ class Mean(OptimizerModule):
         self.n_values = len(modules)
 
         for i,module in enumerate(i for i in modules if not isinstance(i, (int, float))):
-            self._set_child_(i, Chain(module))
+            self._set_child_(i, module)
 
     @torch.no_grad
     def step(self, state):
@@ -113,7 +109,7 @@ class Product(OptimizerModule):
         self.scalar = np.prod(scalars).item() if len(scalars) > 0 else None
 
         for i,module in enumerate(i for i in modules if not isinstance(i, (int, float))):
-            self._set_child_(i, Chain(module))
+            self._set_child_(i, module)
 
     @torch.no_grad
     def step(self, state):

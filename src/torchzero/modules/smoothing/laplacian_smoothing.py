@@ -24,9 +24,11 @@ def gradient_laplacian_smoothing_(params: abc.Iterable[torch.Tensor], sigma: flo
     Args:
         params (abc.Iterable[torch.Tensor]): an iterable of Tensors that will have gradients smoothed.
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.
-        layerwise (bool, optional): If True, applies smoothing to each parameter's gradient separately,
+        layerwise (bool, optional):
+            If True, applies smoothing to each parameter's gradient separately,
             Otherwise applies it to all gradients, concatenated into a single vector. Defaults to True.
-        min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
+        min_numel (int, optional):
+            minimum number of elements in a parameter to apply laplacian smoothing to.
             Only has effect if `layerwise` is True. Defaults to 4.
 
     Reference:
@@ -56,9 +58,11 @@ class LaplacianSmoothing(OptimizerModule):
 
     Args:
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.
-        layerwise (bool, optional): If True, applies smoothing to each parameter's gradient separately,
+        layerwise (bool, optional):
+            If True, applies smoothing to each parameter's gradient separately,
             Otherwise applies it to all gradients, concatenated into a single vector. Defaults to True.
-        min_numel (int, optional): minimum number of elements in a parameter to apply laplacian smoothing to.
+        min_numel (int, optional):
+            minimum number of elements in a parameter to apply laplacian smoothing to.
             Only has effect if `layerwise` is True. Defaults to 4.
         make_closure (bool, optional): Set to True to use with things like LBFGS. Defaults to False.
 

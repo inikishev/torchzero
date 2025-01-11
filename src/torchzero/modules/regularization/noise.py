@@ -4,12 +4,12 @@ from typing import Literal
 import torch
 
 from ...core import OptimizerModule
-from ...tensorlist import Distributions, TensorList, Scalar, ScalarSequence
+from ...tensorlist import Distributions, TensorList, _Scalar, _ScalarSequence
 
 
 def add_noise_(
     grads: abc.Iterable[torch.Tensor],
-    alpha: "Scalar | ScalarSequence" = 1e-2,
+    alpha: "_Scalar | _ScalarSequence" = 1e-2,
     distribution: Distributions = "normal",
     mode: Literal["absolute", "global", "param", "channel"] = "param",
 ):
@@ -18,14 +18,14 @@ def add_noise_(
         grads += grads.sample_like(alpha, distribution)
 
     elif mode == 'global':
-        grads += grads.sample_like((grads.total_mean() * alpha).detach().cpu().item(), distribution)
+        grads += grads.sample_like((grads.total_vector_norm(1)/grads.total_numel() * alpha).detach().cpu().item(), distribution)
 
     elif mode == 'param':
-        grads += grads.sample_like(grads.mean()*alpha, distribution)
+        grads += grads.sample_like(grads.abs().mean()*alpha, distribution)
 
     elif mode == 'channel':
         grads = grads.unbind_channels()
-        grads += grads.sample_like(grads.mean()*alpha, distribution)
+        grads += grads.sample_like(grads.abs().mean()*alpha, distribution)
 
 class AddNoise(OptimizerModule):
     """Add noise to update. By default noise magnitude is relative to the mean of each parameter.
@@ -47,7 +47,7 @@ class AddNoise(OptimizerModule):
 
     def __init__(
         self,
-        alpha: float = 1e-2,
+        alpha: float = 1.,
         distribution: Distributions = "normal",
         mode: Literal["absolute", "global", "param", "channel"] = "param",
     ):

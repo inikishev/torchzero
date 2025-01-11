@@ -7,7 +7,7 @@ import torch
 
 from ... import tl
 from ...core import ClosureType, OptimizationState, OptimizerModule
-from ...python_tools import ScalarType
+from ...python_tools import _ScalarLoss
 
 
 class MaxIterReached(Exception): pass
@@ -42,7 +42,7 @@ class LineSearchBase(OptimizerModule, ABC):
 
         self.maxiter = maxiter
         self.log_lrs = log_lrs
-        self._lrs: list[dict[float, ScalarType]] = []
+        self._lrs: list[dict[float, _ScalarLoss]] = []
         """this only gets filled if `log_lrs` is True. On each step, a dictionary is added to this list,
         with all lrs tested at that step as keys and corresponding losses as values."""
 

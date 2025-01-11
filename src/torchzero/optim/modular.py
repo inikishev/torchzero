@@ -1,8 +1,7 @@
 from collections import abc
 import torch
 
-from ..core import OptimizerModule, TensorListOptimizer, OptimizationState
-from ..modules import Chain
+from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, Chain, _Chainable
 from ..python_tools import flatten
 
 class Modular(TensorListOptimizer):
@@ -13,7 +12,7 @@ class Modular(TensorListOptimizer):
         modules (Iterable[OptimizerModule] | OptimizerModule):
             sequence of modules to chain together.
     """
-    def __init__(self, params, *modules: abc.Iterable[OptimizerModule] | OptimizerModule):
+    def __init__(self, params, *modules: _Chainable):
         flat_modules = flatten(modules)
 
         if isinstance(params, torch.nn.Module):

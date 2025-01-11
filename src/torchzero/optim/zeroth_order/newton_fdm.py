@@ -1,8 +1,7 @@
 from typing import Any, Literal
 import torch
 
-from ...core import OptimizerModule
-from ...modules import (LR, BacktrackingLS, FallbackLinearSystemSolvers,
+from ...modules import (LR, FallbackLinearSystemSolvers,
                         LinearSystemSolvers, LineSearches, ClipNorm)
 from ...modules import NewtonFDM as _NewtonFDM, get_line_search
 from ...modules.experimental.subspace import Proj2Masks, ProjRandom, Subspace

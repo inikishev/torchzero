@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ... import tl
-from ...python_tools import ScalarType
+from ...python_tools import _ScalarLoss
 from ...core import ClosureType, OptimizationState, OptimizerModule
 
 

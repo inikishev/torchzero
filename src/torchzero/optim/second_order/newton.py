@@ -1,9 +1,7 @@
-from collections import abc
 from typing import Any, Literal
 
 import torch
 
-from ...core import OptimizerModule, TensorListOptimizer
 from ...modules import (
     LR,
     ClipNorm,

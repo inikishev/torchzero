@@ -4,8 +4,6 @@ import torch
 
 from ...core import OptimizerModule
 from ...tensorlist import TensorList
-from .chain import Chain
-from .return_overrides import ReturnAscent
 
 
 class Grafting(OptimizerModule):
@@ -39,8 +37,8 @@ class Grafting(OptimizerModule):
         # TODO: channelwise
     ):
         super().__init__({})
-        self._set_child_('magnitude', Chain(magnitude))
-        self._set_child_('direction', Chain(direction))
+        self._set_child_('magnitude', magnitude)
+        self._set_child_('direction', direction)
         self.ord = ord
         self.eps = eps
         self.layerwise = layerwise
@@ -91,8 +89,8 @@ class SignGrafting(OptimizerModule):
     ):
         super().__init__({})
 
-        self._set_child_('magnitude', Chain(magnitude))
-        self._set_child_('sign', Chain(sign))
+        self._set_child_('magnitude', magnitude)
+        self._set_child_('sign', sign)
 
 
     @torch.no_grad
@@ -145,10 +143,10 @@ class IntermoduleCautious(OptimizerModule):
     ):
         super().__init__({})
 
-        self._set_child_('main', Chain(main_module))
+        self._set_child_('main',main_module)
         if isinstance(compare_module, str): self.compare_mode = compare_module
         else:
-            self._set_child_('compare', Chain(compare_module))
+            self._set_child_('compare', compare_module)
             self.compare_mode = 'module'
         self.eps = eps
         self.normalize = normalize

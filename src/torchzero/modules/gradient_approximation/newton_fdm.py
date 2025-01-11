@@ -2,7 +2,7 @@ import typing as T
 
 import torch
 
-from ...python_tools import ScalarType
+from ...python_tools import _ScalarLoss
 from ...tensorlist import TensorList
 from ...core import ClosureType, OptimizerModule
 from ..second_order.newton import (LINEAR_SYSTEM_SOLVERS,
@@ -19,11 +19,11 @@ def _three_point_2cd_(
     p2: torch.Tensor,
     g1: torch.Tensor,
     hessian: torch.Tensor,
-    eps1: ScalarType,
-    eps2: ScalarType,
+    eps1: _ScalarLoss,
+    eps2: _ScalarLoss,
     i1: int,
     i2: int,
-    fx0: ScalarType,
+    fx0: _ScalarLoss,
 ):
     """Second order three point finite differences (same signature for all other 2nd order finite differences functions).
 

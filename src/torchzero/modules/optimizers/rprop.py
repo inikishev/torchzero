@@ -55,7 +55,7 @@ class Rprop(OptimizerModule):
         sign = ascent.sign_()
         nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
         prev, allowed, magnitudes = self.get_state_keys(
-            ['prev_ascent', 'prevent_update', 'magnitudes'],
+            ['prev', 'allowed', 'magnitudes'],
             inits = [torch.zeros_like, _bool_ones_like, torch.zeros_like],
             params=params
         )
@@ -94,4 +94,6 @@ class Rprop(OptimizerModule):
         prev.copy_(ascent)
         self.current_step += 1
         return ascent
+
+
 

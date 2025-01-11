@@ -1,1 +1,1 @@
-from .random_ import randmask, rademacher, uniform, sphere, sample, sample_like
+from .random import randmask, rademacher, uniform, sphere, sample, sample_like

@@ -10,6 +10,9 @@ from ..modular import Modular
 
 
 class NewtonFDMRaySearch(Modular):
+    """for experiments, unlikely to work well on most problems.
+
+    explanation - like a fancy line search, instead of a line searches in a cone using FDM newton."""
     def __init__(
         self,
         params,
@@ -23,9 +26,6 @@ class NewtonFDMRaySearch(Modular):
         ray_width: float = 1e-1,
         line_search: LineSearches | None = 'brent'
     ):
-        """for experiments, unlikely to work well on most problems.
-
-        explanation - like a fancy line search, instead of a line searches in a cone using FDM newton."""
         modules: list[Any] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
@@ -40,6 +40,9 @@ class NewtonFDMRaySearch(Modular):
 
 
 class LBFGSRaySearch(Modular):
+    """for experiments, unlikely to work well on most problems.
+
+    explanation - like a fancy line search, instead of a line searches in a cone using LBFGS."""
     def __init__(
         self,
         params,
@@ -57,20 +60,17 @@ class LBFGSRaySearch(Modular):
         history_size: int = 100,
         line_search_fn: str | Literal['strong_wolfe'] | None = None,
     ):
-        """for experiments, unlikely to work well on most problems.
-
-        explanation - like a fancy line search, instead of a line searches in a cone using LBFGS."""
         lbfgs = Wrap(
-                torch.optim.LBFGS,
-                pass_closure = True,
-                lr = lr,
-                max_iter = max_iter,
-                max_eval = max_eval,
-                tolerance_grad = tolerance_grad,
-                tolerance_change = tolerance_change,
-                history_size = history_size,
-                line_search_fn = line_search_fn,
-            )
+            torch.optim.LBFGS,
+            pass_closure=True,
+            lr=lr,
+            max_iter=max_iter,
+            max_eval=max_eval,
+            tolerance_grad=tolerance_grad,
+            tolerance_change=tolerance_change,
+            history_size=history_size,
+            line_search_fn=line_search_fn,
+        )
         modules: list[OptimizerModule] = [
             SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(lbfgs, ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),

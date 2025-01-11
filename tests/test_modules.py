@@ -1,9 +1,10 @@
 """Sanity check on booth function. All optimizers should converge."""
+import importlib.util
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
 import torchzero as tz
-import importlib.util
 
 PRINT_LOSSES = True
 
@@ -59,17 +60,17 @@ OPTS = [
     lambda p: tz.optim.Adagrad(p, 10),
     lambda p: tz.optim.Rprop(p, 10),
     lambda p: tz.optim.RMSProp(p, 10),
-    lambda p: tz.optim.Adam(p, 0.9),
+    lambda p: tz.optim.AdamW(p, 0.9),
     lambda p: tz.optim.Grams(p, 1),
     lambda p: tz.optim.Lion(p, 1),
-    lambda p: tz.optim.CautiousAdam(p, 1),
+    lambda p: tz.optim.CautiousAdamW(p, 1),
     lambda p: tz.optim.CautiousSGD(p, 1e-2),
     lambda p: tz.optim.CautiousLion(p, 1),
     lambda p: tz.optim.DirectionalNewton(p, 1e-2),
     lambda p: tz.optim.ExactNewton(p, 1),
     lambda p: tz.optim.NestedNesterov(p, 0.01,),
-    lambda p: tz.optim.RandomCoordinateMomentum(p, 5e-2, 0.5),
-    lambda p: tz.optim.GradMin(p, 2e-2),
+    lambda p: tz.optim.experimental.RandomCoordinateMomentum(p, 5e-2, 0.5),
+    lambda p: tz.optim.experimental.GradMin(p, 2e-2),
     lambda p: tz.optim.FDM(p, 5e-2),
     lambda p: tz.optim.FDMWrapper(torch.optim.LBFGS(p)),
     lambda p: tz.optim.NewtonFDM(p, 1),
@@ -86,6 +87,7 @@ OPTS = [
     lambda p: tz.optim.Modular(p, [tz.m.Mean(tz.m.Rprop(), tz.m.Adam()), tz.m.LR(2e-2)]),
     lambda p: tz.optim.Modular(p, [tz.m.Subtract(tz.m.Rprop(), tz.m.Adam(20)), tz.m.LR(1e-2)]),
     lambda p: tz.optim.Modular(p, [tz.m.Interpolate(tz.m.Rprop(), tz.m.Adam(), 0.5), tz.m.LR(3e-1)]),
+    lambda p: tz.optim.Modular(p, tz.m.experimental.MinibatchRprop(1e-1)),
     # note
     # gradient centralization and laplacian smoothing (and as I understand whitening if I add it)
     # will need to be tested separately as they won't work with 2 scalars.

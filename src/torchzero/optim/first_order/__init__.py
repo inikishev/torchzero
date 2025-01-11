@@ -1,2 +1,16 @@
-from .cautious import CautiousAdam, CautiousSGD, CautiousLion
-from .optimizers import GD, SGD, Adagrad, Adam, AdamW, RMSProp, Rprop, SignSGD, NormSGD, Lion, Grams, NestedNesterov
+from .cautious import CautiousAdamW, CautiousLion, CautiousSGD
+from .optimizers import (
+    GD,
+    SGD,
+    Adagrad,
+    AdamW,
+    Grams,
+    LaplacianSmoothingSGD,
+    Lion,
+    NestedNesterov,
+    NoisySGD,
+    NormSGD,
+    RMSProp,
+    Rprop,
+    SignSGD,
+)

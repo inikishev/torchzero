@@ -17,12 +17,12 @@ from typing import TypeAlias, Any, Literal, TypedDict, Self, Unpack
 
 import torch
 
-Scalar = int | float | bool | complex
-AnyTensor = torch.Tensor | torch.nn.Parameter
-TensorSequence = list[AnyTensor] | tuple[AnyTensor, ...]
-ScalarSequence: TypeAlias = "list[Scalar] | tuple[Scalar] | TensorList"
-STSequence: TypeAlias = "TensorSequence | ScalarSequence"
-STOrSTSequence: TypeAlias = "Scalar | torch.Tensor | torch.nn.Parameter | STSequence"
+_Scalar = int | float | bool | complex
+_AnyTensor = torch.Tensor | torch.nn.Parameter
+_TensorSequence = list[_AnyTensor] | tuple[_AnyTensor, ...]
+_ScalarSequence: TypeAlias = "list[_Scalar] | tuple[_Scalar] | TensorList"
+_STSequence: TypeAlias = "_TensorSequence | _ScalarSequence"
+_STOrSTSequence: TypeAlias = "_Scalar | torch.Tensor | torch.nn.Parameter | _STSequence"
 
 Distributions = Literal['normal', 'uniform', 'sphere', 'rademacher']
 class _NewTensorKwargs(TypedDict, total = False):
@@ -34,7 +34,7 @@ class _NewTensorKwargs(TypedDict, total = False):
     requires_grad: bool
 
 # _foreach_methods = {attr.replace('_foreach_', ''):getattr(torch, attr) for attr in dir(torch) if attr.startswith('_foreach_')}
-class MethodCallerWithArgs:
+class _MethodCallerWithArgs:
     """Return a callable object that calls the given method on its operand.
 
     This is similar to operator.methodcaller but args and kwargs are specificed in __call__.
@@ -56,17 +56,19 @@ class MethodCallerWithArgs:
         return self.__class__, self._name
 
 
-def _maximum_(input:torch.Tensor, other: torch.Tensor):
+def maximum_(input:torch.Tensor, other: torch.Tensor):
+    """in-place maximum"""
     return torch.maximum(input, other, out = input)
 
-def _where_(input: torch.Tensor, condition: torch.Tensor, other: torch.Tensor):
+def where_(input: torch.Tensor, condition: torch.Tensor, other: torch.Tensor):
+    """in-place where"""
     return torch.where(condition, input, other, out = input)
 
 # tensorlist must subclass list
 # UserList doesn't work with _foreach_xxx
 class TensorList(list[torch.Tensor | Any]):
     @classmethod
-    def complex(cls, real: TensorSequence, imag: TensorSequence):
+    def complex(cls, real: _TensorSequence, imag: _TensorSequence):
         """Create a complex TensorList from real and imaginary tensor sequences."""
         return cls(torch.complex(r, i) for r, i in zip(real, imag))
 
@@ -125,14 +127,14 @@ class TensorList(list[torch.Tensor | Any]):
             if i.requires_grad and i.grad is None: i.grad = torch.zeros_like(i)
         return self
 
-    def accumulate_grad_(self, grads: TensorSequence):
+    def accumulate_grad_(self, grads: _TensorSequence):
         """Creates grad if it is None, otherwise adds to existing grad."""
         for i, g in zip(self, grads):
             if i.grad is None: i.grad = g
             else: i.grad.add_(g)
         return self
 
-    def set_grad_(self, grads: TensorSequence):
+    def set_grad_(self, grads: _TensorSequence):
         """Sets grad to the given sequence, overwrites grad that already exists."""
         for i, g in zip(self, grads): i.grad = g
         return self
@@ -145,51 +147,51 @@ class TensorList(list[torch.Tensor | Any]):
             self.get_existing_grads().zero_()
         return self
 
-    def __add__(self, other: STOrSTSequence) -> Self: return self.add(other) # type:ignore
-    def __radd__(self, other: STOrSTSequence) -> Self: return self.add(other)
-    def __iadd__(self, other: STOrSTSequence) -> Self: return self.add_(other) # type:ignore
+    def __add__(self, other: _STOrSTSequence) -> Self: return self.add(other) # type:ignore
+    def __radd__(self, other: _STOrSTSequence) -> Self: return self.add(other)
+    def __iadd__(self, other: _STOrSTSequence) -> Self: return self.add_(other) # type:ignore
 
-    def __sub__(self, other: "Scalar | STSequence") -> Self: return self.sub(other)
-    def __rsub__(self, other: "Scalar | STSequence") -> Self: return self.sub(other).neg_()
-    def __isub__(self, other: "Scalar | STSequence") -> Self: return self.sub_(other)
+    def __sub__(self, other: "_Scalar | _STSequence") -> Self: return self.sub(other)
+    def __rsub__(self, other: "_Scalar | _STSequence") -> Self: return self.sub(other).neg_()
+    def __isub__(self, other: "_Scalar | _STSequence") -> Self: return self.sub_(other)
 
-    def __mul__(self, other: STOrSTSequence) -> Self: return self.mul(other) # type:ignore
-    def __rmul__(self, other: STOrSTSequence) -> Self: return self.mul(other) # type:ignore
-    def __imul__(self, other: STOrSTSequence) -> Self: return self.mul_(other) # type:ignore
+    def __mul__(self, other: _STOrSTSequence) -> Self: return self.mul(other) # type:ignore
+    def __rmul__(self, other: _STOrSTSequence) -> Self: return self.mul(other) # type:ignore
+    def __imul__(self, other: _STOrSTSequence) -> Self: return self.mul_(other) # type:ignore
 
-    def __truediv__(self, other: "Scalar | STSequence") -> Self: return self.div(other)
-    def __rtruediv__(self, other: "Scalar | STSequence") -> Self: return other * self.reciprocal() # type:ignore
-    def __itruediv__(self, other: "Scalar | STSequence") -> Self: return self.div_(other)
+    def __truediv__(self, other: "_Scalar | _STSequence") -> Self: return self.div(other)
+    def __rtruediv__(self, other: "_Scalar | _STSequence") -> Self: return other * self.reciprocal() # type:ignore
+    def __itruediv__(self, other: "_Scalar | _STSequence") -> Self: return self.div_(other)
 
-    def __floordiv__(self, other: STOrSTSequence): return self.floor_divide(other)
+    def __floordiv__(self, other: _STOrSTSequence): return self.floor_divide(other)
     #def __rfloordiv__(self, other: "TensorList"): return other.floor_divide(self)
-    def __ifloordiv__(self, other: STOrSTSequence): return self.floor_divide_(other)
+    def __ifloordiv__(self, other: _STOrSTSequence): return self.floor_divide_(other)
 
-    def __mod__(self, other: STOrSTSequence): return self.remainder(other)
+    def __mod__(self, other: _STOrSTSequence): return self.remainder(other)
     #def __rmod__(self, other: STOrSTSequence): return self.remainder(other)
-    def __imod__(self, other: STOrSTSequence):return self.remainder_(other)
+    def __imod__(self, other: _STOrSTSequence):return self.remainder_(other)
 
-    def __pow__(self, other: "Scalar | STSequence"): return self.pow(other)
-    def __rpow__(self, other: "Scalar | TensorSequence"): return self.rpow(other)
-    def __ipow__(self, other: "Scalar | STSequence"): return self.pow_(other)
+    def __pow__(self, other: "_Scalar | _STSequence"): return self.pow(other)
+    def __rpow__(self, other: "_Scalar | _TensorSequence"): return self.rpow(other)
+    def __ipow__(self, other: "_Scalar | _STSequence"): return self.pow_(other)
 
     def __neg__(self): return self.neg()
 
-    def __eq__(self, other: STOrSTSequence): return self.eq(other) # type:ignore
-    def __ne__(self, other: STOrSTSequence): return self.ne(other) # type:ignore
-    def __lt__(self, other: STOrSTSequence): return self.lt(other) # type:ignore
-    def __le__(self, other: STOrSTSequence): return self.le(other) # type:ignore
-    def __gt__(self, other: STOrSTSequence): return self.gt(other) # type:ignore
-    def __ge__(self, other: STOrSTSequence): return self.ge(other) # type:ignore
+    def __eq__(self, other: _STOrSTSequence): return self.eq(other) # type:ignore
+    def __ne__(self, other: _STOrSTSequence): return self.ne(other) # type:ignore
+    def __lt__(self, other: _STOrSTSequence): return self.lt(other) # type:ignore
+    def __le__(self, other: _STOrSTSequence): return self.le(other) # type:ignore
+    def __gt__(self, other: _STOrSTSequence): return self.gt(other) # type:ignore
+    def __ge__(self, other: _STOrSTSequence): return self.ge(other) # type:ignore
 
     def __invert__(self): return self.logical_not()
 
-    def __and__(self, other: torch.Tensor | TensorSequence): return self.logical_and(other)
-    def __iand__(self, other: torch.Tensor | TensorSequence): return self.logical_and_(other)
-    def __or__(self, other: torch.Tensor | TensorSequence): return self.logical_or(other)
-    def __ior__(self, other: torch.Tensor | TensorSequence): return self.logical_or_(other)
-    def __xor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor(other)
-    def __ixor__(self, other: torch.Tensor | TensorSequence): return self.logical_xor_(other)
+    def __and__(self, other: torch.Tensor | _TensorSequence): return self.logical_and(other)
+    def __iand__(self, other: torch.Tensor | _TensorSequence): return self.logical_and_(other)
+    def __or__(self, other: torch.Tensor | _TensorSequence): return self.logical_or(other)
+    def __ior__(self, other: torch.Tensor | _TensorSequence): return self.logical_or_(other)
+    def __xor__(self, other: torch.Tensor | _TensorSequence): return self.logical_xor(other)
+    def __ixor__(self, other: torch.Tensor | _TensorSequence): return self.logical_xor_(other)
 
     def map(self, fn: Callable[..., torch.Tensor], *args, **kwargs):
         """Applies `fn` to all elements of this TensorList
@@ -262,7 +264,7 @@ class TensorList(list[torch.Tensor | Any]):
     def as_bool(self): return self.__class__(i.bool() for i in self)
     def as_int(self): return self.__class__(i.int() for i in self)
 
-    def copy_(self, src: TensorSequence, non_blocking = False):
+    def copy_(self, src: _TensorSequence, non_blocking = False):
         """Copies the elements from src tensors into self tensors."""
         torch._foreach_copy_(self, src, non_blocking=non_blocking)
     def set_(self, storage: Iterable[torch.Tensor | torch.types.Storage]):
@@ -316,32 +318,32 @@ class TensorList(list[torch.Tensor | Any]):
     def empty_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.empty_like(i, **kwargs) for i in self)
     def zeros_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.zeros_like(i, **kwargs) for i in self)
     def ones_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
-    def full_like(self, fill_value: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
+    def full_like(self, fill_value: "_Scalar | _ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
         #return self.__class__(torch.full_like(i, fill_value=fill_value, **kwargs) for i in self)
         return self.zipmap(torch.full_like, other=fill_value, **kwargs)
 
     def rand_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.rand_like(i, **kwargs) for i in self)
     def randn_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.randn_like(i, **kwargs) for i in self)
 
-    def randint_like(self, low: "Scalar | ScalarSequence", high: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
+    def randint_like(self, low: "_Scalar | _ScalarSequence", high: "_Scalar | _ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]):
         return self.zipmap_args(torch.randint_like, low, high, **kwargs)
-    def uniform_like(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, generator=None, **kwargs: Unpack[_NewTensorKwargs]):
+    def uniform_like(self, low: "_Scalar | _ScalarSequence" = 0, high: "_Scalar | _ScalarSequence" = 1, generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         res = self.empty_like(**kwargs)
         res.uniform_(low, high, generator=generator)
         return res
-    def sphere_like(self, radius: "Scalar | ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]) -> Self:
+    def sphere_like(self, radius: "_Scalar | _ScalarSequence", **kwargs: Unpack[_NewTensorKwargs]) -> Self:
         r = self.randn_like(**kwargs)
         return (r * radius) / r.total_vector_norm() # type:ignore
     def bernoulli(self, generator = None):
         return self.__class__(torch.bernoulli(i, generator=generator) for i in self)
-    def bernoulli_like(self, p: "Scalar | ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
+    def bernoulli_like(self, p: "_Scalar | _ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be 0."""
         return self.__class__(torch.bernoulli(i, generator = generator) for i in self.full_like(p, **kwargs))
-    def rademacher_like(self, p: "Scalar | ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
+    def rademacher_like(self, p: "_Scalar | _ScalarSequence" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be -1."""
         return self.bernoulli_like(p, generator=generator, **kwargs) * 2 - 1
 
-    def sample_like(self, eps: "Scalar | ScalarSequence" = 1, distribution: Distributions = 'normal', generator=None, **kwargs: Unpack[_NewTensorKwargs]):
+    def sample_like(self, eps: "_Scalar | _ScalarSequence" = 1, distribution: Distributions = 'normal', generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         """Sample around 0."""
         if distribution == 'normal': return self.randn_like(**kwargs) * eps # TODO: generator
         if distribution == 'uniform':
@@ -352,48 +354,48 @@ class TensorList(list[torch.Tensor | Any]):
         if distribution == 'rademacher': return self.rademacher_like(generator=generator, **kwargs) * eps
         raise ValueError(f'Unknow distribution {distribution}')
 
-    def eq(self, other: STOrSTSequence): return self.zipmap(torch.eq, other)
-    def eq_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('eq_'), other)
-    def ne(self, other: STOrSTSequence): return self.zipmap(torch.ne, other)
-    def ne_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('ne_'), other)
-    def lt(self, other: STOrSTSequence): return self.zipmap(torch.lt, other)
-    def lt_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('lt_'), other)
-    def le(self, other: STOrSTSequence): return self.zipmap(torch.le, other)
-    def le_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('le_'), other)
-    def gt(self, other: STOrSTSequence): return self.zipmap(torch.gt, other)
-    def gt_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('gt_'), other)
-    def ge(self, other: STOrSTSequence): return self.zipmap(torch.ge, other)
-    def ge_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('ge_'), other)
+    def eq(self, other: _STOrSTSequence): return self.zipmap(torch.eq, other)
+    def eq_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('eq_'), other)
+    def ne(self, other: _STOrSTSequence): return self.zipmap(torch.ne, other)
+    def ne_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('ne_'), other)
+    def lt(self, other: _STOrSTSequence): return self.zipmap(torch.lt, other)
+    def lt_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('lt_'), other)
+    def le(self, other: _STOrSTSequence): return self.zipmap(torch.le, other)
+    def le_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('le_'), other)
+    def gt(self, other: _STOrSTSequence): return self.zipmap(torch.gt, other)
+    def gt_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('gt_'), other)
+    def ge(self, other: _STOrSTSequence): return self.zipmap(torch.ge, other)
+    def ge_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('ge_'), other)
 
-    def logical_and(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_and, other)
-    def logical_and_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_and_'), other)
-    def logical_or(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_or, other)
-    def logical_or_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_or_'), other)
-    def logical_xor(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.logical_xor, other)
-    def logical_xor_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(MethodCallerWithArgs('logical_xor_'), other)
+    def logical_and(self, other: torch.Tensor | _TensorSequence): return self.zipmap(torch.logical_and, other)
+    def logical_and_(self, other: torch.Tensor | _TensorSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('logical_and_'), other)
+    def logical_or(self, other: torch.Tensor | _TensorSequence): return self.zipmap(torch.logical_or, other)
+    def logical_or_(self, other: torch.Tensor | _TensorSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('logical_or_'), other)
+    def logical_xor(self, other: torch.Tensor | _TensorSequence): return self.zipmap(torch.logical_xor, other)
+    def logical_xor_(self, other: torch.Tensor | _TensorSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('logical_xor_'), other)
 
     def logical_not(self): return self.__class__(torch.logical_not(i) for i in self)
     def logical_not_(self):
         for i in self: i.logical_not_()
         return self
 
-    def equal(self, other: torch.Tensor | TensorSequence):
+    def equal(self, other: torch.Tensor | _TensorSequence):
         """returns TensorList of boolean values, True if two tensors have the same size and elements, False otherwise."""
         return self.zipmap(torch.equal, other)
 
-    def add(self, other: STOrSTSequence, alpha: Scalar = 1):
+    def add(self, other: _STOrSTSequence, alpha: _Scalar = 1):
         if alpha == 1: return self.__class__(torch._foreach_add(self, other))
         return self.__class__(torch._foreach_add(self, other, alpha = alpha)) # type:ignore
-    def add_(self, other: STOrSTSequence, alpha: Scalar = 1):
+    def add_(self, other: _STOrSTSequence, alpha: _Scalar = 1):
         if alpha == 1: torch._foreach_add_(self, other)
         else: torch._foreach_add_(self, other, alpha = alpha) # type:ignore
         return self
 
 
-    def sub(self, other: "Scalar | STSequence", alpha: Scalar = 1):
+    def sub(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
         if alpha == 1: return self.__class__(torch._foreach_sub(self, other))
         return self.__class__(torch._foreach_sub(self, other, alpha = alpha)) # type:ignore
-    def sub_(self, other: "Scalar | STSequence", alpha: Scalar = 1):
+    def sub_(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
         if alpha == 1: torch._foreach_sub_(self, other)
         else: torch._foreach_sub_(self, other, alpha = alpha) # type:ignore
         return self
@@ -403,23 +405,23 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_neg_(self)
         return self
 
-    def mul(self, other: STOrSTSequence): return self.__class__(torch._foreach_mul(self, other))
-    def mul_(self, other: STOrSTSequence):
+    def mul(self, other: _STOrSTSequence): return self.__class__(torch._foreach_mul(self, other))
+    def mul_(self, other: _STOrSTSequence):
         torch._foreach_mul_(self, other)
         return self
 
-    def div(self, other: STOrSTSequence) -> Self: return self.__class__(torch._foreach_div(self, other))
-    def div_(self, other: STOrSTSequence):
+    def div(self, other: _STOrSTSequence) -> Self: return self.__class__(torch._foreach_div(self, other))
+    def div_(self, other: _STOrSTSequence):
         torch._foreach_div_(self, other)
         return self
 
-    def pow(self, exponent: "Scalar | STSequence"): return self.__class__(torch._foreach_pow(self, exponent))
-    def pow_(self, exponent: "Scalar | STSequence"):
+    def pow(self, exponent: "_Scalar | _STSequence"): return self.__class__(torch._foreach_pow(self, exponent))
+    def pow_(self, exponent: "_Scalar | _STSequence"):
         torch._foreach_pow_(self, exponent)
         return self
 
-    def rpow(self, input: Scalar | TensorSequence): return self.__class__(torch._foreach_pow(input, self))
-    def rpow_(self, input: TensorSequence):
+    def rpow(self, input: _Scalar | _TensorSequence): return self.__class__(torch._foreach_pow(input, self))
+    def rpow_(self, input: _TensorSequence):
         torch._foreach_pow_(input, self)
         return self
 
@@ -428,11 +430,11 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_sqrt_(self)
         return self
 
-    def remainder(self, other: STOrSTSequence): return self.zipmap(torch.remainder, other)
-    def remainder_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('remainder_'), other)
+    def remainder(self, other: _STOrSTSequence): return self.zipmap(torch.remainder, other)
+    def remainder_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('remainder_'), other)
 
-    def floor_divide(self, other: STOrSTSequence): return self.zipmap(torch.floor_divide, other)
-    def floor_divide_(self, other: STOrSTSequence): return self.zipmap_inplace_(MethodCallerWithArgs('floor_divide_'), other)
+    def floor_divide(self, other: _STOrSTSequence): return self.zipmap(torch.floor_divide, other)
+    def floor_divide_(self, other: _STOrSTSequence): return self.zipmap_inplace_(_MethodCallerWithArgs('floor_divide_'), other)
 
     def reciprocal(self): return self.__class__(torch._foreach_reciprocal(self))
     def reciprocal_(self):
@@ -534,35 +536,35 @@ class TensorList(list[torch.Tensor | Any]):
         if dim is None and not keepdim: return self.__class__(torch._foreach_max(self.neg())).neg()
         return self.__class__(i.min(dim=dim, keepdim=keepdim) for i in self)
 
-    def norm(self, ord: Scalar, dtype=None):
+    def norm(self, ord: _Scalar, dtype=None):
         return self.__class__(torch._foreach_norm(self, ord, dtype))
 
     def mean(self, dim = None, keepdim = False): return self.__class__(i.mean(dim=dim, keepdim=keepdim) for i in self)
     def sum(self, dim = None, keepdim = False): return self.__class__(i.sum(dim=dim, keepdim=keepdim) for i in self)
     def prod(self, dim = None, keepdim = False): return self.__class__(i.prod(dim=dim, keepdim=keepdim) for i in self)
 
-    def clamp_min(self, other: "Scalar | STSequence"): return self.__class__(torch._foreach_clamp_min(self, other))
-    def clamp_min_(self, other: "Scalar | STSequence"):
+    def clamp_min(self, other: "_Scalar | _STSequence"): return self.__class__(torch._foreach_clamp_min(self, other))
+    def clamp_min_(self, other: "_Scalar | _STSequence"):
         torch._foreach_clamp_min_(self, other)
         return self
-    def clamp_max(self, other: "Scalar | STSequence"): return self.__class__(torch._foreach_clamp_max(self, other))
-    def clamp_max_(self, other: "Scalar | STSequence"):
+    def clamp_max(self, other: "_Scalar | _STSequence"): return self.__class__(torch._foreach_clamp_max(self, other))
+    def clamp_max_(self, other: "_Scalar | _STSequence"):
         torch._foreach_clamp_max_(self, other)
         return self
 
-    def clamp(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+    def clamp(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
         l = self
         if min is not None: l = l.clamp_min(min)
         if max is not None: l = l.clamp_max(max)
         return l
-    def clamp_(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+    def clamp_(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
         if min is not None: self.clamp_min_(min)
         if max is not None: self.clamp_max_(max)
         return self
 
-    def clamp_magnitude(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+    def clamp_magnitude(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
         return self.abs().clamp_(min, max) * self.sign().add_(0.5).sign_() # this prevents zeros
-    def clamp_magnitude_(self, min: "Scalar | STSequence | None" = None, max: "Scalar | STSequence | None" = None):
+    def clamp_magnitude_(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
         sign = self.sign().add_(0.5).sign_()
         return self.abs_().clamp_(min, max).mul_(sign)
 
@@ -584,41 +586,41 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_zero_(self)
         return self
 
-    def lerp(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+    def lerp(self, tensors1: _TensorSequence, weight: "_Scalar | _TensorSequence"):
         """linear interpolation of between self and tensors1. `out = self + weight * (tensors1 - self)`."""
         return self.__class__(torch._foreach_lerp(self, tensors1, weight))
-    def lerp_(self, tensors1: TensorSequence, weight: "Scalar | TensorSequence"):
+    def lerp_(self, tensors1: _TensorSequence, weight: "_Scalar | _TensorSequence"):
         """linear interpolation of between self and tensors1. `out = self + weight * (tensors1 - self)`."""
         torch._foreach_lerp_(self, tensors1, weight)
         return self
 
-    def lerp_compat(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
+    def lerp_compat(self, tensors1: _TensorSequence, weight: "_STOrSTSequence"):
         """`lerp` but supports python number sequence as weight and implemented through other operations
 
         `out = self + weight * (tensors1 - self)`."""
         return self + weight * (TensorList(tensors1) - self)
-    def lerp_compat_(self, tensors1: TensorSequence, weight: "STOrSTSequence"):
+    def lerp_compat_(self, tensors1: _TensorSequence, weight: "_STOrSTSequence"):
         """`lerp_` but supports python number sequence as weight and implemented through other operations
 
         `out = self + weight * (tensors1 - self)`."""
         return self.add_(TensorList(tensors1).sub(self).mul_(weight))
 
-    def addcmul(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
+    def addcmul(self, tensors1: _TensorSequence, tensor2: _TensorSequence, value: "_Scalar | Sequence[_Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcmul(self, tensors1, tensor2, value))
-    def addcmul_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
+    def addcmul_(self, tensors1: _TensorSequence, tensor2: _TensorSequence, value: "_Scalar | Sequence[_Scalar] | torch.Tensor" = 1):
         torch._foreach_addcmul_(self, tensors1, tensor2, value)
         return self
-    def addcdiv(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
+    def addcdiv(self, tensors1: _TensorSequence, tensor2: _TensorSequence, value: "_Scalar | Sequence[_Scalar] | torch.Tensor" = 1):
         return self.__class__(torch._foreach_addcdiv(self, tensors1, tensor2, value))
-    def addcdiv_(self, tensors1: TensorSequence, tensor2: TensorSequence, value: "Scalar | Sequence[Scalar] | torch.Tensor" = 1):
+    def addcdiv_(self, tensors1: _TensorSequence, tensor2: _TensorSequence, value: "_Scalar | Sequence[_Scalar] | torch.Tensor" = 1):
         torch._foreach_addcdiv_(self, tensors1, tensor2, value)
         return self
 
-    def uniform_(self, low: "Scalar | ScalarSequence" = 0, high: "Scalar | ScalarSequence" = 1, generator = None):
-        return self.zipmap_args_inplace_(MethodCallerWithArgs('uniform_'), low, high, generator = generator)
+    def uniform_(self, low: "_Scalar | _ScalarSequence" = 0, high: "_Scalar | _ScalarSequence" = 1, generator = None):
+        return self.zipmap_args_inplace_(_MethodCallerWithArgs('uniform_'), low, high, generator = generator)
 
-    def maximum(self, other: torch.Tensor | TensorSequence): return self.zipmap(torch.maximum, other = other)
-    def maximum_(self, other: torch.Tensor | TensorSequence): return self.zipmap_inplace_(_maximum_, other = other)
+    def maximum(self, other: torch.Tensor | _TensorSequence): return self.zipmap(torch.maximum, other = other)
+    def maximum_(self, other: torch.Tensor | _TensorSequence): return self.zipmap_inplace_(maximum_, other = other)
 
     def squeeze(self, dim = None):
         return self.__class__(i.squeeze(dim) for i in self)
@@ -639,31 +641,31 @@ class TensorList(list[torch.Tensor | Any]):
     def all(self): return self.__class__(i.all() for i in self)
     def isfinite(self): return self.__class__(i.isfinite() for i in self)
 
-    def fill(self, value: STOrSTSequence): return self.zipmap(torch.fill, other = value)
-    def fill_(self, value: STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
+    def fill(self, value: _STOrSTSequence): return self.zipmap(torch.fill, other = value)
+    def fill_(self, value: _STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
 
-    def where(self, condition: "torch.Tensor | TensorSequence", other: STOrSTSequence):
+    def where(self, condition: "torch.Tensor | _TensorSequence", other: _STOrSTSequence):
         """self where condition is true other otherwise"""
-        return self.zipmap_args(MethodCallerWithArgs('where'), condition, other)
-    def where_(self, condition: "torch.Tensor | TensorSequence", other: "torch.Tensor | TensorSequence"):
+        return self.zipmap_args(_MethodCallerWithArgs('where'), condition, other)
+    def where_(self, condition: "torch.Tensor | _TensorSequence", other: "torch.Tensor | _TensorSequence"):
         """self where condition is true other otherwise"""
-        return self.zipmap_args_inplace_(_where_, condition, other)
+        return self.zipmap_args_inplace_(where_, condition, other)
 
-    def masked_fill(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
+    def masked_fill(self, mask: "torch.Tensor | _TensorSequence", fill_value: "_Scalar | _ScalarSequence"):
         """Same as tensor[mask] = value (not in-place), where value must be scalar/scalars"""
         return self.zipmap_args(torch.masked_fill, mask, fill_value)
-    def masked_fill_(self, mask: "torch.Tensor | TensorSequence", fill_value: "Scalar | ScalarSequence"):
+    def masked_fill_(self, mask: "torch.Tensor | _TensorSequence", fill_value: "_Scalar | _ScalarSequence"):
         """Same as tensor[mask] = value, where value must be scalar/scalars"""
-        return self.zipmap_args_inplace_(MethodCallerWithArgs('masked_fill_'), mask, fill_value)
+        return self.zipmap_args_inplace_(_MethodCallerWithArgs('masked_fill_'), mask, fill_value)
 
-    def select_set_(self, mask: TensorSequence, value: STOrSTSequence):
+    def select_set_(self, mask: _TensorSequence, value: _STOrSTSequence):
         """Same as tensor[mask] = value"""
         if not isinstance(value, (list,tuple)): value = [value]*len(self) # type:ignore
         for tensor, m, v in zip(self, mask, value): # type:ignore
             print(tensor, m, v)
             tensor[m] = v
 
-    def masked_set_(self, mask: TensorSequence, value: TensorSequence):
+    def masked_set_(self, mask: _TensorSequence, value: _TensorSequence):
         """Same as tensor[mask] = value[mask]"""
         for tensor, m, v in zip(self, mask, value):
             tensor[m] = v[m]
@@ -673,7 +675,7 @@ class TensorList(list[torch.Tensor | Any]):
         if not isinstance(idx, (list,tuple)): return self.__class__(t[idx] for t in self)
         return self.__class__(t[i] for t,i in zip(self, idx))
 
-    def swap_tensors(self, other: TensorSequence):
+    def swap_tensors(self, other: _TensorSequence):
         for s, o in zip(self, other):
             torch.utils.swap_tensors(s, o)
 
@@ -704,32 +706,32 @@ class NumberList(TensorList):
         for i,v in enumerate(res): self[i] = v
         return self
 
-    def add(self, other: STOrSTSequence, alpha: Scalar = 1):
+    def add(self, other: _STOrSTSequence, alpha: _Scalar = 1):
         if alpha == 1: return self.zipmap(operator.add, other=other)
         return self.zipmap(_alpha_add, other=other, alpha = alpha)
-    def add_(self, other: STOrSTSequence, alpha: Scalar = 1):
+    def add_(self, other: _STOrSTSequence, alpha: _Scalar = 1):
         return self._set_to_method_result('add', other, alpha = alpha)
 
-    def sub(self, other: "Scalar | STSequence", alpha: Scalar = 1):
+    def sub(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
         if alpha == 1: return self.zipmap(operator.sub, other=other)
         return self.zipmap(_alpha_add, other=other, alpha = -alpha)
 
-    def sub_(self, other: "Scalar | STSequence", alpha: Scalar = 1):
+    def sub_(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
         return self._set_to_method_result('sub', other, alpha = alpha)
 
     def neg(self): return self.__class__(-i for i in self)
     def neg_(self): return self._set_to_method_result('neg')
 
-    def mul(self, other: STOrSTSequence): return self.zipmap(operator.mul, other=other)
-    def mul_(self, other: STOrSTSequence): return self._set_to_method_result('mul', other)
+    def mul(self, other: _STOrSTSequence): return self.zipmap(operator.mul, other=other)
+    def mul_(self, other: _STOrSTSequence): return self._set_to_method_result('mul', other)
 
-    def div(self, other: STOrSTSequence) -> Self: return self.zipmap(operator.truediv, other=other)
-    def div_(self, other: STOrSTSequence): return self._set_to_method_result('div', other)
+    def div(self, other: _STOrSTSequence) -> Self: return self.zipmap(operator.truediv, other=other)
+    def div_(self, other: _STOrSTSequence): return self._set_to_method_result('div', other)
 
-    def pow(self, exponent: "Scalar | STSequence"): return self.zipmap(math.pow, other=exponent)
-    def pow_(self, exponent: "Scalar | STSequence"): return self._set_to_method_result('pow_', exponent)
+    def pow(self, exponent: "_Scalar | _STSequence"): return self.zipmap(math.pow, other=exponent)
+    def pow_(self, exponent: "_Scalar | _STSequence"): return self._set_to_method_result('pow_', exponent)
 
-    def __rtruediv__(self, other: "Scalar | STSequence"):
+    def __rtruediv__(self, other: "_Scalar | _STSequence"):
         # overriding because TensorList implements this through reciprocal
         if isinstance(other, (tuple,list)): return self.__class__(o / i for o, i in zip(self, other))
         return self.__class__(other / i for i in self)
@@ -747,7 +749,7 @@ def sum(tensorlists: Iterable[TensorList]):
     return stack(tensorlists).sum(0)
 
 
-def where(condition: TensorList, input: STOrSTSequence, other: STOrSTSequence):
+def where(condition: TensorList, input: _STOrSTSequence, other: _STOrSTSequence):
     """Where but for a tensorlist."""
     args = [i if isinstance(i, (list, tuple)) else [i]*len(condition) for i in (input, other)]
     return condition.__class__(torch.where(*z) for z in zip(condition, *args))

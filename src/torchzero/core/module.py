@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, TypeAlias
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Sequence, Iterable
 
 import torch
 
-from ..python_tools import ScalarType
+from ..python_tools import _ScalarLoss, flatten
 from ..tensorlist import TensorList
 from .tensorlist_optimizer import TensorListOptimizer, ParamsT
 
@@ -14,7 +14,7 @@ def _get_loss(fx0, fx0_approx):
     if fx0 is None: return fx0_approx
     return fx0
 
-ClosureType = Callable[..., ScalarType] #
+ClosureType = Callable[..., _ScalarLoss] #
 """
 Closure example:
 .. code-block:: python
@@ -43,11 +43,11 @@ class OptimizationState:
         Will be None on the first module in the chain.
         May remain none for modules that create a new closure."""
 
-        self.fx0: ScalarType | None = None
+        self.fx0: _ScalarLoss | None = None
         """Loss value strictly with initial parameters of the current step.
         If initial parameters have not been evaluated, this should be None."""
 
-        self.fx0_approx: ScalarType | None = None
+        self.fx0_approx: _ScalarLoss | None = None
         """Loss value, could be sampled nearby the initial parameters.
         This is mainly used as the return value of the step method when fx0 is None."""
 
@@ -114,6 +114,7 @@ class OptimizationState:
         if state.fx0 is not None: self.fx0 = state.fx0
         if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
 
+
 class OptimizerModule(TensorListOptimizer, ABC):
     r"""Base class for all modules.
 
@@ -160,8 +161,9 @@ class OptimizerModule(TensorListOptimizer, ABC):
         super().__init__(params, self._defaults)
         self._initialized = True
 
-    def _set_child_(self, name, child: "OptimizerModule"):
+    def _set_child_(self, name, child: "_Chainable"):
         """Set a child and initialize it's params."""
+        if not isinstance(child, OptimizerModule): child = Chain(child)
         self.children[name] = child
         if self._initialized:
             self._update_child_params_(child)
@@ -201,7 +203,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         for c in self.children.values():
             self._update_child_params_(c)
 
-    def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> ScalarType | None:
+    def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> _ScalarLoss | None:
         """If this has no children, update params and return loss. Otherwise step with the next module.
 
         Optionally pass params to not recreate them if you've already made them.
@@ -220,7 +222,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         return self.next_module.step(state)
 
     @torch.no_grad
-    def _step_update_closure(self, state: OptimizationState) -> ScalarType | None:
+    def _step_update_closure(self, state: OptimizationState) -> _ScalarLoss | None:
         """Create a new closure which applies the `_update` method and passes it to the next module."""
         if state.closure is None: raise ValueError('If `make_closure` is True, closure must be provided')
 
@@ -250,7 +252,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
 
     @torch.no_grad
-    def _step_update_ascent_direction(self, state: OptimizationState) -> ScalarType | None:
+    def _step_update_ascent_direction(self, state: OptimizationState) -> _ScalarLoss | None:
         """Apply _update method to the ascent direction and pass it to the child, or make a step if child is None."""
         # the following code by default uses `_update` method which simple modules can override.
         # But you can also just override the entire `step`.
@@ -275,7 +277,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
     def step( # type:ignore # pylint:disable=signature-differs # pylint:disable = arguments-renamed
         self,
         state: OptimizationState
-    ) -> ScalarType | None:
+    ) -> _ScalarLoss | None:
         """Perform a single optimization step to update parameter."""
 
         if self._make_closure: return self._step_update_closure(state)
@@ -310,3 +312,51 @@ class _ReturnAscent:
     def step(self, state: OptimizationState) -> TensorList: # type:ignore
         update = state.maybe_use_grad_(self.params) # this will execute the closure which might be modified
         return update
+
+class _MaybeReturnAscent(OptimizerModule):
+    """utility module that either returns ascent or updates the parameters depending on `_return_ascent`, used in Chain."""
+    def __init__(self):
+        super().__init__({})
+        self._return_ascent = False
+
+    @torch.no_grad
+    def step(self, state: OptimizationState):
+        assert self.next_module is None, self.next_module
+
+        if self._return_ascent:
+            return state.ascent
+
+        return self._update_params_or_step_with_next(state)
+
+_Chainable = OptimizerModule | Iterable[OptimizerModule]
+
+class Chain(OptimizerModule):
+    """
+    Utility module that chains multiple modules together, usually used by other modules.
+    """
+    def __init__(self, *modules: _Chainable):
+        super().__init__({})
+        flat_modules: list[OptimizerModule] = flatten(modules)
+        self._ascent_returner = _MaybeReturnAscent()
+        flat_modules.append(self._ascent_returner)
+
+        # first module is chain's child, second module is first module's child, etc
+        self._set_child_('first', flat_modules[0])
+        if len(flat_modules) > 1:
+            for i, m in enumerate(flat_modules[:-1]):
+                m._set_next_module(flat_modules[i+1])
+
+        self._chain_modules = flat_modules
+
+    @torch.no_grad
+    def step(self, state: OptimizationState):
+        # no next module, step with the child
+        if self.next_module is None:
+            self._ascent_returner._return_ascent = False
+            return self.children['first'].step(state)
+
+        # return ascent and pass it to next module
+        self._ascent_returner._return_ascent = True # type:ignore
+        state.ascent = self.children['first'].step(state) # type:ignore
+
+        return self._update_params_or_step_with_next(state)
