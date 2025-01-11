@@ -1,10 +1,6 @@
-# pylint: disable = singleton-comparison
-# ruff: noqa: E712
 r"""
 This submodule contains composable optimizer "building blocks".
 """
-from collections.abc import Iterable, Sequence
-from typing import Any, Literal, TypedDict, get_type_hints
 
 from ..core.module import OptimizerModule
 from .adaptive import *
@@ -19,5 +15,5 @@ from .quasi_newton import *
 from .regularization import *
 from .second_order import *
 from .smoothing import *
+from .weight_averaging import *
 from . import experimental
-# from .experimental.subspace import *
