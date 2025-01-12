@@ -1,1 +1,1 @@
-from .polyak_averaging import PolyakAveraging, EMA
+from .polyak_averaging import PolyakAveraging, SEMA

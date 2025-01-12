@@ -121,6 +121,10 @@ class TensorList(list[torch.Tensor | Any]):
         """Returns all tensors with requires_grad set to the given value."""
         return self.__class__(i for i in self if i.requires_grad == requires_grad)
 
+    def with_grad(self):
+        """returns all tensors whose .grad is not None"""
+        return self.__class__(i for i in self if i.grad is not None)
+
     def ensure_grad_(self):
         """For each element, if grad is None and it requires grad, sets grad to zeroes."""
         for i in self:

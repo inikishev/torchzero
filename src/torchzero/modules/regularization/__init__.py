@@ -20,3 +20,4 @@ from .weight_decay import (
     l2_regularize_,
     weight_decay_penalty,
 )
+from .ortho_grad import OrthoGrad, orthograd_

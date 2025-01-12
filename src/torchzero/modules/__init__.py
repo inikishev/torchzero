@@ -15,5 +15,6 @@ from .quasi_newton import *
 from .regularization import *
 from .second_order import *
 from .smoothing import *
+from .orthogonalization import *
 from .weight_averaging import *
 from . import experimental
