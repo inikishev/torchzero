@@ -34,16 +34,33 @@ class OrthoGrad(OptimizerModule):
     Args:
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to apply ⟂Grad to.
         eps (float, optional): epsilon added to the denominator for numerical stability (default: 1e-30)
+        renormalize (bool, optional): whether to renormalize gradients back to original norm (default: True).
+        add (bool, optional):
+            option for experimentation that changes subtraction to addition.
+            I don't think it has any geometric meaning but it drives weights towards zero instead of away from it.
+            For good results leave this at False.
 
     reference
         https://arxiv.org/abs/2501.04697
     """
-    def __init__(self, eps: float = 1e-30):
+    def __init__(self, eps: float = 1e-30, renormalize=True, add=False):
         super().__init__({})
         self.eps = eps
+        self.add = add
+        self.renormalize = renormalize
 
     def _update(self, state, ascent):
         params = self.get_params()
-        ascent -= (((params*ascent).total_sum())/(params*params).total_sum() + self.eps) * params
+
+        if self.renormalize: orig_norm = ascent.norm(2) + self.eps
+        else: orig_norm = 1
+
+        term = params * (((params*ascent).total_sum())/(params*params).total_sum() + self.eps)
+        if self.add: ascent += term
+        else: ascent -= term
+
+        if self.renormalize:
+            ascent *= (orig_norm / ascent.norm(2))
+
         return ascent
 

@@ -11,6 +11,8 @@ from ...core import OptimizerModule
 class PolyakAveraging(OptimizerModule):
     """Every n steps this sets parameters to the average over last n steps.
 
+    Original polyak averaging does that at the end, this does that every n steps.
+
     Please put this module at the end, after all other modules.
 
     Args:
@@ -44,7 +46,7 @@ class PolyakAveraging(OptimizerModule):
 
 
 class SEMA(OptimizerModule):
-    """Every n steps switches params to an exponential moving average of past weights.
+    """Switch-EMA. Every n steps switches params to an exponential moving average of past weights.
 
     In the paper the switch happens after each epoch.
 
