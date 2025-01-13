@@ -2,13 +2,13 @@ import typing as T
 
 import torch
 
-from ...python_tools import _ScalarLoss
+from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import Distributions, TensorList
-from ...core import ClosureType, OptimizerModule, OptimizationState
+from ...core import _ClosureType, OptimizerModule, OptimizationState
 from ._fd_formulas import _FD_Formulas
 
 
-def _two_point_rcd_(closure: ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None, ):
+def _two_point_rcd_(closure: _ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None, ):
     """Two point randomized finite difference (same signature for all other finite differences functions).
 
     Args:
@@ -40,7 +40,7 @@ def _two_point_rcd_(closure: ClosureType, params: TensorList, perturbation: Tens
     # also we can't reuse the perturbatuion tensor and multiply it in place,
     # since if randomize_every is more than 1, that would break it.
 
-def _two_point_rfd_(closure: ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None):
+def _two_point_rfd_(closure: _ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None):
     if fx0 is None: raise ValueError()
 
     params += perturbation
@@ -50,7 +50,7 @@ def _two_point_rfd_(closure: ClosureType, params: TensorList, perturbation: Tens
 
     return perturbation * eps.map(lambda x: (fx1 - fx0) / x**2), fx0
 
-def _two_point_rbd_(closure: ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None):
+def _two_point_rbd_(closure: _ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None):
     if fx0 is None: raise ValueError()
 
     params -= perturbation

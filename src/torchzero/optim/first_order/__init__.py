@@ -14,3 +14,4 @@ from .optimizers import (
     Rprop,
     SignSGD,
 )
+from .forward_gradient import ForwardGradient

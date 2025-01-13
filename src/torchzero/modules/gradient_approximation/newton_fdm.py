@@ -2,9 +2,9 @@ import typing as T
 
 import torch
 
-from ...python_tools import _ScalarLoss
+from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import TensorList
-from ...core import ClosureType, OptimizerModule
+from ...core import _ClosureType, OptimizerModule
 from ..second_order.newton import (LINEAR_SYSTEM_SOLVERS,
                                    FallbackLinearSystemSolvers,
                                    LinearSystemSolvers, _fallback_gd)
@@ -12,7 +12,7 @@ from ._fd_formulas import _FD_Formulas
 
 
 def _three_point_2cd_(
-    closure: ClosureType,
+    closure: _ClosureType,
     idx1: int,
     idx2: int,
     p1: torch.Tensor,

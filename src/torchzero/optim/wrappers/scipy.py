@@ -7,7 +7,7 @@ import torch
 
 import scipy.optimize
 
-from ...core import ClosureType, TensorListOptimizer
+from ...core import _ClosureType, TensorListOptimizer
 from ...utils.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
 from ...modules import Wrap
 from ...modules.experimental.subspace import Projection, Proj2Masks, ProjGrad, ProjNormalize, Subspace
@@ -95,7 +95,7 @@ class ScipyMinimize(TensorListOptimizer):
             else: self.jac = None
 
 
-    def _hess(self, x: np.ndarray, params: TensorList, closure: ClosureType): # type:ignore
+    def _hess(self, x: np.ndarray, params: TensorList, closure: _ClosureType): # type:ignore
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         with torch.enable_grad():
             value = closure(False)
@@ -104,7 +104,7 @@ class ScipyMinimize(TensorListOptimizer):
         regularize_hessian_(Hmat, self.tikhonov)
         return Hmat.detach().cpu().numpy()
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure: ClosureType):
+    def _objective(self, x: np.ndarray, params: TensorList, closure: _ClosureType):
         # set params to x
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
 
@@ -115,7 +115,7 @@ class ScipyMinimize(TensorListOptimizer):
         return _ensure_float(closure(False))
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable = signature-differs
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable = signature-differs
         params = self.get_params()
 
         # determine hess argument
@@ -182,7 +182,7 @@ class ScipyRoot(TensorListOptimizer):
         self.jac = jac
         if self.jac == 'autograd': self.jac = True
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure: ClosureType):
+    def _objective(self, x: np.ndarray, params: TensorList, closure: _ClosureType):
         # set params to x
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
 
@@ -197,7 +197,7 @@ class ScipyRoot(TensorListOptimizer):
         return _ensure_numpy(closure(False))
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable = signature-differs
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable = signature-differs
         params = self.get_params()
 
         x0 = params.to_vec().detach().cpu().numpy()
@@ -258,7 +258,7 @@ class ScipyRootOptimization(TensorListOptimizer):
         if self.method.lower() in ('broyden1', 'broyden2', 'anderson', 'linearmixing', 'diagbroyden', 'excitingmixing', 'krylov', 'df-sane'):
             self.jac = None
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure: ClosureType):
+    def _objective(self, x: np.ndarray, params: TensorList, closure: _ClosureType):
         # set params to x
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
 
@@ -284,7 +284,7 @@ class ScipyRootOptimization(TensorListOptimizer):
         return jac.detach().cpu().numpy()
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable = signature-differs
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable = signature-differs
         params = self.get_params()
 
         x0 = params.to_vec().detach().cpu().numpy()
@@ -347,12 +347,12 @@ class ScipyDE(TensorListOptimizer):
         self._kwargs = kwargs
         self._lb, self._ub = bounds
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure: ClosureType):
+    def _objective(self, x: np.ndarray, params: TensorList, closure: _ClosureType):
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         return _ensure_float(closure(False))
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable = signature-differs
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable = signature-differs
         params = self.get_params()
 
         x0 = params.to_vec().detach().cpu().numpy()

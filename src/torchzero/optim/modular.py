@@ -2,7 +2,7 @@ from collections import abc
 import torch
 
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, Chain, _Chainable
-from ..python_tools import flatten
+from ..utils.python_tools import flatten
 
 class Modular(TensorListOptimizer):
     """Make a modular optimizer from a sequence of modules

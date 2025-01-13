@@ -13,6 +13,7 @@ from .experimental import (
     MultistepSGD,
     RandomCoordinateMomentum,
     ReciprocalSGD,
+    NoiseSign,
 )
 
 

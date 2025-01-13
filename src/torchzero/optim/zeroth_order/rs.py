@@ -1,6 +1,6 @@
 import torch
 
-from ...core import TensorListOptimizer, ClosureType
+from ...core import TensorListOptimizer, _ClosureType
 
 
 class RandomSearch(TensorListOptimizer):
@@ -22,7 +22,7 @@ class RandomSearch(TensorListOptimizer):
         self.stochastic = stochastic
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable=W0222
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable=W0222
         if self.stochastic: self.lowest_loss = closure()
 
         settings = self.get_all_group_keys()
@@ -59,7 +59,7 @@ class CyclicRS(TensorListOptimizer):
         self.stochastic = stochastic
 
     @torch.no_grad
-    def step(self, closure: ClosureType): # type:ignore # pylint:disable=W0222
+    def step(self, closure: _ClosureType): # type:ignore # pylint:disable=W0222
         if self.stochastic: self.lowest_loss = closure()
         settings = self.get_all_group_keys()
         params = self.get_params()

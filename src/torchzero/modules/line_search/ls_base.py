@@ -6,8 +6,8 @@ from contextlib import nullcontext
 import torch
 
 from ... import tl
-from ...core import ClosureType, OptimizationState, OptimizerModule
-from ...python_tools import _ScalarLoss
+from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...utils.python_tools import _ScalarLoss
 
 
 class MaxIterReached(Exception): pass
@@ -60,7 +60,7 @@ class LineSearchBase(OptimizerModule, ABC):
         self._last_lr = lr
 
     # lr is first here so that we can use a partial
-    def _evaluate_lr_(self, lr: float, closure: ClosureType, ascent: tl.TensorList, params: tl.TensorList, backward=False):
+    def _evaluate_lr_(self, lr: float, closure: _ClosureType, ascent: tl.TensorList, params: tl.TensorList, backward=False):
         """Evaluate `lr`, if loss is better than current lowest loss,
         overrides `self._lowest_loss` and `self._best_lr`.
 
@@ -95,7 +95,7 @@ class LineSearchBase(OptimizerModule, ABC):
     def _evaluate_lr_ensure_float(
         self,
         lr: float,
-        closure: ClosureType,
+        closure: _ClosureType,
         ascent: tl.TensorList,
         params: tl.TensorList,
     ) -> float:

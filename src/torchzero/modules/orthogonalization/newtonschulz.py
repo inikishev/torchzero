@@ -11,8 +11,8 @@ import numpy as np
 import torch
 
 from ... import tl
-from ...core import ClosureType, OptimizationState, OptimizerModule
-from ...python_tools import _ScalarLoss
+from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...utils.python_tools import _ScalarLoss
 
 def _zeropower_via_newtonschulz5(G, steps):
     """

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ... import tl
-from ...core import ClosureType, OptimizationState
+from ...core import _ClosureType, OptimizationState
 from .ls_base import LineSearchBase
 
 class GridLS(LineSearchBase):

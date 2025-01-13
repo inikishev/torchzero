@@ -1,6 +1,6 @@
 import torch
 from ...tensorlist import TensorList
-from ...core import OptimizerModule, _get_loss, ClosureType
+from ...core import OptimizerModule, _get_loss, _ClosureType
 
 class SetGrad(OptimizerModule):
     """Doesn't update parameters, instead replaces all parameters `.grad` attribute with the current update.
@@ -37,7 +37,7 @@ class ReturnClosure(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, state) -> ClosureType: # type:ignore
+    def step(self, state) -> _ClosureType: # type:ignore
         if self.next_module is not None: raise ValueError("SetGrad can't have children")
         if state.closure is None:
             raise ValueError("MakeClosure requires closure")

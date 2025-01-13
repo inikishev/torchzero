@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence, Iterable
 
 import torch
 
-from ..python_tools import _ScalarLoss, flatten
+from ..utils.python_tools import _ScalarLoss, flatten
 from ..tensorlist import TensorList
 from .tensorlist_optimizer import TensorListOptimizer, ParamsT
 
@@ -14,7 +14,7 @@ def _get_loss(fx0, fx0_approx):
     if fx0 is None: return fx0_approx
     return fx0
 
-ClosureType = Callable[..., _ScalarLoss] #
+_ClosureType = Callable[..., _ScalarLoss] #
 """
 Closure example:
 .. code-block:: python
@@ -30,9 +30,9 @@ This closure will also work with all built in pytorch optimizers including LBFGS
 
 class OptimizationState:
     """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""
-    def __init__(self, closure: ClosureType | None, model: torch.nn.Module | None):
+    def __init__(self, closure: _ClosureType | None, model: torch.nn.Module | None):
 
-        self.closure: ClosureType | None = closure
+        self.closure: _ClosureType | None = closure
         """A closure that reevaluates the model and returns the loss.
         The closure should accept `backward` boolean argument that is True by default, which,
         if True, sets `.grad` attributes of all learnable params, for example via `loss.backward()`.

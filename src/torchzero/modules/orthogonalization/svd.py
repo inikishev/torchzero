@@ -10,8 +10,8 @@ import numpy as np
 import torch
 
 from ... import tl
-from ...core import ClosureType, OptimizationState, OptimizerModule
-from ...python_tools import _ScalarLoss
+from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...utils.python_tools import _ScalarLoss
 
 @torch.no_grad()
 def _orthogonalize_update_(updates: Sequence[torch.Tensor], toggle = None, warn_fail=True) -> None:

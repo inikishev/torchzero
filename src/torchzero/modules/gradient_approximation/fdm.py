@@ -2,13 +2,13 @@ import typing as T
 
 import torch
 
-from ...python_tools import _ScalarLoss
+from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import TensorList
-from ...core import ClosureType, OptimizerModule, OptimizationState
+from ...core import _ClosureType, OptimizerModule, OptimizationState
 from ._fd_formulas import _FD_Formulas
 
 
-def _two_point_fd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
+def _two_point_fd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
     """Two point finite difference (same signature for all other finite differences functions).
 
     Args:
@@ -30,14 +30,14 @@ def _two_point_fd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: tor
     pvec[idx] -= eps
     return fx0
 
-def _two_point_bd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
+def _two_point_bd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
     pvec[idx] += eps
     fx1 = closure(False)
     gvec[idx] = (fx0 - fx1) / eps
     pvec[idx] -= eps
     return fx0
 
-def _two_point_cd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0 = None, ):
+def _two_point_cd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0 = None, ):
     pvec[idx] += eps
     fxplus = closure(False)
     pvec[idx] -= eps * 2
@@ -46,7 +46,7 @@ def _two_point_cd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: tor
     pvec[idx] += eps
     return fxplus
 
-def _three_point_fd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
+def _three_point_fd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
     pvec[idx] += eps
     fx1 = closure(False)
     pvec[idx] += eps
@@ -55,7 +55,7 @@ def _three_point_fd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: t
     pvec[idx] -= 2 * eps
     return fx0
 
-def _three_point_bd_(closure: ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
+def _three_point_bd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
     pvec[idx] -= eps
     fx1 = closure(False)
     pvec[idx] -= eps

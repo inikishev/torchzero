@@ -9,8 +9,8 @@ import numpy as np
 import torch
 
 from ... import tl
-from ...core import ClosureType, OptimizationState, OptimizerModule
-from ...python_tools import _ScalarLoss
+from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...utils.python_tools import _ScalarLoss
 
 
 def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
@@ -35,19 +35,23 @@ class OrthoGrad(OptimizerModule):
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to apply ⟂Grad to.
         eps (float, optional): epsilon added to the denominator for numerical stability (default: 1e-30)
         renormalize (bool, optional): whether to renormalize gradients back to original norm (default: True).
+        sqrt_scale (bool, optional):
+            uses square root of the scale to make it more impactful, experimental setting (default: False).
         add (bool, optional):
-            option for experimentation that changes subtraction to addition.
+            Experimental option that changes subtraction to addition.
             I don't think it has any geometric meaning but it drives weights towards zero instead of away from it.
-            For good results leave this at False.
+            and it seems to work well with sqrt_scale = True. It speeds up convergence by a lot compared to using vanilla gradient,
+            but also has INSANE overfitting.
 
     reference
         https://arxiv.org/abs/2501.04697
     """
-    def __init__(self, eps: float = 1e-30, renormalize=True, add=False):
+    def __init__(self, eps: float = 1e-30, renormalize=True, sqrt_scale = False, add=False):
         super().__init__({})
         self.eps = eps
         self.add = add
         self.renormalize = renormalize
+        self.sqrt_scale = sqrt_scale
 
     def _update(self, state, ascent):
         params = self.get_params()
@@ -55,9 +59,12 @@ class OrthoGrad(OptimizerModule):
         if self.renormalize: orig_norm = ascent.norm(2) + self.eps
         else: orig_norm = 1
 
-        term = params * (((params*ascent).total_sum())/(params*params).total_sum() + self.eps)
-        if self.add: ascent += term
-        else: ascent -= term
+        scale = (params*ascent).total_sum() / ((params*params).total_sum() + self.eps)
+        if self.sqrt_scale:
+            scale = scale.abs().sqrt() * scale.sign()
+
+        if self.add: ascent += params * scale
+        else: ascent -= params * scale
 
         if self.renormalize:
             ascent *= (orig_norm / ascent.norm(2))
