@@ -1,2 +1,2 @@
 from .svd import Orthogonalize, orthogonalize_grad_
-from .newtonschulz import ZeropowerViaNewtonSchulz, zeropower_via_newtonschulz_
+from .newtonschulz import ZeropowerViaNewtonSchulz, zeropower_via_newtonschulz_, DualNormCorrection

@@ -1,61 +1,20 @@
-from collections.abc import Callable, Iterable
-from warnings import warn
-
 import torch
-
-from torchzero.tensorlist import TensorList
-
 from ...core import OptimizerModule
 
 
-class PolyakAveraging(OptimizerModule):
-    """Every n steps this sets parameters to the average over last n steps.
-
-    Original polyak averaging does that at the end, this does that every n steps.
-
-    Please put this module at the end, after all other modules.
-
-    Args:
-        n_steps (int): number of steps (batches).
-    """
-    def __init__(self, n_steps: int):
-
-        super().__init__({})
-        self.n_steps = n_steps
-        self.cur_step = 0
-
-    @torch.no_grad
-    def step(self, state):
-        if self.next_module is not None:
-            warn(f'PolyakAveraging should usually be the last module, but {self.next_module.__class__.__name__} is after it.')
-        self.cur_step += 1
-
-        params = self.get_params()
-        # update params with the child. Averaging is always applied at the end.
-        state.maybe_use_grad_(params)
-        self._update_params_or_step_with_next(state, params)
-
-        sum = self.get_state_key('sum')
-        sum += params
-
-        if self.cur_step % self.n_steps == 0:
-            params.set_(sum / self.n_steps)
-            sum.zero_()
-
-        return state.get_loss()
-
-
+# the reason why this needs to be at the end is ??? I NEED TO REMEMBER
 class SEMA(OptimizerModule):
     """Switch-EMA. Every n steps switches params to an exponential moving average of past weights.
 
     In the paper the switch happens after each epoch.
 
-    This can also function as EMA, set `update_every` to None and instead call `set_ema` and `unset_ema` on this module.
-
     Please put this module at the end, after all other modules.
 
+    This can also function as EMA, set `update_every` to None and instead call `set_ema` and `unset_ema` on this module.
+
+
     Args:
-        n_steps (int): number of steps (batches).
+        update_every (int): number of steps (batches) between setting model parameters to EMA.
 
     reference
         https://arxiv.org/abs/2402.09240
@@ -87,9 +46,9 @@ class SEMA(OptimizerModule):
         self.cur_step += 1
 
         params = self.get_params()
+        # state.maybe_use_grad_(params)
         # update params with the child. Averaging is always applied at the end.
-        state.maybe_use_grad_(params)
-        self._update_params_or_step_with_next(state, params)
+        ret = self._update_params_or_step_with_next(state, params)
 
         ema = self.get_state_key('ema', init = 'params', params=params)
         momentum = self.get_group_key('momentum')
@@ -99,4 +58,4 @@ class SEMA(OptimizerModule):
         if (self.update_every is not None) and (self.cur_step % self.update_every == 0):
             params.set_(ema.clone())
 
-        return state.get_loss()
+        return ret

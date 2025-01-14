@@ -74,12 +74,12 @@ class Wrap(OptimizerModule):
                 state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
                 return state.get_loss()
 
-            if state.ascent is None: raise ValueError('no ascent')
             params = self.get_params()
 
             # set grad to ascent and make a step with the optimizer
             # shouldn't accumulate here because params might already have autograd gradients
-            params.set_grad_(state.ascent)
+            if state.ascent is None: state.maybe_compute_grad_(params)
+            else: params.set_grad_(state.ascent)
             state.fx0_approx = self.optimizer.step()
             return state.get_loss()
 
@@ -89,8 +89,8 @@ class Wrap(OptimizerModule):
 
             if self.pass_closure: state.fx0_approx = self.optimizer.step(state.closure) # type:ignore
             else:
-                if state.ascent is None: raise ValueError('no ascent')
-                params.set_grad_(state.ascent)
+                if state.ascent is None: state.maybe_use_grad_(params)
+                else: params.set_grad_(state.ascent)
                 state.fx0_approx = self.optimizer.step()
 
             # calculate update as difference in params

@@ -4,15 +4,12 @@ Newton-Schulz iteration code is taken from https://github.com/KellerJordan/Muon
 Keller Jordan and Yuchen Jin and Vlado Boza and You Jiacheng and Franz Cecista and Laker Newhouse and Jeremy Bernstein.
 Muon: An optimizer for hidden layers in neural networks (2024). URL: https://kellerjordan.github.io/posts/muon
 """
-import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 
-import numpy as np
 import torch
 
-from ... import tl
-from ...core import _ClosureType, OptimizationState, OptimizerModule
-from ...utils.python_tools import _ScalarLoss
+from ...core import OptimizerModule
+# from ...utils.compile import maybe_compile
 
 def _zeropower_via_newtonschulz5(G, steps):
     """
@@ -42,30 +39,43 @@ def _zeropower_via_newtonschulz5(G, steps):
 
     if G.size(0) > G.size(1):
         X = X.T
+
     return X
 
 _compiled_zeropower_via_newtonschulz5 = torch.compile(_zeropower_via_newtonschulz5)
 
 
-def zeropower_via_newtonschulz_(params: Iterable[torch.Tensor], steps, compiled = True):
+def zeropower_via_newtonschulz_(params: Iterable[torch.Tensor], steps: int = 6, adaptive = False, compiled = True):
     """Uses newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
-    This updates gradients in-place.
+    This sets gradients in-place.
 
     Note that the Muon page says that embeddings and classifier heads should not be orthogonalized.
 
     The orthogonalization code is taken from https://github.com/KellerJordan/Muon
     Args:
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to orthogonalize.
-        warn_fail (bool, optional):
-            whether to print a warning when orthogonalization fails, and gradients are not
-            orthogonalized. Defaults to True.
+        steps (int): The number of Newton-Schulz iterations to run. (6 is probably always enough).
+            The number of Newton-Schulz iterations to run. (6 is probably always enough). Defaults to 6.
+        adaptive (bool, optional):
+            Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to False.
+        compiled (bool, optional):
+            Uses compiled newton-Schulz iteration function. Faster but won't work on windows. Defaults to True.
+
+
     """
     if compiled: fn = _compiled_zeropower_via_newtonschulz5
     else: fn = _zeropower_via_newtonschulz5
     for p in params:
         if p.grad is not None and p.grad.ndim >= 2 and min(p.grad.shape) >= 2:
-            p.grad = fn(p.grad.view(p.grad.shape[0], -1), steps).reshape_as(p.grad).to(p.grad, copy=False)
+            G = p.grad.view(p.grad.shape[0], -1)
+            X = fn(G, steps)
+
+            if adaptive:
+                # this is from https://github.com/leloykun/adaptive-muon
+                X = torch.einsum('ij,ij,ab->ab', G.type_as(X), X, X)  # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
+
+            p.grad = X.reshape_as(p.grad).to(p.grad, copy=False)
 
 
 class ZeropowerViaNewtonSchulz(OptimizerModule):
@@ -86,22 +96,56 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
     Args:
         ns_steps (int, optional):
             The number of Newton-Schulz iterations to run. (6 is probably always enough). Defaults to 6.
+        adaptive (bool, optional):
+            Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to True.
         compiled (bool, optional):
             Uses compiled newton-Schulz iteration function. Faster but won't work on windows. Defaults to True.
     """
-    def __init__(self, ns_steps = 6,compiled=True):
-        defaults = dict(newtonshultz = True, ns_steps=ns_steps)
+    def __init__(self, ns_steps = 6, adaptive = False, compiled=True):
+        defaults = dict(newtonshultz = True, ns_steps=ns_steps, adaptive=adaptive)
         super().__init__(defaults)
 
         if compiled: self._zeropower_via_newtonschulz5 = _compiled_zeropower_via_newtonschulz5
         else: self._zeropower_via_newtonschulz5 = _zeropower_via_newtonschulz5
 
     def _update(self, state, ascent):
-        toggle, ns_steps = self.get_group_keys(['newtonshultz', 'ns_steps'], cls=list)
+        toggle, ns_steps, adaptive = self.get_group_keys(['newtonshultz', 'ns_steps', 'adaptive'], cls=list)
 
-        for asc, enable, steps in zip(ascent, toggle, ns_steps):
-            if enable and asc.ndim >= 2 and min(asc.shape) >= 2:
-                asc.set_(self._zeropower_via_newtonschulz5(asc.view(asc.shape[0], -1), steps).reshape_as(asc).to(asc, copy=False)) # type:ignore
+        for asc, enable, steps, ada in zip(ascent, toggle, ns_steps, adaptive):
+            if enable and len([i for i in asc.shape if i > 1]) != 0:
+                G = asc.view(asc.shape[0], -1)
+                X = self._zeropower_via_newtonschulz5(G, steps)
+
+                if ada:
+                    # this is from https://github.com/leloykun/adaptive-muon
+                    X = torch.einsum('ij,ij,ab->ab', G.type_as(X), X, X)  # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
+
+                asc.set_(X.reshape_as(asc).to(asc, copy=False)) # type:ignore
 
         return ascent
 
+
+
+class DualNormCorrection(OptimizerModule):
+    """Dual norm correction from https://github.com/leloykun/adaptive-muon.
+
+    Description from the page:
+
+    Single-line modification to any (dualizer-based) optimizer that allows the optimizer to adapt to the scale of the gradients as they change during training.
+    This is done by scaling the dualized gradient by the clipped dual norm of the original gradient.
+    """
+    def __init__(self, adaptive_scale_min: int | None = -1, adaptive_scale_max: int | None = 1):
+        defaults = dict(adaptive_scale_min = adaptive_scale_min, adaptive_scale_max = adaptive_scale_max)
+        super().__init__(defaults)
+
+    def _update(self, state, ascent):
+        params = self.get_params()
+        adaptive_scale_min, adaptive_scale_max = self.get_group_keys(['adaptive_scale_min', 'adaptive_scale_max'])
+
+        for asc, grad, min, max in zip(ascent, state.maybe_compute_grad_(params), adaptive_scale_min, adaptive_scale_max):
+            if len([i for i in asc.shape if i > 1]) != 0:
+                scale = torch.einsum('ij,ij->', grad.view(grad.shape[0], -1), asc.view(asc.shape[0], -1))
+                if min is not None or max is not None: scale = scale.clip(min, max)
+                asc *= scale
+
+        return ascent

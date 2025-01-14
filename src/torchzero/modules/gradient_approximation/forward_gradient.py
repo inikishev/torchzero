@@ -72,7 +72,7 @@ def get_forward_gradient(
                 jvp = fwAD.unpack_dual(loss).tangent
 
         elif mode == 'grad':
-            with torch.enable_grad(): loss = closure(True)
+            with torch.enable_grad(): loss = closure()
             jvp = tangents.mul(params.ensure_grad_().grad).sum()
 
         elif mode == 'fd':

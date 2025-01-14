@@ -30,9 +30,8 @@ class DirectionalNewton(LineSearchBase):
     with an additional forward pass.
 
     Args:
-        lr (float, optional):
-            learning rate. Since you shouldn't put this module after LR(), you have to specify
-            the learning rate in this argument. Defaults to 1e-2.
+        eps (float, optional):
+            learning rate, also functions as epsilon for directional second derivative estimation. Defaults to 1.
         max_dist (float | None, optional):
             maximum distance to step when minimizing quadratic.
             If minimum is further than this distance, minimization is not performed. Defaults to 1e4.
@@ -46,7 +45,7 @@ class DirectionalNewton(LineSearchBase):
     Note:
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
-    def __init__(self, lr:float=1e-2, max_dist: float | None = 1e5, validate_step = True, log_lrs = False,):
+    def __init__(self, lr:float=1, max_dist: float | None = 1e5, validate_step = True, log_lrs = False,):
         super().__init__({"lr": lr}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
@@ -61,7 +60,7 @@ class DirectionalNewton(LineSearchBase):
         grad = state.maybe_compute_grad_(params)
         ascent = state.maybe_use_grad_(params)
         if state.fx0 is None: state.fx0 = state.closure(False) # at this stage maybe_compute_grad could've evaluated fx0
-        
+
         lr: float = self.get_first_group_key('lr') # this doesn't support variable lrs but we still want to support schedulers
 
         # directional f'(x1)
@@ -146,7 +145,7 @@ class DirectionalNewton3Points(LineSearchBase):
 
     Args:
         lr (float, optional):
-            learning rate. Defaults to 1.
+            learning rate, also functions as epsilon for directional second derivative estimation. Defaults to 1.
         max_dist (float | None, optional):
             maximum distance to step when minimizing quadratic.
             If minimum is further than this distance, minimization is not performed. Defaults to 1e4.

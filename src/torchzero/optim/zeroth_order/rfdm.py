@@ -8,7 +8,7 @@ from ...modules import WeightDecay
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ...tensorlist import Distributions
 from ..modular import Modular
-
+from ...core.module import _get_param_groups_to_pass_to_child
 
 class RandomizedFDM(Modular):
     """Randomized finite difference gradient approximation (e.g. SPSA, RDSA, Nesterov random search).
@@ -223,4 +223,4 @@ class RandomizedFDMWrapper(Modular):
             ),
             Wrap(optimizer, pass_closure=True)
         ]
-        super().__init__(optimizer.param_groups, modules)
+        super().__init__(_get_param_groups_to_pass_to_child(optimizer), modules)

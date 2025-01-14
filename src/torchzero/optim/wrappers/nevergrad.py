@@ -17,7 +17,7 @@ def _ensure_float(x):
 class NevergradOptimizer(TensorListOptimizer):
     """Use nevergrad optimizer as pytorch optimizer.
     Note that it is recommended to specify `budget` to the number of iterations you expect to run,
-    in fact some nevergrad optimizers will error without it.
+    as some nevergrad optimizers will error without it.
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.

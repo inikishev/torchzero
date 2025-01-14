@@ -96,6 +96,9 @@ class TensorList(list[torch.Tensor | Any]):
     def view_as_real(self): return self.__class__(torch.view_as_real(i) for i in self)
     def view_as_complex(self): return self.__class__(torch.view_as_complex(i) for i in self)
 
+    def type_as(self, other: torch.Tensor | _TensorSequence):
+        return self.zipmap(_MethodCallerWithArgs('type_as'), other)
+
     def to_real_views(self):
         """Turns all complex tensors into real views, ignoring non-complex tensors, and sets an attribute `_tl_is_complex` to True or False,
         which `from_real_views` method can use to convert real views back into complex tensors"""
@@ -547,6 +550,7 @@ class TensorList(list[torch.Tensor | Any]):
     def mean(self, dim = None, keepdim = False): return self.__class__(i.mean(dim=dim, keepdim=keepdim) for i in self)
     def sum(self, dim = None, keepdim = False): return self.__class__(i.sum(dim=dim, keepdim=keepdim) for i in self)
     def prod(self, dim = None, keepdim = False): return self.__class__(i.prod(dim=dim, keepdim=keepdim) for i in self)
+    def std(self, dim = None, keepdim = False): return self.__class__(i.std(dim=dim, keepdim=keepdim) for i in self)
 
     def clamp_min(self, other: "_Scalar | _STSequence"): return self.__class__(torch._foreach_clamp_min(self, other))
     def clamp_min_(self, other: "_Scalar | _STSequence"):
@@ -740,6 +744,11 @@ class NumberList(TensorList):
         # overriding because TensorList implements this through reciprocal
         if isinstance(other, (tuple,list)): return self.__class__(o / i for o, i in zip(self, other))
         return self.__class__(other / i for i in self)
+
+    def map(self, fn: Callable[..., Any], *args, **kwargs):
+        """Applies `fn` to all elements of this NumberList
+        and returns a new TensorList with return values of the callable."""
+        return super().map(fn, *args, **kwargs)
 
 def stack(tensorlists: Iterable[TensorList], dim = 0):
     """Returns a tensorlist with the same elements as the input tensorlists, but stacked along the specified dimension."""

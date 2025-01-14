@@ -28,6 +28,20 @@ Closure example:
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
 """
 
+class _WeakDict(dict): pass
+
+def _get_param_groups_to_pass_to_child(optimizer: torch.optim.Optimizer):
+    """propagate only per-parameter settings that are not in optimizer.defaults"""
+    param_groups: list[dict[str, Any]] = []
+    for g in optimizer.param_groups.copy():
+        child_g = {"params": g["params"]}
+        for k,v in g.copy().items():
+            if k not in optimizer.defaults:
+                child_g[k] = v
+        param_groups.append(child_g)
+
+    return param_groups
+
 class OptimizationState:
     """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""
     def __init__(self, closure: _ClosureType | None, model: torch.nn.Module | None):
@@ -59,12 +73,15 @@ class OptimizationState:
         self.model = model
         """Model (for higher order derivatives)"""
 
+        self.post_step_hooks = []
+        """callables that get executed after each step. Used by periodic SWA to reset momentum when setting model parameters to SWA."""
+
     def maybe_compute_grad_(self, params: TensorList) -> TensorList:
         """Computes gradient if it hasn't been computed already, and returns it"""
         if self.grad is None:
 
             if self.closure is not None:
-                with torch.enable_grad(): self.fx0 = self.closure(True) # pylint:disable = not-callable (???)
+                with torch.enable_grad(): self.fx0 = self.closure() # pylint:disable = not-callable (???)
             self.grad = params.ensure_grad_().grad
 
         return self.grad
@@ -115,6 +132,13 @@ class OptimizationState:
         if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
 
 
+    def add_post_step_hook(self, hook: Callable):
+        """add a hook that runs after each step. The hook should look like this:
+        .. code:: py
+            def hook(optimizer: tz.optim.Modular, state: tz.core.OptimizationState): ...
+        """
+        self.post_step_hooks.append(hook)
+
 class OptimizerModule(TensorListOptimizer, ABC):
     r"""Base class for all modules.
 
@@ -154,6 +178,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """Initializes this optimizer and all children with the given parameters."""
         if isinstance(params, torch.Tensor): raise ValueError("Params must be an iterable of tensors, not torch.Tensor")
         params = list(params) # type:ignore
+
         # super().__init__, which is torch.optim.Optimizer.__init__,
         # calls self.add_param_group on each param group,
         # which in turn calls _update_child_params_,
@@ -163,7 +188,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
     def _set_child_(self, name, child: "_Chainable"):
         """Set a child and initialize it's params."""
-        if not isinstance(child, OptimizerModule): child = Chain(child)
+        if not isinstance(child, OptimizerModule): child = _Chain(child)
         self.children[name] = child
         if self._initialized:
             self._update_child_params_(child)
@@ -185,20 +210,23 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
         # if child is not initialized, torch.optim.Optimizer.__init__ is called on it by _initialize_ method
         if not next_module._initialized:
-            next_module._initialize_(self._params)
+
+            # propagate only per-parameter settings that are not in self.defaults
+            next_module._initialize_(_get_param_groups_to_pass_to_child(self))
 
         # otherwise to avoid calling __init__ multiple twice, we erase the param groups and readd them
         elif not next_module._has_custom_params:
             next_module.param_groups = []
-            for group in self.param_groups:
-                # it is important not to propagate all the settings
-                # for example if this module has `lr` setting, and the child has a different `lr` setting,
-                # we don't want to overwrite the child's `lr` setting
-                next_module.add_param_group({"params": group["params"]})
+            # it is important not to propagate all the settings
+            # for example if this module has `lr` setting, and the child has a different `lr` setting,
+            # we don't want to overwrite the child's `lr` setting
+            for group in _get_param_groups_to_pass_to_child(self):
+                next_module.add_param_group(group)
 
 
     def add_param_group(self, param_group: dict[str, Any]) -> None:
         super().add_param_group(param_group)
+
         if self.next_module is not None: self._update_next_module_params_(self.next_module)
         for c in self.children.values():
             self._update_child_params_(c)
@@ -304,6 +332,18 @@ class OptimizerModule(TensorListOptimizer, ABC):
         self.next_module = true_next
         return ascent
 
+    def reset_stats(self):
+        """Resets running stats of this optimizer such as momentum. This is meant to be used stop all
+        momentum when significantly changing model parameters, for example when setting model parameters
+        to weighted average every once in a while, like periodic SWA does. Pediodic resetting
+        may also be beneficial for some optimizers.
+        By default this method completely clears per-parameter state.
+        Modules may override this to provide different functionality."""
+        for g in self.param_groups:
+            for p in g['params']:
+                state = self.state[p]
+                for k in state.copy().keys(): del state[k]
+
 class _ReturnAscent:
     def __init__(self, params):
         self.params = params
@@ -330,7 +370,7 @@ class _MaybeReturnAscent(OptimizerModule):
 
 _Chainable = OptimizerModule | Iterable[OptimizerModule]
 
-class Chain(OptimizerModule):
+class _Chain(OptimizerModule):
     """
     Utility module that chains multiple modules together, usually used by other modules.
     """

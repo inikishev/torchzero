@@ -1,1 +1,2 @@
-from .polyak_averaging import PolyakAveraging, SEMA
+from .ema import SEMA
+from .swa import PeriodicSWA

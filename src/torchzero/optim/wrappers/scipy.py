@@ -59,7 +59,10 @@ class ScipyMinimize(TensorListOptimizer):
     def __init__(
         self,
         params,
-        method: str | None = None,
+        method: Literal['nelder-mead', 'powell', 'cg', 'bfgs', 'newton-cg',
+                    'l-bfgs-b', 'tnc', 'cobyla', 'cobyqa', 'slsqp',
+                    'trust-constr', 'dogleg', 'trust-ncg', 'trust-exact',
+                    'trust-krylov'] | str | None = None,
         lb = None,
         ub = None,
         constraints = (),
@@ -106,12 +109,12 @@ class ScipyMinimize(TensorListOptimizer):
 
     def _objective(self, x: np.ndarray, params: TensorList, closure: _ClosureType):
         # set params to x
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        params.from_vec_(torch.from_numpy(x).to(params[0], copy=False))
 
         # return value and maybe gradients
         if self.use_jac_autograd:
-            with torch.enable_grad(): value = _ensure_float(closure(True))
-            return value, params.grad.to_vec().detach().cpu().numpy()
+            with torch.enable_grad(): value = _ensure_float(closure())
+            return value, params.ensure_grad_().grad.to_vec().detach().cpu().numpy()
         return _ensure_float(closure(False))
 
     @torch.no_grad
@@ -167,7 +170,18 @@ class ScipyRoot(TensorListOptimizer):
     def __init__(
         self,
         params,
-        method: str = 'hybr',
+        method: Literal[
+            "hybr",
+            "lm",
+            "broyden1",
+            "broyden2",
+            "anderson",
+            "linearmixing",
+            "diagbroyden",
+            "excitingmixing",
+            "krylov",
+            "df-sane",
+        ] = 'hybr',
         tol: float | None = None,
         callback = None,
         options = None,
@@ -233,7 +247,18 @@ class ScipyRootOptimization(TensorListOptimizer):
     def __init__(
         self,
         params,
-        method: str = 'hybr',
+        method: Literal[
+            "hybr",
+            "lm",
+            "broyden1",
+            "broyden2",
+            "anderson",
+            "linearmixing",
+            "diagbroyden",
+            "excitingmixing",
+            "krylov",
+            "df-sane",
+        ] = 'hybr',
         tol: float | None = None,
         callback = None,
         options = None,
@@ -277,7 +302,7 @@ class ScipyRootOptimization(TensorListOptimizer):
             return jac.detach().cpu().numpy(), hess.detach().cpu().numpy()
 
         # return the gradients
-        with torch.enable_grad(): self.value = closure(True)
+        with torch.enable_grad(): self.value = closure()
         jac = params.ensure_grad_().grad.to_vec()
         if self.mul_loss != 0: jac *= self.value * self.mul_loss
         if self.add_loss != 0: jac += self.value * self.add_loss
@@ -321,7 +346,9 @@ class ScipyDE(TensorListOptimizer):
         self,
         params,
         bounds: tuple[float,float],
-        strategy: str = 'best1bin',
+        strategy: Literal['best1bin', 'best1exp', 'rand1bin', 'rand1exp', 'rand2bin', 'rand2exp',
+            'randtobest1bin', 'randtobest1exp', 'currenttobest1bin', 'currenttobest1exp',
+            'best2exp', 'best2bin'] = 'best1bin',
         maxiter: int = 1000,
         popsize: int = 15,
         tol: float = 0.01,

@@ -58,7 +58,7 @@ class MinibatchRprop(OptimizerModule):
         # first step
         ascent = g1_sign.mul_(magnitudes).mul_(allowed)
         params -= ascent
-        with torch.enable_grad(): state.fx0_approx = state.closure(True)
+        with torch.enable_grad(): state.fx0_approx = state.closure()
         f0 = state.fx0; f1 = state.fx0_approx
         assert f0 is not None and f1 is not None
 
@@ -191,7 +191,7 @@ class HVPDiagNewton(OptimizerModule):
         state.grad = grad_fx0 # set state grad to the cloned version, since it will be overwritten
 
         params += grad_fx0 * eps
-        with torch.enable_grad(): _ = state.closure(True)
+        with torch.enable_grad(): _ = state.closure()
 
         params -= grad_fx0 * eps
 
@@ -200,3 +200,75 @@ class HVPDiagNewton(OptimizerModule):
 
         state.ascent = newton
         return self._update_params_or_step_with_next(state)
+
+
+def _reset_stats_hook(optimizer, state):
+    for module in optimizer.modules:
+        module: OptimizerModule
+        module.reset_stats()
+
+class CyclicSWA(OptimizerModule):
+    """I remember reading about this but I have no idea if I actually red it or if I dreamed it up. I am not able to find the paper.
+
+    This is just periodic SWA with cyclic learning rate. So it samples the weights, increases lr to `peak_lr`, samples the weights again,
+    decreases lr back to `init_lr`, and samples the weights last time. Then model weights are replaced with the average of the three sampled weights,
+    and next cycle starts.
+
+    It is easier to tune than PeriodicSWA and seems to work better too.
+    """
+    def __init__(self, cswa_start: int, cycle_length: int, steps_between: int, init_lr: float = 0, peak_lr: float = 1):
+
+        super().__init__({})
+        self.cswa_start = cswa_start
+        self.cycle_length = cycle_length
+        self.init_lr = init_lr
+        self.peak_lr = peak_lr
+        self.steps_between = steps_between
+
+        self.cur = 0
+        self.cycle_cur = 0
+        self.n_models = 0
+
+        self.cur_lr = self.init_lr
+
+    def step(self, state):
+        params = self.get_params()
+
+        # start first period after `cswa_start` steps
+        if self.cur >= self.cswa_start:
+
+            ascent = state.maybe_use_grad_(params)
+
+            # determine the lr
+            point = self.cycle_cur / self.cycle_length
+            if point < 0.5:
+                p2 = point*2
+                lr = self.init_lr * (1-p2) + self.peak_lr * p2
+            else:
+                p2 = (1 - point)*2
+                lr = self.init_lr * (1-p2) + self.peak_lr * p2
+
+            ascent *= lr
+            ret = self._update_params_or_step_with_next(state, params)
+
+            if self.cycle_cur in (0, self.cycle_length, self.cycle_length // 2):
+                swa = self.get_state_key('swa')
+                swa.mul_(self.n_models).add_(params).div_(self.n_models + 1)
+                self.n_models += 1
+
+                if self.cycle_cur == self.cycle_length:
+                    assert self.n_models == 3, self.n_models
+                    self.n_models = 0
+                    self.cycle_cur = -1
+
+                    params.set_(swa)
+                    state.add_post_step_hook(_reset_stats_hook)
+
+            self.cycle_cur += 1
+
+        else:
+            ret = self._update_params_or_step_with_next(state, params)
+
+        self.cur += 1
+
+        return ret

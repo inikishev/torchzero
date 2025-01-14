@@ -5,6 +5,7 @@ import torch
 from ...modules import FDM as _FDM, Wrap, SGD, WeightDecay
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import Modular
+from ...core.module import _get_param_groups_to_pass_to_child
 
 
 class FDM(Modular):
@@ -81,4 +82,4 @@ class FDMWrapper(Modular):
             _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),
             Wrap(optimizer, pass_closure=True)
         ]
-        super().__init__(optimizer.param_groups, modules)
+        super().__init__(_get_param_groups_to_pass_to_child(optimizer), modules)
