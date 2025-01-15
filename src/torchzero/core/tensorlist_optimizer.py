@@ -64,13 +64,12 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
 
     def get_state_keys[CLS: MutableSequence](
         self,
-        keys: Sequence[str],
+        *keys: str,
         inits: _StateInit | Sequence[_StateInit] = torch.zeros_like,
         params=None,
         cls: type[CLS] = TensorList,
     ) -> list[CLS]:
         """Returns a TensorList with the `key` states of all `params`. Creates the states if they don't exist."""
-        if isinstance(keys, str): raise TypeError('keys must be a sequence of strings')
 
         values = [cls() for _ in range(len(keys))]
         if params is None: params = self.get_params()
@@ -116,9 +115,8 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
 
         return all_values
 
-    def get_group_keys[CLS: MutableSequence](self, keys: Sequence[str], cls: type[CLS] = NumberList) -> list[CLS]:
+    def get_group_keys[CLS: MutableSequence](self, *keys: str, cls: type[CLS] = NumberList) -> list[CLS]:
         """Returns a TensorList with the param_groups `key` setting of each param."""
-        if isinstance(keys, str): raise TypeError('keys must be a sequence of strings')
 
         all_values: list[CLS] = [cls() for _ in keys]
         for group in self.param_groups:

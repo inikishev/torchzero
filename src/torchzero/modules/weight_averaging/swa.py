@@ -2,7 +2,7 @@ from ...core import OptimizerModule
 
 
 def _reset_stats_hook(optimizer, state):
-    for module in optimizer.modules:
+    for module in optimizer.unrolled_modules:
         module: OptimizerModule
         module.reset_stats()
 
@@ -28,20 +28,26 @@ class PeriodicSWA(OptimizerModule):
     3. After `num_cycles` cycles passed, set model parameters to the weight average.
 
     Args:
-        first_swa (int): number of steps before starting PSWA, authors run PSWA starting from 40th epoch out ot 150 epochs in total.
-        cycle_length (int): number of steps betwen updating the weight average. Authors update it once per epoch.
+        first_swa (int):
+            number of steps before starting PSWA, authors run PSWA starting from 40th epoch out ot 150 epochs in total.
+        cycle_length (int):
+            number of steps betwen updating the weight average. Authors update it once per epoch.
         num_cycles (int):
             Number of weight average updates before setting model weights to the average and proceding to the next cycle.
             Authors use 20 (meaning 20 epochs since each cycle is 1 epoch).
-        cycle_start (int): number of steps at the beginning of each SWA period before updating the weight average (default: 0).
+        cycle_start (int, optional):
+            number of steps at the beginning of each SWA period before updating the weight average (default: 0).
+        reset_stats (bool, optional):
+            if True, when setting model parameters to SWA, resets other modules stats such as momentum velocities (default: True).
     """
-    def __init__(self, pswa_start: int, cycle_length: int, num_cycles: int, cycle_start: int = 0):
+    def __init__(self, pswa_start: int, cycle_length: int, num_cycles: int, cycle_start: int = 0, reset_stats:bool = True):
 
         super().__init__({})
         self.pswa_start = pswa_start
         self.cycle_start = cycle_start
         self.cycle_length = cycle_length
         self.num_cycles = num_cycles
+        self._reset_stats = reset_stats
 
 
         self.cur = 0
@@ -82,7 +88,7 @@ class PeriodicSWA(OptimizerModule):
 
             params.set_(swa)
             # add a hook that resets momentum, which also deletes `swa` in this module
-            state.add_post_step_hook(_reset_stats_hook)
+            if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
 
         return ret
 

@@ -70,7 +70,8 @@ class ReciprocalSGD(Modular):
             Reciprocal(),
             NanToNum(0,0,0),
             Normalize(1),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -95,7 +96,8 @@ class NoiseSign(Modular):
         modules: list = [
             Random(1, distribution),
             UseGradSign(),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(2, WeightDecay(weight_decay))
@@ -118,10 +120,11 @@ class MomentumNumerator(Modular):
 
         modules: list = [
             Divide(
-                numerator = SGD(lr = 1, momentum = momentum, nesterov=nesterov),
+                numerator = SGD(momentum = momentum, nesterov=nesterov),
                 denominator=[Abs(), Add(eps)]
             ),
-            Normalize(lr)
+            Normalize(),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -142,8 +145,9 @@ class MomentumDenominator(Modular):
         decoupled=True,
     ):
         modules: list = [
-            Div([SGD(lr = 1, momentum=momentum, nesterov=nesterov), Abs(), Add(eps), Normalize(1)]),
-            Normalize(lr)
+            Div([SGD(momentum=momentum, nesterov=nesterov), Abs(), Add(eps), Normalize(1)]),
+            Normalize(),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -193,8 +197,9 @@ class ExtraCautiousAdam(Modular):
         decoupled=True,
     ):
         modules: list = [
-            Adam(lr, beta1, beta2, eps, amsgrad),
+            Adam(beta1, beta2, eps, amsgrad=amsgrad),
             Lerp(Cautious(normalize, c_eps, mode), strength),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -218,8 +223,9 @@ class InwardSGD(Modular):
         decoupled=True,
     ):
         modules: list = [
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
-            ReduceOutwardLR(mul, use_grad, invert)
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
+            ReduceOutwardLR(mul, use_grad, invert),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -244,7 +250,7 @@ class MultistepSGD(Modular):
 
         modules: list = [
             Multistep(LR(lr), num_steps=num_steps),
-            SGD(lr = 1, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -272,7 +278,8 @@ class MinibatchRprop(Modular):
         decoupled=True,
     ):
         modules: list = [
-            _MinibatchRprop(lr, nplus=nplus,nminus=nminus,lb=lb,ub=ub,backtrack=backtrack,next_mode=next_mode,increase_mul=increase_mul)
+            _MinibatchRprop(nplus=nplus,nminus=nminus,lb=lb,ub=ub,backtrack=backtrack,next_mode=next_mode,increase_mul=increase_mul),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -327,8 +334,8 @@ class GradMin(Modular):
     ):
         modules: list = [
             _GradMin(loss_term, square, maximize_grad),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
-
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))

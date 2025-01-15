@@ -2,10 +2,9 @@ from typing import Literal, Unpack
 
 import torch
 
-from ...modules import FDM as _FDM, Wrap, SGD, WeightDecay
+from ...modules import FDM as _FDM, WrapClosure, SGD, WeightDecay, LR
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ..modular import Modular
-from ...core.module import _get_param_groups_to_pass_to_child
 
 
 class FDM(Modular):
@@ -44,7 +43,8 @@ class FDM(Modular):
     ):
         modules: list = [
             _FDM(eps = eps, formula=formula, n_points=n_points),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+            SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr),
 
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
@@ -80,6 +80,8 @@ class FDMWrapper(Modular):
     ):
         modules = [
             _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),
-            Wrap(optimizer, pass_closure=True)
+            WrapClosure(optimizer)
         ]
-        super().__init__(_get_param_groups_to_pass_to_child(optimizer), modules)
+        # some optimizers have `eps` setting in param groups too.
+        # it should not be passed to FDM
+        super().__init__([p for g in optimizer.param_groups.copy() for p in g['params']], modules)

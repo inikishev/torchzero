@@ -2,6 +2,11 @@ import torch
 from ...core import OptimizerModule
 
 
+def _reset_stats_hook(optimizer, state):
+    for module in optimizer.unrolled_modules:
+        module: OptimizerModule
+        module.reset_stats()
+
 # the reason why this needs to be at the end is ??? I NEED TO REMEMBER
 class SEMA(OptimizerModule):
     """Switch-EMA. Every n steps switches params to an exponential moving average of past weights.
@@ -15,16 +20,21 @@ class SEMA(OptimizerModule):
 
     Args:
         update_every (int): number of steps (batches) between setting model parameters to EMA.
+        momentum (int): EMA momentum factor.
+        reset_stats (bool, optional):
+            if True, when setting model parameters to EMA, resets other modules stats such as momentum velocities.
+            It might be better to set this to False if `update_every` is very small. Defaults to True.
 
     reference
         https://arxiv.org/abs/2402.09240
     """
-    def __init__(self, update_every: int | None, momentum: float = 0.99):
+    def __init__(self, update_every: int | None, momentum: float = 0.99, reset_stats: bool = True):
         defaults = dict(momentum=momentum)
         super().__init__(defaults)
         self.update_every = update_every
         self.cur_step = 0
         self.update_every = update_every
+        self._reset_stats = reset_stats
         self.orig_params = None
 
     def set_ema(self):
@@ -57,5 +67,6 @@ class SEMA(OptimizerModule):
 
         if (self.update_every is not None) and (self.cur_step % self.update_every == 0):
             params.set_(ema.clone())
+            if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
 
         return ret

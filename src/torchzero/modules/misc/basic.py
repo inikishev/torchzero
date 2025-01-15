@@ -8,6 +8,7 @@ from ...core import OptimizerModule
 
 class LR(OptimizerModule):
     """Multiplies update by the learning rate."""
+    IS_LR_MODULE = True
     def __init__(self, lr = 1e-3):
         defaults = dict(lr = lr)
         super().__init__(defaults)
@@ -19,6 +20,18 @@ class LR(OptimizerModule):
         ascent *= lr
         return ascent
 
+class Alpha(OptimizerModule):
+    """Multiplies update by the learning rate, won't get picked up by learning rate schedulers."""
+    def __init__(self, alpha = 1e-3):
+        defaults = dict(alpha = alpha)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def _update(self, state, ascent):
+        # multiply ascent direction by lr in-place
+        lr = self.get_group_key('alpha')
+        ascent *= lr
+        return ascent
 
 class Clone(OptimizerModule):
     """Clones the update. Some modules update ascent in-place, so this may be

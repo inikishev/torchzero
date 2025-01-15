@@ -5,8 +5,8 @@ import torch
 from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
-def _adagrad_step_(ascent: TensorList, grad_sum: TensorList, lr: TensorList, lr_decay: TensorList, eps: TensorList, step: int):
-    clr = lr / (1 + step * lr_decay)
+def _adagrad_step_(ascent: TensorList, grad_sum: TensorList, alpha: TensorList, lr_decay: TensorList, eps: TensorList, step: int):
+    clr = alpha / (1 + step * lr_decay)
     grad_sum.addcmul_(ascent, ascent)
     return ascent.div_(grad_sum.sqrt().add_(eps)).mul_(clr)
 
@@ -17,16 +17,16 @@ class Adagrad(OptimizerModule):
     Exactly matches `torch.optim.Adagrad`.
 
     Args:
-        lr (float, optional): learning rate. Defaults to 1.
         lr_decay (float, optional): learning rate decay. Defaults to 0.
         initial_accumulator_value (float, optional): initial value of the sum of squares of gradients. Defaults to 0.
         eps (float, optional): term added to the denominator to improve numerical stability. Defaults to 1e-10.
+        alpha (float, optional): learning rate. Defaults to 1.
 
     reference
         https://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
     """
-    def __init__(self, lr: float = 1, lr_decay: float = 0, initial_accumulator_value: float = 0, eps: float = 1e-10, ):
-        defaults = dict(lr = lr, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value, eps = eps)
+    def __init__(self, lr_decay: float = 0, initial_accumulator_value: float = 0, eps: float = 1e-10, alpha: float = 1):
+        defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value, eps = eps)
         super().__init__(defaults)
         self.cur_step = 0
 
@@ -40,7 +40,7 @@ class Adagrad(OptimizerModule):
         updated_direction = _adagrad_step_(
             ascent=ascent,
             grad_sum=grad_sum,
-            lr=settings["lr"],
+            alpha=settings["alpha"],
             eps=settings["eps"],
             lr_decay=settings["lr_decay"],
             step=self.cur_step,

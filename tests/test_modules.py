@@ -6,7 +6,7 @@ import pytest
 import torch
 import torchzero as tz
 
-PRINT_LOSSES = True
+PRINT_LOSSES = False
 
 def booth(x,y):
     return (x + 2 * y - 7) ** 2 + (2 * x + y - 5) ** 2
@@ -45,12 +45,24 @@ def _test_optimizer(lmbda, tol=1e-1, niter=100, allow_non_tensor=False):
         if isinstance(loss, torch.Tensor): assert torch.isfinite(loss), (opt.__class__.__name__, i, loss)
         else: assert np.isfinite(loss), (opt.__class__.__name__, i, loss)
 
-    assert loss <= tol, (opt.__class__.__name__, tol, loss, [i.detach().cpu().item() for i in losses])
-    if PRINT_LOSSES: print(opt.__class__.__name__, _ensure_float(loss))
+    assert loss <= tol, (
+        opt.__class__.__name__,
+        [i.__class__.__name__ for i in opt.unrolled_modules] if hasattr(opt, 'unrolled_modules') else None,
+        tol,
+        loss,
+        [i.detach().cpu().item() for i in losses]
+    )
+
+    if PRINT_LOSSES:
+        print(
+            opt.__class__.__name__,
+            [i.__class__.__name__ for i in opt.unrolled_modules] if hasattr(opt, 'unrolled_modules') else None,
+            _ensure_float(loss)
+        )
 
 OPTS = [
     # -------------------------------- OPTIMIZERS -------------------------------- #
-    lambda p: tz.optim.GD(p, 0.1), # this uses backtracking line search by default which is why its different from SGD
+    lambda p: tz.optim.GD(p, 0.1), # this uses armijo line search by default which is why its different from SGD
     lambda p: tz.optim.SGD(p, 0.1),
     lambda p: tz.optim.SGD(p, 0.01, 0.9),
     lambda p: tz.optim.SGD(p, 0.01, 0.9,  nesterov=True),
@@ -72,22 +84,22 @@ OPTS = [
     lambda p: tz.optim.experimental.RandomCoordinateMomentum(p, 5e-2, 0.5),
     lambda p: tz.optim.experimental.GradMin(p, 2e-2),
     lambda p: tz.optim.FDM(p, 5e-2),
-    lambda p: tz.optim.FDMWrapper(torch.optim.LBFGS(p)),
     lambda p: tz.optim.NewtonFDM(p, 1),
     lambda p: tz.optim.SPSA(p, 3e-2, 1e-3),
+    lambda p: tz.optim.FDMWrapper(torch.optim.LBFGS(p)),
     lambda p: tz.optim.RandomizedFDMWrapper(torch.optim.Adam(p, 1), 1e-2, n_samples=16),
     lambda p: tz.optim.RandomSubspaceNewtonFDM(p, 2),
 
     # ---------------------------------- MODULES --------------------------------- #
     lambda p: tz.optim.Modular(p, tz.m.ScipyMinimizeScalarLS()),
-    lambda p: tz.optim.Modular(p, [tz.m.Grafting(tz.m.Grad(), tz.m.Adam()), tz.m.LR(2e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Graft(tz.m.Grad(), tz.m.Adam()), tz.m.LR(2e-2)]),
     lambda p: tz.optim.Modular(p, [tz.m.SignGrafting(tz.m.Lion(), tz.m.Adam()), tz.m.LR(3e-1)]),
     lambda p: tz.optim.Modular(p, [tz.m.IntermoduleCautious(tz.m.Lion(), tz.m.Adam()), tz.m.LR(5e-1)]),
     lambda p: tz.optim.Modular(p, [tz.m.Sum(tz.m.Rprop(), tz.m.Adam()), tz.m.LR(1e-2)]),
     lambda p: tz.optim.Modular(p, [tz.m.Mean(tz.m.Rprop(), tz.m.Adam()), tz.m.LR(2e-2)]),
-    lambda p: tz.optim.Modular(p, [tz.m.Subtract(tz.m.Rprop(), tz.m.Adam(20)), tz.m.LR(1e-2)]),
+    lambda p: tz.optim.Modular(p, [tz.m.Subtract(tz.m.Rprop(), tz.m.Adam(alpha=20)), tz.m.LR(1e-2)]),
     lambda p: tz.optim.Modular(p, [tz.m.Interpolate(tz.m.Rprop(), tz.m.Adam(), 0.5), tz.m.LR(3e-1)]),
-    lambda p: tz.optim.Modular(p, tz.m.experimental.MinibatchRprop(1e-1)),
+    lambda p: tz.optim.Modular(p, tz.m.experimental.MinibatchRprop(), tz.m.LR(1e-1)),
     # note
     # gradient centralization and laplacian smoothing (and as I understand whitening if I add it)
     # will need to be tested separately as they won't work with 2 scalars.

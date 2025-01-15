@@ -5,7 +5,7 @@ import torch
 from ...tensorlist import TensorList
 from ...core import OptimizerModule
 
-def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, lr, beta1, beta2, eps, step:int, max_exp_avg_sqs: TensorList | None):
+def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, alpha, beta1, beta2, eps, step:int, max_exp_avg_sqs: TensorList | None):
     # Decay the first and second moment running average coefficient
     exp_avg.lerp_compat_(ascent, 1 - beta1)
     exp_avg_sq.mul_(beta2).addcmul_(ascent, ascent.conj(), value=1 - beta2)
@@ -18,23 +18,23 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
         denom = max_exp_avg_sqs.sqrt().div_(bias_correction2**0.5).add_(eps)
     else:
         denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5).add_(eps)
-    return (exp_avg / denom).mul_(lr / bias_correction1)
+    return (exp_avg / denom).mul_(alpha / bias_correction1)
 
 
 class Adam(OptimizerModule):
     """Adam. Combines momentum and RMSProp. Exactly matches `torch.optim.Adam`.
 
     Args:
-        lr (float, optional): learning rate. Defaults to 1.
         beta1 (float, optional): exponential decay rate of gradient moving average. Defaults to 0.9.
         beta2 (float, optional): exponential decay rate of squared gradient moving average. Defaults to 0.999.
         eps (float, optional): epsilon for numerical stability. Defaults to 1e-8.
         amsgrad (bool, optional):
             whether to use the AMSGrad variant of this algorithm from
             On the Convergence of Adam and Beyond (default: False).
+        alpha (float, optional): learning rate. Defaults to 1.
     """
-    def __init__(self, lr: float = 1, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, amsgrad=False):
-        defaults = dict(lr = lr, beta1=beta1, beta2=beta2, eps=eps)
+    def __init__(self, beta1: float = 0.9, beta2: float = 0.999, eps: float = 1e-8, alpha: float = 1, amsgrad=False):
+        defaults = dict(alpha = alpha, beta1=beta1, beta2=beta2, eps=eps)
         super().__init__(defaults)
 
         self.cur_step = 1
@@ -45,16 +45,16 @@ class Adam(OptimizerModule):
         settings = self.get_all_group_keys()
 
         if self.amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sqs = self.get_state_keys(('exp_avg', 'exp_avg_sq', 'max_exp_avg_sqs'))
+            exp_avg, exp_avg_sq, max_exp_avg_sqs = self.get_state_keys('exp_avg', 'exp_avg_sq', 'max_exp_avg_sqs')
         else:
-            exp_avg, exp_avg_sq = self.get_state_keys(('exp_avg', 'exp_avg_sq'))
+            exp_avg, exp_avg_sq = self.get_state_keys('exp_avg', 'exp_avg_sq')
             max_exp_avg_sqs = None
 
         updated_direction = _adam_step(
             ascent=ascent,
             exp_avg = exp_avg,
             exp_avg_sq = exp_avg_sq,
-            lr = settings['lr'],
+            alpha = settings['alpha'],
             beta1 = settings['beta1'],
             beta2 = settings['beta2'],
             eps = settings['eps'],

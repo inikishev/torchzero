@@ -107,18 +107,18 @@ class ScaleLRBySignChange(OptimizerModule):
     This is part of RProp update rule.
 
     Args:
-        lr (float): initial learning rate.
         nplus (float): learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign
         nminus (float): learning rate gets multiplied by `nminus` if ascent/gradient changed the sign
         lb (float): lower bound for lr.
         ub (float): upper bound for lr.
+        alpha (float): initial learning rate.
 
     .. warning::
         If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
         they need to have `make_closure` set to True so that they write to `grad` attribute.
     """
-    def __init__(self, lr: float = 1, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, use_grad=False):
-        defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub)
+    def __init__(self, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, alpha=1, use_grad=False):
+        defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
         super().__init__(defaults)
         self.current_step = 0
         self.use_grad = use_grad
@@ -130,12 +130,12 @@ class ScaleLRBySignChange(OptimizerModule):
         if self.use_grad: cur = state.maybe_compute_grad_(params)
         else: cur = ascent
 
-        nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
-        prev, lrs = self.get_state_keys(['prev_ascent', 'lrs'], params=params)
+        nplus, nminus, lb, ub = self.get_group_keys('nplus', 'nminus', 'lb', 'ub')
+        prev, lrs = self.get_state_keys('prev_ascent', 'lrs', params=params)
 
         # initialize on 1st step
         if self.current_step == 0:
-            lrs.fill_(self.defaults['lr'])
+            lrs.fill_(self.get_group_key('alpha'))
             ascent.mul_(lrs)
             prev.copy_(ascent)
             self.current_step += 1

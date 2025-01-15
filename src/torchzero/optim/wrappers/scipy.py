@@ -9,7 +9,7 @@ import scipy.optimize
 
 from ...core import _ClosureType, TensorListOptimizer
 from ...utils.derivatives import jacobian, jacobian_list_to_vec, hessian, hessian_list_to_mat, jacobian_and_hessian
-from ...modules import Wrap
+from ...modules import WrapClosure
 from ...modules.experimental.subspace import Projection, Proj2Masks, ProjGrad, ProjNormalize, Subspace
 from ...modules.second_order.newton import regularize_hessian_
 from ...tensorlist import TensorList
@@ -130,7 +130,7 @@ class ScipyMinimize(TensorListOptimizer):
         x0 = params.to_vec().detach().cpu().numpy()
 
         # make bounds
-        lb, ub = self.get_group_keys(['lb', 'ub'], cls=list)
+        lb, ub = self.get_group_keys('lb', 'ub', cls=list)
         bounds = []
         for p, l, u in zip(params, lb, ub):
             bounds.extend([(l, u)] * p.numel())
@@ -420,9 +420,8 @@ class ScipyMinimizeSubspace(Modular):
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = '2-point',
     ):
 
-        scopt = Wrap(
+        scopt = WrapClosure(
                 ScipyMinimize,
-                pass_closure = True,
                 method = method,
                 lb = lb,
                 ub = ub,

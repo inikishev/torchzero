@@ -23,6 +23,8 @@ class DirectionalNewton(LineSearchBase):
     and uses another forward pass to make sure it didn't overstep (optionally).
     So in total this performs three forward passes and one backward.
 
+    It is recommented to put LR before DirectionalNewton.
+
     First forward and backward pass is used to calculate the value and gradient at initial parameters.
     Then a gradient descent step is performed with `lr` learning rate, and loss is recalculated
     with new parameters. A quadratic is fitted to two points and gradient,
@@ -38,6 +40,9 @@ class DirectionalNewton(LineSearchBase):
         validate_step (bool, optional):
             uses an additional forward pass to check
             if step towards the minimum actually decreased the loss. Defaults to True.
+        alpha (float, optional):
+            epsilon for estimating directional second derivative, also works as learning rate
+            for when curvature is negative or loss increases.
         log_lrs (bool, optional):
             saves lrs and losses with them into optimizer._lrs (for debugging).
             Defaults to False.
@@ -45,8 +50,8 @@ class DirectionalNewton(LineSearchBase):
     Note:
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
-    def __init__(self, lr:float=1, max_dist: float | None = 1e5, validate_step = True, log_lrs = False,):
-        super().__init__({"lr": lr}, make_closure=False, maxiter=None, log_lrs=log_lrs)
+    def __init__(self, max_dist: float | None = 1e5, validate_step = True, alpha:float=1, log_lrs = False,):
+        super().__init__({"alpha": alpha}, make_closure=False, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
         self.validate_step = validate_step
@@ -61,13 +66,13 @@ class DirectionalNewton(LineSearchBase):
         ascent = state.maybe_use_grad_(params)
         if state.fx0 is None: state.fx0 = state.closure(False) # at this stage maybe_compute_grad could've evaluated fx0
 
-        lr: float = self.get_first_group_key('lr') # this doesn't support variable lrs but we still want to support schedulers
+        alpha: float = self.get_first_group_key('alpha') # this doesn't support variable lrs but we still want to support schedulers
 
         # directional f'(x1)
         y1_prime = (grad * ascent).total_sum()
 
         # f(x2)
-        y2 = self._evaluate_lr_(lr, closure, ascent, params)
+        y2 = self._evaluate_lr_(alpha, closure, ascent, params)
 
         # if gradients weren't 0
         if y1_prime != 0:
@@ -75,7 +80,7 @@ class DirectionalNewton(LineSearchBase):
                 x1=0,
                 y1=state.fx0,
                 y1_prime=-y1_prime,
-                x2=lr,
+                x2=alpha,
                 # we stepped in the direction of minus gradient times lr.
                 # which is why y1_prime is negative and we multiply x2 by lr.
                 y2=y2
@@ -94,11 +99,11 @@ class DirectionalNewton(LineSearchBase):
                         y_val = self._evaluate_lr_(xmin, closure, ascent, params)
                         # if it increased, move back to y2.
                         if y_val > y2:
-                            return float(lr)
+                            return float(alpha)
 
                     return float(xmin)
 
-        return float(lr)
+        return float(alpha)
 
 def _fit_and_minimize_quadratic_3points(
     x1: _FloatOrTensor,
@@ -135,8 +140,7 @@ class DirectionalNewton3Points(LineSearchBase):
     and uses another forward pass to make sure it didn't overstep (optionally).
     So in total this performs four forward passes.
 
-    Unlike MinimizeQuadraticLS, this can be used with any update,
-    at the expense of requiring an additional forward pass.
+    It is recommented to put LR before DirectionalNewton3Points
 
     Two steps are performed in the direction of the update with `lr` learning rate.
     A quadratic is fitted to three points, if it has positive curvature,
@@ -144,14 +148,15 @@ class DirectionalNewton3Points(LineSearchBase):
     with an additional forward pass.
 
     Args:
-        lr (float, optional):
-            learning rate, also functions as epsilon for directional second derivative estimation. Defaults to 1.
+            for when curvature is negative or loss increases.
         max_dist (float | None, optional):
             maximum distance to step when minimizing quadratic.
             If minimum is further than this distance, minimization is not performed. Defaults to 1e4.
         validate_step (bool, optional):
             uses an additional forward pass to check
             if step towards the minimum actually decreased the loss. Defaults to True.
+        alpha (float, optional):
+            epsilon for estimating directional second derivative, also works as learning rate
         log_lrs (bool, optional):
             saves lrs and losses with them into optimizer._lrs (for debugging).
             Defaults to False.
@@ -159,10 +164,10 @@ class DirectionalNewton3Points(LineSearchBase):
     Note:
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
-    def __init__(self, lr: float = 1, max_dist: float | None = 1e4, validate_step = True, log_lrs = False,):
-        super().__init__(dict(lr = lr), make_closure=False, maxiter=None, log_lrs=log_lrs)
+    def __init__(self, max_dist: float | None = 1e4, validate_step = True, alpha: float = 1, log_lrs = False,):
+        super().__init__(dict(alpha = alpha), make_closure=False, maxiter=None, log_lrs=log_lrs)
 
-        self.lr = lr
+        self.alpha = alpha
         self.max_dist = max_dist
         self.validate_step = validate_step
 
@@ -172,23 +177,23 @@ class DirectionalNewton3Points(LineSearchBase):
         closure = state.closure
         ascent_direction = state.ascent
         if ascent_direction is None: raise ValueError('Ascent direction is None')
-        lr: float = self.get_first_group_key('lr')
+        alpha: float = self.get_first_group_key('alpha')
 
         if state.fx0 is None: state.fx0 = state.closure(False)
         params = self.get_params()
 
         # make a step in the direction and evaluate f(x2)
-        y2 = self._evaluate_lr_(lr, closure, ascent_direction, params)
+        y2 = self._evaluate_lr_(alpha, closure, ascent_direction, params)
 
         # make a step in the direction and evaluate f(x3)
-        y3 = self._evaluate_lr_(lr*2, closure, ascent_direction, params)
+        y3 = self._evaluate_lr_(alpha*2, closure, ascent_direction, params)
 
         # if gradients weren't 0
         xmin, a = _newton_step_3points(
             0, state.fx0,
             # we stepped in the direction of minus ascent_direction.
-            lr, y2,
-            lr * 2, y3
+            alpha, y2,
+            alpha * 2, y3
         )
         xmin = _ensure_float(xmin)
 
@@ -203,10 +208,10 @@ class DirectionalNewton3Points(LineSearchBase):
                     y_val = self._evaluate_lr_(xmin, closure, ascent_direction, params)
                     # if it increased, move back to y2.
                     if y_val > y2 or y_val > y3:
-                        if y3 > y2: return lr
-                        else: return lr * 2
+                        if y3 > y2: return alpha
+                        else: return alpha * 2
 
                 return xmin
 
-        if y3 > y2: return lr
-        else: return lr * 2
+        if y3 > y2: return alpha
+        else: return alpha * 2

@@ -23,7 +23,6 @@ class Lion(OptimizerModule):
 
     @torch.no_grad
     def _update(self, state, ascent):
-        beta1, beta2 = self.get_group_keys(('beta1', 'beta2'))
+        beta1, beta2 = self.get_group_keys('beta1', 'beta2')
         ema = self.get_state_key('ema')
         return _lion_step_(ascent,ema,beta1,beta2)
-        

@@ -18,7 +18,6 @@ class MinibatchRprop(OptimizerModule):
     """
     def __init__(
         self,
-        lr: float = 1,
         nplus: float = 1.2,
         nminus: float = 0.5,
         lb: float | None = 1e-6,
@@ -26,8 +25,9 @@ class MinibatchRprop(OptimizerModule):
         backtrack=True,
         next_mode = 'continue',
         increase_mul = 0.5,
+        alpha: float = 1,
     ):
-        defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub, increase_mul=increase_mul)
+        defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, increase_mul=increase_mul)
         super().__init__(defaults)
         self.current_step = 0
         self.backtrack = backtrack
@@ -40,9 +40,9 @@ class MinibatchRprop(OptimizerModule):
         if state.ascent is not None: raise ValueError("Minibatch Rprop must be the first module.")
         params = self.get_params()
 
-        nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
+        nplus, nminus, lb, ub = self.get_group_keys('nplus', 'nminus', 'lb', 'ub')
         allowed, magnitudes = self.get_state_keys(
-            ['allowed', 'magnitudes'],
+            'allowed', 'magnitudes',
             inits = [_bool_ones_like, torch.zeros_like],
             params=params
         )
@@ -50,7 +50,7 @@ class MinibatchRprop(OptimizerModule):
         g1_sign = state.maybe_compute_grad_(params).sign() # no inplace to not modify grads
         # initialize on 1st iteration
         if self.current_step == 0:
-            magnitudes.fill_(self.defaults['lr']).clamp_(lb, ub)
+            magnitudes.fill_(self.get_group_key('alpha')).clamp_(lb, ub)
             # ascent = magnitudes * g1_sign
             # self.current_step += 1
             # return ascent
@@ -135,7 +135,7 @@ class GradMin(OptimizerModule):
     explanation: calculate grads wrt sum of grads + loss.
     """
     def __init__(self, loss_term: float = 1, square=False, maximize_grad = False):
-        super().__init__(dict(add_loss=loss_term))
+        super().__init__(dict(loss_term=loss_term))
         self.square = square
         self.maximize_grad = maximize_grad
 
@@ -146,7 +146,7 @@ class GradMin(OptimizerModule):
             raise ValueError("GradMin doesn't accept ascent_direction")
 
         params = self.get_params()
-        add_loss = self.get_group_key('add_loss')
+        loss_term = self.get_group_key('loss_term')
 
         self.zero_grad()
         with torch.enable_grad():
@@ -158,8 +158,8 @@ class GradMin(OptimizerModule):
             else:
                 grads = grads.abs()
 
-            if self.maximize_grad: grads: TensorList = grads - (state.fx0 * add_loss) # type:ignore
-            else: grads = grads + (state.fx0 * add_loss)
+            if self.maximize_grad: grads: TensorList = grads - (state.fx0 * loss_term) # type:ignore
+            else: grads = grads + (state.fx0 * loss_term)
             grad_mean = torch.sum(torch.stack(grads.sum())) / grads.total_numel()
             grad_mean.backward(retain_graph=False)
 
@@ -203,7 +203,7 @@ class HVPDiagNewton(OptimizerModule):
 
 
 def _reset_stats_hook(optimizer, state):
-    for module in optimizer.modules:
+    for module in optimizer.unrolled_modules:
         module: OptimizerModule
         module.reset_stats()
 
@@ -215,15 +215,26 @@ class CyclicSWA(OptimizerModule):
     and next cycle starts.
 
     It is easier to tune than PeriodicSWA and seems to work better too.
-    """
-    def __init__(self, cswa_start: int, cycle_length: int, steps_between: int, init_lr: float = 0, peak_lr: float = 1):
 
-        super().__init__({})
+    Args:
+        cswa_start (int): number of steps before starting the first CSWA cycle.
+        cycle_length (int): length of each cycle in steps.
+        steps_between (int): number of steps between cycles.
+        init_lr (float, optional): initial and final learning rate in each cycle. Defaults to 0.
+        peak_lr (float, optional): peak learning rate of each cycle. Defaults to 1.
+        reset_stats (bool, optional):
+            if True, when setting model parameters to SWA, resets other modules stats such as momentum velocities (default: True).
+
+    """
+    def __init__(self, cswa_start: int, cycle_length: int, steps_between: int, init_lr: float = 0, peak_lr: float = 1, reset_stats: bool=True):
+        defaults = dict(init_lr = init_lr, peak_lr = peak_lr)
+        super().__init__(defaults)
         self.cswa_start = cswa_start
         self.cycle_length = cycle_length
         self.init_lr = init_lr
         self.peak_lr = peak_lr
         self.steps_between = steps_between
+        self._reset_stats = reset_stats
 
         self.cur = 0
         self.cycle_cur = 0
@@ -241,12 +252,13 @@ class CyclicSWA(OptimizerModule):
 
             # determine the lr
             point = self.cycle_cur / self.cycle_length
+            init_lr, peak_lr = self.get_group_keys('init_lr', 'peak_lr')
             if point < 0.5:
                 p2 = point*2
-                lr = self.init_lr * (1-p2) + self.peak_lr * p2
+                lr = init_lr * (1-p2) + peak_lr * p2
             else:
                 p2 = (1 - point)*2
-                lr = self.init_lr * (1-p2) + self.peak_lr * p2
+                lr = init_lr * (1-p2) + peak_lr * p2
 
             ascent *= lr
             ret = self._update_params_or_step_with_next(state, params)
@@ -262,7 +274,7 @@ class CyclicSWA(OptimizerModule):
                     self.cycle_cur = -1
 
                     params.set_(swa)
-                    state.add_post_step_hook(_reset_stats_hook)
+                    if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
 
             self.cycle_cur += 1
 

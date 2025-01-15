@@ -2,13 +2,12 @@ from typing import Literal, Unpack
 
 import torch
 
-from ...modules import SGD, Wrap
+from ...modules import SGD, WrapClosure, LR
 from ...modules import RandomizedFDM as _RandomizedFDM
 from ...modules import WeightDecay
 from ...modules.gradient_approximation._fd_formulas import _FD_Formulas
 from ...tensorlist import Distributions
 from ..modular import Modular
-from ...core.module import _get_param_groups_to_pass_to_child
 
 class RandomizedFDM(Modular):
     """Randomized finite difference gradient approximation (e.g. SPSA, RDSA, Nesterov random search).
@@ -55,7 +54,8 @@ class RandomizedFDM(Modular):
                 distribution=distribution,
                 randomize_every=randomize_every,
             ),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+            SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)
@@ -221,6 +221,9 @@ class RandomizedFDMWrapper(Modular):
                 randomize_closure = randomize_closure,
                 make_closure=True,
             ),
-            Wrap(optimizer, pass_closure=True)
+            WrapClosure(optimizer)
         ]
-        super().__init__(_get_param_groups_to_pass_to_child(optimizer), modules)
+
+        # some optimizers have `eps` setting in param groups too.
+        # it should not be passed to FDM
+        super().__init__([p for g in optimizer.param_groups.copy() for p in g['params']], modules)

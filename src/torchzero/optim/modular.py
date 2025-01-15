@@ -1,21 +1,39 @@
 from collections import abc
+import warnings
 import torch
 
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, _Chain, _Chainable
 from ..utils.python_tools import flatten
 
+def _unroll_modules(flat_modules: list[OptimizerModule]) -> list[OptimizerModule]:
+    unrolled = []
+    for m in flat_modules:
+        unrolled.append(m)
+        if len(m.children) > 0:
+            unrolled.extend(_unroll_modules(list(m.children.values())))
+    return unrolled
+
+
 class Modular(TensorListOptimizer):
-    """Make a modular optimizer from a sequence of modules.
+    """Creates a modular optimizer by chaining together a sequence of optimizer modules.
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.
-        modules (Iterable[OptimizerModule] | OptimizerModule):
-            sequence of modules to chain together. Any passed sequence will be flattened.
-    """
+        *modules (Iterable[OptimizerModule] | OptimizerModule):
+            A sequence of optimizer modules to chain together. This argument will be flattened."""
     def __init__(self, params, *modules: _Chainable):
         flat_modules = flatten(modules)
         self.modules: list[OptimizerModule] = flat_modules
         self.chain = _Chain(flat_modules)
+
+        self.unrolled_modules = _unroll_modules(flat_modules)
+        if len([m for m in self.unrolled_modules if m.IS_LR_MODULE]) > 1:
+            warnings.warn(
+                f'More then 1 lr modules have been added.\
+                This may lead to incorrect behaviour with learning rate scheduling and per-parameter learning rates.\
+                Make sure there is a single `LR` module, use `Mul` module instead of it where needed.\
+                \nList of modules: {self.unrolled_modules}; \nlist of lr modules: {[m for m in self.unrolled_modules if m.IS_LR_MODULE]}'
+            )
 
         if isinstance(params, torch.nn.Module):
             self.model = params
@@ -25,51 +43,60 @@ class Modular(TensorListOptimizer):
             params = list(params)
 
         super().__init__(params, {})
-        self.chain._initialize_(params)
+        self.chain._initialize_(params, set_passed_params=True)
 
     def get_lr_module(self, last=True) -> OptimizerModule:
-        """returns the last module with `lr` parameter in it, which can be passed to a pytorch learning rate scheduler.
-        If no module has `lr` setting, this will raise ValueError.
+        """
+        Retrieves the module in the chain that controls the learning rate.
 
-        Notes:
-            - If learning rate is specified in a module in the middle, for example `[Normalize(), LR(1e-2), Adam()]`,\
-            here this will pick `Adam` if last=True, or `Normalize` if last=False. Both have default lr of s1, so if\
-            scheduled, the scheduler lr will be multiplied by 1e-2. All optimizers in `torchzero.optim` are guaranteed to\
-            have the lr module last.
-
-            - This will not find nested modules like `[Graft(Adam(), SGD())]`. Either add `LR` after `Graft`, or create `Adam`
-            separately beforehand and pass it to the scheduler after creating the modular optimizer.
+        This method is useful for setting up a learning rate scheduler. By default, it retrieves the last module in the chain
+        that has an `lr` group parameter.
 
         Args:
             last (bool, optional):
-                if multiple modules support `lr`, if True return last one, otherwise returns first.
-                Usually you would want the last one as first ones might get overriden by things like Normalize(). Defaults to True.
+                If multiple modules have an `lr` parameter, this argument controls which one is returned.
+                - If `True` (default), the last module is returned.
+                - If `False`, the first module is returned.
 
-        example:
+        Returns:
+            OptimizerModule: The module that controls the learning rate.
+
+        Raises:
+            ValueError: If no modules in the chain have an `lr` parameter. To fix this, add an `LR` module.
+
+        Example:
 
         .. code:: py
             from torch.optim.lr_scheduler import OneCycleLR
             import torchzero as tz
 
-            opt = tz.Modular(model.parameters(), [tz.m.RMSProp(), tz.m.LR(1e-2)])
+            opt = tz.Modular(model.parameters(), [tz.m.RMSProp(), tz.m.LR(1e-2), tz.m.DirectionalNewton()])
             lr_scheduler = OneCycleLR(opt.get_lr_module(), max_lr = 1e-1, total_steps = 1000, cycle_momentum=False)
 
         """
-        modules = list(reversed(self.modules)) if last else self.modules
+        modules = list(reversed(self.unrolled_modules)) if last else self.unrolled_modules
         for m in modules:
             if 'lr' in m.param_groups[0]: return m
 
         raise ValueError(f'No modules out of {", ".join(m.__class__.__name__ for m in modules)} support and `lr` parameter. The easiest way to fix is is to add an `LR(1)` module at the end.')
 
     def get_module_by_name(self, name: str | type, last=True) -> OptimizerModule:
-        """Returns first or last module which class name matches `name`, or whose class is `name` if it is a type.
-        If no module found, raises ValueError
+        """Returns the first or last module in the chain that matches the provided name or type.
 
         Args:
-            name (str | type): name to match, or class.
-            last (bool, optional): if multiple modules match, if True return last one, otherwise returns first. Defaults to True.
+            name (str | type): the name (as a string) or the type of the module to search for.
+            last (bool, optional):
+                If multiple modules match, this argument controls which one is returned.
+                - If `True` (default), the last matching module is returned.
+                - If `False`, the first matching module is returned.
+
+        Returns:
+            OptimizerModule: The matching optimizer module.
+
+        Raises:
+            ValueError: If no modules in the chain match the provided name or type.
         """
-        modules = list(reversed(self.modules)) if last else self.modules
+        modules = list(reversed(self.unrolled_modules)) if last else self.unrolled_modules
         for m in modules:
             if isinstance(name, str) and m.__class__.__name__ == name: return m
             if isinstance(name, type) and isinstance(m, name): return m

@@ -190,8 +190,9 @@ class Subspace(OptimizerModule):
         dtype = self._params[0].dtype
         device = self._params[0].device
         params = [torch.zeros(sum(proj.n for proj in self.projections), dtype = dtype, device = device, requires_grad=True)]
+        if child._has_custom_params: raise RuntimeError(f"Subspace child {child.__class__.__name__} can't have custom params.")
         if not child._initialized:
-            child._initialize_(params)
+            child._initialize_(params, set_passed_params=False)
         else:
             child.param_groups = []
             child.add_param_group({"params": params})

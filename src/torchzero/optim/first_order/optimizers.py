@@ -72,7 +72,10 @@ class SGD(Modular):
         weight_decay: float = 0,
         decoupled=False,
     ):
-        modules: list = [_SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)]
+        modules: list = [
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr)
+        ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)
 
@@ -103,7 +106,8 @@ class SignSGD(Modular):
     ):
         modules: list = [
             Sign(),
-            _SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)
@@ -156,10 +160,11 @@ class NormSGD(Modular):
         decoupled=True,
     ):
         modules: list = [
-            _SGD(lr = 1, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
-        if normalize: modules.insert(0, Normalize(lr, mode=norm_mode, min_numel=min_numel, ord=ord))
+        if normalize: modules.insert(0, Normalize(1, mode=norm_mode, min_numel=min_numel, ord=ord))
         if centralize: modules.insert(0, Centralize(centralize_mode, min_numel=min_numel))
         super().__init__(params, modules)
 
@@ -205,8 +210,9 @@ class NoisySGD(Modular):
     ):
 
         modules: list = [
-            _SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
             AddNoise(alpha, distribution, mode),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)
@@ -252,7 +258,8 @@ class LaplacianSmoothingSGD(Modular):
 
         modules: list = [
             LaplacianSmoothing(sigma=sigma, layerwise=layerwise,min_numel=min_numel),
-            _SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
@@ -284,7 +291,10 @@ class Adagrad(Modular):
         weight_decay: float = 0,
         decoupled=False,
     ):
-        modules: list = [_Adagrad(lr = lr, lr_decay = lr_decay, initial_accumulator_value = initial_accumulator_value, eps = eps)]
+        modules: list = [
+            _Adagrad(lr_decay = lr_decay, initial_accumulator_value = initial_accumulator_value, eps = eps),
+            LR(lr),
+        ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
@@ -330,7 +340,10 @@ class Rprop(Modular):
         weight_decay: float = 0,
         decoupled=False,
     ):
-        modules: list = [_Rprop(lr = lr, nplus = nplus, nminus = nminus, lb=lb, ub = ub, backtrack=backtrack)]
+        modules: list = [
+            _Rprop(nplus = nplus, nminus = nminus, lb=lb, ub = ub, backtrack=backtrack),
+            LR(lr),
+        ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
@@ -376,15 +389,16 @@ class RMSProp(Modular):
         decoupled=False,
     ):
         modules: list = [
-            _RMSProp(alpha = alpha, eps = eps, centered = centered,),
-            _SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            _RMSProp(smoothing = alpha, eps = eps, centered = centered,),
+            _SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
-class AdamW(Modular):
-    """Adam and AdamW. Combines momentum and RMSProp. Exactly matches `torch.optim.Adam`, except
+class Adam(Modular):
+    """Adam. Combines momentum and RMSProp. Exactly matches `torch.optim.Adam`, except
     if `decoupled` is True, weight decay is truly decoupled and doesn't depend on LR.
 
     Args:
@@ -411,11 +425,43 @@ class AdamW(Modular):
         weight_decay: float = 0,
         decoupled=True,
     ):
-        modules: list = [_Adam(lr = lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad)]
+        modules: list = [
+            _Adam(beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            LR(lr),
+        ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)
 
+class AdamW(Adam):
+    """AdamW. Combines momentum and RMSProp. Exactly matches `torch.optim.Adam`, except
+    if `decoupled` is True, weight decay is truly decoupled and doesn't depend on LR.
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        lr (float): learning rate (default: 1e-3).
+        beta1 (float, optional): exponential decay rate of gradient moving average. Defaults to 0.9.
+        beta2 (float, optional): exponential decay rate of squared gradient moving average. Defaults to 0.999.
+        eps (float, optional): epsilon for numerical stability. Defaults to 1e-8.
+        amsgrad (bool, optional):
+            whether to use the AMSGrad variant of this algorithm from
+            On the Convergence of Adam and Beyond (default: False).
+        weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.01.
+        decoupled (bool, optional):
+            decouples weight decay from gradient. If True, weight decay doesn't depend on learning rate.
+    """
+    def __init__(
+        self,
+        params,
+        lr: float = 1e-3,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        eps: float = 1e-8,
+        amsgrad=False,
+        weight_decay: float = 1e-2,
+        decoupled=True,
+    ):
+        super().__init__(params=params,lr=lr,beta1=beta1,beta2=beta2,eps=eps,amsgrad=amsgrad,weight_decay=weight_decay,decoupled=decoupled)
 
 class Grams(Modular):
     """Grams (Gradient Descent with Adaptive Momentum Scaling) from https://arxiv.org/abs/2412.17107v1.
@@ -445,7 +491,8 @@ class Grams(Modular):
         decoupled=True,
     ):
         modules: list = [
-            _Adam(lr = lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            _Adam(beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            LR(lr),
             UseGradSign()
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
@@ -474,7 +521,10 @@ class Lion(Modular):
         weight_decay: float = 0,
         decoupled=True,
     ):
-        modules: list = [_Lion(beta1, beta2), LR(lr)]
+        modules: list = [
+            _Lion(beta1, beta2),
+            LR(lr)
+            ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         else: modules.insert(0, WeightDecay(weight_decay))
         super().__init__(params, modules)

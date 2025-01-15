@@ -136,7 +136,7 @@ class NLOptOptimizer(TensorListOptimizer):
         params = self.get_params()
 
         # make bounds
-        lb, ub = self.get_group_keys(['lb', 'ub'], cls=list)
+        lb, ub = self.get_group_keys('lb', 'ub', cls=list)
         lower = []
         upper = []
         for p, l, u in zip(params, lb, ub):

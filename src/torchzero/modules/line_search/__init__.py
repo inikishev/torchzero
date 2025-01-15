@@ -8,7 +8,7 @@ from ...core import OptimizerModule
 from ..regularization import Normalize
 from .grid_ls import (ArangeLS, BacktrackingLS, GridLS, LinspaceLS,
                       MultiplicativeLS)
-from .quad_interp import QuadraticInterpolation2Point
+# from .quad_interp import QuadraticInterpolation2Point
 from .directional_newton import DirectionalNewton3Points, DirectionalNewton
 from .scipy_minimize_scalar import ScipyMinimizeScalarLS
 from .armijo import ArmijoLS

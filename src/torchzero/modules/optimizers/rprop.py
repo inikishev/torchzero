@@ -21,7 +21,6 @@ class Rprop(OptimizerModule):
     To make this behave exactly the same as `torch.optim.Rprop`, set `backtrack` to False.
 
     Args:
-        lr (float): learning rate (default: 1).
         nplus (float): multiplicative increase factor for when ascent didn't change sign (default: 1.2).
         nminus (float): multiplicative decrease factor for when ascent changed sign (default: 0.5).
         lb (float): minimum step size, can be None (default: 1e-6)
@@ -29,6 +28,7 @@ class Rprop(OptimizerModule):
         backtrack (float):
             if True, when ascent sign changes, undoes last weight update, otherwise sets update to 0.
             When this is False, this exactly matches pytorch Rprop. (default: True)
+        alpha (float): learning rate (default: 1).
 
     reference
         *Riedmiller, M., & Braun, H. (1993, March). A direct adaptive method for faster backpropagation learning:
@@ -36,14 +36,14 @@ class Rprop(OptimizerModule):
     """
     def __init__(
         self,
-        lr: float = 1,
         nplus: float = 1.2,
         nminus: float = 0.5,
         lb: float | None = 1e-6,
         ub: float | None = 50,
         backtrack=True,
+        alpha: float = 1,
     ):
-        defaults = dict(nplus = nplus, nminus = nminus, lr = lr, lb = lb, ub = ub)
+        defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
         super().__init__(defaults)
         self.current_step = 0
         self.backtrack = backtrack
@@ -53,16 +53,16 @@ class Rprop(OptimizerModule):
         params = self.get_params()
 
         sign = ascent.sign_()
-        nplus, nminus, lb, ub = self.get_group_keys(['nplus', 'nminus', 'lb', 'ub'])
+        nplus, nminus, lb, ub = self.get_group_keys('nplus', 'nminus', 'lb', 'ub')
         prev, allowed, magnitudes = self.get_state_keys(
-            ['prev', 'allowed', 'magnitudes'],
+            'prev', 'allowed', 'magnitudes',
             inits = [torch.zeros_like, _bool_ones_like, torch.zeros_like],
             params=params
         )
 
         # initialize on 1st step
         if self.current_step == 0:
-            magnitudes.fill_(self.defaults['lr']).clamp_(lb, ub)
+            magnitudes.fill_(self.get_group_key('alpha')).clamp_(lb, ub)
             ascent = magnitudes * sign
             prev.copy_(ascent)
             self.current_step += 1

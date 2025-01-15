@@ -10,23 +10,23 @@ class SGD(OptimizerModule):
     nesterov momentum additionally supports dampening, and negative momentum is allowed.
 
     Args:
-        lr (float, optional): learning rate. Defaults to 1e-3.
         momentum (float, optional): momentum. Defaults to 0.
         dampening (float, optional): momentum dampening. Defaults to 0.
         weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.
         nesterov (bool, optional):
             enables nesterov momentum, otherwise uses heavyball momentum. Defaults to False.
+        alpha (float, optional): learning rate. Defaults to 1e-3.
     """
     def __init__(
         self,
-        lr: float = 1,
         momentum: float = 0,
         dampening: float = 0,
         weight_decay: float = 0,
         nesterov: bool = False,
+        alpha: float = 1,
     ):
 
-        defaults = dict(lr=lr, momentum=momentum, dampening=dampening, weight_decay=weight_decay,)
+        defaults = dict(alpha=alpha, momentum=momentum, dampening=dampening, weight_decay=weight_decay,)
         super().__init__(defaults)
         self.nesterov = nesterov
         self.current_step = 0
@@ -39,8 +39,8 @@ class SGD(OptimizerModule):
         if any(i != 0 for i in settings['weight_decay']):
             ascent += params * settings['weight_decay']
 
-        if any(i != 1 for i in settings['lr']):
-            ascent *= settings['lr']
+        if any(i != 1 for i in settings['alpha']):
+            ascent *= settings['alpha']
 
         if any(i != 0 for i in settings['momentum']):
             velocity = self.get_state_key('velocity', init = torch.zeros_like if self.nesterov else ascent)

@@ -6,7 +6,7 @@ from ...core import OptimizerModule
 from ...tensorlist import TensorList
 
 
-class Grafting(OptimizerModule):
+class Graft(OptimizerModule):
     """
     Optimizer grafting (magnitude#direction).
     Takes update of one optimizer and makes its norm same as update of another optimizer.

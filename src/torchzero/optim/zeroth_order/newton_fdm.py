@@ -59,8 +59,7 @@ class NewtonFDM(Modular):
         if max_norm is not None:
             modules.append(ClipNorm(max_norm))
 
-        if lr != 1:
-            modules.append(LR(lr))
+        modules.append(LR(lr))
 
         if line_search is not None:
             modules.append(get_line_search(line_search))
@@ -138,8 +137,7 @@ class RandomSubspaceNewtonFDM(Modular):
         if max_norm is not None:
             modules.append(ClipNorm(max_norm))
 
-        if lr != 1:
-            modules.append(LR(lr))
+        modules.append(LR(lr))
 
         if line_search is not None:
             modules.append(get_line_search(line_search))

@@ -109,7 +109,7 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
         else: self._zeropower_via_newtonschulz5 = _zeropower_via_newtonschulz5
 
     def _update(self, state, ascent):
-        toggle, ns_steps, adaptive = self.get_group_keys(['newtonshultz', 'ns_steps', 'adaptive'], cls=list)
+        toggle, ns_steps, adaptive = self.get_group_keys('newtonshultz', 'ns_steps', 'adaptive', cls=list)
 
         for asc, enable, steps, ada in zip(ascent, toggle, ns_steps, adaptive):
             if enable and len([i for i in asc.shape if i > 1]) != 0:
@@ -140,7 +140,7 @@ class DualNormCorrection(OptimizerModule):
 
     def _update(self, state, ascent):
         params = self.get_params()
-        adaptive_scale_min, adaptive_scale_max = self.get_group_keys(['adaptive_scale_min', 'adaptive_scale_max'])
+        adaptive_scale_min, adaptive_scale_max = self.get_group_keys('adaptive_scale_min', 'adaptive_scale_max')
 
         for asc, grad, min, max in zip(ascent, state.maybe_compute_grad_(params), adaptive_scale_min, adaptive_scale_max):
             if len([i for i in asc.shape if i > 1]) != 0:

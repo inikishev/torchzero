@@ -4,7 +4,7 @@ import torch
 
 from ...core import OptimizerModule
 from ...modules import (SGD, LineSearches, NewtonFDM,
-                        get_line_search, LR, Wrap)
+                        get_line_search, LR, WrapClosure)
 from ...modules.experimental.subspace import Subspace, ProjNormalize, ProjAscentRay
 from ..modular import Modular
 
@@ -27,7 +27,8 @@ class NewtonFDMRaySearch(Modular):
         line_search: LineSearches | None = 'brent'
     ):
         modules: list[Any] = [
-            SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
+            SGD(momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
+            LR(lr),
             Subspace(NewtonFDM(eps = eps), ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
         ]
         if lr != 1:
@@ -60,9 +61,8 @@ class LBFGSRaySearch(Modular):
         history_size: int = 100,
         line_search_fn: str | Literal['strong_wolfe'] | None = None,
     ):
-        lbfgs = Wrap(
+        lbfgs = WrapClosure(
             torch.optim.LBFGS,
-            pass_closure=True,
             lr=lr,
             max_iter=max_iter,
             max_eval=max_eval,
@@ -72,7 +72,7 @@ class LBFGSRaySearch(Modular):
             line_search_fn=line_search_fn,
         )
         modules: list[OptimizerModule] = [
-            SGD(1, momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
+            SGD(momentum=momentum, weight_decay=weight_decay, dampening=dampening, nesterov=nesterov),
             Subspace(lbfgs, ProjNormalize(ProjAscentRay(ray_width, n = n_rays))),
 
         ]

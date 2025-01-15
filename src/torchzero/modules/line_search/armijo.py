@@ -9,7 +9,7 @@ class ArmijoLS(LineSearchBase):
     """Armijo backtracking line search
 
     Args:
-        lr (float): initial, maximal lr.
+        alpha (float): initial step size.
         mul (float, optional): lr multiplier on each iteration. Defaults to 0.5.
         beta (float, optional):
             armijo condition parameter, fraction of expected linear loss decrease to accept.
@@ -19,13 +19,13 @@ class ArmijoLS(LineSearchBase):
     """
     def __init__(
         self,
-        lr: float,
+        alpha: float = 1,
         mul: float = 0.5,
         beta: float = 1e-2,
         max_iter: int = 10,
         log_lrs = False,
     ):
-        defaults = dict(lr=lr)
+        defaults = dict(alpha=alpha)
         super().__init__(defaults, make_closure=False, maxiter=None, log_lrs=log_lrs)
         self.mul = mul
         self.beta = beta
@@ -36,21 +36,21 @@ class ArmijoLS(LineSearchBase):
         if state.closure is None: raise ValueError("closure is not set")
         ascent = state.maybe_use_grad_(params)
         grad = state.maybe_compute_grad_(params)
-        lr = self.get_first_group_key('lr')
+        alpha = self.get_first_group_key('alpha')
         if state.fx0 is None: state.fx0 = state.closure(False)
 
         # loss decrease per lr=1 if function was linear
         decrease_per_lr = (grad*ascent).total_sum()
 
         for _ in range(self.max_iter):
-            loss = self._evaluate_lr_(lr, state.closure, ascent, params)
+            loss = self._evaluate_lr_(alpha, state.closure, ascent, params)
 
             # expected decrease
-            expected_decrease = decrease_per_lr * lr
+            expected_decrease = decrease_per_lr * alpha
 
             if (state.fx0 - loss) / expected_decrease >= self.beta:
-                return lr
+                return alpha
 
-            lr *= self.mul
+            alpha *= self.mul
 
         return 0

@@ -3,7 +3,7 @@ from typing import Literal
 import torch
 
 from ...core import OptimizationState, OptimizerModule
-from ...modules import ForwardGradient as _ForwardGradient, SGD, WeightDecay
+from ...modules import ForwardGradient as _ForwardGradient, SGD, WeightDecay, LR
 from ...tensorlist import Distributions
 from ..modular import Modular
 
@@ -63,7 +63,8 @@ class ForwardGradient(Modular):
                 mode=mode,
                 fd_eps=fd_eps,
             ),
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov)
+            SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
+            LR(lr),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
         super().__init__(params, modules)

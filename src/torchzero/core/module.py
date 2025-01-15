@@ -1,6 +1,7 @@
 from typing import Any, TypeAlias
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence, Iterable
+import warnings
 
 import torch
 
@@ -28,19 +29,19 @@ Closure example:
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
 """
 
-class _WeakDict(dict): pass
+# class _WeakDict(dict): pass
 
-def _get_param_groups_to_pass_to_child(optimizer: torch.optim.Optimizer):
-    """propagate only per-parameter settings that are not in optimizer.defaults"""
-    param_groups: list[dict[str, Any]] = []
-    for g in optimizer.param_groups.copy():
-        child_g = {"params": g["params"]}
-        for k,v in g.copy().items():
-            if k not in optimizer.defaults:
-                child_g[k] = v
-        param_groups.append(child_g)
+# def _get_param_groups_to_pass_to_child(optimizer: torch.optim.Optimizer):
+#     """propagate only per-parameter settings that are not in optimizer.defaults"""
+#     param_groups: list[dict[str, Any]] = []
+#     for g in optimizer.param_groups.copy():
+#         child_g = {"params": g["params"]}
+#         for k,v in g.copy().items():
+#             if k not in optimizer.defaults:
+#                 child_g[k] = v
+#         param_groups.append(child_g)
 
-    return param_groups
+#     return param_groups
 
 class OptimizationState:
     """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""
@@ -147,20 +148,40 @@ class OptimizerModule(TensorListOptimizer, ABC):
         make_closure (bool, optional):
             if True, :any:`_update` method functions as a closure,
             otherwise it updates the ascent directly. Defaults to False.
+            Only has effect when overriding _update.
     """
+    IS_LR_MODULE = False
     def __init__(self, defaults: dict[str, Any], make_closure = False): # pylint:disable = super-init-not-called
+        # there can only be 1 LR module, which is placed in the appropriate location among other modules.
+        # scheduling and per-parameter "lr" options will be routed to that module.
+        # otherwise, since many update rules like Adam have baked in lr, if multiple such modules are used,
+        # any lr modification gets applied multiple times.
+        # Some optimizers will automatically be fused if followed an LR() module (only LR specifically is supported).
+        if not self.IS_LR_MODULE:
+            if 'lr' in defaults:
+                warnings.warn(
+                    f'{self.__class__.__name__} got an "lr" default, but it is not an LR module.\
+                    To support lr scheduling and per-parameter options, rename "lr" to "alpha" and set the default value to 1.\
+                    If this is a learning rate module, set a class attribute `IS_LR_MODULE=True`.'
+                )
+
         self._defaults = defaults
         self.next_module: OptimizerModule | None = None
         """next module that takes this module's state and continues working on it."""
         self.children: dict[Any, OptimizerModule] = {}
         """children modules."""
         self._initialized = False
+        """True if torch.optim.Optimzer.__init__ was called on this meaning this optimizer has parameters."""
         self._make_closure = make_closure
+        """if True, :any:`_update` method functions as a closure, otherwise it updates the ascent directly"""
 
         self._has_custom_params = False
         """Signifies that :any:`self.set_params` was called on this to set custom params.
         When this is True, when parent calls :any:`_update_child_params_` with this module as child,
         nothing will happen, as this module already has parameters set."""
+
+        self._passed_params: list[torch.Tensor] | list[dict[str, Any]] | None = None
+        """list of parameters or parameter groups that were passed to this module and will get passed to child modules."""
 
     def __repr__(self):
         if self._initialized: return super().__repr__()
@@ -170,20 +191,21 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """
         Set parameters to this module. Use this to set per-parameter group settings.
         """
-        self._initialize_(params)
+        self._initialize_(params, set_passed_params = False)
         self._has_custom_params = True
         return self
 
-    def _initialize_(self, params: ParamsT):
+    def _initialize_(self, params: ParamsT, set_passed_params: bool):
         """Initializes this optimizer and all children with the given parameters."""
         if isinstance(params, torch.Tensor): raise ValueError("Params must be an iterable of tensors, not torch.Tensor")
-        params = list(params) # type:ignore
+        params_list = list(params)
+        if set_passed_params: self._passed_params = params_list.copy() # type:ignore
 
         # super().__init__, which is torch.optim.Optimizer.__init__,
         # calls self.add_param_group on each param group,
         # which in turn calls _update_child_params_,
         # which calls add_param_group on each child.
-        super().__init__(params, self._defaults)
+        super().__init__(params_list.copy(), self._defaults) # type:ignore
         self._initialized = True
 
     def _set_child_(self, name, child: "_Chainable"):
@@ -208,20 +230,26 @@ class OptimizerModule(TensorListOptimizer, ABC):
         # Shouldn't forget that this method is overwritten by some modules
         # So if I update it I need to keep that in mind
 
+        if self._passed_params is None:
+            raise RuntimeError(
+                f"{self.__class__.__name__} is not initialized, but _update_next_module_params_\
+                was called with next_module = {next_module.__class__.__name__}"
+            )
+
         # if child is not initialized, torch.optim.Optimizer.__init__ is called on it by _initialize_ method
         if not next_module._initialized:
-
-            # propagate only per-parameter settings that are not in self.defaults
-            next_module._initialize_(_get_param_groups_to_pass_to_child(self))
+            next_module._initialize_(self._passed_params, set_passed_params=True)
 
         # otherwise to avoid calling __init__ multiple twice, we erase the param groups and readd them
         elif not next_module._has_custom_params:
             next_module.param_groups = []
-            # it is important not to propagate all the settings
-            # for example if this module has `lr` setting, and the child has a different `lr` setting,
-            # we don't want to overwrite the child's `lr` setting
-            for group in _get_param_groups_to_pass_to_child(self):
+            for group in self._passed_params:
+                if isinstance(group, torch.Tensor): group = {"params": group}
                 next_module.add_param_group(group)
+
+        else:
+            # still pass per-parameter settings so that they propagate to further modules
+            next_module._passed_params = self._passed_params.copy()
 
 
     def add_param_group(self, param_group: dict[str, Any]) -> None:
@@ -377,6 +405,9 @@ class _Chain(OptimizerModule):
     def __init__(self, *modules: _Chainable):
         super().__init__({})
         flat_modules: list[OptimizerModule] = flatten(modules)
+        if any(not hasattr(i, "step") for i in flat_modules):
+            raise TypeError(f"One of the modules is not an OptimizerModule, got {[i.__class__.__name__ for i in flat_modules]}")
+
         self._ascent_returner = _MaybeReturnAscent()
         flat_modules.append(self._ascent_returner)
 

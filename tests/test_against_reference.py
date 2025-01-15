@@ -47,14 +47,14 @@ def _test_against_reference(opt, reference_opt, n_steps = 10, dtype=torch.float3
 def test_test_against_reference():
     """test if _test_against_reference works"""
     _test_against_reference(
-        lambda p: tz.optim.Modular(p, tz.m.Adam(1e-3)),
+        lambda p: tz.optim.Modular(p, tz.m.Adam(alpha = 1e-3)),
         lambda p: torch.optim.Adam(p, 1e-3),
         n_steps = 10,
     )
 
     with pytest.raises(AssertionError):
         _test_against_reference(
-            lambda p: tz.optim.Modular(p, tz.m.Adam(1e-3)),
+            lambda p: tz.optim.Modular(p, tz.m.Adam(alpha = 1e-3)),
             lambda p: torch.optim.Adam(p, 0.99e-3),
             n_steps = 10,
         )
@@ -71,7 +71,7 @@ def test_sgd(lr, momentum, dampening, weight_decay, nesterov):
         if dampening > 0: return # pytorch doesn't support nesterov with dampening
         if momentum == 0: return
     _test_against_reference(
-        lambda p: tz.optim.Modular(p, tz.m.SGD(lr, momentum, dampening, weight_decay, nesterov)),
+        lambda p: tz.optim.Modular(p, tz.m.SGD(momentum, dampening, weight_decay, nesterov, alpha = lr)),
         lambda p: torch.optim.SGD(p, lr, momentum, dampening, weight_decay, nesterov),
     )
 
@@ -91,14 +91,14 @@ def test_adam(lr, betas, eps, amsgrad, weight_decay, dtype, device):
     # note! it is necessary NOT to pre-initialize modules! because they will keep buffers and produce bogus results!
     if weight_decay > 0:
         _test_against_reference(
-            lambda p: tz.optim.Modular(p, [tz.m.WeightDecay(weight_decay), tz.m.Adam(lr, *betas, eps=eps, amsgrad=amsgrad)]),
+            lambda p: tz.optim.Modular(p, [tz.m.WeightDecay(weight_decay), tz.m.Adam(*betas, eps=eps, amsgrad=amsgrad,alpha = lr)]),
             lambda p: torch.optim.Adam(p, lr, betas, eps, amsgrad = amsgrad, weight_decay=weight_decay),
             dtype = dtype, device = device,
 
         )
     else:
         _test_against_reference(
-            lambda p: tz.optim.Modular(p, tz.m.Adam(lr, *betas, eps=eps, amsgrad=amsgrad)),
+            lambda p: tz.optim.Modular(p, tz.m.Adam(*betas, eps=eps, amsgrad=amsgrad, alpha = lr)),
             lambda p: torch.optim.Adam(p, lr, betas, eps, amsgrad = amsgrad, weight_decay=weight_decay),
             dtype = dtype, device = device,
         )
@@ -121,7 +121,7 @@ def test_rmsprop(lr, alpha, eps, centered):
 def test_rprop(lr, etas, bounds):
     """torch.optim.Rprop"""
     _test_against_reference(
-        lambda p: tz.optim.Modular(p, tz.m.Rprop(lr, *etas, *bounds, backtrack = False)),
+        lambda p: tz.optim.Modular(p, tz.m.Rprop(*etas, *bounds, backtrack = False, alpha = lr)),
         lambda p: torch.optim.Rprop(p, lr, list(reversed(etas)), bounds), # type:ignore
     )
 
@@ -133,7 +133,7 @@ def test_rprop(lr, etas, bounds):
 def test_adagrad(lr, lr_decay, initial_accumulator_value, eps):
     """torch.optim.Rprop"""
     _test_against_reference(
-        lambda p: tz.optim.Modular(p, tz.m.Adagrad(lr, lr_decay, initial_accumulator_value, eps)),
+        lambda p: tz.optim.Modular(p, tz.m.Adagrad(lr_decay, initial_accumulator_value, eps, alpha = lr)),
         lambda p: torch.optim.Adagrad(p, lr, lr_decay, initial_accumulator_value = initial_accumulator_value, eps = eps), # type:ignore
     )
 
@@ -144,9 +144,9 @@ def test_adagrad(lr, lr_decay, initial_accumulator_value, eps):
 @pytest.mark.parametrize('modular', [True, False])
 def test_cautious_vs_intermodule(lr, compare,normalize, mode,modular):
     """tests IntermoduleCautious"""
-    if modular: opt1 = lambda p: tz.optim.Modular(p, tz.m.Adam(lr), tz.m.Cautious(normalize=normalize, mode=mode))
+    if modular: opt1 = lambda p: tz.optim.Modular(p, tz.m.Adam(alpha = lr), tz.m.Cautious(normalize=normalize, mode=mode))
     else: opt1 = lambda p: tz.optim.CautiousAdamW(p, lr, normalize=normalize, mode=mode)
     _test_against_reference(
         opt1,
-        lambda p: tz.optim.Modular(p, tz.m.IntermoduleCautious(tz.m.Adam(lr), compare, normalize=normalize, mode=mode)), # type:ignore
+        lambda p: tz.optim.Modular(p, tz.m.IntermoduleCautious(tz.m.Adam(alpha = lr), compare, normalize=normalize, mode=mode)), # type:ignore
     )

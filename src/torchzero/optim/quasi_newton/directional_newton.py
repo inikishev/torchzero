@@ -1,7 +1,7 @@
 from ...modules import (
     SGD,
 )
-from ...modules import DirectionalNewton as _DirectionalNewton
+from ...modules import DirectionalNewton as _DirectionalNewton, LR
 from ..modular import Modular
 
 
@@ -50,8 +50,9 @@ class DirectionalNewton(Modular):
     ):
 
         modules = [
-            SGD(1, momentum=momentum,dampening=dampening,weight_decay=weight_decay,nesterov=nesterov),
-            _DirectionalNewton(lr, max_dist, validate_step)
+            SGD(momentum=momentum,dampening=dampening,weight_decay=weight_decay,nesterov=nesterov),
+            LR(lr),
+            _DirectionalNewton(max_dist, validate_step)
         ]
         super().__init__(params, modules)
 

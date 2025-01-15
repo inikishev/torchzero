@@ -48,7 +48,8 @@ class CautiousAdamW(Modular):
         decoupled=True,
     ):
         modules: list[OptimizerModule] = [
-            Adam(lr = lr, beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            Adam(beta1 = beta1, beta2 = beta2, eps = eps, amsgrad = amsgrad),
+            LR(lr),
             Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
         if decoupled: modules.append(WeightDecay(weight_decay))
@@ -97,7 +98,8 @@ class CautiousSGD(Modular):
         decoupled=True,
     ):
         modules: list[OptimizerModule] = [
-            SGD(lr = lr, momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            SGD(momentum = momentum, dampening = dampening, weight_decay = 0, nesterov = nesterov),
+            LR(lr),
             Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
 
@@ -145,8 +147,8 @@ class CautiousLion(Modular):
     ):
         modules: list[OptimizerModule] = [
             Lion(beta1, beta2),
-            Cautious(normalize = normalize, eps = c_eps, mode = mode),
             LR(lr),
+            Cautious(normalize = normalize, eps = c_eps, mode = mode),
         ]
 
         if decoupled: modules.append(WeightDecay(weight_decay))

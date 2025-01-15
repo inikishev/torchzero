@@ -1,22 +1,15 @@
 import random
-import warnings
 from typing import Any
-import torch
 
 from ...core import OptimizerModule
 from ...tensorlist import TensorList
 
-
-def _ensure_detach(x):
-    if isinstance(x, torch.Tensor): return x.detach().cpu()
-    return x
 
 class PolyakStepSize(OptimizerModule):
     """Polyak step-size. Meant to be used at the beginning when ascent is the gradient but other placements may work.
     This can also work with SGD as SPS (Stochastic Polyak Step-Size) seems to use the same formula.
 
     Args:
-        lr (float, optional): multiplier to Polyak step-size. Defaults to 1.
         max (float | None, optional): maximum possible step size. Defaults to None.
         min_obj_value (int, optional): (estimated) minimal possible value of the objective function (lowest possible loss). Defaults to 0.
         use_grad (bool, optional):
@@ -26,10 +19,11 @@ class PolyakStepSize(OptimizerModule):
         parameterwise (bool, optional):
             if True, calculate Polyak step-size for each parameter separately,
             if False calculate one global step size for all parameters. Defaults to False.
+        alpha (float, optional): multiplier to Polyak step-size. Defaults to 1.
     """
-    def __init__(self, lr: float = 1, max: float | None = None, min_obj_value: float = 0, use_grad=True, parameterwise=False):
+    def __init__(self, max: float | None = None, min_obj_value: float = 0, use_grad=True, parameterwise=False, alpha: float = 1):
 
-        defaults = dict(lr = lr)
+        defaults = dict(alpha = alpha)
         super().__init__(defaults)
         self.max = max
         self.min_obj_value = min_obj_value
