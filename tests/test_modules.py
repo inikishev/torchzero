@@ -120,7 +120,10 @@ def test_nevergrad_wrapper():
         from torchzero.optim.wrappers.nevergrad import NevergradOptimizer
         _test_optimizer(lambda p: NevergradOptimizer(p, ng.optimizers.OnePlusOne), niter=500, allow_non_tensor=True)
 
-
+@pytest.mark.filterwarnings("ignore:builtin type SwigPyPacked has no __module__ attribute")
+@pytest.mark.filterwarnings("ignore:builtin type SwigPyObject has no __module__ attribute")
+@pytest.mark.filterwarnings("ignore:making a non-writeable array writeable is deprecated for arrays without a base which do not own their data.")
 def test_nlopt_wrapper():
     if importlib.util.find_spec('nlopt') is not None:
-        pass
+        from torchzero.optim.wrappers.nlopt import NLOptOptimizer
+        _test_optimizer(lambda p: NLOptOptimizer(p, 'LN_BOBYQA', 100), niter=1, allow_non_tensor=True)

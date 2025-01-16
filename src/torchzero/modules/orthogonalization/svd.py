@@ -62,6 +62,8 @@ class Orthogonalize(OptimizerModule):
     To disable orthogonalization for a parameter, put it into a parameter group with "orth" = False.
 
     The orthogonalization code is adapted from https://github.com/MarkTuddenham/Orthogonal-Optimisers
+
+    Tip: :py:class:`tz.m.ZeropowerViaNewtonSchulz` is a significantly faster version of this.
     Args:
         warn_fail (bool, optional):
             whether to print a warning when orthogonalization fails, and gradients are not

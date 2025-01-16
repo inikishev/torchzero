@@ -56,7 +56,7 @@ def _precompute_denominator(tensor: torch.Tensor, sigma) -> torch.Tensor:
     return 1 - sigma * torch.fft.fft(v) # pylint: disable = not-callable
 
 class LaplacianSmoothing(OptimizerModule):
-    """Applies laplacian smoothing via fast Fourier transform.
+    """Applies laplacian smoothing via a fast Fourier transform solver.
 
     Args:
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.

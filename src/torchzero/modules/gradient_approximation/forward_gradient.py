@@ -109,7 +109,8 @@ class ForwardGradient(OptimizerModule):
         n_samples (int): number of forward gradients to evaluate and average.
         distribution (Distributions): distribution for random tangent vector.
         mode (str):
-            "jvp" - uses forward mode AD, usually slightly slower than backward mode AD  but uses significantly less memory.
+            "jvp" - uses forward mode AD, usually slightly slower than backward mode AD but uses significantly less memory,
+            because it doesn't have to store intermediate activations.
 
             "grad" - evaluates gradient with `loss.backward()` which may be faster but uses all the memory, mainly useful for
             benchmarking as there is probably no point in forward gradient if full gradient is available.

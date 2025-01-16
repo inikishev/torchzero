@@ -1,2 +1,2 @@
-from .lr_schedulers import LRWarmup, LRScheduler
+from .lr_schedulers import LRWarmup
 from .step_size import PolyakStepSize, RandomStepSize

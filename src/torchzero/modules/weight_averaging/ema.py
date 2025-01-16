@@ -8,7 +8,7 @@ def _reset_stats_hook(optimizer, state):
         module.reset_stats()
 
 # the reason why this needs to be at the end is ??? I NEED TO REMEMBER
-class SEMA(OptimizerModule):
+class SwitchEMA(OptimizerModule):
     """Switch-EMA. Every n steps switches params to an exponential moving average of past weights.
 
     In the paper the switch happens after each epoch.

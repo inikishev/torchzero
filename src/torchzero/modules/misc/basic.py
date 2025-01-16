@@ -6,19 +6,6 @@ from torchzero.tensorlist import TensorList
 
 from ...core import OptimizerModule
 
-class LR(OptimizerModule):
-    """Multiplies update by the learning rate."""
-    IS_LR_MODULE = True
-    def __init__(self, lr = 1e-3):
-        defaults = dict(lr = lr)
-        super().__init__(defaults)
-
-    @torch.no_grad
-    def _update(self, state, ascent):
-        # multiply ascent direction by lr in-place
-        lr = self.get_group_key('lr')
-        ascent *= lr
-        return ascent
 
 class Alpha(OptimizerModule):
     """Multiplies update by the learning rate, won't get picked up by learning rate schedulers."""

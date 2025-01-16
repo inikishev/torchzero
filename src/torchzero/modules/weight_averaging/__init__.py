@@ -1,2 +1,2 @@
-from .ema import SEMA
+from .ema import SwitchEMA
 from .swa import PeriodicSWA

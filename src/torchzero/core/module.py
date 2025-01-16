@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, Self
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence, Iterable
 import warnings
@@ -17,8 +17,11 @@ def _get_loss(fx0, fx0_approx):
 
 _ClosureType = Callable[..., _ScalarLoss] #
 """
+
 Closure example:
+
 .. code-block:: python
+
     def closure(backward = True):
         loss = model(inputs)
         if backward:
@@ -72,10 +75,18 @@ class OptimizationState:
         Gradient must be evaluated strictly with initial parameters of the current step"""
 
         self.model = model
-        """Model (for higher order derivatives)"""
+        """model itself (torch.nn.Module) if it was passed, otherwise None."""
 
         self.post_step_hooks = []
-        """callables that get executed after each step. Used by periodic SWA to reset momentum when setting model parameters to SWA."""
+        """callables that get executed after each step. Used by periodic SWA to reset momentum when setting model parameters to SWA.
+
+        Signature:
+
+        .. code:: py
+
+            def hook(optimizer: ModularOptimizer, state: OptimizationState) -> None:
+                ...
+        """
 
     def maybe_compute_grad_(self, params: TensorList) -> TensorList:
         """Computes gradient if it hasn't been computed already, and returns it"""
@@ -182,6 +193,19 @@ class OptimizerModule(TensorListOptimizer, ABC):
 
         self._passed_params: list[torch.Tensor] | list[dict[str, Any]] | None = None
         """list of parameters or parameter groups that were passed to this module and will get passed to child modules."""
+
+        self.post_init_hooks: list[Callable[[Any, Self], Any]] = []
+        """Hooks that run once after a ModularOptimizer is initialized with this module.
+
+        Signature:
+
+        .. code:: py
+
+            def hook(optimizer: ModularOptimizer, module: OptimizerModule) -> None:
+                ...
+
+        where `module` is this module.
+        """
 
     def __repr__(self):
         if self._initialized: return super().__repr__()
@@ -373,6 +397,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
                 for k in state.copy().keys(): del state[k]
 
 class _ReturnAscent:
+    IS_LR_MODULE = False
     def __init__(self, params):
         self.params = params
 

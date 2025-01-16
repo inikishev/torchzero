@@ -1,5 +1,6 @@
 from collections import abc
 import warnings
+from inspect import cleandoc
 import torch
 
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, _Chain, _Chainable
@@ -26,14 +27,16 @@ class Modular(TensorListOptimizer):
         self.modules: list[OptimizerModule] = flat_modules
         self.chain = _Chain(flat_modules)
 
+        # save unrolled modules and make sure there is only 1 LR module.
         self.unrolled_modules = _unroll_modules(flat_modules)
-        if len([m for m in self.unrolled_modules if m.IS_LR_MODULE]) > 1:
-            warnings.warn(
-                f'More then 1 lr modules have been added.\
-                This may lead to incorrect behaviour with learning rate scheduling and per-parameter learning rates.\
-                Make sure there is a single `LR` module, use `Mul` module instead of it where needed.\
-                \nList of modules: {self.unrolled_modules}; \nlist of lr modules: {[m for m in self.unrolled_modules if m.IS_LR_MODULE]}'
-            )
+        num_lr_modules = len([m for m in self.unrolled_modules if m.IS_LR_MODULE])
+        if num_lr_modules > 1:
+            warnings.warn(cleandoc(
+                f"""More then 1 lr modules have been added.
+                This may lead to incorrect behaviour with learning rate scheduling and per-parameter learning rates.
+                Make sure there is a single `LR` module, use `Alpha` module instead of it where needed.
+                \nList of modules: {self.unrolled_modules}; \nlist of lr modules: {[m for m in self.unrolled_modules if m.IS_LR_MODULE]}"""
+            ))
 
         if isinstance(params, torch.nn.Module):
             self.model = params
@@ -42,8 +45,23 @@ class Modular(TensorListOptimizer):
             self.model = None
             params = list(params)
 
+        # if there is an `lr` setting, make sure there is an LR module that can use it
+        for p in params:
+            if isinstance(p, dict):
+                if 'lr' in p:
+                    if num_lr_modules == 0:
+                        warnings.warn(cleandoc(
+                            """Passed "lr" setting in a parameter group, but there is no LR module that can use that setting.
+                            Add an `LR` module to make per-layer "lr" setting work."""
+                        ))
+
         super().__init__(params, {})
         self.chain._initialize_(params, set_passed_params=True)
+
+        # run post-init hooks
+        for module in self.unrolled_modules:
+            for hook in module.post_init_hooks:
+                hook(self, module)
 
     def get_lr_module(self, last=True) -> OptimizerModule:
         """
