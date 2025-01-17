@@ -104,10 +104,13 @@ class WrapClosure(OptimizerModule):
             instead of an optimizer directly.
 
     This can be constructed in two ways.
+
     .. code-block:: python
+
         wrapper = OptimizerWrapper(torch.optim.SGD(model.parameters(), lr = 0.1))
         # or
         wrapper = OptimizerWrapper(torch.optim.SGD, lr = 0.1)
+
     """
 
     @typing.overload

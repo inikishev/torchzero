@@ -1,6 +1,41 @@
 FAQ
 ###########
 
+How to construct modular optimizers?
+=====================================
+A modular optimizer can be created using the :py:class:`tz.m.Modular<torchzero.optim.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
+
+All modules are available in :py:mod:`tz.m<torchzero.modular>` namespace, e.g. :py:class:`tz.m.Adam<torchzero.modules.Adam>`.
+
+.. code:: python
+
+    import torchzero as tz
+
+    # construct it like this
+    opt = tz.Modular(
+        model.parameters(),
+        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.Cautious(), tz.m.WeightDecay()]
+    )
+
+    # or like this
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.LR(1e-3),
+        tz.m.Cautious(),
+        tz.m.WeightDecay(),
+    )
+
+In the example above, :code:`Adam`, being the first module, takes in the gradient, applies the adam update rule, and passes the resulting update the next next module - :code:`LR`. It multiplies the update by the learning rate and passes it to :code:`Cautious`, which applies cautioning and passes it to :code:`WeightDecay`, which adds a weight decay penalty. The resulting update is then subtracted from the model parameters.
+
+It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
+
+Most modules perform gradient transformations, so they take in an ascent direction, which is initially the gradient, transform it in some way, and pass to the next module. The first module in the chain usually uses the gradient as the initial ascent direction.
+
+Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNewton<torchzero.modules.ExactNewton>`, create an ascent direction "from scratch", so they should be placed first in the chain.
+
+Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>` and :py:class:`tz.m.WrapClosure<torchzero.modules.WrapClosure>` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
+
 
 How to perform optimization?
 ============================
@@ -52,41 +87,6 @@ Note that all built-in pytorch optimizers, as well as most custom ones, support 
 
 If you are intending to use gradient-free methods, :code:`backward` argument is still required in the closure. Simply leave it unused. Gradient-free and gradient approximation methods always call closure with :code:`backward=False`.
 
-How to construct modular optimizers?
-=====================================
-A modular optimizer can be created using the :py:class:`tz.m.Modular<torchzero.module.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
-
-All modules are available in :code:`tz.m` namespace, e.g. :py:class:`tz.m.Adam`.
-
-.. code:: python
-
-    import torchzero as tz
-
-    # construct it like this
-    opt = tz.Modular(
-        model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.Cautious(), tz.m.WeightDecay()]
-    )
-
-    # or like this
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Adam(),
-        tz.m.LR(1e-3),
-        tz.m.Cautious(),
-        tz.m.WeightDecay(),
-    )
-
-In the example above, :code:`Adam`, being the first module, takes in the gradient, applies the adam update rule, and passes the resulting update the next next module - :code:`LR`. It multiplies the update by the learning rate and passes it to :code:`Cautious`, which applies cautioning and passes it to :code:`WeightDecay`, which adds a weight decay penalty. The resulting update is then subtracted from the model parameters.
-
-It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
-
-Most modules perform gradient transformations, so they take in an ascent direction, which is initially the gradient, transform it in some way, and pass to the next module. The first module in the chain usually uses the gradient as the initial ascent direction.
-
-Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNewton<torczhero.modules.ExactNewton>`, create an ascent direction "from scratch", so they should be placed first in the chain.
-
-Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>` and :py:class:`tz.m.WrapClosure<torchzero.modules.WrapClosure>` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
-
 How to use learning rate schedulers?
 =============================================
 There are two primary methods for using learning rate schedulers.
@@ -105,7 +105,7 @@ One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR<to
 
 This method also supports cycling momentum, which some schedulers like OneCycleLR do. Momentum will be cycled on all modules that have :code:`momentum` or :code:`beta1` parameters.
 
-Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :py:meth:`torchzero.optim.Modular.get_lr_module<get_lr_module>` method like this:
+Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :py:meth:`get_lr_module<torchzero.optim.Modular.get_lr_module>` method like this:
 
 .. code:: python
 
@@ -165,7 +165,7 @@ How do we handle learning rates?
 =================================
 Certain optimisers, like Adam, have learning rate built into the update rule. Using multiple such modules can result in unintended compounding of learning rate modifications.
 
-To avoid this, learning rate should be applied by a singular :py:class:`tz.m.LR` module. All other modules with a learning rate, such as :py:class:`tz.m.Adam`, have `lr` renamed to `alpha` with the default value of 1 to avoid rescaling the update.
+To avoid this, learning rate should be applied by a singular :py:class:`tz.m.LR<torchzero.m.LR>` module. All other modules with a learning rate, such as :py:class:`tz.m.Adam`, have `lr` renamed to `alpha` with the default value of 1 to avoid rescaling the update.
 
 For example:
 
@@ -185,7 +185,7 @@ See also:
 
 How to use external PyTorch optimizers as chainable modules?
 ============================================================
-In addition to torchzero modules, any PyTorch optimizer can be used as a module using :py:class:`tz.m.Wrap`.
+In addition to torchzero modules, any PyTorch optimizer can be used as a module using :py:class:`tz.m.Wrap<torchzero.modular.Wrap>`.
 
 There are two slightly different ways to construct a :code:`Wrap` module. Here I will convert :code:`LaProp` optimizer from `pytorch_optimizer <https://pytorch-optimizers.readthedocs.io/en/latest/optimizer/#pytorch_optimizer.LaProp>`_ library into a module and chain it with :py:class:`tz.m.Cautious`
 
@@ -213,13 +213,13 @@ There are two slightly different ways to construct a :code:`Wrap` module. Here I
 
 Most pytorch optimizers update model parameters by using their :code:`.grad` attibute. Wrap puts the current update into the :code:`.grad`, making the wrapped optimizer use it instead.
 
-Note that since the wrapped optimizer updates model parameters directly, if :class:`tz.m.Wrap` is not the last module, it stores model parameters before the step, then performs a step with the wrapped optimizer, calculates the update as difference between model parameters before and after the step, and undoes the step. That may introduce additional overhead compared to using modules.
+Note that since the wrapped optimizer updates model parameters directly, if :class:`Wrap` is not the last module, it stores model parameters before the step, then performs a step with the wrapped optimizer, calculates the update as difference between model parameters before and after the step, and undoes the step. That may introduce additional overhead compared to using modules.
 
-However when :py:class:`tz.m.Wrap` is the last module in the chain, it simply makes a step with the wrapped optimizer, so no overhead is introduced.
+However when :py:class:`Wrap` is the last module in the chain, it simply makes a step with the wrapped optimizer, so no overhead is introduced.
 
-Also notice how I set `lr` to 1 in LaProp, and instead used an :py:class:`tz.m.LR` module. As usual, to make the optimizer support lr scheduling and per-layer learning rates, use the :py:class:`tz.m.LR` module to set the learning rate.
+Also notice how I set `lr` to 1 in LaProp, and instead used an :py:class:`tz.m.LR<LR>` module. As usual, to make the optimizer support lr scheduling and per-layer learning rates, use the :py:class:`tz.m.LR` module to set the learning rate.
 
-There is also a :py:class:`tz.m.WrapClosure` for optimizers that require closure, such as :code:`torch.optim.LBFGS`. It modifies the closure to set :code:`.grad` attribute on each closure evaluation. So you can use LBFGS with FDM or gradient smoothing methods.
+There is also a :py:class:`tz.m.WrapClosure<torczhero.modules.WrapClosure>` for optimizers that require closure, such as :code:`torch.optim.LBFGS`. It modifies the closure to set :code:`.grad` attribute on each closure evaluation. So you can use LBFGS with FDM or gradient smoothing methods.
 
 How to save/serialize a modular optimizer?
 ============================================
