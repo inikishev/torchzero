@@ -4,7 +4,7 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import _ClosureType, OptimizationState
 from .base_ls import LineSearchBase
 
@@ -34,7 +34,7 @@ class GridLS(LineSearchBase):
         self.stop_on_worsened = stop_on_worsened
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         if state.closure is None: raise ValueError("closure is not set")
         if state.ascent is None: raise ValueError("ascent_direction is not set")
 

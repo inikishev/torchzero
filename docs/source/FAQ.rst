@@ -54,7 +54,7 @@ If you are intending to use gradient-free methods, :code:`backward` argument is 
 
 How to construct modular optimizers?
 =====================================
-A modular optimizer can be created using the :py:class:`tz.Modular` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
+A modular optimizer can be created using the :py:class:`tz.m.Modular<torchzero.module.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
 
 All modules are available in :code:`tz.m` namespace, e.g. :py:class:`tz.m.Adam`.
 
@@ -79,18 +79,18 @@ All modules are available in :code:`tz.m` namespace, e.g. :py:class:`tz.m.Adam`.
 
 In the example above, :code:`Adam`, being the first module, takes in the gradient, applies the adam update rule, and passes the resulting update the next next module - :code:`LR`. It multiplies the update by the learning rate and passes it to :code:`Cautious`, which applies cautioning and passes it to :code:`WeightDecay`, which adds a weight decay penalty. The resulting update is then subtracted from the model parameters.
 
-It is recommended to always add an :py:class:`tz.m.LR` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
+It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
 
 Most modules perform gradient transformations, so they take in an ascent direction, which is initially the gradient, transform it in some way, and pass to the next module. The first module in the chain usually uses the gradient as the initial ascent direction.
 
-Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNewton`, create an ascent direction "from scratch", so they should be placed first in the chain.
+Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNewton<torczhero.modules.ExactNewton>`, create an ascent direction "from scratch", so they should be placed first in the chain.
 
-Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap` and :py:class:`tz.m.WrapClosure` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
+Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>` and :py:class:`tz.m.WrapClosure<torchzero.modules.WrapClosure>` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
 
 How to use learning rate schedulers?
 =============================================
 There are two primary methods for using learning rate schedulers.
-One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR` module like this:
+One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR<torchzero.modules.LR>` module like this:
 
 .. code:: python
 
@@ -105,7 +105,7 @@ One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR` m
 
 This method also supports cycling momentum, which some schedulers like OneCycleLR do. Momentum will be cycled on all modules that have :code:`momentum` or :code:`beta1` parameters.
 
-Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :code:`get_lr_module` method like this:
+Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :py:meth:`torchzero.optim.Modular.get_lr_module<get_lr_module>` method like this:
 
 .. code:: python
 
@@ -116,7 +116,7 @@ Alternatively, learning rate scheduler can be created separately by passing it t
 
     scheduler = OneCycleLR(opt.get_lr_module(), max_lr = 1e-1, total_steps=60_000)
 
-Here :code:`get_lr_module` returns the :py:class:`tz.m.LR`, even if it is nested somewhere. You can then call :code:`scheduler.step()` as usual. This method does not support cycling momentum.
+Here :code:`get_lr_module` returns the :py:class:`tz.m.LR<torchzero.modules.LR>`, even if it is nested somewhere. You can then call :code:`scheduler.step()` as usual. This method does not support cycling momentum.
 
 
 How to specify per-parameter options?

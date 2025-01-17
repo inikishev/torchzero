@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterable
 
 import torch
 
-from torchzero.tensorlist import TensorList
+from ...tensorlist import TensorList
 
 from ...core import OptimizerModule
 

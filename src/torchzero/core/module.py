@@ -7,7 +7,8 @@ import torch
 
 from ..utils.python_tools import _ScalarLoss, flatten
 from ..tensorlist import TensorList
-from .tensorlist_optimizer import TensorListOptimizer, ParamsT
+from .tensorlist_optimizer import TensorListOptimizer
+from torch.optim.optimizer import ParamsT
 
 
 def _get_loss(fx0, fx0_approx):
@@ -492,6 +493,7 @@ class _Chain(OptimizerModule):
             return self.children['first'].step(state)
 
         # return ascent and pass it to next module
+        # we do this because updating parameters directly is often more efficient
         params = self.get_params()
         self._last_module.next_module = _ReturnAscent(params) # type:ignore
         state.ascent: TensorList = self.children['first'].step(state) # type:ignore

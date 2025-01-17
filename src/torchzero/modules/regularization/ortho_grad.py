@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import OptimizerModule, _Targets
 
 
@@ -20,7 +20,7 @@ def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
     reference
         https://arxiv.org/abs/2501.04697
     """
-    if not isinstance(params, tl.TensorList): params = tl.TensorList(params)
+    if not isinstance(params, TensorList): params = TensorList(params)
     params = params.with_grad()
     grad = params.grad
     grad -= (((params*grad).total_sum())/(params*params).total_sum() + eps) * params

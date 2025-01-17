@@ -3,7 +3,7 @@ import bisect
 import numpy as np
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import OptimizationState
 from ..line_search.base_ls import LineSearchBase
 
@@ -47,7 +47,7 @@ class QuadraticInterpolation2Point(LineSearchBase):
         self.min_dist = min_dist
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         if state.closure is None: raise ValueError('QuardaticLS requires closure')
         closure = state.closure
         if state.fx0 is None: state.fx0 = state.closure(False)

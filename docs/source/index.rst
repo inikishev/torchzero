@@ -12,6 +12,7 @@ Welcome to torchzero documentation!
 
    installation
    introduction
+
    FAQ
    .. automodule:: torchzero
       :caption: API reference:
@@ -19,6 +20,7 @@ Welcome to torchzero documentation!
       :show-inheritance:
    * :ref:`search`
 
+   implementing
 
 
 .. idk what this does

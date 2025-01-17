@@ -6,7 +6,7 @@ import torch
 import torch.optim.optimizer
 from torch.optim.optimizer import ParamsT
 
-from torchzero.tensorlist import TensorList, NumberList
+from ..tensorlist import TensorList, NumberList
 
 _StateInit = Literal['params', 'grad'] | Callable | TensorList
 class TensorListOptimizer(torch.optim.Optimizer, ABC):

@@ -3,7 +3,7 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList, Distributions, mean as tlmean
 from ...utils.python_tools import _ScalarLoss
 from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
 
@@ -29,14 +29,14 @@ class ApproxGaussianSmoothing(OptimizerModule):
         self,
         n_samples: int = 4,
         sigma: float = 0.1,
-        distribution: tl.Distributions = "normal",
+        distribution: Distributions = "normal",
         sample_x0 = False,
         randomize_every: int | None = 1,
     ):
         defaults = dict(sigma = sigma)
         super().__init__(defaults)
         self.n_samples = n_samples
-        self.distribution: tl.Distributions = distribution
+        self.distribution: Distributions = distribution
         self.randomize_every = randomize_every
         self.current_step = 0
         self.perturbations = None
@@ -78,7 +78,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
                 params.sub_(p)
 
             # set the new averaged grads and return average loss
-            if backward: params.set_grad_(tl.mean(grads))
+            if backward: params.set_grad_(tlmean(grads))
             return _numpy_or_torch_mean(losses)
 
 

@@ -6,7 +6,7 @@ try:
 except ModuleNotFoundError:
     scopt = typing.cast(typing.Any, None)
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import OptimizationState
 
 from .base_ls import LineSearchBase, MaxIterReached
@@ -45,7 +45,7 @@ class ScipyMinimizeScalarLS(LineSearchBase):
         self.options = options
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         try:
             res = scopt.minimize_scalar(
                 self._evaluate_lr_ensure_float,

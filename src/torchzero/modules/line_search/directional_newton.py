@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import OptimizationState
 from .base_ls import LineSearchBase
 
@@ -57,7 +57,7 @@ class DirectionalNewton(LineSearchBase):
         self.validate_step = validate_step
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         if state.closure is None: raise ValueError('QuardaticLS requires closure')
         closure = state.closure
 
@@ -172,7 +172,7 @@ class DirectionalNewton3Points(LineSearchBase):
         self.validate_step = validate_step
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         if state.closure is None: raise ValueError('QuardaticLS requires closure')
         closure = state.closure
         ascent_direction = state.ascent

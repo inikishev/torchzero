@@ -2,7 +2,7 @@ r"""
 Line searches.
 """
 
-import typing as T
+from typing import Literal
 
 from ...core import OptimizerModule
 from ..regularization import Normalize
@@ -13,7 +13,7 @@ from .directional_newton import DirectionalNewton3Points, DirectionalNewton
 from .scipy_minimize_scalar import ScipyMinimizeScalarLS
 from .armijo import ArmijoLS
 
-LineSearches = T.Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative', 'newton', 'newton3', 'armijo'] | OptimizerModule
+LineSearches = Literal['backtracking', 'brent', 'brent-exact', 'brent-norm', 'multiplicative', 'newton', 'newton3', 'armijo'] | OptimizerModule
 
 def get_line_search(name:str | OptimizerModule) -> OptimizerModule | list[OptimizerModule]:
     if isinstance(name, str):

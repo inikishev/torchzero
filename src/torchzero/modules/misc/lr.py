@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, overload
 
 import torch
 
-from torchzero.tensorlist import TensorList
+from ...tensorlist import TensorList
 
 from ...core import OptimizerModule
 

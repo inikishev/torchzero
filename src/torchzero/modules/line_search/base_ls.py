@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from ... import tl
+from ...tensorlist import TensorList
 from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
 from ...utils.python_tools import _ScalarLoss
 
@@ -58,13 +58,13 @@ class LineSearchBase(OptimizerModule, ABC):
         self._fx0_approx = None
         self._current_iter = 0
 
-    def _set_lr_(self, lr: float, ascent_direction: tl.TensorList, params: tl.TensorList, ):
+    def _set_lr_(self, lr: float, ascent_direction: TensorList, params: TensorList, ):
         alpha = self._last_lr - lr
         if alpha != 0: params.add_(ascent_direction, alpha = alpha)
         self._last_lr = lr
 
     # lr is first here so that we can use a partial
-    def _evaluate_lr_(self, lr: float, closure: _ClosureType, ascent: tl.TensorList, params: tl.TensorList, backward=False):
+    def _evaluate_lr_(self, lr: float, closure: _ClosureType, ascent: TensorList, params: TensorList, backward=False):
         """Evaluate `lr`, if loss is better than current lowest loss,
         overrides `self._lowest_loss` and `self._best_lr`.
 
@@ -100,15 +100,15 @@ class LineSearchBase(OptimizerModule, ABC):
         self,
         lr: float,
         closure: _ClosureType,
-        ascent: tl.TensorList,
-        params: tl.TensorList,
+        ascent: TensorList,
+        params: TensorList,
     ) -> float:
         """Same as _evaluate_lr_ but ensures that the loss value is float."""
         v = self._evaluate_lr_(lr, closure, ascent, params)
         if isinstance(v, torch.Tensor): return v.detach().cpu().item()
         return float(v)
 
-    def _find_best_lr(self, state: OptimizationState, params: tl.TensorList) -> float:
+    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
         """This should return the best lr."""
         ... # pylint:disable=unnecessary-ellipsis
 
