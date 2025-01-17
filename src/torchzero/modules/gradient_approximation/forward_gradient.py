@@ -8,6 +8,7 @@ from ...core import OptimizerModule, _ClosureType
 from ...tensorlist import TensorList
 from ...random import Distributions
 from ...utils.torch_tools import swap_tensors_no_use_count_check
+from .base_approximator import GradientApproximatorBase
 
 def get_forward_gradient(
     params: Iterable[torch.Tensor],
@@ -33,7 +34,8 @@ def get_forward_gradient(
             "grad" - evaluates gradient with `loss.backward()` which may be faster but uses all the memory, mainly useful for
             benchmarking as there is probably no point in forward gradient if full gradient is available.
 
-            "fd" - uses finite difference to estimate JVP, doesn't require gradients to be known. Equivalent to randomized FDM.
+            "fd" - uses finite difference to estimate JVP in two forward passes,
+            doesn't require the objective to be autodiffable. Equivalent to randomized FDM.
 
         fd_eps (float, optional): epsilon for finite difference, only has effect if mode is "fd". Defaults to 1e-4.
 
@@ -101,7 +103,7 @@ def get_forward_gradient(
 
     return grad, loss
 
-class ForwardGradient(OptimizerModule):
+class ForwardGradient(GradientApproximatorBase):
     """Evaluates jacobian-vector product with a random vector using forward mode autodiff (torch.autograd.forward_ad), which is
     the true directional derivative in the direction of that vector.
 
@@ -115,13 +117,18 @@ class ForwardGradient(OptimizerModule):
             "grad" - evaluates gradient with `loss.backward()` which may be faster but uses all the memory, mainly useful for
             benchmarking as there is probably no point in forward gradient if full gradient is available.
 
-            "fd" - uses finite difference to estimate JVP, doesn't require gradients to be known. Equivalent to randomized FDM.
+            "fd" - uses finite difference to estimate JVP in two forward passes,
+            doesn't require the objective to be autodiffable. Equivalent to randomized FDM.
 
         fd_eps (float, optional): epsilon for finite difference, only has effect if mode is "fd". Defaults to 1e-4.
-        make_closure (bool, optional):
-            if True, instead of creating a new update, this module will modify the closure to set `grad` to
-            forward gradients. This is mainly useful to make this work with custom optimizers that
-            require a closure, such as LBFGS, although it probably won't work well. Defaults to False.
+        target (str, optional):
+            determines what this module sets.
+
+            "ascent" - it creates a new ascent direction but doesn't treat is as gradient.
+
+            "grad" - it creates the gradient and sets it to `.grad` attributes (default).
+
+            "closure" - it makes a new closure that sets the estimated gradient to the `.grad` attributes.
 
     Reference:
         Baydin, A. G., Pearlmutter, B. A., Syme, D., Wood, F., & Torr, P. (2022).
@@ -134,40 +141,23 @@ class ForwardGradient(OptimizerModule):
         distribution: Distributions = "normal",
         mode: Literal["jvp", "grad", "fd"] = "jvp",
         fd_eps: float = 1e-4,
-        make_closure=False,
+        target: Literal['ascent', 'grad', 'closure'] = 'grad',
     ):
-        super().__init__({})
+        super().__init__({}, requires_fx0=False, target = target)
         self.distribution: Distributions = distribution
         self.n_samples = n_samples
         self.mode: Literal["jvp", "grad", "fd"] = mode
-        self.make_closure = make_closure
         self.fd_eps = fd_eps
 
-    def _step_make_ascent(self, state):
-        params = self.get_params()
 
-        state.ascent, state.fx0 = get_forward_gradient(params, state.closure, n_samples=self.n_samples, distribution=self.distribution, mode=self.mode, fd_eps=self.fd_eps)
-        return self._update_params_or_step_with_next(state, params)
+    def _make_ascent(self, closure, params, fx0):
+        g, fx0 = get_forward_gradient(
+            params=params,
+            closure=closure,
+            n_samples=self.n_samples,
+            distribution=self.distribution,
+            mode=self.mode,
+            fd_eps=self.fd_eps,
+        )
 
-    def _step_make_closure(self, state):
-        params = self.get_params()
-        orig_closure = state.closure
-
-        def forward_closure(backward=True):
-            if backward:
-                grad, loss = get_forward_gradient(params, state.closure, n_samples=self.n_samples, distribution=self.distribution, mode=self.mode, fd_eps=self.fd_eps)
-                params.set_grad_(grad)
-                return loss
-            else:
-                return orig_closure(False)
-
-        state.closure = forward_closure
-        return self._update_params_or_step_with_next(state, params)
-
-    @torch.no_grad
-    def step(self, state):
-        if state.ascent is not None: raise ValueError("ForwardGradient should be the first module to create ascent.")
-        if state.closure is None: raise ValueError("ForwardGradient requires a closure.")
-
-        if self.make_closure: return self._step_make_closure(state)
-        return self._step_make_ascent(state)
+        return g, fx0, None

@@ -8,7 +8,7 @@ from collections.abc import Iterable
 
 import torch
 
-from ...core import OptimizerModule
+from ...core import OptimizerModule, _Targets
 # from ...utils.compile import maybe_compile
 
 def _zeropower_via_newtonschulz5(G, steps):
@@ -100,10 +100,18 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
             Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to True.
         compiled (bool, optional):
             Uses compiled newton-Schulz iteration function. Faster but won't work on windows. Defaults to True.
+        target (str, optional):
+            determines what this module updates.
+
+            "ascent" - it updates the ascent
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
     """
-    def __init__(self, ns_steps = 6, adaptive = False, compiled=True):
+    def __init__(self, ns_steps = 6, adaptive = False, compiled=True, target:_Targets='ascent'):
         defaults = dict(newtonshultz = True, ns_steps=ns_steps, adaptive=adaptive)
-        super().__init__(defaults)
+        super().__init__(defaults, target=target)
 
         if compiled: self._zeropower_via_newtonschulz5 = _compiled_zeropower_via_newtonschulz5
         else: self._zeropower_via_newtonschulz5 = _zeropower_via_newtonschulz5

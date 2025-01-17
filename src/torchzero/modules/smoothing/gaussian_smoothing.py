@@ -5,7 +5,7 @@ import torch
 
 from ... import tl
 from ...utils.python_tools import _ScalarLoss
-from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
 
 
 def _numpy_or_torch_mean(losses: list):
@@ -57,14 +57,14 @@ class ApproxGaussianSmoothing(OptimizerModule):
                 self.perturbations = [params.sample_like(sigmas, distribution=self.distribution) for _ in range(self.n_samples)]
 
         @torch.no_grad
-        def smooth_closure(backward = True, **k):
+        def smooth_closure(backward = True):
             losses = []
             grads = []
 
             # sample gradient and loss at x0
             if self.sample_x0:
                 with torch.enable_grad() if backward else nullcontext():
-                    losses.append(closure(backward, **k))
+                    losses.append(closure())
                     if backward: grads.append(params.grad.clone())
 
             # sample gradients from points around current params
@@ -73,7 +73,7 @@ class ApproxGaussianSmoothing(OptimizerModule):
             for p in self.perturbations:
                 params.add_(p)
                 with torch.enable_grad() if backward else nullcontext():
-                    losses.append(closure(backward, **k))
+                    losses.append(_maybe_pass_backward(closure, backward))
                     if backward: grads.append(params.grad.clone())
                 params.sub_(p)
 

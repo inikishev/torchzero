@@ -6,12 +6,9 @@ Orthogonalising gradients to speed up neural network optimisation. arXiv preprin
 import logging
 from collections.abc import Iterable, Sequence
 
-import numpy as np
 import torch
 
-from ... import tl
-from ...core import _ClosureType, OptimizationState, OptimizerModule
-from ...utils.python_tools import _ScalarLoss
+from ...core import OptimizerModule, _Targets
 
 @torch.no_grad()
 def _orthogonalize_update_(updates: Sequence[torch.Tensor], toggle = None, warn_fail=True) -> None:
@@ -68,10 +65,18 @@ class Orthogonalize(OptimizerModule):
         warn_fail (bool, optional):
             whether to print a warning when orthogonalization fails, and gradients are not
             orthogonalized. Defaults to True.
+        target (str, optional):
+            determines what this module updates.
+
+            "ascent" - it updates the ascent
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
     """
-    def __init__(self, warn_fail=True):
+    def __init__(self, warn_fail=True, target: _Targets = 'ascent'):
         defaults = dict(orth = True)
-        super().__init__(defaults)
+        super().__init__(defaults, target = target)
         self.warn_fail = warn_fail
 
     def _update(self, state, ascent):

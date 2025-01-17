@@ -1,4 +1,4 @@
-from typing import Any, TypeAlias, Self
+from typing import Any, TypeAlias, Self, Literal
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence, Iterable
 import warnings
@@ -15,7 +15,7 @@ def _get_loss(fx0, fx0_approx):
     if fx0 is None: return fx0_approx
     return fx0
 
-_ClosureType = Callable[..., _ScalarLoss] #
+_ClosureType = Callable[..., _ScalarLoss]
 """
 
 Closure example:
@@ -31,6 +31,13 @@ Closure example:
 
 This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
 """
+
+def _maybe_pass_backward(closure: _ClosureType, backward: bool) -> _ScalarLoss:
+    """not passing backward when it is true makes this work with closures with no `backward` argument"""
+    if backward:
+        with torch.enable_grad(): return closure()
+    return closure(False)
+
 
 # class _WeakDict(dict): pass
 
@@ -88,10 +95,10 @@ class OptimizationState:
                 ...
         """
 
-    def maybe_compute_grad_(self, params: TensorList) -> TensorList:
+    def maybe_compute_grad_(self, params: TensorList | None) -> TensorList:
         """Computes gradient if it hasn't been computed already, and returns it"""
         if self.grad is None:
-
+            if params is None: raise ValueError()
             if self.closure is not None:
                 with torch.enable_grad(): self.fx0 = self.closure() # pylint:disable = not-callable (???)
             self.grad = params.ensure_grad_().grad
@@ -103,13 +110,32 @@ class OptimizationState:
         Otherwise does nothing and returns existing ascent direction.
         If gradient hasn't been computed, this also sets `fx0`."""
         if self.ascent is None:
-            if params is None: raise ValueError()
-            grad = self.maybe_compute_grad_(params)
-
-            # clone the gradients to avoid modifying them.
-            self.ascent = grad.clone()
+            self.ascent = self.maybe_compute_grad_(params).clone()
 
         return self.ascent
+
+    def set_grad_(self, grad: TensorList, params: TensorList):
+        """Sets gradient to this state and to params"""
+        self.grad = grad
+        params.set_grad_(grad)
+
+    def evaluate_fx0_(self, backward=True) -> _ScalarLoss:
+        """if fx0 is None or if backward is True and self.grad is None, evaluates closure and sets them. Returns fx0"""
+        if self.fx0 is not None:
+            if backward and self.grad is None:
+                warnings.warn('evaluating fx0 with backward=True after it has already been evaluated with backward=False. Something may be inefficient.')
+                with torch.enable_grad(): self.closure() # set grad #type:ignore
+            return self.fx0
+
+        if self.closure is None: raise ValueError("Closure is None")
+        loss = self.fx0 = _maybe_pass_backward(self.closure, backward)
+        return loss
+
+    def evaluate_fx0_approx_(self, backward=True) -> _ScalarLoss:
+        """evaluates closure, sets self.fx0_approx and returns it"""
+        if self.closure is None: raise ValueError("Closure is None")
+        loss = self.fx0_approx = _maybe_pass_backward(self.closure, backward)
+        return loss
 
     def get_loss(self):
         """Returns fx0 if it is not None otherwise fx0_approx"""
@@ -151,18 +177,23 @@ class OptimizationState:
         """
         self.post_step_hooks.append(hook)
 
+_Targets = Literal['ascent', 'grad', 'closure',]
 class OptimizerModule(TensorListOptimizer, ABC):
     r"""Base class for all modules.
 
     Args:
         defaults (dict): dictionary with default parameters for the module.
-        make_closure (bool, optional):
-            if True, :any:`_update` method functions as a closure,
-            otherwise it updates the ascent directly. Defaults to False.
-            Only has effect when overriding _update.
+        target (str, optional):
+            determines how _update method is used in the default step method.
+
+            "ascent" - it updates the ascent
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
     """
     IS_LR_MODULE = False
-    def __init__(self, defaults: dict[str, Any], make_closure = False): # pylint:disable = super-init-not-called
+    def __init__(self, defaults: dict[str, Any], target: Literal['ascent', 'grad', 'closure',] = 'ascent'): # pylint:disable = super-init-not-called
         # there can only be 1 LR module, which is placed in the appropriate location among other modules.
         # scheduling and per-parameter "lr" options will be routed to that module.
         # otherwise, since many update rules like Adam have baked in lr, if multiple such modules are used,
@@ -183,8 +214,8 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """children modules."""
         self._initialized = False
         """True if torch.optim.Optimzer.__init__ was called on this meaning this optimizer has parameters."""
-        self._make_closure = make_closure
-        """if True, :any:`_update` method functions as a closure, otherwise it updates the ascent directly"""
+        self._default_step_target: Literal['ascent', 'grad', 'closure'] = target
+        """'ascent', 'grad' or 'closure'"""
 
         self._has_custom_params = False
         """Signifies that :any:`self.set_params` was called on this to set custom params.
@@ -253,7 +284,6 @@ class OptimizerModule(TensorListOptimizer, ABC):
         """Initializes or updates next module params with parameters of this module."""
         # Shouldn't forget that this method is overwritten by some modules
         # So if I update it I need to keep that in mind
-
         if self._passed_params is None:
             raise RuntimeError(
                 f"{self.__class__.__name__} is not initialized, but _update_next_module_params_\
@@ -304,14 +334,14 @@ class OptimizerModule(TensorListOptimizer, ABC):
     @torch.no_grad
     def _step_update_closure(self, state: OptimizationState) -> _ScalarLoss | None:
         """Create a new closure which applies the `_update` method and passes it to the next module."""
-        if state.closure is None: raise ValueError('If `make_closure` is True, closure must be provided')
+        if state.closure is None: raise ValueError('If target == "closure", closure must be provided')
 
         params = self.get_params()
         closure = state.closure # closure shouldn't reference state attribute because it can be changed
         ascent_direction = state.ascent
 
-        def update_closure(backward = True, **k):
-            loss = closure(backward, **k)
+        def update_closure(backward = True):
+            loss = _maybe_pass_backward(closure, backward)
 
             # on backward, update the ascent direction
             if backward:
@@ -324,33 +354,38 @@ class OptimizerModule(TensorListOptimizer, ABC):
             return loss
 
         # pass new closure to the child.
-        if self.next_module is None:
-            raise ValueError(f'{self.__class__.__name__} has no child to step with (maybe set make_closure to False?).')
+        # if self.next_module is None:
+        #     raise ValueError(f'{self.__class__.__name__} has no child to step with (maybe set "target" from "closure" to something else??).')
 
         state.closure = update_closure
-        return self.next_module.step(state)
+        return self._update_params_or_step_with_next(state)
 
 
     @torch.no_grad
-    def _step_update_ascent_direction(self, state: OptimizationState) -> _ScalarLoss | None:
+    def _step_update_target(self, state: OptimizationState) -> _ScalarLoss | None:
         """Apply _update method to the ascent direction and pass it to the child, or make a step if child is None."""
         # the following code by default uses `_update` method which simple modules can override.
         # But you can also just override the entire `step`.
 
         params = None
 
-        # cases where we would need params
-        if state.ascent is None or self.next_module is None:
-            params = self.get_params()
+        # update ascent direction
+        if self._default_step_target == 'ascent':
+            # if this is the first module, it uses the gradients
+            if state.grad is None: params = self.get_params()
+            t = state.maybe_use_grad_(params)
+            state.ascent = self._update(state, t)
 
-        # if this is the first module, it uses the gradients
-        state.maybe_use_grad_(params)
+        # update gradients
+        elif self._default_step_target == 'grad':
+            if params is None: params = self.get_params()
+            g = state.maybe_compute_grad_(params)
+            g = self._update(state, g)
+            state.set_grad_(g, params)
+        else:
+            raise ValueError(f"Invalid {self._default_step_target = }")
 
-        # apply the `_update` method
-        ascent_direction = self._update(state, state.ascent) # type:ignore
-        state.ascent = ascent_direction
-
-        # peform an update with the ascent direction, or pass it to the child.
+        # peform an update with the new state, or pass it to the child.
         return self._update_params_or_step_with_next(state, params=params)
 
     @torch.no_grad
@@ -360,8 +395,8 @@ class OptimizerModule(TensorListOptimizer, ABC):
     ) -> _ScalarLoss | None:
         """Perform a single optimization step to update parameter."""
 
-        if self._make_closure: return self._step_update_closure(state)
-        return self._step_update_ascent_direction(state)
+        if self._default_step_target == 'closure': return self._step_update_closure(state)
+        return self._step_update_target(state)
 
     @torch.no_grad
     def _update(self, state: OptimizationState, ascent: TensorList) -> TensorList:
@@ -396,15 +431,21 @@ class OptimizerModule(TensorListOptimizer, ABC):
                 state = self.state[p]
                 for k in state.copy().keys(): del state[k]
 
+
 class _ReturnAscent:
-    IS_LR_MODULE = False
+    __slots__ = ('IS_LR_MODULE', 'params', 'children', 'next_module', )
     def __init__(self, params):
         self.params = params
+        self.IS_LR_MODULE = False
+
+        self.children = {}
+        self.next_module = None
 
     @torch.no_grad
     def step(self, state: OptimizationState) -> TensorList: # type:ignore
         update = state.maybe_use_grad_(self.params) # this will execute the closure which might be modified
         return update
+
 
 class _MaybeReturnAscent(OptimizerModule):
     """utility module that either returns ascent or updates the parameters depending on `_return_ascent`, used in Chain."""
@@ -430,11 +471,9 @@ class _Chain(OptimizerModule):
     def __init__(self, *modules: _Chainable):
         super().__init__({})
         flat_modules: list[OptimizerModule] = flatten(modules)
+
         if any(not hasattr(i, "step") for i in flat_modules):
             raise TypeError(f"One of the modules is not an OptimizerModule, got {[i.__class__.__name__ for i in flat_modules]}")
-
-        self._ascent_returner = _MaybeReturnAscent()
-        flat_modules.append(self._ascent_returner)
 
         # first module is chain's child, second module is first module's child, etc
         self._set_child_('first', flat_modules[0])
@@ -442,17 +481,20 @@ class _Chain(OptimizerModule):
             for i, m in enumerate(flat_modules[:-1]):
                 m._set_next_module(flat_modules[i+1])
 
+            self._last_module = flat_modules[-1]
+
         self._chain_modules = flat_modules
 
     @torch.no_grad
     def step(self, state: OptimizationState):
         # no next module, step with the child
         if self.next_module is None:
-            self._ascent_returner._return_ascent = False
             return self.children['first'].step(state)
 
         # return ascent and pass it to next module
-        self._ascent_returner._return_ascent = True # type:ignore
-        state.ascent = self.children['first'].step(state) # type:ignore
+        params = self.get_params()
+        self._last_module.next_module = _ReturnAscent(params) # type:ignore
+        state.ascent: TensorList = self.children['first'].step(state) # type:ignore
+        self._last_module.next_module = None
 
         return self._update_params_or_step_with_next(state)

@@ -1,5 +1,5 @@
-import typing as T
-from collections import abc
+from typing import Literal
+from collections.abc import Iterable
 
 import torch
 
@@ -18,7 +18,7 @@ def vector_laplacian_smoothing(input: torch.Tensor, sigma: float = 1) -> torch.T
     denominator = 1 - sigma * torch.fft.fft(v) # pylint: disable = not-callable
     return torch.fft.ifft(numerator / denominator).real # pylint: disable = not-callable
 
-def gradient_laplacian_smoothing_(params: abc.Iterable[torch.Tensor], sigma: float = 1, layerwise=True, min_numel = 4):
+def gradient_laplacian_smoothing_(params: Iterable[torch.Tensor], sigma: float = 1, layerwise=True, min_numel = 4):
     """Applies laplacian smoothing to gradients of an iterable of parameters.
 
     This updates gradients in-place.
@@ -66,19 +66,26 @@ class LaplacianSmoothing(OptimizerModule):
         min_numel (int, optional):
             minimum number of elements in a parameter to apply laplacian smoothing to.
             Only has effect if `layerwise` is True. Defaults to 4.
-        make_closure (bool, optional): Set to True to use with things like LBFGS. Defaults to False.
+        target (str, optional):
+            determines what this module updates.
+
+            "ascent" - it updates the ascent (default).
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
 
     Reference:
         *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
         Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
 
     """
-    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, make_closure = False):
+    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: Literal['ascent', 'grad', 'closure',] = 'ascent'):
         # sigma from defaults is used in layerwise case
         # otherwise self.sigma is used
         defaults = dict(sigma = sigma)
         self.sigma = 1
-        super().__init__(defaults, make_closure=make_closure)
+        super().__init__(defaults, target=target)
         self.layerwise = layerwise
         self.min_numel = min_numel
 

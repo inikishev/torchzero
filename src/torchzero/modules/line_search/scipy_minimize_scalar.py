@@ -9,7 +9,7 @@ except ModuleNotFoundError:
 from ... import tl
 from ...core import OptimizationState
 
-from .ls_base import LineSearchBase, MaxIterReached
+from .base_ls import LineSearchBase, MaxIterReached
 
 if typing.TYPE_CHECKING:
     import scipy.optimize as scopt
@@ -37,7 +37,7 @@ class ScipyMinimizeScalarLS(LineSearchBase):
         log_lrs = False,
     ):
         if scopt is None: raise ModuleNotFoundError("scipy is not installed")
-        super().__init__({}, make_closure=False, maxiter=maxiter, log_lrs=log_lrs)
+        super().__init__({}, maxiter=maxiter, log_lrs=log_lrs)
         self.method = method
         self.tol = tol
         self.bracket = bracket

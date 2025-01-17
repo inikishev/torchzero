@@ -4,7 +4,7 @@ from collections.abc import Iterable
 import torch
 
 from ...tensorlist import TensorList
-from ...core import OptimizerModule
+from ...core import OptimizerModule, _Targets
 
 
 def l2_regularize_(params: Iterable[torch.Tensor], alpha: float = 1e-2):
@@ -64,13 +64,18 @@ class WeightDecay(OptimizerModule):
         ord (Literal[1, 2], optional):
             order of the penalty, 1 and 2 are currently supported (L1 and L2 regularization).
             Defaults to 2.
-        make_closure (bool, optional):
-            if True, instead of directly changing ascent direction,
-            this creates a new closure that adds the penalty to the update. Defaults to False.
+        target (str, optional):
+            determines what this module updates.
+
+            "ascent" - it updates the ascent
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
     """
-    def __init__(self, alpha: float = 1e-2, ord:Literal[1, 2] = 2, make_closure = False):
+    def __init__(self, alpha: float = 1e-2, ord:Literal[1, 2] = 2, target: _Targets = "ascent"):
         defaults = dict(alpha = alpha)
-        super().__init__(defaults, make_closure=make_closure)
+        super().__init__(defaults, target = target)
         self.ord = ord
 
     @torch.no_grad

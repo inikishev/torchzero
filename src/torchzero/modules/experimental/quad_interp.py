@@ -5,7 +5,7 @@ import torch
 
 from ... import tl
 from ...core import OptimizationState
-from .ls_base import LineSearchBase
+from ..line_search.base_ls import LineSearchBase
 
 _FloatOrTensor = float | torch.Tensor
 

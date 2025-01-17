@@ -1,4 +1,4 @@
-import typing as T
+from typing import Literal, Any, cast
 
 import torch
 
@@ -6,7 +6,7 @@ from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import Distributions, TensorList
 from ...core import _ClosureType, OptimizerModule, OptimizationState
 from ._fd_formulas import _FD_Formulas
-
+from .base_approximator import GradientApproximatorBase
 
 def _two_point_rcd_(closure: _ClosureType, params: TensorList, perturbation: TensorList, eps: TensorList, fx0: _ScalarLoss | None, ):
     """Two point randomized finite difference (same signature for all other finite differences functions).
@@ -61,7 +61,7 @@ def _two_point_rbd_(closure: _ClosureType, params: TensorList, perturbation: Ten
     return perturbation * eps.map(lambda x: (fx0 - fx1) / x**2), fx0
 
 
-class RandomizedFDM(OptimizerModule):
+class RandomizedFDM(GradientApproximatorBase):
     """Gradient approximation via randomized finite difference.
 
     Args:
@@ -69,13 +69,14 @@ class RandomizedFDM(OptimizerModule):
         formula (_FD_Formulas, optional): Finite difference formula. Defaults to 'forward'.
         n_samples (int, optional): number of times gradient is approximated and then averaged. Defaults to 1.
         distribution (Distributions, optional): distribution for random perturbations. Defaults to "normal".
-        make_closure (bool, optional):
-            if True, this makes a new closure that sets .grad attribute on each call
-            with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
-        randomize_every (int, optional): number of steps between randomizing perturbations. Defaults to 1.
-        randomize_closure (int, optional):
-            whether to generate a new random perturbation each time closure
-            is evaluated with `backward=True` (this ignores `randomize_every`). Defaults to False.
+        target (str, optional):
+            determines what this module sets.
+
+            "ascent" - it creates a new ascent direction but doesn't treat is as gradient.
+
+            "grad" - it creates the gradient and sets it to `.grad` attributes (default).
+
+            "closure" - it makes a new closure that sets the estimated gradient to the `.grad` attributes.
     """
     def __init__(
         self,
@@ -83,111 +84,42 @@ class RandomizedFDM(OptimizerModule):
         formula: _FD_Formulas = "forward",
         n_samples: int = 1,
         distribution: Distributions = "normal",
-        make_closure=False,
-        randomize_every: int = 1,
-        randomize_closure: bool = False,
+        target: Literal['ascent', 'grad', 'closure'] = 'grad',
     ):
         defaults = dict(eps = eps)
-        super().__init__(defaults)
-
-        self.make_closure = make_closure
 
         if formula == 'forward':
             self._finite_difference = _two_point_rfd_
-            self._requires_fx0 = True
+            requires_fx0 = True
 
         elif formula == 'backward':
             self._finite_difference = _two_point_rbd_
-            self._requires_fx0 = True
+            requires_fx0 = True
 
         elif formula == 'central':
             self._finite_difference = _two_point_rcd_
-            self._requires_fx0 = False
+            requires_fx0 = False
 
         else: raise ValueError(f"Unknown formula: {formula}")
 
         self.n_samples = n_samples
         self.distribution: Distributions = distribution
-        self.randomize_every = randomize_every
-        self.randomize_closure = randomize_closure
 
-        self.perturbations = T.cast(list[TensorList], None)
-        self.current_step = 0
-
+        super().__init__(defaults, requires_fx0=requires_fx0, target = target)
 
     @torch.no_grad
-    def _make_closure_step(self, state: OptimizationState, params: TensorList,epsilons: TensorList):
-        if state.closure is None: raise ValueError('FDA requires a closure.')
-        closure = state.closure
-
-        # the new closure sets .grad attribute to finite difference-approximated gradients
-        @torch.no_grad
-        def rfdm_closure(backward = True):
-            if self.randomize_closure:
-                self.perturbations = [params.sample_like(epsilons, self.distribution) for _ in range(self.n_samples)]
-
-            # closure must always evaluate the loss
-            # regardless of whether we need it at fx0 or not
-            loss = closure(False)
-
-            if backward:
-
-                if self.n_samples == 1:
-                    grads, _ = self._finite_difference(closure, params, self.perturbations[0], epsilons, loss)
-
-                else:
-                    grads = params.zeros_like()
-                    for i in range(self.n_samples):
-                        grads += self._finite_difference(closure, params, self.perturbations[i], epsilons, loss)[0]
-                    grads /= self.n_samples
-
-                # set the grad attribute (accumulation doesn't make sense here as closure always calls zero_grad)
-                for p, g in zip(params, grads):
-                    p.grad = g.view_as(p)
-
-            return loss
-
-        # RandomizedFDM always passes the approximated gradients to its child.
-        if self.next_module is None: raise ValueError("RandomizedFDM with `make_closure=True` requires a child.")
-        state.closure = rfdm_closure
-        return self.next_module.step(state)
-
-
-    @torch.no_grad
-    def _make_ascent_direction_step(self, state: OptimizationState, params: TensorList,epsilons: TensorList):
-        if state.closure is None: raise ValueError('FDA requires a closure.')
-        closure = state.closure
-
-        # evaluate fx0 if it is needed for forward and backward differences.
-        if state.fx0 is None and self._requires_fx0: state.fx0 = closure(False)
+    def _make_ascent(self, closure, params, fx0):
+        eps = self.get_group_key('eps')
+        fx0_approx = None
 
         if self.n_samples == 1:
-            grads, state.fx0_approx = self._finite_difference(closure, params, self.perturbations[0], epsilons, state.fx0)
+            grads, fx0_approx = self._finite_difference(closure, params, params.sample_like(eps, self.distribution), eps, fx0)
 
         else:
             grads = params.zeros_like()
             for i in range(self.n_samples):
-                g, state.fx0_approx = self._finite_difference(closure, params, self.perturbations[i], epsilons, state.fx0)
+                g, fx0_approx = self._finite_difference(closure, params, params.sample_like(eps, self.distribution), eps, fx0)
                 grads += g
             grads /= self.n_samples
 
-        # FDM always passes the approximated gradients to its child.
-        if self.next_module is None: raise ValueError("FDM requires a child.")
-        state.ascent = grads
-        return self.next_module.step(state)
-
-    def step(self, state):
-        if state.ascent is not None: raise ValueError('FDM does not accept ascent direction.')
-
-        params = self.get_params()
-        epsilons = self.get_group_key('eps')
-
-        if self.current_step % self.randomize_every == 0 and not self.randomize_closure:
-            self.perturbations = [params.sample_like(epsilons, self.distribution) for _ in range(self.n_samples)]
-
-        self.current_step += 1
-
-        if self.make_closure:
-            return self._make_closure_step(state, params = params, epsilons=epsilons)
-        else:
-            return self._make_ascent_direction_step(state, params = params, epsilons=epsilons,)
+        return grads, fx0, fx0_approx

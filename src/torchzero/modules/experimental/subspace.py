@@ -5,7 +5,7 @@ from collections import abc
 import torch
 
 from ... import tensorlist as tl
-from ...core import OptimizationState, OptimizerModule, _Chain
+from ...core import OptimizationState, OptimizerModule, _Chain, _maybe_pass_backward
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
 
@@ -222,7 +222,7 @@ class Subspace(OptimizerModule):
             # therefore we need torch.no_grad here because optimizers call closure under torch.enabled_grad
             with torch.no_grad(): params.add_(residual)
 
-            loss = closure(backward)
+            loss = _maybe_pass_backward(closure, backward)
 
             if backward:
                 self.projected_params.grad = torch.cat([(params.grad * vec).total_sum().unsqueeze(0) for vec in self.projection_vectors])

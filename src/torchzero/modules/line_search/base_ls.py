@@ -1,12 +1,11 @@
-import typing as T
+from typing import Literal
 from abc import ABC, abstractmethod
-from collections import abc
-from contextlib import nullcontext
+
 
 import torch
 
 from ... import tl
-from ...core import _ClosureType, OptimizationState, OptimizerModule
+from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
 from ...utils.python_tools import _ScalarLoss
 
 
@@ -15,14 +14,19 @@ class MaxIterReached(Exception): pass
 class LineSearchBase(OptimizerModule, ABC):
     """Base linesearch class. This is an abstract class, please don't use it as the optimizer.
 
-    When inheriting from this class the easiest way is to override `_find_best_lr`, which should
+    When inheriting from this class the easiest way is only override `_find_best_lr`, which should
     return the final lr to use.
 
     Args:
         defaults (dict): dictionary with default parameters for the module.
-        make_closure (bool, optional):
-            if True, _update method functions as a closure,
-            otherwise it updates the ascent directly. Defaults to False.
+        target (str, optional):
+            determines how _update method is used in the default step method.
+
+            "ascent" - it updates the ascent
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
         maxiter (_type_, optional): maximum line search iterations
             (useful for things like scipy.optimize.minimize_scalar) as it doesn't have
             an exact iteration limit. Defaults to None.
@@ -33,11 +37,11 @@ class LineSearchBase(OptimizerModule, ABC):
     def __init__(
         self,
         defaults: dict,
-        make_closure=False,
+        target: Literal['grad', 'ascent', 'closure'] = 'ascent',
         maxiter=None,
         log_lrs=False,
     ):
-        super().__init__(defaults, make_closure=make_closure)
+        super().__init__(defaults, target=target)
         self._reset()
 
         self.maxiter = maxiter
@@ -79,7 +83,7 @@ class LineSearchBase(OptimizerModule, ABC):
 
         # set new lr and evaluate loss with it
         self._set_lr_(lr, ascent, params = params)
-        with torch.enable_grad() if backward else torch.no_grad(): self._fx0_approx = closure(backward)
+        with torch.enable_grad() if backward else torch.no_grad(): self._fx0_approx = _maybe_pass_backward(closure, backward)
 
         # if it is the best so far, record it
         if self._fx0_approx < self._lowest_loss:

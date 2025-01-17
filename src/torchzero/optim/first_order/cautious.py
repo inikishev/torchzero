@@ -36,7 +36,7 @@ class CautiousAdamW(Modular):
     def __init__(
         self,
         params,
-        lr: float = 1,
+        lr: float = 1e-3,
         beta1: float = 0.9,
         beta2: float = 0.999,
         eps: float = 1e-8,

@@ -22,10 +22,6 @@ class Cautious(OptimizerModule):
 
             "negate" - negate them (same as using update magnitude and gradient sign)
 
-    .. warning::
-        If you use this after modules that estimate gradients, e.g. FDM,
-        hey need to have `make_closure` set to True so that they write to `grad` attribute.
-
     reference
         *Cautious Optimizers: Improving Training with One Line of Code.
         Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
@@ -65,10 +61,6 @@ class Cautious(OptimizerModule):
 class UseGradSign(OptimizerModule):
     """
     Uses update magnitude but gradient sign.
-
-    .. warning::
-        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-        they need to have `make_closure` set to True so that they write to `grad` attribute.
     """
     def __init__(self):
         super().__init__({})
@@ -83,10 +75,6 @@ class UseGradSign(OptimizerModule):
 class UseGradMagnitude(OptimizerModule):
     """
     Uses update sign but gradient magnitude.
-
-    .. warning::
-        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-        they need to have `make_closure` set to True so that they write to `grad` attribute.
     """
     def __init__(self):
         super().__init__({})
@@ -113,9 +101,6 @@ class ScaleLRBySignChange(OptimizerModule):
         ub (float): upper bound for lr.
         alpha (float): initial learning rate.
 
-    .. warning::
-        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-        they need to have `make_closure` set to True so that they write to `grad` attribute.
     """
     def __init__(self, nplus: float = 1.2, nminus: float = 0.5, lb = 1e-6, ub = 50, alpha=1, use_grad=False):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
@@ -171,10 +156,6 @@ class NegateOnSignChange(OptimizerModule):
             otherwise track sign change of the update. Defaults to True.
         backtrack (bool, optional): if True, undoes the update when sign changes, otherwise negates it.
             Defaults to True.
-
-    .. warning::
-        If `use_grad` is True and you use this after modules that estimate gradients, e.g. FDM,
-        they need to have `make_closure` set to True so that they write to `grad` attribute.
 
     """
     # todo: add momentum to negation (to cautious as well and rprop negation as well)

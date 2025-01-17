@@ -1,12 +1,12 @@
-import typing as T
-
+from typing import Literal, Any
+from warnings import warn
 import torch
 
 from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import TensorList
 from ...core import _ClosureType, OptimizerModule, OptimizationState
 from ._fd_formulas import _FD_Formulas
-
+from .base_approximator import GradientApproximatorBase
 
 def _two_point_fd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: torch.Tensor, eps: _ScalarLoss, fx0: _ScalarLoss, ):
     """Two point finite difference (same signature for all other finite differences functions).
@@ -65,109 +65,61 @@ def _three_point_bd_(closure: _ClosureType, idx: int, pvec: torch.Tensor, gvec: 
     return fx0
 
 
-
-class FDM(OptimizerModule):
+class FDM(GradientApproximatorBase):
     """Gradient approximation via finite difference.
+
+    This performs :math:`num_parameters + 1` or :math:`num_parameters * 2` evaluations per step, depending on formula.
 
     Args:
         eps (float, optional): finite difference epsilon. Defaults to 1e-5.
         formula (_FD_Formulas, optional): finite difference formula. Defaults to 'forward'.
         n_points (T.Literal[2, 3], optional): number of points, 2 or 3. Defaults to 2.
-        make_closure (bool, optional):
-            if True, this makes a new closure that sets .grad attribute on each call
-            with `backward = True`. If False, this simply returns the estimated gradients as the ascent direction.
-            Note that with `True` this will perform 1 additional evaluation per step with the `central` formula.
+        target (str, optional):
+            determines what this module sets.
+
+            "ascent" - it creates a new ascent direction but doesn't treat is as gradient.
+
+            "grad" - it creates the gradient and sets it to `.grad` attributes (default).
+
+            "closure" - it makes a new closure that sets the estimated gradient to the `.grad` attributes.
     """
     def __init__(
         self,
         eps: float = 1e-5,
         formula: _FD_Formulas = "forward",
-        n_points: T.Literal[2, 3] = 2,
-        make_closure=False,
+        n_points: Literal[2, 3] = 2,
+        target: Literal["ascent", "grad", "closure"] = "grad",
     ):
-
         defaults = dict(eps = eps)
-        super().__init__(defaults)
-
-        self.make_closure = make_closure
 
         if formula == 'central':
             self._finite_difference_ = _two_point_cd_ # this is both 2 and 3 point formula
-            self._requires_fx0 = False
+            requires_fx0 = False
 
         elif formula == 'forward':
             if n_points == 2: self._finite_difference_ = _two_point_fd_
             else: self._finite_difference_ = _three_point_fd_
-            self._requires_fx0 = True
+            requires_fx0 = True
 
         elif formula == 'backward':
             if n_points == 2: self._finite_difference_ = _two_point_bd_
             else: self._finite_difference_ = _three_point_bd_
-            self._requires_fx0 = True
+            requires_fx0 = True
 
         else: raise ValueError(f'{formula} is not valid.')
 
-    @torch.no_grad
-    def _make_closure_step(self, state: OptimizationState, params: TensorList, epsilons: TensorList):
-        """Makes a new closure that sets .grad attribute on backward=True."""
-        closure = state.closure
-        if closure is None: raise ValueError('FDM requires closure.')
-
-        # the new closure sets .grad attribute to finite difference-approximated gradients
-        @torch.no_grad
-        def fdm_closure(backward = True):
-            # closure must always evaluate the loss
-            # regardless of whether we need it at fx0 or not
-            loss = closure(False)
-
-            if backward:
-                grads = params.zeros_like()
-                # evaluate gradients via finite differences.
-                for p, g, eps in zip(params, grads, epsilons):
-                    flat_param = p.view(-1)
-                    flat_grad = g.view(-1)
-                    for idx in range(flat_param.numel()):
-                        self._finite_difference_(closure, idx, flat_param, flat_grad, eps, loss, ) # type:ignore
-
-                    # set the grad attribute
-                    # (accumulation doesn't make sense here as closure always calls zero_grad)
-                    p.grad = g.view_as(p)
-
-            return loss
-
-        # FDM always passes the approximated gradients to its child.
-        if self.next_module is None: raise ValueError("FDM with `make_closure=True` requires a child.")
-        state.closure = fdm_closure
-        return self.next_module.step(state)
-
+        super().__init__(defaults, requires_fx0=requires_fx0, target = target)
 
     @torch.no_grad
-    def _make_ascent_direction_step(self, state: OptimizationState, params: TensorList, epsilons: TensorList):
-        """Returns a new ascent direction."""
-        # evaluate fx0 if it is needed for forward and backward differences.
-        closure = state.closure
-        if closure is None: raise ValueError('FDM requires closure.')
-        if state.fx0 is None and self._requires_fx0: state.fx0 = closure(False)
-
-        # evaluate gradients via finite differences.
+    def _make_ascent(self, closure, params, fx0):
         grads = params.zeros_like()
+        epsilons = self.get_group_key('eps')
+
+        fx0_approx = None
         for p, g, eps in zip(params, grads, epsilons):
             flat_param = p.view(-1)
             flat_grad = g.view(-1)
             for idx in range(flat_param.numel()):
-                state.fx0_approx = self._finite_difference_(closure, idx, flat_param, flat_grad, eps, state.fx0, ) # type:ignore
+                fx0_approx = self._finite_difference_(closure, idx, flat_param, flat_grad, eps, fx0)
 
-        # update params or pass the gradients to the child.
-        state.ascent = grads
-        return self._update_params_or_step_with_next(state, params)
-
-    def step(self, state):
-
-        params = self.get_params()
-        epsilons = self.get_group_key('eps')
-
-        if self.make_closure:
-            return self._make_closure_step(state, params = params, epsilons = epsilons)
-        else:
-            if state.ascent is not None: raise ValueError('FDM with `make_closure=False` does not accept ascent direction.')
-            return self._make_ascent_direction_step(state, params = params, epsilons = epsilons)
+        return grads, fx0, fx0_approx

@@ -6,12 +6,16 @@ import torch
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, _Chain, _Chainable
 from ..utils.python_tools import flatten
 
-def _unroll_modules(flat_modules: list[OptimizerModule]) -> list[OptimizerModule]:
+def _unroll_modules(flat_modules: list[OptimizerModule], nested) -> list[OptimizerModule]:
+    """returns a list of all modules, including all nested ones"""
     unrolled = []
     for m in flat_modules:
         unrolled.append(m)
         if len(m.children) > 0:
-            unrolled.extend(_unroll_modules(list(m.children.values())))
+            unrolled.extend(_unroll_modules(list(m.children.values()), nested=True))
+        if nested:
+            if m.next_module is not None:
+                unrolled.extend(_unroll_modules([m.next_module], nested=True))
     return unrolled
 
 
@@ -28,7 +32,7 @@ class Modular(TensorListOptimizer):
         self.chain = _Chain(flat_modules)
 
         # save unrolled modules and make sure there is only 1 LR module.
-        self.unrolled_modules = _unroll_modules(flat_modules)
+        self.unrolled_modules = _unroll_modules(flat_modules, nested=False)
         num_lr_modules = len([m for m in self.unrolled_modules if m.IS_LR_MODULE])
         if num_lr_modules > 1:
             warnings.warn(cleandoc(

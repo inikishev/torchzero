@@ -134,10 +134,11 @@ class GradMin(OptimizerModule):
 
     explanation: calculate grads wrt sum of grads + loss.
     """
-    def __init__(self, loss_term: float = 1, square=False, maximize_grad = False):
+    def __init__(self, loss_term: float = 1, square=False, maximize_grad = False, create_graph = False):
         super().__init__(dict(loss_term=loss_term))
         self.square = square
         self.maximize_grad = maximize_grad
+        self.create_graph = create_graph
 
     @torch.no_grad
     def step(self, state):
@@ -161,7 +162,9 @@ class GradMin(OptimizerModule):
             if self.maximize_grad: grads: TensorList = grads - (state.fx0 * loss_term) # type:ignore
             else: grads = grads + (state.fx0 * loss_term)
             grad_mean = torch.sum(torch.stack(grads.sum())) / grads.total_numel()
-            grad_mean.backward(retain_graph=False)
+
+            if self.create_graph: grad_mean.backward(create_graph=True)
+            else: grad_mean.backward(retain_graph=False)
 
         if self.maximize_grad: state.grad = params.ensure_grad_().grad.neg_()
         else: state.grad = params.ensure_grad_().grad
@@ -174,7 +177,7 @@ class HVPDiagNewton(OptimizerModule):
     """
     for experiments, unlikely to work well on most problems.
 
-    explanation: should approximate newton step if hessian is diagonal.
+    explanation: may or may not approximate newton step if hessian is diagonal with 2 backward passes. Probably not.
     """
     def __init__(self, eps=1e-3):
         super().__init__(dict(eps=eps))
@@ -202,85 +205,32 @@ class HVPDiagNewton(OptimizerModule):
         return self._update_params_or_step_with_next(state)
 
 
-def _reset_stats_hook(optimizer, state):
-    for module in optimizer.unrolled_modules:
-        module: OptimizerModule
-        module.reset_stats()
 
-class CyclicSWA(OptimizerModule):
-    """I remember reading about this but I have no idea if I actually red it or if I dreamed it up. I am not able to find the paper.
-
-    This is just periodic SWA with cyclic learning rate. So it samples the weights, increases lr to `peak_lr`, samples the weights again,
-    decreases lr back to `init_lr`, and samples the weights last time. Then model weights are replaced with the average of the three sampled weights,
-    and next cycle starts.
-
-    It is easier to tune than PeriodicSWA and seems to work better too.
-
-    Args:
-        cswa_start (int): number of steps before starting the first CSWA cycle.
-        cycle_length (int): length of each cycle in steps.
-        steps_between (int): number of steps between cycles.
-        init_lr (float, optional): initial and final learning rate in each cycle. Defaults to 0.
-        peak_lr (float, optional): peak learning rate of each cycle. Defaults to 1.
-        reset_stats (bool, optional):
-            if True, when setting model parameters to SWA, resets other modules stats such as momentum velocities (default: True).
-
+class ReduceOutwardLR(OptimizerModule):
     """
-    def __init__(self, cswa_start: int, cycle_length: int, steps_between: int, init_lr: float = 0, peak_lr: float = 1, reset_stats: bool=True):
-        defaults = dict(init_lr = init_lr, peak_lr = peak_lr)
+    When update sign matches weight sign, the learning rate for that weight is multiplied by `mul`.
+
+    This means updates that move weights towards zero have higher learning rates.
+    """
+    def __init__(self, mul = 0.5, use_grad=False, invert=False):
+        defaults = dict(mul = mul)
         super().__init__(defaults)
-        self.cswa_start = cswa_start
-        self.cycle_length = cycle_length
-        self.init_lr = init_lr
-        self.peak_lr = peak_lr
-        self.steps_between = steps_between
-        self._reset_stats = reset_stats
 
-        self.cur = 0
-        self.cycle_cur = 0
-        self.n_models = 0
+        self.use_grad = use_grad
+        self.invert = invert
 
-        self.cur_lr = self.init_lr
-
-    def step(self, state):
+    @torch.no_grad
+    def _update(self, state, ascent):
         params = self.get_params()
+        mul = self.get_group_key('mul')
 
-        # start first period after `cswa_start` steps
-        if self.cur >= self.cswa_start:
+        if self.use_grad: cur = state.maybe_compute_grad_(params)
+        else: cur = ascent
 
-            ascent = state.maybe_use_grad_(params)
+        # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
+        if self.invert: mask = (params * cur) > 0
+        else: mask = (params * cur) < 0
+        ascent.masked_set_(mask, ascent*mul)
 
-            # determine the lr
-            point = self.cycle_cur / self.cycle_length
-            init_lr, peak_lr = self.get_group_keys('init_lr', 'peak_lr')
-            if point < 0.5:
-                p2 = point*2
-                lr = init_lr * (1-p2) + peak_lr * p2
-            else:
-                p2 = (1 - point)*2
-                lr = init_lr * (1-p2) + peak_lr * p2
+        return ascent
 
-            ascent *= lr
-            ret = self._update_params_or_step_with_next(state, params)
-
-            if self.cycle_cur in (0, self.cycle_length, self.cycle_length // 2):
-                swa = self.get_state_key('swa')
-                swa.mul_(self.n_models).add_(params).div_(self.n_models + 1)
-                self.n_models += 1
-
-                if self.cycle_cur == self.cycle_length:
-                    assert self.n_models == 3, self.n_models
-                    self.n_models = 0
-                    self.cycle_cur = -1
-
-                    params.set_(swa)
-                    if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
-
-            self.cycle_cur += 1
-
-        else:
-            ret = self._update_params_or_step_with_next(state, params)
-
-        self.cur += 1
-
-        return ret

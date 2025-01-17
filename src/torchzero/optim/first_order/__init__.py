@@ -3,6 +3,7 @@ from .optimizers import (
     GD,
     SGD,
     Adagrad,
+    Adam,
     AdamW,
     Grams,
     LaplacianSmoothingSGD,

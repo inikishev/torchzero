@@ -2,7 +2,7 @@ import torch
 
 from ... import tl
 from ...core import OptimizationState
-from .ls_base import LineSearchBase
+from .base_ls import LineSearchBase
 
 
 class ArmijoLS(LineSearchBase):
@@ -26,7 +26,7 @@ class ArmijoLS(LineSearchBase):
         log_lrs = False,
     ):
         defaults = dict(alpha=alpha)
-        super().__init__(defaults, make_closure=False, maxiter=None, log_lrs=log_lrs)
+        super().__init__(defaults, maxiter=None, log_lrs=log_lrs)
         self.mul = mul
         self.beta = beta
         self.max_iter = max_iter

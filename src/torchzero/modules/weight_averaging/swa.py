@@ -92,3 +92,80 @@ class PeriodicSWA(OptimizerModule):
 
         return ret
 
+class CyclicSWA(OptimizerModule):
+    """Periodic SWA with cyclic learning rate. So it samples the weights, increases lr to `peak_lr`, samples the weights again,
+    decreases lr back to `init_lr`, and samples the weights last time. Then model weights are replaced with the average of the three sampled weights,
+    and next cycle starts. I made this due to a horrible misreading of the original SWA paper but it seems to work well.
+
+    Please put this module at the end, after all other modules.
+
+    Args:
+        cswa_start (int): number of steps before starting the first CSWA cycle.
+        cycle_length (int): length of each cycle in steps.
+        steps_between (int): number of steps between cycles.
+        init_lr (float, optional): initial and final learning rate in each cycle. Defaults to 0.
+        peak_lr (float, optional): peak learning rate of each cycle. Defaults to 1.
+        sample_all (float, optional): if True, instead of sampling 3 weights, it samples all weights in the cycle. Defaults to False.
+        reset_stats (bool, optional):
+            if True, when setting model parameters to SWA, resets other modules stats such as momentum velocities (default: True).
+
+    """
+    def __init__(self, cswa_start: int, cycle_length: int, steps_between: int, init_lr: float = 0, peak_lr: float = 1, sample_all = False, reset_stats: bool=True,):
+        defaults = dict(init_lr = init_lr, peak_lr = peak_lr)
+        super().__init__(defaults)
+        self.cswa_start = cswa_start
+        self.cycle_length = cycle_length
+        self.init_lr = init_lr
+        self.peak_lr = peak_lr
+        self.steps_between = steps_between
+        self.sample_all = sample_all
+        self._reset_stats = reset_stats
+
+        self.cur = 0
+        self.cycle_cur = 0
+        self.n_models = 0
+
+        self.cur_lr = self.init_lr
+
+    def step(self, state):
+        params = self.get_params()
+
+        # start first period after `cswa_start` steps
+        if self.cur >= self.cswa_start:
+
+            ascent = state.maybe_use_grad_(params)
+
+            # determine the lr
+            point = self.cycle_cur / self.cycle_length
+            init_lr, peak_lr = self.get_group_keys('init_lr', 'peak_lr')
+            if point < 0.5:
+                p2 = point*2
+                lr = init_lr * (1-p2) + peak_lr * p2
+            else:
+                p2 = (1 - point)*2
+                lr = init_lr * (1-p2) + peak_lr * p2
+
+            ascent *= lr
+            ret = self._update_params_or_step_with_next(state, params)
+
+            if self.sample_all or self.cycle_cur in (0, self.cycle_length, self.cycle_length // 2):
+                swa = self.get_state_key('swa')
+                swa.mul_(self.n_models).add_(params).div_(self.n_models + 1)
+                self.n_models += 1
+
+                if self.cycle_cur == self.cycle_length:
+                    if not self.sample_all: assert self.n_models == 3, self.n_models
+                    self.n_models = 0
+                    self.cycle_cur = -1
+
+                    params.set_(swa)
+                    if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
+
+            self.cycle_cur += 1
+
+        else:
+            ret = self._update_params_or_step_with_next(state, params)
+
+        self.cur += 1
+
+        return ret

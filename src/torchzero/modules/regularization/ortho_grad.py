@@ -2,15 +2,12 @@
 ⟂Grad (read “ortho-grad”) was proposed in https://arxiv.org/abs/2501.04697.
 
 """
-import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 
-import numpy as np
 import torch
 
 from ... import tl
-from ...core import _ClosureType, OptimizationState, OptimizerModule
-from ...utils.python_tools import _ScalarLoss
+from ...core import OptimizerModule, _Targets
 
 
 def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
@@ -42,12 +39,20 @@ class OrthoGrad(OptimizerModule):
             I don't think it has any geometric meaning but it drives weights towards zero instead of away from it.
             and it seems to work well with sqrt_scale = True. It speeds up convergence by a lot compared to using vanilla gradient,
             but also has INSANE overfitting.
+        target (str, optional):
+            determines what this module updates.
+
+            "ascent" - it updates the ascent (default).
+
+            "grad" - it updates the gradient (and sets `.grad` attributes to updated gradient).
+
+            "closure" - it makes a new closure that sets the updated ascent to the .`grad` attributes.
 
     reference
         https://arxiv.org/abs/2501.04697
     """
-    def __init__(self, eps: float = 1e-30, renormalize=True, sqrt_scale = False, add=False):
-        super().__init__({})
+    def __init__(self, eps: float = 1e-30, renormalize=True, sqrt_scale = False, add=False, target: _Targets = 'ascent'):
+        super().__init__({}, target=target)
         self.eps = eps
         self.add = add
         self.renormalize = renormalize

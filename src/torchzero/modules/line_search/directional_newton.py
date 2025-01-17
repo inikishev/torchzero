@@ -3,7 +3,7 @@ import torch
 
 from ... import tl
 from ...core import OptimizationState
-from .ls_base import LineSearchBase
+from .base_ls import LineSearchBase
 
 _FloatOrTensor = float | torch.Tensor
 def _fit_and_minimize_quadratic_2points_grad(x1:_FloatOrTensor,y1:_FloatOrTensor,y1_prime:_FloatOrTensor,x2:_FloatOrTensor,y2:_FloatOrTensor):
@@ -51,7 +51,7 @@ class DirectionalNewton(LineSearchBase):
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
     def __init__(self, max_dist: float | None = 1e5, validate_step = True, alpha:float=1, log_lrs = False,):
-        super().__init__({"alpha": alpha}, make_closure=False, maxiter=None, log_lrs=log_lrs)
+        super().__init__({"alpha": alpha}, maxiter=None, log_lrs=log_lrs)
 
         self.max_dist = max_dist
         self.validate_step = validate_step
@@ -165,7 +165,7 @@ class DirectionalNewton3Points(LineSearchBase):
         While lr scheduling is supported, this uses lr of the first parameter for all parameters.
     """
     def __init__(self, max_dist: float | None = 1e4, validate_step = True, alpha: float = 1, log_lrs = False,):
-        super().__init__(dict(alpha = alpha), make_closure=False, maxiter=None, log_lrs=log_lrs)
+        super().__init__(dict(alpha = alpha), maxiter=None, log_lrs=log_lrs)
 
         self.alpha = alpha
         self.max_dist = max_dist

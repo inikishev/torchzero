@@ -22,7 +22,6 @@ from ...modules import (
     Random,
     RDiv,
     Reciprocal,
-    ReduceOutwardLR,
     UseGradSign,
     WeightDecay,
 )
@@ -32,6 +31,7 @@ from ...modules.experimental import (
     HVPDiagNewton as _HVPDiagNewton,
 )
 from ...modules.experimental import MinibatchRprop as _MinibatchRprop
+from ...modules.experimental import ReduceOutwardLR
 from ...random import Distributions
 from ..modular import Modular
 

@@ -79,7 +79,7 @@ class FDMWrapper(Modular):
         n_points: Literal[2, 3] = 2,
     ):
         modules = [
-            _FDM(eps = eps, formula=formula, n_points=n_points, make_closure=True),
+            _FDM(eps = eps, formula=formula, n_points=n_points, target = 'closure'),
             WrapClosure(optimizer)
         ]
         # some optimizers have `eps` setting in param groups too.

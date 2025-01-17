@@ -39,7 +39,6 @@ class RandomizedFDM(Modular):
         formula: _FD_Formulas = "forward",
         n_samples: int = 1,
         distribution: Distributions = "normal",
-        randomize_every: int = 1,
         momentum: float = 0,
         dampening: float = 0,
         nesterov: bool = False,
@@ -52,7 +51,6 @@ class RandomizedFDM(Modular):
                 formula=formula,
                 n_samples=n_samples,
                 distribution=distribution,
-                randomize_every=randomize_every,
             ),
             SGD(momentum = momentum, dampening = dampening, weight_decay = weight_decay if not decoupled else 0, nesterov = nesterov),
             LR(lr),
@@ -100,7 +98,6 @@ class SPSA(RandomizedFDM):
         formula: _FD_Formulas = "central",
         n_samples: int = 1,
         distribution: Distributions = 'rademacher',
-        randomize_every: int = 1,
         momentum: float = 0,
         dampening: float = 0,
         nesterov: bool = False,
@@ -113,7 +110,6 @@ class SPSA(RandomizedFDM):
             formula = formula,
             n_samples = n_samples,
             distribution = distribution,
-            randomize_every=randomize_every,
             momentum = momentum,
             dampening = dampening,
             nesterov = nesterov,
@@ -162,7 +158,6 @@ class RandomGaussianSmoothing(RandomizedFDM):
         formula: _FD_Formulas = "forward",
         n_samples: int = 10,
         distribution: Distributions = 'normal',
-        randomize_every: int = 1,
         momentum: float = 0,
         dampening: float = 0,
         nesterov: bool = False,
@@ -176,7 +171,6 @@ class RandomGaussianSmoothing(RandomizedFDM):
             formula = formula,
             n_samples = n_samples,
             distribution = distribution,
-            randomize_every=randomize_every,
             momentum = momentum,
             dampening = dampening,
             nesterov = nesterov,
@@ -208,8 +202,6 @@ class RandomizedFDMWrapper(Modular):
         formula: _FD_Formulas = "forward",
         n_samples: int = 1,
         distribution: Distributions = "normal",
-        randomize_every: int = 1,
-        randomize_closure: bool = False,
     ):
         modules = [
             _RandomizedFDM(
@@ -217,9 +209,7 @@ class RandomizedFDMWrapper(Modular):
                 formula=formula,
                 n_samples=n_samples,
                 distribution=distribution,
-                randomize_every=randomize_every,
-                randomize_closure = randomize_closure,
-                make_closure=True,
+                target = 'closure',
             ),
             WrapClosure(optimizer)
         ]

@@ -6,7 +6,7 @@ import torch
 
 from ... import tl
 from ...core import _ClosureType, OptimizationState
-from .ls_base import LineSearchBase
+from .base_ls import LineSearchBase
 
 class GridLS(LineSearchBase):
     """Test all `lrs` and pick best.
@@ -28,7 +28,7 @@ class GridLS(LineSearchBase):
         stop_on_worsened=False,
         log_lrs = False,
     ):
-        super().__init__({}, make_closure=False, maxiter=None, log_lrs=log_lrs)
+        super().__init__({}, maxiter=None, log_lrs=log_lrs)
         self.lrs = lrs
         self.stop_on_improvement = stop_on_improvement
         self.stop_on_worsened = stop_on_worsened

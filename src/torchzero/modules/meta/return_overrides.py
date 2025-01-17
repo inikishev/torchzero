@@ -12,9 +12,10 @@ class SetGrad(OptimizerModule):
     def step(self, state):
         if self.next_module is not None: raise ValueError("SetGrad can't have children")
         params = self.get_params()
-        ascent_direction = state.maybe_use_grad_(params) # this will execute the closure which might be modified
-        params.set_grad_(ascent_direction)
+        g = state.maybe_use_grad_(params) # this may execute the closure which might be modified
+        params.set_grad_(g)
         return state.get_loss()
+
 
 class ReturnAscent(OptimizerModule):
     """Doesn't update parameters, instead returns the update as a TensorList of tensors."""
@@ -30,15 +31,15 @@ class ReturnAscent(OptimizerModule):
 
 class ReturnClosure(OptimizerModule):
     """Doesn't update parameters, instead returns the current modified closure.
-    For example, if you put this after `torchzero.modules.FDM(make_closure=True)`, 
-    the closure will set `.grad` attribute to gradients approximated via finite differences. 
+    For example, if you put this after :code:`torchzero.modules.FDM(target = "closure")`,
+    the closure will set `.grad` attribute to gradients approximated via finite difference.
     You can then pass that closure to something that requires closure like `torch.optim.LBFGS`."""
     def __init__(self):
         super().__init__({})
 
     @torch.no_grad
     def step(self, state) -> _ClosureType: # type:ignore
-        if self.next_module is not None: raise ValueError("SetGrad can't have children")
+        if self.next_module is not None: raise ValueError("ReturnClosure can't have children")
         if state.closure is None:
             raise ValueError("MakeClosure requires closure")
         return state.closure
