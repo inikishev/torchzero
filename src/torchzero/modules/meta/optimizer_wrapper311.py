@@ -35,11 +35,15 @@ class Wrap(OptimizerModule):
     @typing.overload
     def __init__(self, optimizer: torch.optim.Optimizer): ...
     @typing.overload
-    def __init__[**K](
+    # def __init__[**K](
+    def __init__(
         self,
-        optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
-        *args: K.args,
-        **kwargs: K.kwargs,
+        # optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
+        # *args: K.args,
+        # **kwargs: K.kwargs,
+        optimizer: abc.Callable[..., torch.optim.Optimizer],
+        *args,
+        **kwargs,
     ): ...
     def __init__(self, optimizer, *args, **kwargs):
 
@@ -116,11 +120,14 @@ class WrapClosure(OptimizerModule):
     @typing.overload
     def __init__(self, optimizer: torch.optim.Optimizer,): ...
     @typing.overload
-    def __init__[**K](
+    def __init__(
         self,
-        optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
-        *args: K.args,
-        **kwargs: K.kwargs,
+        # optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
+        # *args: K.args,
+        # **kwargs: K.kwargs,
+        optimizer: abc.Callable[..., torch.optim.Optimizer],
+        *args,
+        **kwargs,
     ): ...
     def __init__(self, optimizer, *args, **kwargs):
 

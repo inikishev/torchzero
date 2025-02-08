@@ -1,3 +1,5 @@
+import sys
+
 from .module import (
     OptimizationState,
     OptimizerModule,
@@ -7,4 +9,8 @@ from .module import (
     _ScalarLoss,
     _Targets,
 )
-from .tensorlist_optimizer import ParamsT, TensorListOptimizer, _maybe_pass_backward, _ClosureType
+
+if sys.version_info[1] < 12:
+    from .tensorlist_optimizer311 import TensorListOptimizer, ParamsT, _ClosureType, _maybe_pass_backward
+else:
+    from .tensorlist_optimizer import TensorListOptimizer, ParamsT, _ClosureType, _maybe_pass_backward

@@ -1,3 +1,4 @@
+import sys
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
@@ -8,11 +9,20 @@ from torch.optim.optimizer import ParamsT
 
 from ..tensorlist import TensorList
 from ..utils.python_tools import _ScalarLoss, flatten
-from .tensorlist_optimizer import (
-    TensorListOptimizer,
-    _ClosureType,
-    _maybe_pass_backward,
-)
+
+if sys.version_info[1] < 12:
+    from .tensorlist_optimizer311 import (
+        TensorListOptimizer,
+        _ClosureType,
+        _maybe_pass_backward,
+    )
+else:
+    from .tensorlist_optimizer import (
+        TensorListOptimizer,
+        _ClosureType,
+        _maybe_pass_backward,
+    )
+
 
 
 def _get_loss(fx0, fx0_approx):
