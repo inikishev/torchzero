@@ -2,7 +2,7 @@ from collections import abc
 
 import torch
 
-from ...tensorlist import TensorList, where
+from ...tensorlist import TensorList, where, Distributions
 from ...core import OptimizerModule
 from ...utils.derivatives import jacobian
 
@@ -112,19 +112,18 @@ class MinibatchRprop(OptimizerModule):
             state.ascent = ascent2
             return self._update_params_or_step_with_next(state, params)
 
-        elif self.next_mode == 'add':
+        if self.next_mode == 'add':
             # undo 1st step
             params += ascent
             state.ascent = ascent + ascent2
             return self._update_params_or_step_with_next(state, params)
 
-        elif self.next_mode == 'undo':
+        if self.next_mode == 'undo':
             params += ascent
             state.ascent = ascent2
             return self._update_params_or_step_with_next(state, params)
 
-        else:
-            raise ValueError(f'invalid next_mode: {self.next_mode}')
+        raise ValueError(f'invalid next_mode: {self.next_mode}')
 
 
 
@@ -234,3 +233,62 @@ class ReduceOutwardLR(OptimizerModule):
 
         return ascent
 
+class NoiseSign(OptimizerModule):
+    """uses random vector with ascent sign"""
+    def __init__(self, distribution:Distributions = 'normal', alpha = 1):
+        super().__init__({})
+        self.alpha = alpha
+        self.distribution:Distributions = distribution
+
+
+    def _update(self, state, ascent):
+        return ascent.sample_like(self.alpha, self.distribution).copysign_(ascent)
+
+class ParamSign(OptimizerModule):
+    """uses params with ascent sign"""
+    def __init__(self):
+        super().__init__({})
+
+
+    def _update(self, state, ascent):
+        params = self.get_params()
+
+        return params.copysign(ascent)
+
+class NegParamSign(OptimizerModule):
+    """uses max(params_abs) - params_abs with ascent sign"""
+    def __init__(self):
+        super().__init__({})
+
+
+    def _update(self, state, ascent):
+        neg_params = self.get_params().abs()
+        max = neg_params.total_max()
+        neg_params = neg_params.neg_().add(max)
+        return neg_params.copysign_(ascent)
+
+class InvParamSign(OptimizerModule):
+    """uses 1/(params_abs+eps) with ascent sign"""
+    def __init__(self, eps=1e-2):
+        super().__init__({})
+        self.eps = eps
+
+
+    def _update(self, state, ascent):
+        inv_params = self.get_params().abs().add_(self.eps).reciprocal_()
+        return inv_params.copysign(ascent)
+
+
+class ParamWhereConsistentSign(OptimizerModule):
+    """where ascent and param signs are the same, it sets ascent to param value"""
+    def __init__(self, eps=1e-2):
+        super().__init__({})
+        self.eps = eps
+
+
+    def _update(self, state, ascent):
+        params = self.get_params()
+        same_sign = params.sign() == ascent.sign()
+        ascent.masked_set_(same_sign, params)
+
+        return ascent

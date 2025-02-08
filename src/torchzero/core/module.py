@@ -1,14 +1,18 @@
-from typing import Any, TypeAlias, Self, Literal
-from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence, Iterable
 import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any, Literal, Self, TypeAlias
 
 import torch
-
-from ..utils.python_tools import _ScalarLoss, flatten
-from ..tensorlist import TensorList
-from .tensorlist_optimizer import TensorListOptimizer
 from torch.optim.optimizer import ParamsT
+
+from ..tensorlist import TensorList
+from ..utils.python_tools import _ScalarLoss, flatten
+from .tensorlist_optimizer import (
+    TensorListOptimizer,
+    _ClosureType,
+    _maybe_pass_backward,
+)
 
 
 def _get_loss(fx0, fx0_approx):
@@ -16,43 +20,7 @@ def _get_loss(fx0, fx0_approx):
     if fx0 is None: return fx0_approx
     return fx0
 
-_ClosureType = Callable[..., _ScalarLoss]
-"""
 
-Closure example:
-
-.. code-block:: python
-
-    def closure(backward = True):
-        loss = model(inputs)
-        if backward:
-            optimizer.zero_grad()
-            loss.backward()
-        return loss
-
-This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
-"""
-
-def _maybe_pass_backward(closure: _ClosureType, backward: bool) -> _ScalarLoss:
-    """not passing backward when it is true makes this work with closures with no `backward` argument"""
-    if backward:
-        with torch.enable_grad(): return closure()
-    return closure(False)
-
-
-# class _WeakDict(dict): pass
-
-# def _get_param_groups_to_pass_to_child(optimizer: torch.optim.Optimizer):
-#     """propagate only per-parameter settings that are not in optimizer.defaults"""
-#     param_groups: list[dict[str, Any]] = []
-#     for g in optimizer.param_groups.copy():
-#         child_g = {"params": g["params"]}
-#         for k,v in g.copy().items():
-#             if k not in optimizer.defaults:
-#                 child_g[k] = v
-#         param_groups.append(child_g)
-
-#     return param_groups
 
 class OptimizationState:
     """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""

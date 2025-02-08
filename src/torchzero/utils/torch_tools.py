@@ -2,7 +2,7 @@ import copyreg
 import weakref
 
 import torch
-
+import numpy as np
 
 def swap_tensors_no_use_count_check(t1, t2):
     """
@@ -79,3 +79,14 @@ def swap_tensors_no_use_count_check(t1, t2):
 
     # Swap the at::Tensor they point to
     torch._C._swap_tensor_impl(t1, t2)
+
+
+def totensor(x) -> torch.Tensor:
+    if isinstance(x, torch.Tensor): return x
+    if isinstance(x, np.ndarray): return torch.from_numpy(x)
+    return torch.from_numpy(np.asarray(x))
+
+def tofloat(x) -> float:
+    if isinstance(x, torch.Tensor): return x.detach().cpu().item()
+    if isinstance(x, np.ndarray): return x.item()
+    return float()

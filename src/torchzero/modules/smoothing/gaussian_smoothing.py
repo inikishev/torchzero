@@ -14,7 +14,7 @@ def _numpy_or_torch_mean(losses: list):
         return torch.mean(torch.stack(losses))
     return np.mean(losses).item()
 
-class ApproxGaussianSmoothing(OptimizerModule):
+class GaussianSmoothing(OptimizerModule):
     """Samples and averages value and gradients in multiple random points around current position.
     This effectively applies smoothing to the function.
 
@@ -85,3 +85,6 @@ class ApproxGaussianSmoothing(OptimizerModule):
         self.current_step += 1
         state.closure = smooth_closure
         return self._update_params_or_step_with_next(state)
+
+
+# todo single loop gaussian homotopy?

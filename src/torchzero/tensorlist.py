@@ -200,6 +200,9 @@ class TensorList(list[torch.Tensor | Any]):
     def __xor__(self, other: torch.Tensor | _TensorSequence): return self.logical_xor(other)
     def __ixor__(self, other: torch.Tensor | _TensorSequence): return self.logical_xor_(other)
 
+    def __bool__(self):
+        raise RuntimeError(f'Boolean value of {self.__class__.__name__} is ambiguous')
+
     def map(self, fn: Callable[..., torch.Tensor], *args, **kwargs):
         """Applies `fn` to all elements of this TensorList
         and returns a new TensorList with return values of the callable."""
@@ -291,7 +294,7 @@ class TensorList(list[torch.Tensor | Any]):
         cur = 0
         for el in self:
             numel = el.numel()
-            el.copy_(vec[cur:cur + numel].reshape(el.shape)) # type:ignore
+            el.set_(vec[cur:cur + numel].view_as(el)) # type:ignore
             cur += numel
         return self
 
@@ -302,7 +305,7 @@ class TensorList(list[torch.Tensor | Any]):
         cur = 0
         for el in self:
             numel = el.numel()
-            res.append(vec[cur:cur + numel].reshape(el.shape)) # type:ignore
+            res.append(vec[cur:cur + numel].view_as(el)) # type:ignore
             cur += numel
         return TensorList(res)
 
@@ -653,6 +656,35 @@ class TensorList(list[torch.Tensor | Any]):
     def fill(self, value: _STOrSTSequence): return self.zipmap(torch.fill, other = value)
     def fill_(self, value: _STOrSTSequence): return self.zipmap_inplace_(torch.fill_, other = value)
 
+    def copysign(self, other):
+        return self.__class__(t.copysign(o) for t, o in zip(self, other))
+    def copysign_(self, other):
+        for t, o in zip(self, other): t.copysign_(o)
+        return self
+
+    def graft(self, other: "_TensorSequence", tensorwise=False, eps = 1e-6):
+        if not isinstance(other, TensorList): other = TensorList(other)
+        if tensorwise:
+            norm_self = self.norm(2)
+            norm_other = other.norm(2)
+        else:
+            norm_self = self.total_vector_norm(2)
+            norm_other = other.total_vector_norm(2)
+
+        return self * (norm_other / norm_self.clip_(min=eps))
+
+    def graft_(self, other: "_TensorSequence", tensorwise=False, eps = 1e-6):
+        if not isinstance(other, TensorList): other = TensorList(other)
+        if tensorwise:
+            norm_self = self.norm(2)
+            norm_other = other.norm(2)
+        else:
+            norm_self = self.total_vector_norm(2)
+            norm_other = other.total_vector_norm(2)
+
+        return self.mul_(norm_other / norm_self.clip_(min=eps))
+
+
     def where(self, condition: "torch.Tensor | _TensorSequence", other: _STOrSTSequence):
         """self where condition is true other otherwise"""
         return self.zipmap_args(_MethodCallerWithArgs('where'), condition, other)
@@ -708,7 +740,7 @@ class NumberList(TensorList):
     Note that this only supports basic arithmetic operations that are overloaded.
 
     Can't use a numpy array because _foreach methods do not work with it."""
-    def _set_to_method_result(self, method: str, *args, **kwargs):
+    def _set_to_method_result_(self, method: str, *args, **kwargs):
         """Sets each element of the tensorlist to the result of calling the specified method on the corresponding element.
         This is used to support/mimic in-place operations."""
         res = getattr(self, method)(*args, **kwargs)
@@ -719,26 +751,40 @@ class NumberList(TensorList):
         if alpha == 1: return self.zipmap(operator.add, other=other)
         return self.zipmap(_alpha_add, other=other, alpha = alpha)
     def add_(self, other: _STOrSTSequence, alpha: _Scalar = 1):
-        return self._set_to_method_result('add', other, alpha = alpha)
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('add', other, alpha = alpha)
 
     def sub(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
         if alpha == 1: return self.zipmap(operator.sub, other=other)
         return self.zipmap(_alpha_add, other=other, alpha = -alpha)
 
+    def __rsub__(self, other: "_Scalar | _STSequence") -> Self:
+        # avoids in-place neg
+        return self.sub(other).neg()
+
     def sub_(self, other: "_Scalar | _STSequence", alpha: _Scalar = 1):
-        return self._set_to_method_result('sub', other, alpha = alpha)
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('sub', other, alpha = alpha)
 
     def neg(self): return self.__class__(-i for i in self)
-    def neg_(self): return self._set_to_method_result('neg')
+    def neg_(self):
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('neg')
 
     def mul(self, other: _STOrSTSequence): return self.zipmap(operator.mul, other=other)
-    def mul_(self, other: _STOrSTSequence): return self._set_to_method_result('mul', other)
+    def mul_(self, other: _STOrSTSequence):
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('mul', other)
 
     def div(self, other: _STOrSTSequence) -> Self: return self.zipmap(operator.truediv, other=other)
-    def div_(self, other: _STOrSTSequence): return self._set_to_method_result('div', other)
+    def div_(self, other: _STOrSTSequence):
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('div', other)
 
     def pow(self, exponent: "_Scalar | _STSequence"): return self.zipmap(math.pow, other=exponent)
-    def pow_(self, exponent: "_Scalar | _STSequence"): return self._set_to_method_result('pow_', exponent)
+    def pow_(self, exponent: "_Scalar | _STSequence"):
+        raise ValueError('dont use in-place operations on NumberList')
+        # return self._set_to_method_result_('pow_', exponent)
 
     def __rtruediv__(self, other: "_Scalar | _STSequence"):
         # overriding because TensorList implements this through reciprocal

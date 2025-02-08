@@ -46,7 +46,7 @@ def _fallback_safe_diag(hessian:torch.Tensor, grad:torch.Tensor, lr = 1e-2):
 
 def regularize_hessian_(hessian: torch.Tensor, value: float | Literal['eig']):
     """regularize hessian matrix in-place"""
-    if value == 'eig': 
+    if value == 'eig':
         value = torch.linalg.eigvalsh(hessian).min().clamp_(max=0).neg_() # pylint:disable=not-callable
     elif value != 0:
         hessian.add_(torch.eye(hessian.shape[0], device=hessian.device,dtype=hessian.dtype), alpha = value)
@@ -70,7 +70,7 @@ class ExactNewton(OptimizerModule):
 
     Args:
         tikhonov (float, optional):
-            tikhonov regularization (constant value added to the diagonal of the hessian). 
+            tikhonov regularization (constant value added to the diagonal of the hessian).
             Also known as Levenberg-Marquardt regularization. Can be set to 'eig', so it will be set
             to the smallest eigenvalue of the hessian if that value is negative. Defaults to 0.
         solver (Solvers, optional):
@@ -123,8 +123,6 @@ class ExactNewton(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         if state.closure is None: raise ValueError("Newton requires a closure to compute the gradient.")
-        # the following code by default uses `_update` method which simple modules can override.
-        # But you can also just override the entire `step`.
 
         params = self.get_params()
 

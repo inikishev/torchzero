@@ -37,6 +37,7 @@ def _orthogonalize_update_(updates: Sequence[torch.Tensor], toggle = None, warn_
             if orth_G is not None:
                 grad.set_(orth_G.reshape_as(grad)) # type:ignore
 
+    return updates
 
 def orthogonalize_grad_(params: Iterable[torch.Tensor], warn_fail=False):
     """orthogonalizes gradients of an iterable of parameters.

@@ -91,7 +91,7 @@ class WrapClosure(OptimizerModule):
     Wraps any torch.optim.Optimizer. This only works with modules with :code:`target = "Closure"` argument.
     The modified closure will be passed to the optimizer.
 
-    Alternative any module can be turned into a closure module by using :any:"torchzero.m.MakeClosure" module,
+    Alternative any module can be turned into a closure module by using :any:`MakeClosure` module,
     in that case this should be placed after MakeClosure.
 
     Args:

@@ -124,3 +124,5 @@ class LaplacianSmoothing(OptimizerModule):
         # apply the smoothing
         vec = ascent.to_vec()
         return ascent.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
+
+

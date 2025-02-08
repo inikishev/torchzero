@@ -96,14 +96,14 @@ class SignGrafting(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         state_copy = state.copy(clone_ascent=True)
-        magnitude = self.children['magnitude'].return_ascent(state_copy).abs_()
+        magnitude = self.children['magnitude'].return_ascent(state_copy)
 
         # make sure to store grad and fx0 if it was calculated
         state.update_attrs_(state_copy)
 
-        sign = self.children['sign'].return_ascent(state).sign_()
+        sign = self.children['sign'].return_ascent(state)
 
-        state.ascent = magnitude.mul_(sign)
+        state.ascent = magnitude.copysign_(sign)
         return self._update_params_or_step_with_next(state)
 
 

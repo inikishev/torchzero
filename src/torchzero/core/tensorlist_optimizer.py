@@ -1,14 +1,40 @@
-from typing import Literal, Any
+from typing import Literal, Any, overload
 from abc import ABC
 from collections.abc import Callable, Sequence, Iterable, Mapping, MutableSequence
-
+import numpy as np
 import torch
 import torch.optim.optimizer
 from torch.optim.optimizer import ParamsT
 
 from ..tensorlist import TensorList, NumberList
+from ..utils.torch_tools import totensor, tofloat
+from ..utils.python_tools import _ScalarLoss
 
 _StateInit = Literal['params', 'grad'] | Callable | TensorList
+
+_ClosureType = Callable[..., _ScalarLoss]
+"""
+
+Closure example:
+
+.. code-block:: python
+
+    def closure(backward = True):
+        loss = model(inputs)
+        if backward:
+            optimizer.zero_grad()
+            loss.backward()
+        return loss
+
+This closure will also work with all built in pytorch optimizers including LBFGS, as well as and most custom ones.
+"""
+
+def _maybe_pass_backward(closure: _ClosureType, backward: bool) -> _ScalarLoss:
+    """not passing backward when it is true makes this work with closures with no `backward` argument"""
+    if backward:
+        with torch.enable_grad(): return closure()
+    return closure(False)
+
 class TensorListOptimizer(torch.optim.Optimizer, ABC):
     """torch.optim.Optimizer with some additional methods related to TensorList.
 
@@ -128,3 +154,59 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
                 all_values[i].extend([value for _ in range(n_params)])
 
         return all_values
+
+    @torch.no_grad
+    def evaluate_loss_at_vec(self, vec, closure=None, params = None, backward=False, ensure_float=False):
+        """_summary_
+
+        Args:
+            vec (_type_): _description_
+            closure (_type_, optional): _description_. Defaults to None.
+            params (_type_, optional): _description_. Defaults to None.
+            backward (bool, optional): _description_. Defaults to False.
+            ensure_float (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
+        vec = totensor(vec)
+        if closure is None: closure = self._closure # type:ignore # pylint:disable=no-member
+        if params is None: params = self.get_params()
+
+        params.from_vec_(vec.to(params[0]))
+        loss = _maybe_pass_backward(closure, backward)
+
+        if ensure_float: return tofloat(loss)
+        return _maybe_pass_backward(closure, backward)
+
+    @overload
+    def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[True] = False) -> tuple[float, np.ndarray]: ...
+    @overload
+    def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[False] = False) -> tuple[_ScalarLoss, torch.Tensor]: ...
+    @torch.no_grad
+    def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[True] | Literal[False]=False):
+        """_summary_
+
+        Args:
+            vec (_type_): _description_
+            closure (_type_, optional): _description_. Defaults to None.
+            params (_type_, optional): _description_. Defaults to None.
+            to_numpy (Literal[True] | Literal[False], optional): _description_. Defaults to False.
+
+        Returns:
+            _type_: _description_
+        """
+        if params is None: params = self.get_params()
+        loss = self.evaluate_loss_at_vec(vec, closure, params, backward = True, ensure_float = to_numpy)
+        grad = params.grad.to_vec()
+
+        if to_numpy: return tofloat(loss), grad.detach().cpu().numpy()
+        return loss, grad
+
+
+    @torch.no_grad
+    def _maybe_evaluate_closure(self, closure, backward=True):
+        loss = None
+        if closure is not None:
+            loss = _maybe_pass_backward(closure, backward)
+        return loss

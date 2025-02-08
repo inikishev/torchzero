@@ -33,7 +33,7 @@ class ArmijoLS(LineSearchBase):
 
     @torch.no_grad
     def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
-        if state.closure is None: raise ValueError("closure is not set")
+        if state.closure is None: raise RuntimeError(f"Line searches ({self.__class__.__name__}) require a closure")
         ascent = state.maybe_use_grad_(params)
         grad = state.maybe_compute_grad_(params)
         alpha = self.get_first_group_key('alpha')

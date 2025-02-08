@@ -137,7 +137,7 @@ In pytorch it is possible to specify per-layer options, such as learning rate, u
 
 In the example above, :code:`model.encoder` will use a custom learning rate of 1e-2, and custom adam epsilon of 1e-5, while :code:`model.decoder` will stick to the default learning rate of 1e-3 and the default epsilon value.
 
-The catch is that when you specify a setting such as `eps`, it will be applied to ALL modules that have that setting, which may lead to unexpected behavior. For example, both :py:class:`tz.m.Adam` and :py:class:`tz.m.RandomizedFDM` have an `eps` parameter, which has completely different function and value range. To avoid this, per-parameter settings can be specified for specific modules by using the `set_params` method:
+The catch is that when you specify a setting such as `eps`, it will be applied to ALL modules that have that setting, which may lead to unexpected behavior. For example, both :py:class:`tz.m.Adam<torchzero.modules.Adam>` and :py:class:`tz.m.RandomizedFDM<torchzero.modules.RandomizedFDM>` have an `eps` parameter, which has completely different function and value range. To avoid this, per-parameter settings can be specified for specific modules by using the `set_params` method:
 
 .. code:: python
 
@@ -165,7 +165,7 @@ How do we handle learning rates?
 =================================
 Certain optimisers, like Adam, have learning rate built into the update rule. Using multiple such modules can result in unintended compounding of learning rate modifications.
 
-To avoid this, learning rate should be applied by a singular :py:class:`tz.m.LR<torchzero.m.LR>` module. All other modules with a learning rate, such as :py:class:`tz.m.Adam`, have `lr` renamed to `alpha` with the default value of 1 to avoid rescaling the update.
+To avoid this, learning rate should be applied by a singular :py:class:`tz.m.LR<torchzero.modules.LR>` module. All other modules with a learning rate, such as :py:class:`tz.m.Adam<torchzero.modules.Adam>`, have `lr` renamed to `alpha` with the default value of 1 to avoid rescaling the update.
 
 For example:
 
@@ -185,9 +185,9 @@ See also:
 
 How to use external PyTorch optimizers as chainable modules?
 ============================================================
-In addition to torchzero modules, any PyTorch optimizer can be used as a module using :py:class:`tz.m.Wrap<torchzero.modular.Wrap>`.
+In addition to torchzero modules, any PyTorch optimizer can be used as a module using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>`.
 
-There are two slightly different ways to construct a :code:`Wrap` module. Here I will convert :code:`LaProp` optimizer from `pytorch_optimizer <https://pytorch-optimizers.readthedocs.io/en/latest/optimizer/#pytorch_optimizer.LaProp>`_ library into a module and chain it with :py:class:`tz.m.Cautious`
+There are two slightly different ways to construct a :code:`Wrap` module. Here I will convert :code:`LaProp` optimizer from `pytorch_optimizer <https://pytorch-optimizers.readthedocs.io/en/latest/optimizer/#pytorch_optimizer.LaProp>`_ library into a module and chain it with :py:class:`tz.m.Cautious<torchzero.modules.Cautious>`
 
 .. code:: py
 
@@ -213,11 +213,11 @@ There are two slightly different ways to construct a :code:`Wrap` module. Here I
 
 Most pytorch optimizers update model parameters by using their :code:`.grad` attibute. Wrap puts the current update into the :code:`.grad`, making the wrapped optimizer use it instead.
 
-Note that since the wrapped optimizer updates model parameters directly, if :class:`Wrap` is not the last module, it stores model parameters before the step, then performs a step with the wrapped optimizer, calculates the update as difference between model parameters before and after the step, and undoes the step. That may introduce additional overhead compared to using modules.
+Note that since the wrapped optimizer updates model parameters directly, if :class:`Wrap` is not the last module, it stores model parameters before the step, then performs a step with the wrapped optimizer, calculates the update as difference between model parameters before and after the step, undoes the step, and passes the update to the next module. That may introduce additional overhead compared to using modules.
 
 However when :py:class:`Wrap` is the last module in the chain, it simply makes a step with the wrapped optimizer, so no overhead is introduced.
 
-Also notice how I set `lr` to 1 in LaProp, and instead used an :py:class:`tz.m.LR<LR>` module. As usual, to make the optimizer support lr scheduling and per-layer learning rates, use the :py:class:`tz.m.LR` module to set the learning rate.
+Also notice how I set `lr` to 1 in LaProp, and instead used an :py:class:`tz.m.LR<torchzero.modules.LR>` module. As usual, to make the optimizer support lr scheduling and per-layer learning rates, use the :py:class:`LR` module to set the learning rate. Alternatively pass per-layer parameters or apply scheduling directly to LaProp optimizer, before wrapping it.
 
 There is also a :py:class:`tz.m.WrapClosure<torczhero.modules.WrapClosure>` for optimizers that require closure, such as :code:`torch.optim.LBFGS`. It modifies the closure to set :code:`.grad` attribute on each closure evaluation. So you can use LBFGS with FDM or gradient smoothing methods.
 
@@ -229,9 +229,9 @@ How much overhead does a torchzero modular optimizer have compared to a normal o
 ==========================================================================================
 A thorough benchmark will be posted to this section very soon. There is no overhead other than what is described below.
 
-Since some optimizers, like Adam, have learning rate baked into the update rule, but we use LR module instead, that requires an extra add operation. Currently if :py:class:`tz.m.Adam` is directly followed by a :py:class:`tz.m.LR`, they will be automatically fused. However adding LR fusing to all modules with a learning rate is not a priority, unless I find that it makes a non-negligible difference to performance.
+Since some optimizers, like Adam, have learning rate baked into the update rule, but we use LR module instead, that requires an extra add operation. Currently if :code:`tz.m.Adam` or :code:`tz.m.Wrap` are directly followed by a :code:`tz.m.LR`, they will be automatically fused (:code:`Wrap` fuses only when wrapped optimizer has an :code:`lr` parameter). However adding LR fusing to all modules with a learning rate is not a priority.
 
-Whenever possible I used :code:`_foreach_xxx` operations. Those make the optimizers way quicker, especially with a lot of different parameter tensors. Also all modules change the update in-place whenever possible.
+Whenever possible I used `_foreach_xxx <https://pytorch.org/docs/stable/torch.html#foreach-operations>`_ operations. Those operate on all parameters at once instead of using a slow python for-loops. This makes the optimizers way quicker, especially with a lot of different parameter tensors. Also all modules change the update in-place whenever possible.
 
 Is there support for complex-valued parameters?
 =================================================

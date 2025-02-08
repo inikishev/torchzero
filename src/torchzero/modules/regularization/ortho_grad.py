@@ -33,7 +33,7 @@ class OrthoGrad(OptimizerModule):
         eps (float, optional): epsilon added to the denominator for numerical stability (default: 1e-30)
         renormalize (bool, optional): whether to renormalize gradients back to original norm (default: True).
         sqrt_scale (bool, optional):
-            uses square root of the scale to make it more impactful, experimental setting (default: False).
+            uses square root of the scale to make it more impactful, experimental setting and doesn't really work (default: False).
         add (bool, optional):
             Experimental option that changes subtraction to addition.
             I don't think it has any geometric meaning but it drives weights towards zero instead of away from it.

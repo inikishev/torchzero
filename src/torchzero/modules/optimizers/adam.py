@@ -49,7 +49,7 @@ class Adam(OptimizerModule):
     @torch.no_grad
     def step(self, state):
         # Adam step is a bit differet from other optimizer steps
-        # because due to how common it is, I implemented two additional optimizations,
+        # due to how common it is, I implemented two additional optimizations,
 
         # 1st - if next module is None or if next module is LR and module after is None
         # this will directly update parameters using `addcdiv_`

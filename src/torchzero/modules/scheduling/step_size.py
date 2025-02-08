@@ -34,7 +34,7 @@ class PolyakStepSize(OptimizerModule):
         if state.closure is None: raise ValueError("PolyakStepSize requires closure")
         if state.fx0 is None: state.fx0 = state.closure(False) # can only happen when placed after SPSA
 
-        lr = self.get_group_key('lr')
+        alpha = self.get_group_key('alpha')
 
         if self.parameterwise:
             if self.use_grad: denom = (ascent*state.maybe_compute_grad_(self.get_params())).mean()
@@ -52,7 +52,7 @@ class PolyakStepSize(OptimizerModule):
             if self.max is not None:
                 if polyak_step_size > self.max: polyak_step_size = self.max
 
-        ascent.mul_(lr * polyak_step_size)
+        ascent.mul_(alpha * polyak_step_size)
         return ascent
 
 
