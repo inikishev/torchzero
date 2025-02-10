@@ -10,26 +10,16 @@ from torch.optim.optimizer import ParamsT
 from ..tensorlist import TensorList
 from ..utils.python_tools import _ScalarLoss, flatten
 
-if sys.version_info[1] < 12:
-    from .tensorlist_optimizer311 import (
-        TensorListOptimizer,
-        _ClosureType,
-        _maybe_pass_backward,
-    )
-else:
-    from .tensorlist_optimizer import (
-        TensorListOptimizer,
-        _ClosureType,
-        _maybe_pass_backward,
-    )
-
-
+from .tensorlist_optimizer import (
+    TensorListOptimizer,
+    _ClosureType,
+    _maybe_pass_backward,
+)
 
 def _get_loss(fx0, fx0_approx):
     """Returns fx0 if it is not None otherwise fx0_approx"""
     if fx0 is None: return fx0_approx
     return fx0
-
 
 
 class OptimizationState:

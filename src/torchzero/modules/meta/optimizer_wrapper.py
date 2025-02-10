@@ -1,10 +1,13 @@
-import typing
-from collections import abc
+from collections.abc import Callable, Sequence
+from typing import Any, overload
 
 import torch
+from typing_extensions import Concatenate, ParamSpec
 
 from ...core import OptimizerModule
 from .return_overrides import SetGrad
+
+K = ParamSpec('K')
 
 class Wrap(OptimizerModule):
     """
@@ -32,19 +35,23 @@ class Wrap(OptimizerModule):
         wrapper = OptimizerWrapper(torch.optim.SGD, lr = 0.1)
     """
 
-    @typing.overload
+    @overload
     def __init__(self, optimizer: torch.optim.Optimizer): ...
-    @typing.overload
-    def __init__[**K](
+    @overload
+    # def __init__[**K](
+    def __init__(
         self,
-        optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
+        optimizer: Callable[Concatenate[Any, K], torch.optim.Optimizer],
         *args: K.args,
         **kwargs: K.kwargs,
+        # optimizer: abc.Callable[..., torch.optim.Optimizer],
+        # *args,
+        # **kwargs,
     ): ...
     def __init__(self, optimizer, *args, **kwargs):
 
         super().__init__({})
-        self._optimizer_cls: torch.optim.Optimizer | abc.Callable[..., torch.optim.Optimizer] = optimizer
+        self._optimizer_cls: torch.optim.Optimizer | Callable[..., torch.optim.Optimizer] = optimizer
         self._args = args
         self._kwargs = kwargs
 
@@ -113,19 +120,22 @@ class WrapClosure(OptimizerModule):
 
     """
 
-    @typing.overload
+    @overload
     def __init__(self, optimizer: torch.optim.Optimizer,): ...
-    @typing.overload
-    def __init__[**K](
+    @overload
+    def __init__(
         self,
-        optimizer: abc.Callable[typing.Concatenate[typing.Any, K], torch.optim.Optimizer],
+        optimizer: Callable[Concatenate[Any, K], torch.optim.Optimizer],
         *args: K.args,
         **kwargs: K.kwargs,
+        # optimizer: abc.Callable[..., torch.optim.Optimizer],
+        # *args,
+        # **kwargs,
     ): ...
     def __init__(self, optimizer, *args, **kwargs):
 
         super().__init__({})
-        self._optimizer_cls: torch.optim.Optimizer | abc.Callable[..., torch.optim.Optimizer] = optimizer
+        self._optimizer_cls: torch.optim.Optimizer | Callable[..., torch.optim.Optimizer] = optimizer
         self._args = args
         self._kwargs = kwargs
 
