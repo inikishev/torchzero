@@ -1,5 +1,3 @@
-from typing import Literal, Unpack
-
 import torch
 
 from ...modules import SGD, WrapClosure, LR

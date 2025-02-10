@@ -1,4 +1,4 @@
-from typing import Literal, Unpack
+from typing import Literal
 
 import torch
 

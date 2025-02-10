@@ -1,4 +1,5 @@
-from typing import Literal, Unpack
+from typing import Literal
+
 
 from ...core import OptimizerModule
 from ...modules import Cautious, Adam, SGD, Lion, WeightDecay, LR
