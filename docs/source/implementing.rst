@@ -82,7 +82,7 @@ Here is a ready to use Adam implementation through overwriting :code:`_single_te
             bias_correction1 = 1 - beta1**step
             bias_correction2 = 1 - beta2**step
 
-            denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5 + eps)
+            denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5) + eps
 
             state['step'] += 1
 
@@ -144,7 +144,8 @@ Here is a ready to use Adam implementation through overwriting :code:`_update` u
             bias_correction2 = [1 - i**self.current_step for i in beta2]
 
             denom = torch._foreach_sqrt(exp_avg_sq)
-            torch._foreach_div_(denom, [c ** 0.5 + e for c, e in zip(bias_correction2, eps)])
+            torch._foreach_div_(denom, [c ** 0.5 for c in bias_correction2])
+            torch._foreach_add_(denom, eps)
 
             ret = torch._foreach_div(exp_avg, denom)
             torch._foreach_mul_(ret, [a/d for a,d in zip(alpha, bias_correction1)])
@@ -159,6 +160,6 @@ Method 3. Overwriting step
 +++++++++++++++++++++++++++++++++++++++++++++
 :code:`step` method gives you the most control, but it requires the most understanding of the internals of torchzero. You can reevaluate the closure multiple times which is usually necessary for line searches and gradient approximation. You can step with multiple modules, skip an update, update parameters directly, basically anything is possible.
 
-There are also helper classes: :py:mod:`GradientApproximatorBase<tz.modules.gradient_approximation.GradientApproximatorBase>` allows you to define a gradient approximation module in a more convenient way by overwriting :code:`_make_ascent` method. :py:mod:`GradientApproximatorBase<tz.modules.line_search.LineSearchBase>` is an easy way to define line searches by overwriting :code:`_find_best_lr`. I will be making a tutorial on those soon.
+There are also helper classes: :py:mod:`GradientApproximatorBase<tz.modules.gradient_approximation.GradientApproximatorBase>` allows you to define a gradient approximation module in a more convenient way by overwriting :code:`_make_ascent` method. :py:mod:`GradientApproximatorBase<tz.modules.line_search.LineSearchBase>` is an easy way to define line searches by overwriting :code:`_find_best_lr`.
 
-WIP
+This section is WIP

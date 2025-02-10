@@ -15,9 +15,9 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
 
     if max_exp_avg_sqs is not None:
         max_exp_avg_sqs.maximum_(exp_avg_sq)
-        denom = max_exp_avg_sqs.sqrt().div_(bias_correction2**0.5 + eps)
+        denom = max_exp_avg_sqs.sqrt().div_(bias_correction2**0.5).add_(eps)
     else:
-        denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5 + eps)
+        denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5).add_(eps)
 
     if params is None:
         return (exp_avg / denom).mul_(alpha / bias_correction1)
