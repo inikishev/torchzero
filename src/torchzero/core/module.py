@@ -157,7 +157,7 @@ class OptimizationState:
         self.post_step_hooks.append(hook)
 
 _Targets = Literal['ascent', 'grad', 'closure',]
-class OptimizerModule(TensorListOptimizer, ABC):
+class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
     r"""Base class for all modules.
 
     Args:
@@ -304,7 +304,7 @@ class OptimizerModule(TensorListOptimizer, ABC):
         if self.next_module is None:
             if state.ascent is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
             if params is None: params = self.get_params()
-            params -= state.ascent
+            params -= state.ascent # type:ignore
             return state.get_loss()
 
         # otherwise pass the updated ascent direction to the child

@@ -180,7 +180,7 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
         return _maybe_pass_backward(closure, backward)
 
     @overload
-    def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[True] = False) -> tuple[float, np.ndarray]: ...
+    def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[True] = False) -> tuple[float, np.ndarray]: ... # type:ignore
     @overload
     def evaluate_loss_grad_at_vec(self, vec, closure=None, params = None, to_numpy: Literal[False] = False) -> tuple[_ScalarLoss, torch.Tensor]: ...
     @torch.no_grad

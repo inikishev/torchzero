@@ -24,6 +24,7 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
 
     # else directly apply the update to params
     params.addcdiv_(exp_avg, denom, value = -(alpha / bias_correction1))
+    return None
 
 
 

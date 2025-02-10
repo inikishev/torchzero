@@ -11,7 +11,7 @@ dependencies = [
   "torch",
   "numpy",
 ]
-requires-python = ">= 3.11"
+requires-python = ">= 3.9"
 readme = "README.md"
 authors = [
   {name = "Ivan Nikishev", email = "nkshv2@gmail.com"},

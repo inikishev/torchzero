@@ -152,9 +152,10 @@ The catch is that when you specify a setting such as `eps`, it will be applied t
     # 2. pass custom parameter groups to adam
     adam.set_params(adam_param_groups)
 
-    # 3. create modular optimizer after passing custom parameter groups
+    # 3. create modular optimizer after passing custom parameter groups,
+    # pass it normal model.parameters()
     optimizer = tz.Modular(
-        param_groups,
+        model.parameters(),
         [adam, tz.m.LR(1e-3), tz.m.WeightDecay()]
     )
 
