@@ -50,6 +50,12 @@ If you intend to use gradient-free methods, `backward` argument is still require
 
 All built-in pytorch optimizers, as well as most custom ones, support closure too. So the code above will work with all other optimizers out of the box, and you can switch between different optimizers without rewriting your training loop.
 
+## Installation
+
+```py
+pip install torchzero
+```
+
 # Documentation
 
 For more information on how to create, use and extend torchzero modules, please refer to the documentation at [torchzero.readthedocs.io](https://torchzero.readthedocs.io/en/latest/index.html).
