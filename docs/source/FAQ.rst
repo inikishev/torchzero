@@ -3,7 +3,7 @@ FAQ
 
 How to construct modular optimizers?
 =====================================
-A modular optimizer can be created using the :py:class:`tz.m.Modular<torchzero.optim.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
+A modular optimizer can be created using the :py:class:`tz.Modular<torchzero.optim.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
 
 All modules are available in :py:mod:`tz.m<torchzero.modular>` namespace, e.g. :py:class:`tz.m.Adam<torchzero.modules.Adam>`.
 
