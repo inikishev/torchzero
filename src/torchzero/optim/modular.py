@@ -2,6 +2,7 @@ from collections import abc
 import warnings
 from inspect import cleandoc
 import torch
+from typing import Any
 
 from ..core import OptimizerModule, TensorListOptimizer, OptimizationVars, _Chain, _Chainable
 from ..utils.python_tools import flatten
@@ -66,6 +67,21 @@ class Modular(TensorListOptimizer):
         for module in self.unrolled_modules:
             for hook in module.post_init_hooks:
                 hook(self, module)
+
+    def state_dict(self):
+        state_dict = {}
+        state_dict['__self__'] = super().state_dict()
+        for i,v in enumerate(self.unrolled_modules):
+            state_dict[str(i)] = v.state_dict()
+        return state_dict
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        super().load_state_dict(state_dict['__self__'])
+        for i,v in enumerate(self.unrolled_modules):
+            if str(i) in state_dict:
+                v.load_state_dict(state_dict[str(i)])
+            else:
+                warnings.warn(f"Tried to load state dict for {i}th module: {v.__class__.__name__}, but it is not present in state_dict with {list(state_dict.keys()) = }")
 
     def get_lr_module(self, last=True) -> OptimizerModule:
         """

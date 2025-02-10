@@ -212,6 +212,22 @@ class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
         if self._initialized: return super().__repr__()
         return f"uninitialized {self.__class__.__name__}()"
 
+    def state_dict(self):
+        state_dict = {}
+        state_dict['__self__'] = super().state_dict()
+        for k,v in self.children.items():
+            state_dict[k] = v.state_dict()
+        return state_dict
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        super().load_state_dict(state_dict['__self__'])
+        for k, v in self.children.items():
+            if k in state_dict:
+                v.load_state_dict(state_dict[k])
+            else:
+                warnings.warn(f"Tried to load state dict for {k}: {v.__class__.__name__}, but it is not present in state_dict with {list(state_dict.keys()) = }")
+
+
     def set_params(self, params: ParamsT):
         """
         Set parameters to this module. Use this to set per-parameter group settings.

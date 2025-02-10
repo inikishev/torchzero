@@ -225,23 +225,41 @@ There is also a :py:class:`tz.m.WrapClosure<torczhero.modules.WrapClosure>` for 
 
 How to save/serialize a modular optimizer?
 ============================================
-TODO
+Please refer to pytorch docs https://pytorch.org/tutorials/beginner/saving_loading_models.html.
+
+Like pytorch optimizers, torchzero modular optimizers and modules support :code:`opt.state_dict()` and :code:`opt.load_state_dict()`, which saves and loads state dicts of all modules, including nested ones.
+
+So you can use the standard code for saving and loading:
+
+.. code:: python
+
+    torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                ...
+                }, PATH)
+
+    model = TheModelClass(*args, **kwargs)
+    optimizer = tz.Modular(model.parameters(), *modules)
+
+    checkpoint = torch.load(PATH, weights_only=True)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
 
 How much overhead does a torchzero modular optimizer have compared to a normal optimizer?
 ==========================================================================================
-A thorough benchmark will be posted to this section very soon. There is no overhead other than what is described below.
-
-Since some optimizers, like Adam, have learning rate baked into the update rule, but we use LR module instead, that requires an extra add operation. Currently if :code:`tz.m.Adam` or :code:`tz.m.Wrap` are directly followed by a :code:`tz.m.LR`, they will be automatically fused (:code:`Wrap` fuses only when wrapped optimizer has an :code:`lr` parameter). However adding LR fusing to all modules with a learning rate is not a priority.
+Since some optimizers, like Adam, have learning rate baked into the update rule, but we use LR module instead, that requires an extra add operation. Currently if :code:`tz.m.Adam` or :code:`tz.m.Wrap` are directly followed by a :code:`tz.m.LR`, they will be automatically fused (:code:`Wrap` fuses only when wrapped optimizer has an :code:`lr` parameter) to mitigate that. However adding LR fusing to all modules with a learning rate is not a priority. From what I can tell this overhead is negligible.
 
 Whenever possible I used `_foreach_xxx <https://pytorch.org/docs/stable/torch.html#foreach-operations>`_ operations. Those operate on all parameters at once instead of using a slow python for-loops. This makes the optimizers way quicker, especially with a lot of different parameter tensors. Also all modules change the update in-place whenever possible.
 
 Is there support for complex-valued parameters?
 =================================================
-Currently no, as I have not made the modules with complex-valued parameters in mind, although some might still work. I do use complex-valued networks so I am looking into adding support. There may actually be a way to support them automatically.
+:code:`tz.m.ViewAsReal()` and :code:`tz.m.ViewAsComplex()` modules will be added soon. This will also allow to use custom pytorch optimizers with complex networks (via :code:`tz.m.Wrap`), even if they don't support those natively.
 
 Is there support for optimized parameters being on different devices?
 ======================================================================
-TODO
+Maybe, I need to test this.
 
 Is there support for FSDP (FullyShardedDataParallel)?
 ======================================================
