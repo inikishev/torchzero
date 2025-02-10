@@ -58,7 +58,7 @@ Using torchzero optimizers is generally similar to using built-in PyTorch optimi
         opt.zero_grad()
 
 
-Some modules and optimizers in torchzero, particularly line-search methods and gradient approximation modules, require a closure function. This is similar to how :code:`torch.optim.LBFGS` works in PyTorch. In torchzero, the closure function for these optimizers needs to accept an argument (we'll call it backward, though the argument can have any name). When :code:`backward=True`, the closure should zero out gradients using :code:`opt.zero_grad()`, and compute gradients using :code:`loss.backward()`.
+Some modules and optimizers in torchzero, particularly line-search methods and gradient approximation modules, require a closure function. This is similar to how :code:`torch.optim.LBFGS` works in PyTorch. In torchzero, closure needs to accept a boolean backward argument (though the argument can have any name). When :code:`backward=True`, the closure should zero out gradients using :code:`opt.zero_grad()`, and compute gradients using :code:`loss.backward()`.
 
 Here's how a training loop with a closure looks:
 

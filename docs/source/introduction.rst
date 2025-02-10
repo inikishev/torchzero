@@ -1,13 +1,13 @@
 Introduction
 ==================
 
-`torchzero` is a library for pytorch that offers a flexible and modular way to build optimizers for various tasks.  By combining smaller, reusable modules, you can easily customize and experiment with different optimization strategies.
+torchzero is a library for pytorch that offers a flexible and modular way to build optimizers for various tasks. By combining smaller, reusable modules, you can easily customize and experiment with different optimization strategies.
 
-Each module in `torchzero` takes the output of the previous module and applies a further transformation. This modular design avoids redundant code, such as reimplementing Laplacian smoothing, cautioning, orthogonalization, etc for every optimizer. It also simplifies experimenting with advanced techniques like optimizer grafting, interpolation, and complex combinations like nested momentum.
+Each module takes the output of the previous module and applies a further transformation. This modular design avoids redundant code, such as reimplementing Laplacian smoothing, cautioning, orthogonalization, etc for every optimizer. It also simplifies experimenting with advanced techniques like optimizer grafting, interpolation, and complex combinations like nested momentum.
 
-Many modules in `torchzero` perform gradient transformations. They receive an "ascent direction," which is initially the gradient, modify it, and pass it to the next module in the chain. Typically, the first module uses the raw gradient as the starting ascent direction. However, modules are not limited to gradient transformations. They can perform other operations like line searches, exponential moving average (EMA) and stochastic weight averaging (SWA), gradient accumulation, gradient approximation, and more.
+Many modules perform gradient transformations. They receive an "ascent direction," which is initially the gradient, modify it, and pass it to the next module in the chain. Typically, the first module uses the raw gradient as the starting ascent direction. However, modules are not limited to gradient transformations. They can perform other operations like line searches, exponential moving average (EMA) and stochastic weight averaging (SWA), gradient accumulation, gradient approximation, and more.
 
-`torchzero` provides over 100 modules, all accessible within the :py:mod:`tz.m<torchzero.modular>` namespace. For example, the Adam module is available as :py:class:`tz.m.Adam<torchzero.modules.Adam>`. You can find a complete list of modules in the `torchzero` documentation: https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html.
+torchzero provides over 100 modules, all accessible within the :py:mod:`tz.m<torchzero.modular>` namespace. For example, the Adam module is available as :py:class:`tz.m.Adam<torchzero.modules.Adam>`. You can find a complete list of modules in the torchzero documentation: https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html.
 
 To combine these modules and create a custom optimizer, use tz.Modular, and then use it as any other pytorch optimizer. Here’s an example of how to define a Cautious Adam optimizer with gradient clipping and decoupled weight decay:
 
@@ -44,4 +44,4 @@ To combine these modules and create a custom optimizer, use tz.Modular, and then
         print(epoch, loss.item(), end = '       \r')
 
 
-Please head over to :ref:FAQ for more examples and information.
+Please head over to :ref:`FAQ` for more examples and information.

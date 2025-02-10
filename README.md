@@ -2,65 +2,61 @@
 
 # torchzero
 
-This is a work-in-progress optimizers library for pytorch with composable zeroth, first, second order and quasi newton methods, gradient approximation, line searches and a whole lot of other stuff.
-
-Most optimizers are modular, meaning you can chain them like this:
+`torchzero` implements a large number of chainable optimization modules that can be chained together to create custom optimizers:
 
 ```py
-optimizer = torchzero.optim.Modular(model.parameters(), [*list of modules*])`
+import torchzero as tz
+
+optimizer = tz.Modular(
+    model.parameters(),
+    tz.m.Adam(),
+    tz.m.Cautious(),
+    tz.m.LR(1e-3),
+    tz.m.WeightDecay(1e-4)
+)
+
+# standard training loop
+for batch in dataset:
+    preds = model(batch)
+    loss = criterion(preds)
+    optimizer.zero_grad()
+    optimizer.step()
 ```
 
-For example you might use `[ClipNorm(4), LR(1e-3), NesterovMomentum(0.9)]` for standard SGD with gradient clipping and nesterov momentum. Move `ClipNorm` to the end to clip the update instead of the gradients. If you don't have access to gradients, add a `RandomizedFDM()` at the beginning to approximate them via randomized finite differences. Add `Cautious()` to make the optimizer cautious.
+Each module takes the output of the previous module and applies a further transformation. This modular design avoids redundant code, such as reimplementing cautioning, orthogonalization, laplacian smoothing, etc for every optimizer. It is also easy to experiment with grafting, interpolation between different optimizers, and perhaps some weirder combinations like nested momentum.
 
-Each new module takes previous module update and works on it. That way there is no need to reimplement stuff like laplacian smoothing for all optimizers, and it is easy to experiment with grafting, interpolation between different optimizers, and perhaps some weirder combinations like nested momentum.
+Modules are not limited to gradient transformations. They can perform other operations like line searches, exponential moving average (EMA) and stochastic weight averaging (SWA), gradient accumulation, gradient approximation, and more.
 
-# How to use
+There are over 100 modules, all accessible within the `tz.m` namespace. For example, the Adam update rule is available as `tz.m.Adam`. Complete list of modules is available in [documentation](https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html).
 
-All modules are defined in `torchzero.modules`. You can generally mix and match them however you want. Some pre-made optimizers are available in `torchzero.optim`.
+## Closure
 
-Some optimizers require closure, which should look like this:
+Some modules and optimizers in torchzero, particularly line-search methods and gradient approximation modules, require a closure function. This is similar to how `torch.optim.LBFGS` works in PyTorch. In torchzero, closure needs to accept a boolean backward argument (though the argument can have any name). When `backward=True`, the closure should zero out old gradients using `opt.zero_grad()`, and compute new gradients using `loss.backward()`.
 
 ```py
 def closure(backward = True):
-  preds = model(inputs)
-  loss = loss_fn(preds, targets)
+    preds = model(inputs)
+    loss = loss_fn(preds, targets)
 
-  # if you can't call loss.backward(), and instead use gradient-free methods,
-  # they always call closure with backward=False.
-  # so you can remove the part below, but keep the unused backward argument.
-  if backward:
-    optimizer.zero_grad()
-    loss.backward()
-  return loss
+    if backward:
+        optimizer.zero_grad()
+        loss.backward()
+    return loss
 
 optimizer.step(closure)
 ```
 
-This closure will also work with all built in pytorch optimizers, including LBFGS, all optimizers in this library, as well as most custom ones.
+If you intend to use gradient-free methods, `backward` argument is still required in the closure. Simply leave it unused. Gradient-free and gradient approximation methods always call closure with `backward=False`.
 
-# Contents
+All built-in pytorch optimizers, as well as most custom ones, support closure too. So the code above will work with all other optimizers out of the box, and you can switch between different optimizers without rewriting your training loop.
 
-Docs are available at [torchzero.readthedocs.io](https://torchzero.readthedocs.io/en/latest/). A preliminary list of all modules is available here <https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html#classes>. Some of the implemented algorithms:
+# Documentation
 
-- SGD/Rprop/RMSProp/AdaGrad/Adam as composable modules. They are also tested to exactly match built in pytorch versions.
-- Cautious Optimizers (<https://huggingface.co/papers/2411.16085>)
-- Optimizer grafting (<https://openreview.net/forum?id=FpKgG31Z_i9>)
-- Laplacian smoothing (<https://arxiv.org/abs/1806.06317>)
-- Polyak momentum, nesterov momentum
-- Gradient norm and value clipping, gradient normalization
-- Gradient centralization (<https://arxiv.org/abs/2004.01461>)
-- Learning rate droput (<https://pubmed.ncbi.nlm.nih.gov/35286266/>).
-- Forward gradient (<https://arxiv.org/abs/2202.08587>)
-- Gradient approximation via finite difference or randomized finite difference, which includes SPSA, RDSA, FDSA and Gaussian smoothing (<https://arxiv.org/abs/2211.13566v3>)
-- Various line searches
-- Exact Newton's method (with Levenberg-Marquardt regularization), newton with hessian approximation via finite difference, subspace finite differences newton.
-- Directional newton via one additional forward pass
+For more information on how to create, use and extend torchzero modules, please refer to the documentation at [torchzero.readthedocs.io](https://torchzero.readthedocs.io/en/latest/index.html).
 
-All modules should be quite fast, especially on models with many different parameters, due to `_foreach` operations.
+# Extra
 
-I am getting to the point where I can start focusing on good docs and tests. As of now, the code should be considered experimental, untested and subject to change, so feel free but be careful if using this for actual project.
-
-# Wrappers
+Some other optimization related things in torchzero:
 
 ### scipy.optimize.minimize wrapper
 
@@ -71,12 +67,26 @@ from torchzero.optim.wrappers.scipy import ScipyMinimize
 opt = ScipyMinimize(model.parameters(), method = 'trust-krylov')
 ```
 
-Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**). Note that it performs full minimization on each step.
+Use as any other closure-based optimizer, but make sure closure accepts `backward` argument. Note that it performs full minimization on each step.
 
 ### Nevergrad wrapper
 
+[Nevergrad](https://github.com/facebookresearch/nevergrad) is an optimization library by facebook with an insane number of gradient free methods.
+
 ```py
+from torchzero.optim.wrappers.nevergrad import NevergradOptimizer
 opt = NevergradOptimizer(bench.parameters(), ng.optimizers.NGOptBase, budget = 1000)
 ```
 
-Use as any other optimizer (make sure closure accepts `backward` argument like one from **How to use**).
+Use as any other closure-based optimizer, but make sure closure accepts `backward` argument.
+
+### NLopt wrapper
+
+[NLopt](https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/) is another optimization library similar to scipy.optimize.minimize, with a large number of both gradient based and gradient free methods.
+
+```py
+from torchzero.optim.wrappers.nlopt import NLOptOptimizer
+opt = NLOptOptimizer(bench.parameters(), 'LD_TNEWTON_PRECOND_RESTART', maxeval = 1000)
+```
+
+Use as any other closure-based optimizer, but make sure closure accepts `backward` argument. Note that it performs full minimization on each step.
