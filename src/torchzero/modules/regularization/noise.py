@@ -18,7 +18,7 @@ def add_noise_(
         grads += grads.sample_like(alpha, distribution)
 
     elif mode == 'global':
-        grads += grads.sample_like((grads.total_vector_norm(1)/grads.total_numel() * alpha).detach().cpu().item(), distribution)
+        grads += grads.sample_like((grads.total_vector_norm(1)/grads.total_numel() * alpha).detach().cpu().item(), distribution) # type:ignore
 
     elif mode == 'param':
         grads += grads.sample_like(grads.abs().mean()*alpha, distribution)
@@ -57,7 +57,7 @@ class AddNoise(OptimizerModule):
         self.mode: Literal["absolute", "global", "param", "channel"] = mode
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         alpha = self.get_group_key('alpha')
 
         add_noise_(ascent, alpha, self.distribution, self.mode)
@@ -72,6 +72,6 @@ class Random(OptimizerModule):
         self.distribution: Distributions = distribution
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         alpha = self.get_group_key('alpha')
         return ascent.sample_like(alpha, self.distribution)

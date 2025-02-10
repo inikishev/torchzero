@@ -64,7 +64,7 @@ class Wrap(OptimizerModule):
             self.optimizer = self._optimizer_cls(params, *self._args, **self._kwargs)
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         # check attrs
         # if self.pass_closure:
         #     if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
@@ -75,22 +75,22 @@ class Wrap(OptimizerModule):
 
         if self.next_module is None:
             # set grad to ascent and make a step with the optimizer
-            g = state.maybe_use_grad_(params)
+            g = vars.maybe_use_grad_(params)
             params.set_grad_(g)
-            state.fx0 = self.optimizer.step()
-            return state.get_loss()
+            vars.fx0 = self.optimizer.step()
+            return vars.get_loss()
 
 
         params_before_step = params.clone()
 
-        g = state.maybe_use_grad_(params)
+        g = vars.maybe_use_grad_(params)
         params.set_grad_(g)
-        state.fx0 = self.optimizer.step()
+        vars.fx0 = self.optimizer.step()
 
         # calculate update as difference in params
-        state.ascent = params_before_step - params
+        vars.ascent = params_before_step - params
         params.set_(params_before_step)
-        return self.next_module.step(state)
+        return self.next_module.step(vars)
 
 
 class WrapClosure(OptimizerModule):
@@ -148,7 +148,7 @@ class WrapClosure(OptimizerModule):
             self.optimizer = self._optimizer_cls(params, *self._args, **self._kwargs)
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         # check attrs
         # if self.pass_closure:
         #     if state.closure is None: raise ValueError('ClosureOptimizerWrapper requires closure.')
@@ -159,15 +159,15 @@ class WrapClosure(OptimizerModule):
 
         if self.next_module is None:
             # set grad to ascent and make a step with the optimizer
-            state.fx0 = self.optimizer.step(state.closure) # type:ignore
-            return state.get_loss()
+            vars.fx0 = self.optimizer.step(vars.closure) # type:ignore
+            return vars.get_loss()
 
 
         params_before_step = params.clone()
-        state.fx0 = self.optimizer.step(state.closure) # type:ignore
+        vars.fx0 = self.optimizer.step(vars.closure) # type:ignore
 
         # calculate update as difference in params
-        state.ascent = params_before_step - params
+        vars.ascent = params_before_step - params
         params.set_(params_before_step)
-        return self.next_module.step(state)
+        return self.next_module.step(vars)
 

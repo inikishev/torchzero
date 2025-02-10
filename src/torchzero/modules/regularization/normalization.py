@@ -29,7 +29,7 @@ def _normalize_grad_(
         if not isinstance(grads, TensorList): grads = TensorList(grads)
         norm = grads.total_vector_norm(ord)
         if norm > min:
-            grads /= norm / norm_value
+            grads /= norm / norm_value # type:ignore
 
 @torch.no_grad
 def normalize_grad_(
@@ -112,7 +112,7 @@ class Normalize(OptimizerModule):
         self.min_numel = min_numel
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         _normalize_grad_(
             ascent,
             norm_value = self.norm_value,
@@ -225,7 +225,7 @@ class Centralize(OptimizerModule):
         self.min_numel = min_numel
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         _centralize_grad_(
             ascent,
             mode = self.mode,
@@ -258,7 +258,7 @@ class ClipValue(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         value = self.get_group_key('value')
         ascent.clamp_(-value, value)
         return ascent
@@ -317,7 +317,7 @@ class ClipNorm(OptimizerModule):
         self.mode: typing.Literal["global", "param", "channel"] = mode
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         _normalize_grad_(
             ascent,
             norm_value = self.max_norm,

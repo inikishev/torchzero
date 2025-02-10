@@ -21,7 +21,7 @@ class HeavyBall(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         velocity = self.get_state_key('velocity', init = ascent)
         settings = self.get_all_group_keys()
         updated_direction = _heavyball_step(ascent, velocity, settings['momentum'], settings['dampening'])
@@ -52,7 +52,7 @@ class NesterovMomentum(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         velocity = self.get_state_key('velocity')
         settings = self.get_all_group_keys()
         _nesterov_step_(ascent, velocity, settings['momentum'], settings['dampening'])
@@ -65,7 +65,7 @@ class GradientAveraging(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         velocity = self.get_state_key('velocity')
         dampening = self.get_group_key('dampening')
 
@@ -89,7 +89,7 @@ class RandomCoordinateMomentum(OptimizerModule):
         self.nesterov = nesterov
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         velocity = self.get_state_key('velocity', init = ascent)
         settings = self.get_all_group_keys()
 

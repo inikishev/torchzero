@@ -58,7 +58,7 @@ class OrthoGrad(OptimizerModule):
         self.renormalize = renormalize
         self.sqrt_scale = sqrt_scale
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
 
         if self.renormalize: orig_norm = ascent.norm(2) + self.eps

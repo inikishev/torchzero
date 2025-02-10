@@ -31,7 +31,7 @@ class Adagrad(OptimizerModule):
         self.cur_step = 0
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         settings = self.get_all_group_keys()
         if self.cur_step == 0: init = ascent.full_like(settings['initial_accumulator_value'])
         else: init = None

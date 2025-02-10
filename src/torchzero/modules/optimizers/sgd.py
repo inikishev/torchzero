@@ -15,7 +15,7 @@ class SGD(OptimizerModule):
         weight_decay (float, optional): weight decay (L2 regularization). Defaults to 0.
         nesterov (bool, optional):
             enables nesterov momentum, otherwise uses heavyball momentum. Defaults to False.
-        alpha (float, optional): learning rate. Defaults to 1e-3.
+        alpha (float, optional): learning rate. Defaults to 1.
     """
     def __init__(
         self,
@@ -32,7 +32,7 @@ class SGD(OptimizerModule):
         self.current_step = 0
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
         settings = self.get_all_group_keys()
 

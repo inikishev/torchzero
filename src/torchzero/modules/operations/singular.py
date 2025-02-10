@@ -18,7 +18,7 @@ class Operation(OptimizerModule):
         self.operation = methodcaller(f'{operation}_')
 
     @torch.no_grad
-    def _update(self, state, ascent): return self.operation(ascent)
+    def _update(self, vars, ascent): return self.operation(ascent)
 
 class Reciprocal(OptimizerModule):
     """*1 / update*"""
@@ -26,7 +26,7 @@ class Reciprocal(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad()
-    def _update(self, state, ascent): return ascent.reciprocal_()
+    def _update(self, vars, ascent): return ascent.reciprocal_()
 
 class Negate(OptimizerModule):
     """minus update"""
@@ -34,7 +34,7 @@ class Negate(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad()
-    def _update(self, state, ascent): return ascent.neg_()
+    def _update(self, vars, ascent): return ascent.neg_()
 
 
 def sign_grad_(params: Iterable[torch.Tensor]):
@@ -51,7 +51,7 @@ class Sign(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent.sign_()
+    def _update(self, vars, ascent): return ascent.sign_()
 
 class Abs(OptimizerModule):
     """takes absolute values of the update."""
@@ -59,7 +59,7 @@ class Abs(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent.abs_()
+    def _update(self, vars, ascent): return ascent.abs_()
 
 class Sin(OptimizerModule):
     """applies sin function to the ascent"""
@@ -67,7 +67,7 @@ class Sin(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent.sin_()
+    def _update(self, vars, ascent): return ascent.sin_()
 
 class Cos(OptimizerModule):
     """applies cos function to the ascent"""
@@ -75,7 +75,7 @@ class Cos(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent.cos_()
+    def _update(self, vars, ascent): return ascent.cos_()
 
 
 class NanToNum(OptimizerModule):
@@ -97,7 +97,7 @@ class NanToNum(OptimizerModule):
         self.neginf = neginf
 
     @torch.no_grad()
-    def _update(self, state, ascent): return ascent.nan_to_num_(self.nan, self.posinf, self.neginf)
+    def _update(self, vars, ascent): return ascent.nan_to_num_(self.nan, self.posinf, self.neginf)
 
 
 class MagnitudePower(OptimizerModule):
@@ -107,7 +107,7 @@ class MagnitudePower(OptimizerModule):
         self.value = value
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if self.value % 2 == 1: return ascent.pow_(self.value)
         return ascent.abs().pow_(self.value) * ascent.sign()
 

@@ -121,16 +121,16 @@ class ExactNewton(OptimizerModule):
         self.diag = diag
 
     @torch.no_grad
-    def step(self, state):
-        if state.closure is None: raise ValueError("Newton requires a closure to compute the gradient.")
+    def step(self, vars):
+        if vars.closure is None: raise ValueError("Newton requires a closure to compute the gradient.")
 
         params = self.get_params()
 
         # exact hessian via autograd
         with torch.enable_grad():
-            state.fx0 = state.closure(False)
-            grads, hessian = jacobian_and_hessian([state.fx0], params) # type:ignore
-            state.grad = grads = TensorList(grads).squeeze_(0)
+            vars.fx0 = vars.closure(False)
+            grads, hessian = jacobian_and_hessian([vars.fx0], params) # type:ignore
+            vars.grad = grads = TensorList(grads).squeeze_(0)
             gvec = grads.to_vec()
             hessian = hessian_list_to_mat(hessian)
 
@@ -148,18 +148,18 @@ class ExactNewton(OptimizerModule):
                     newton_step, success = _fallback_gd(hessian, gvec)
 
         # apply the `_update` method
-        state.ascent = grads.from_vec(newton_step.squeeze_().nan_to_num_(0,0,0))
+        vars.ascent = grads.from_vec(newton_step.squeeze_().nan_to_num_(0,0,0))
 
         # validate if newton step decreased loss
         if self.validate:
 
-            params.sub_(state.ascent)
-            fx1 = state.closure(False)
-            params.add_(state.ascent)
+            params.sub_(vars.ascent)
+            fx1 = vars.closure(False)
+            params.add_(vars.ascent)
 
             # if loss increases, set ascent direction to grad times lr
-            if (not fx1.isfinite()) or fx1 - state.fx0 > state.fx0 * self.tol: # type:ignore
-                state.ascent = grads.div_(grads.total_vector_norm(2) / self.gd_lr)
+            if (not fx1.isfinite()) or fx1 - vars.fx0 > vars.fx0 * self.tol: # type:ignore
+                vars.ascent = grads.div_(grads.total_vector_norm(2) / self.gd_lr)
 
         # peform an update with the ascent direction, or pass it to the child.
-        return self._update_params_or_step_with_next(state, params=params)
+        return self._update_params_or_step_with_next(vars, params=params)

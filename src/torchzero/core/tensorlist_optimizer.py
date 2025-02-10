@@ -149,7 +149,7 @@ class TensorListOptimizer(torch.optim.Optimizer, ABC):
 
     # def get_group_keys[CLS: MutableSequence](self, *keys: str, cls: type[CLS] = NumberList) -> list[CLS]:
     def get_group_keys(self, *keys: str, cls: type[CLS] = NumberList) -> list[CLS]:
-        """Returns a TensorList with the param_groups `key` setting of each param."""
+        """Returns a list with the param_groups `key` setting of each param."""
 
         all_values: list[CLS] = [cls() for _ in keys]
         for group in self.param_groups:

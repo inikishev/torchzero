@@ -26,18 +26,18 @@ class Accumulate(OptimizerModule):
         self.cur_step = 0
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         self.cur_step += 1
 
         params = self.get_params()
         accumulated_update = self.get_state_key('accumulated_grads')
-        accumulated_update += state.maybe_use_grad_(params)
+        accumulated_update += vars.maybe_use_grad_(params)
 
         if self.cur_step % self.n_steps == 0:
-            state.ascent = accumulated_update.clone()
-            if self.mean: state.ascent /= self.n_steps
+            vars.ascent = accumulated_update.clone()
+            if self.mean: vars.ascent /= self.n_steps
             accumulated_update.zero_()
-            return self._update_params_or_step_with_next(state)
+            return self._update_params_or_step_with_next(vars)
 
 
-        return state.get_loss()
+        return vars.get_loss()

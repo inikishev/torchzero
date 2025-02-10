@@ -40,7 +40,7 @@ class Alternate(OptimizerModule):
             if len(self.mode) != len(self.children):
                 raise ValueError(f"got {len(self.children)} modules but {len(mode)} repeats, they should be the same")
 
-    def step(self, state):
+    def step(self, vars):
         if self.mode == 'random':
             module = self.random.choice(list(self.children.values()))
 
@@ -58,8 +58,8 @@ class Alternate(OptimizerModule):
             self.remaining -= 1
 
         if self.next_module is None:
-            return module.step(state)
+            return module.step(vars)
 
-        state.ascent = module.return_ascent(state)
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = module.return_ascent(vars)
+        return self._update_params_or_step_with_next(vars)
 

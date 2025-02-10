@@ -15,9 +15,9 @@ def _adam_step(ascent: TensorList, exp_avg: TensorList, exp_avg_sq: TensorList, 
 
     if max_exp_avg_sqs is not None:
         max_exp_avg_sqs.maximum_(exp_avg_sq)
-        denom = max_exp_avg_sqs.sqrt().div_(bias_correction2**0.5).add_(eps)
+        denom = max_exp_avg_sqs.sqrt().div_(bias_correction2**0.5 + eps)
     else:
-        denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5).add_(eps)
+        denom = exp_avg_sq.sqrt().div_(bias_correction2**0.5 + eps)
 
     if params is None:
         return (exp_avg / denom).mul_(alpha / bias_correction1)
@@ -48,7 +48,7 @@ class Adam(OptimizerModule):
         self.amsgrad = amsgrad
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         # Adam step is a bit differet from other optimizer steps
         # due to how common it is, I implemented two additional optimizations,
 
@@ -85,14 +85,14 @@ class Adam(OptimizerModule):
             alpha = settings['alpha']
 
         # get params if ascent is None so we need params to access their gradient as initial ascent
-        if state.ascent is None:
+        if vars.ascent is None:
             if params is None: pg = self.get_params()
             else: pg = params
         else:
             pg = None
 
         ret = _adam_step(
-            ascent=state.maybe_use_grad_(pg),
+            ascent=vars.maybe_use_grad_(pg),
             exp_avg = exp_avg,
             exp_avg_sq = exp_avg_sq,
             alpha = alpha,
@@ -107,12 +107,12 @@ class Adam(OptimizerModule):
         self.cur_step += 1
         if params is None:
             assert ret is not None
-            state.ascent = ret
-            return self._update_params_or_step_with_next(state)
+            vars.ascent = ret
+            return self._update_params_or_step_with_next(vars)
 
         # next module is either None or LR
-        if self.next_module is None: return state.get_loss()
+        if self.next_module is None: return vars.get_loss()
 
         # step with LR, which has _skip = True so it won't apply lr, but may step with the scheduler
-        self.next_module._update(state, None) # type:ignore
-        return state.get_loss()
+        self.next_module._update(vars, None) # type:ignore
+        return vars.get_loss()

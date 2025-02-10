@@ -3,7 +3,7 @@ import warnings
 from inspect import cleandoc
 import torch
 
-from ..core import OptimizerModule, TensorListOptimizer, OptimizationState, _Chain, _Chainable
+from ..core import OptimizerModule, TensorListOptimizer, OptimizationVars, _Chain, _Chainable
 from ..utils.python_tools import flatten
 
 def _unroll_modules(flat_modules: list[OptimizerModule], nested) -> list[OptimizerModule]:
@@ -126,7 +126,7 @@ class Modular(TensorListOptimizer):
         raise ValueError(f'No modules out of {", ".join(m.__class__.__name__ for m in modules)} match "{name}".')
 
     def step(self, closure=None): # type:ignore
-        state = OptimizationState(closure, self.model)
-        res = self.chain.step(state)
-        for hook in state.post_step_hooks: hook(self, state)
+        vars = OptimizationVars(closure, self.model)
+        res = self.chain.step(vars)
+        for hook in vars.post_step_hooks: hook(self, vars)
         return res

@@ -116,7 +116,7 @@ class ZeropowerViaNewtonSchulz(OptimizerModule):
         if compiled: self._zeropower_via_newtonschulz5 = _compiled_zeropower_via_newtonschulz5
         else: self._zeropower_via_newtonschulz5 = _zeropower_via_newtonschulz5
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         toggle, ns_steps, adaptive = self.get_group_keys('newtonshultz', 'ns_steps', 'adaptive', cls=list)
 
         for asc, enable, steps, ada in zip(ascent, toggle, ns_steps, adaptive):
@@ -146,11 +146,11 @@ class DualNormCorrection(OptimizerModule):
         defaults = dict(adaptive_scale_min = adaptive_scale_min, adaptive_scale_max = adaptive_scale_max)
         super().__init__(defaults)
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
         adaptive_scale_min, adaptive_scale_max = self.get_group_keys('adaptive_scale_min', 'adaptive_scale_max')
 
-        for asc, grad, min, max in zip(ascent, state.maybe_compute_grad_(params), adaptive_scale_min, adaptive_scale_max):
+        for asc, grad, min, max in zip(ascent, vars.maybe_compute_grad_(params), adaptive_scale_min, adaptive_scale_max):
             if len([i for i in asc.shape if i > 1]) != 0:
                 scale = torch.einsum('ij,ij->', grad.view(grad.shape[0], -1), asc.view(asc.shape[0], -1))
                 if min is not None or max is not None: scale = scale.clip(min, max)

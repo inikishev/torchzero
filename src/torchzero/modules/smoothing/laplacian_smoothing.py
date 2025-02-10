@@ -94,7 +94,7 @@ class LaplacianSmoothing(OptimizerModule):
 
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
         sigmas = self.get_group_key('sigma')
 

@@ -10,23 +10,22 @@ All modules are available in :py:mod:`tz.m<torchzero.modular>` namespace, e.g. :
 .. code:: python
 
     import torchzero as tz
-
-    # construct it like this
-    opt = tz.Modular(
-        model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.Cautious(), tz.m.WeightDecay()]
-    )
-
-    # or like this
     opt = tz.Modular(
         model.parameters(),
         tz.m.Adam(),
-        tz.m.LR(1e-3),
         tz.m.Cautious(),
+        tz.m.LR(1e-3),
         tz.m.WeightDecay(),
     )
 
-In the example above, :code:`Adam`, being the first module, takes in the gradient, applies the adam update rule, and passes the resulting update the next next module - :code:`LR`. It multiplies the update by the learning rate and passes it to :code:`Cautious`, which applies cautioning and passes it to :code:`WeightDecay`, which adds a weight decay penalty. The resulting update is then subtracted from the model parameters.
+In this examples, we're constructing an optimizer with four modules:
+
+* Adam: applies the Adam update rule to the gradients an passes to the :code:`Cautious` module.
+* Cautious: Applies "cautioning" to the update and passes it to :code:`LR`.
+* LR(1e-3): Scales the update by 1e-3 and passes it to :code:`WeightDecay`.
+* WeightDecay: Adds a weight decay penalty to the update. Since this is applied after :code:`Adam` and :code:`LR`, weight decay is fully decoupled.
+
+The resulting update is subtracted from model parameters.
 
 It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
 
@@ -36,10 +35,11 @@ Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNew
 
 Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>` and :py:class:`tz.m.WrapClosure<torchzero.modules.WrapClosure>` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
 
+A list of all modules is available at https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html
 
 How to perform optimization?
 ============================
-Most torchzero optimizers can be used in the same way as built in pytorch optimizers:
+Using torchzero optimizers is generally similar to using built-in PyTorch optimizers. Here's a typical training loop:
 
 .. code:: python
 
@@ -58,9 +58,9 @@ Most torchzero optimizers can be used in the same way as built in pytorch optimi
         opt.zero_grad()
 
 
-A few modules and optimizers require closure, similar to :code:`torch.optim.LBFGS` but with an additional :code:`backward` argument, which, if True, calls :code:`opt.zero_grad()` and :code:`loss.backward()`. The name of the argument doesn't matter, but I will refer to it as :code:`backward`.
+Some modules and optimizers in torchzero, particularly line-search methods and gradient approximation modules, require a closure function. This is similar to how :code:`torch.optim.LBFGS` works in PyTorch. In torchzero, the closure function for these optimizers needs to accept an argument (we'll call it backward, though the argument can have any name). When :code:`backward=True`, the closure should zero out gradients using :code:`opt.zero_grad()`, and compute gradients using :code:`loss.backward()`.
 
-All line-searches and gradient approximation modules, as well as a few other ones, require a closure. Training loop with a closure looks like this:
+Here's how a training loop with a closure looks:
 
 .. code:: python
 
@@ -83,14 +83,15 @@ All line-searches and gradient approximation modules, as well as a few other one
 
         loss = opt.step(closure)
 
-Note that all built-in pytorch optimizers, as well as most custom ones, support closure too! So the training loop above will work with all other optimizers out of the box, and switching to it prevents having to rewrite training loop when changing optimizers.
+Note that all built-in pytorch optimizers, as well as most custom ones, support closure too! So the code above will work with all other optimizers out of the box, and you can switch between different optimizers without rewriting your training loop.
 
-If you are intending to use gradient-free methods, :code:`backward` argument is still required in the closure. Simply leave it unused. Gradient-free and gradient approximation methods always call closure with :code:`backward=False`.
+If you intend to use gradient-free methods, :code:`backward` argument is still required in the closure. Simply leave it unused. Gradient-free and gradient approximation methods always call closure with :code:`backward=False`.
 
 How to use learning rate schedulers?
 =============================================
 There are two primary methods for using learning rate schedulers.
-One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR<torchzero.modules.LR>` module like this:
+
+You can directly pass a learning rate scheduler class or constructor to the scheduler_cls argument of the :py:class:`tz.m.LR<torchzero.modules.LR>` module:
 
 .. code:: python
 
@@ -103,7 +104,7 @@ One method is to pass learning rate scheduler class to the :py:class:`tz.m.LR<to
         tz.m.WeightDecay(),
     )
 
-This method also supports cycling momentum, which some schedulers like OneCycleLR do. Momentum will be cycled on all modules that have :code:`momentum` or :code:`beta1` parameters.
+This method has the advantage of supporting momentum cycling. Some schedulers, like :code:`OneCycleLR`, not only adjust the learning rate but also cycle momentum parameters. When using scheduler_cls with tz.m.LR, momentum cycling will be automatically applied to all modules in your optimizer chain that have :code:`momentum` or :code:`beta1` parameters.
 
 Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :py:meth:`get_lr_module<torchzero.optim.Modular.get_lr_module>` method like this:
 
@@ -121,7 +122,9 @@ Here :code:`get_lr_module` returns the :py:class:`tz.m.LR<torchzero.modules.LR>`
 
 How to specify per-parameter options?
 =============================================
-In pytorch it is possible to specify per-layer options, such as learning rate, using parameter groups. In torchzero those are specified in almost the same way (although there is a catch):
+PyTorch allows you to set different options, such as learning rates, for different layers or parameter groups using parameter groups. `torchzero` offers a similar mechanism for modular optimizers.
+
+You can define parameter groups as a list of dictionaries, just like in PyTorch. Each dictionary specifies the parameters and any custom settings for that group.
 
 .. code:: python
 
@@ -135,9 +138,18 @@ In pytorch it is possible to specify per-layer options, such as learning rate, u
         [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
     )
 
-In the example above, :code:`model.encoder` will use a custom learning rate of 1e-2, and custom adam epsilon of 1e-5, while :code:`model.decoder` will stick to the default learning rate of 1e-3 and the default epsilon value.
+In this example:
 
-The catch is that when you specify a setting such as `eps`, it will be applied to ALL modules that have that setting, which may lead to unexpected behavior. For example, both :py:class:`tz.m.Adam<torchzero.modules.Adam>` and :py:class:`tz.m.RandomizedFDM<torchzero.modules.RandomizedFDM>` have an `eps` parameter, which has completely different function and value range. To avoid this, per-parameter settings can be specified for specific modules by using the `set_params` method:
+* Parameters in :code:`model.encoder` will use a learning rate of 1e-2 and a custom Adam eps value of 1e-5.
+* Parameters in :code:`model.decoder` will use the default learning rate of 1e-3 and the default eps value.
+
+Important Catch: Setting Scope
++++++++++++++++++++++++++++++++
+When you specify a parameter like eps in the parameter groups, it will be applied to all modules in your optimizer chain that have an eps parameter. This can sometimes lead to unintended side effects.
+
+For instance, both :py:class:`tz.m.Adam<torchzero.modules.Adam>` and :py:class:`tz.m.RandomizedFDM<torchzero.modules.RandomizedFDM>` modules have an eps parameter, but they have completely different meanings and value ranges in each module. Applying an eps setting intended for Adam to RandomizedFDM could cause unexpected behavior.
+
+To avoid this issue and ensure settings are applied to the intended modules, use the :code:`set_params` method. This allows you to pass parameter groups specifically to a particular module.
 
 .. code:: python
 
@@ -146,21 +158,20 @@ The catch is that when you specify a setting such as `eps`, it will be applied t
         {'params': model.decoder.parameters()}
     ]
 
-    # 1. create adam
+    # 1. Create the Adam module
     adam = tz.m.Adam()
 
-    # 2. pass custom parameter groups to adam
+    # 2. Apply custom parameter groups to the Adam module using set_params
     adam.set_params(adam_param_groups)
 
-    # 3. create modular optimizer after passing custom parameter groups,
-    # pass it normal model.parameters()
+    # 3. Create the modular optimizer, passing the configured Adam module
     optimizer = tz.Modular(
         model.parameters(),
         [adam, tz.m.LR(1e-3), tz.m.WeightDecay()]
     )
 
 
-You don't have to worry about this if you are only setting per-layer lr, because the only module that has an :code:`lr` setting is :py:class:`tz.m.LR` (see :ref:`How do we handle learning rates?`).
+You don't have to worry about this if you are only setting per-layer lr, because the only module that has an :code:`lr` setting is :py:class:`tz.m.LR<torchzero.modules.LR>` (see :ref:`How do we handle learning rates?`).
 
 How do we handle learning rates?
 =================================
@@ -188,26 +199,16 @@ How to use external PyTorch optimizers as chainable modules?
 ============================================================
 In addition to torchzero modules, any PyTorch optimizer can be used as a module using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>`.
 
-There are two slightly different ways to construct a :code:`Wrap` module. Here I will convert :code:`LaProp` optimizer from `pytorch_optimizer <https://pytorch-optimizers.readthedocs.io/en/latest/optimizer/#pytorch_optimizer.LaProp>`_ library into a module and chain it with :py:class:`tz.m.Cautious<torchzero.modules.Cautious>`
+Here is an example of converting :code:`LaProp` optimizer from `pytorch_optimizer <https://pytorch-optimizers.readthedocs.io/en/latest/optimizer/#pytorch_optimizer.LaProp>`_ library into a module and chain it with :py:class:`tz.m.Cautious<torchzero.modules.Cautious>`
 
 .. code:: py
 
     from pytorch_optimizer import LaProp
 
-    # first way
     tz.Modular(
         model.parameters(),
         tz.m.ClipNorm(1),
         tz.m.Wrap(LaProp, lr = 1, betas = (0.9, 0.99)),
-        tz.m.LR(1e-3),
-        tz.m.Cautious(),
-    )
-
-    # second way (identical but more verbose)
-    tz.Modular(
-        model.parameters(),
-        tz.m.ClipNorm(1),
-        tz.m.Wrap(LaProp(model.parameters(), lr = 1, betas = (0.9, 0.99))),
         tz.m.LR(1e-3),
         tz.m.Cautious(),
     )

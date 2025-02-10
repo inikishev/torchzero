@@ -16,11 +16,11 @@ class Add(OptimizerModule):
         self.value = value
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.value, (int, float)):
             return ascent.add_(self.value)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         v = self.children['value'].return_ascent(state_copy)
         return ascent.add_(v)
 
@@ -36,11 +36,11 @@ class Sub(OptimizerModule):
         self.subtrahend = subtrahend
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.subtrahend, (int, float)):
             return ascent.sub_(self.subtrahend)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         subtrahend = self.children['subtrahend'].return_ascent(state_copy)
         return ascent.sub_(subtrahend)
 
@@ -55,11 +55,11 @@ class RSub(OptimizerModule):
         self.minuend = minuend
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.minuend, (int, float)):
             return ascent.sub_(self.minuend).neg_()
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         minuend = self.children['minuend'].return_ascent(state_copy)
         return ascent.sub_(minuend).neg_()
 
@@ -75,14 +75,14 @@ class Subtract(OptimizerModule):
         self._set_child_('subtrahend', subtrahend)
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent = True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent = True)
         minuend = self.children['minuend'].return_ascent(state_copy)
-        state.update_attrs_(state_copy)
-        subtrahend = self.children['subtrahend'].return_ascent(state)
+        vars.update_attrs_(state_copy)
+        subtrahend = self.children['subtrahend'].return_ascent(vars)
 
-        state.ascent = minuend.sub_(subtrahend)
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = minuend.sub_(subtrahend)
+        return self._update_params_or_step_with_next(vars)
 
 class Mul(OptimizerModule):
     """multiplies update by `value`. `value` can be a scalar, an OptimizerModule or sequence of OptimizerModules"""
@@ -95,11 +95,11 @@ class Mul(OptimizerModule):
         self.value = value
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.value, (int, float)):
             return ascent.mul_(self.value)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         v = self.children['value'].return_ascent(state_copy)
         return ascent.mul_(v)
 
@@ -115,11 +115,11 @@ class Div(OptimizerModule):
         self.denominator = denominator
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.denominator, (int, float)):
             return ascent.div_(self.denominator)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         denominator = self.children['denominator'].return_ascent(state_copy)
         return ascent.div_(denominator)
 
@@ -134,11 +134,11 @@ class RDiv(OptimizerModule):
         self.numerator = numerator
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.numerator, (int, float)):
             return ascent.reciprocal_().mul_(self.numerator)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         numerator = self.children['numerator'].return_ascent(state_copy)
         return ascent.reciprocal_().mul_(numerator)
 
@@ -154,14 +154,14 @@ class Divide(OptimizerModule):
         self._set_child_('denominator', denominator)
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent = True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent = True)
         numerator = self.children['numerator'].return_ascent(state_copy)
-        state.update_attrs_(state_copy)
-        denominator = self.children['denominator'].return_ascent(state)
+        vars.update_attrs_(state_copy)
+        denominator = self.children['denominator'].return_ascent(vars)
 
-        state.ascent = numerator.div_(denominator)
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = numerator.div_(denominator)
+        return self._update_params_or_step_with_next(vars)
 
 
 class Pow(OptimizerModule):
@@ -175,11 +175,11 @@ class Pow(OptimizerModule):
         self.power = power
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.power, (int, float)):
             return ascent.pow_(self.power)
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         power = self.children['power'].return_ascent(state_copy)
         return ascent.pow_(power)
 
@@ -194,11 +194,11 @@ class RPow(OptimizerModule):
         self.base = base
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.base, (int, float)):
             return self.base ** ascent
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         base = self.children['base'].return_ascent(state_copy)
         return base.pow_(ascent)
 
@@ -214,14 +214,14 @@ class Power(OptimizerModule):
         self._set_child_('power', power)
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent = True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent = True)
         base = self.children['base'].return_ascent(state_copy)
-        state.update_attrs_(state_copy)
-        power = self.children['power'].return_ascent(state)
+        vars.update_attrs_(state_copy)
+        power = self.children['power'].return_ascent(vars)
 
-        state.ascent = base.pow_(power)
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = base.pow_(power)
+        return self._update_params_or_step_with_next(vars)
 
 
 class Lerp(OptimizerModule):
@@ -235,9 +235,9 @@ class Lerp(OptimizerModule):
         self.weight = weight
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         end = self.children['end'].return_ascent(state_copy)
         return ascent.lerp_(end, self.weight)
 
@@ -259,15 +259,15 @@ class Interpolate(OptimizerModule):
         self.weight = weight
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent = True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent = True)
         input = self.children['input'].return_ascent(state_copy)
-        state.update_attrs_(state_copy)
-        end = self.children['end'].return_ascent(state)
+        vars.update_attrs_(state_copy)
+        end = self.children['end'].return_ascent(vars)
 
-        state.ascent = input.lerp_(end, weight = self.weight)
+        vars.ascent = input.lerp_(end, weight = self.weight)
 
-        return self._update_params_or_step_with_next(state)
+        return self._update_params_or_step_with_next(vars)
 
 class AddMagnitude(OptimizerModule):
     """Add `value` multiplied by sign of the ascent, i.e. this adds `value` to the magnitude of the update.
@@ -288,11 +288,11 @@ class AddMagnitude(OptimizerModule):
         self.add_to_zero = add_to_zero
 
     @torch.no_grad()
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if isinstance(self.value, (int, float)):
             if self.add_to_zero: return ascent.add_(ascent.clamp_magnitude(min=1).sign_().mul_(self.value))
             return ascent.add_(ascent.sign_().mul_(self.value))
 
-        state_copy = state.copy(clone_ascent = True)
+        state_copy = vars.copy(clone_ascent = True)
         v = self.children['value'].return_ascent(state_copy)
         return ascent.add_(v.abs_().mul_(ascent.sign()))

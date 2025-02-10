@@ -1,7 +1,7 @@
 import torch
 
 from ...tensorlist import TensorList
-from ...core import OptimizationState
+from ...core import OptimizationVars
 from .base_ls import LineSearchBase
 
 
@@ -32,23 +32,23 @@ class ArmijoLS(LineSearchBase):
         self.max_iter = max_iter
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
-        if state.closure is None: raise RuntimeError(f"Line searches ({self.__class__.__name__}) require a closure")
-        ascent = state.maybe_use_grad_(params)
-        grad = state.maybe_compute_grad_(params)
+    def _find_best_lr(self, vars: OptimizationVars, params: TensorList) -> float:
+        if vars.closure is None: raise RuntimeError(f"Line searches ({self.__class__.__name__}) require a closure")
+        ascent = vars.maybe_use_grad_(params)
+        grad = vars.maybe_compute_grad_(params)
         alpha = self.get_first_group_key('alpha')
-        if state.fx0 is None: state.fx0 = state.closure(False)
+        if vars.fx0 is None: vars.fx0 = vars.closure(False)
 
         # loss decrease per lr=1 if function was linear
         decrease_per_lr = (grad*ascent).total_sum()
 
         for _ in range(self.max_iter):
-            loss = self._evaluate_lr_(alpha, state.closure, ascent, params)
+            loss = self._evaluate_lr_(alpha, vars.closure, ascent, params)
 
             # expected decrease
             expected_decrease = decrease_per_lr * alpha
 
-            if (state.fx0 - loss) / expected_decrease >= self.beta:
+            if (vars.fx0 - loss) / expected_decrease >= self.beta:
                 return alpha
 
             alpha *= self.mul

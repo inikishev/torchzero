@@ -4,7 +4,7 @@ import torch
 
 from ...utils.python_tools import _ScalarLoss
 from ...tensorlist import TensorList
-from ...core import _ClosureType, OptimizerModule, OptimizationState
+from ...core import _ClosureType, OptimizerModule, OptimizationVars
 from ._fd_formulas import _FD_Formulas
 from .base_approximator import GradientApproximatorBase
 

@@ -40,7 +40,7 @@ class RMSProp(OptimizerModule):
         self.centered = centered
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         settings = self.get_all_group_keys()
         if self.centered:
             mean, mean_sqr = self.get_state_keys('mean', 'mean_sqr')

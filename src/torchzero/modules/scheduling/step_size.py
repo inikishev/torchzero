@@ -30,24 +30,24 @@ class PolyakStepSize(OptimizerModule):
         self.use_grad = use_grad
         self.parameterwise = parameterwise
 
-    def _update(self, state, ascent):
-        if state.closure is None: raise ValueError("PolyakStepSize requires closure")
-        if state.fx0 is None: state.fx0 = state.closure(False) # can only happen when placed after SPSA
+    def _update(self, vars, ascent):
+        if vars.closure is None: raise ValueError("PolyakStepSize requires closure")
+        if vars.fx0 is None: vars.fx0 = vars.closure(False) # can only happen when placed after SPSA
 
         alpha = self.get_group_key('alpha')
 
         if self.parameterwise:
-            if self.use_grad: denom = (ascent*state.maybe_compute_grad_(self.get_params())).mean()
+            if self.use_grad: denom = (ascent*vars.maybe_compute_grad_(self.get_params())).mean()
             else: denom = ascent.pow(2).mean()
-            polyak_step_size: TensorList | Any = (state.fx0 - self.min_obj_value) / denom.where(denom!=0, 1) # type:ignore
+            polyak_step_size: TensorList | Any = (vars.fx0 - self.min_obj_value) / denom.where(denom!=0, 1) # type:ignore
             polyak_step_size = polyak_step_size.where(denom != 0, 0)
             if self.max is not None: polyak_step_size = polyak_step_size.clamp_max(self.max)
 
         else:
-            if self.use_grad: denom = (ascent*state.maybe_compute_grad_(self.get_params())).total_mean()
+            if self.use_grad: denom = (ascent*vars.maybe_compute_grad_(self.get_params())).total_mean()
             else: denom = ascent.pow(2).total_mean()
             if denom == 0: polyak_step_size = 0 # we converged
-            else: polyak_step_size = (state.fx0 - self.min_obj_value) / denom
+            else: polyak_step_size = (vars.fx0 - self.min_obj_value) / denom
 
             if self.max is not None:
                 if polyak_step_size > self.max: polyak_step_size = self.max
@@ -72,7 +72,7 @@ class RandomStepSize(OptimizerModule):
         self.low = low; self.high = high
         self.parameterwise = parameterwise
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if self.parameterwise:
             lr = [random.uniform(self.low, self.high) for _ in range(len(ascent))]
         else:

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import torch
 
 from ...tensorlist import TensorList
-from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
+from ...core import _ClosureType, OptimizationVars, OptimizerModule, _maybe_pass_backward
 from ...utils.python_tools import _ScalarLoss
 
 
@@ -108,20 +108,20 @@ class LineSearchBase(OptimizerModule, ABC):
         if isinstance(v, torch.Tensor): return v.detach().cpu().item()
         return float(v)
 
-    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
+    def _find_best_lr(self, vars: OptimizationVars, params: TensorList) -> float:
         """This should return the best lr."""
         ... # pylint:disable=unnecessary-ellipsis
 
     @torch.no_grad
-    def step(self, state: OptimizationState):
+    def step(self, vars: OptimizationVars):
         self._reset()
         if self.log_lrs: self._lrs.append({})
 
         params = self.get_params()
-        ascent_direction = state.maybe_use_grad_(params)
+        ascent_direction = vars.maybe_use_grad_(params)
 
         try:
-            lr = self._find_best_lr(state, params) # pylint:disable=assignment-from-no-return
+            lr = self._find_best_lr(vars, params) # pylint:disable=assignment-from-no-return
         except MaxIterReached:
             lr = self._best_lr
 
@@ -133,7 +133,7 @@ class LineSearchBase(OptimizerModule, ABC):
         # otherwise undo the update by setting lr to 0 and instead multiply ascent direction by lr.
         self._set_lr_(0, ascent_direction, params)
         ascent_direction.mul_(self._best_lr)
-        state.ascent = ascent_direction
-        if state.fx0_approx is None: state.fx0_approx = self._lowest_loss
-        return self.next_module.step(state)
+        vars.ascent = ascent_direction
+        if vars.fx0_approx is None: vars.fx0_approx = self._lowest_loss
+        return self.next_module.step(vars)
 

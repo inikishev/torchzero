@@ -14,7 +14,7 @@ class Alpha(OptimizerModule):
         super().__init__(defaults)
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         # multiply ascent direction by lr in-place
         lr = self.get_group_key('alpha')
         ascent *= lr
@@ -27,7 +27,7 @@ class Clone(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent.clone()
+    def _update(self, vars, ascent): return ascent.clone()
 
 class Identity(OptimizerModule):
     """Does nothing."""
@@ -35,7 +35,7 @@ class Identity(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent): return ascent
+    def _update(self, vars, ascent): return ascent
 
 class Lambda(OptimizerModule):
     """Applies a function to the ascent direction.
@@ -49,7 +49,7 @@ class Lambda(OptimizerModule):
         self.f = f
 
     @torch.no_grad()
-    def _update(self, state, ascent): return self.f(ascent)
+    def _update(self, vars, ascent): return self.f(ascent)
 
 class Grad(OptimizerModule):
     """Uses gradient as the update. This is useful for chains."""
@@ -57,8 +57,8 @@ class Grad(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent):
-        ascent = state.ascent = state.maybe_compute_grad_(self.get_params())
+    def _update(self, vars, ascent):
+        ascent = vars.ascent = vars.maybe_compute_grad_(self.get_params())
         return ascent
 
 class Zeros(OptimizerModule):
@@ -66,7 +66,7 @@ class Zeros(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         return ascent.zeros_like()
 
 class Fill(OptimizerModule):
@@ -74,7 +74,7 @@ class Fill(OptimizerModule):
         super().__init__({"value": value})
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         return ascent.fill(self.get_group_key('value'))
 
 
@@ -83,8 +83,8 @@ class GradToUpdate(OptimizerModule):
     def __init__(self):
         super().__init__({})
 
-    def _update(self, state, ascent):
-        state.set_grad_(ascent, self.get_params())
+    def _update(self, vars, ascent):
+        vars.set_grad_(ascent, self.get_params())
         return ascent
 
 class MakeClosure(OptimizerModule):
@@ -93,12 +93,12 @@ class MakeClosure(OptimizerModule):
         super().__init__({})
         self._set_child_('modules', modules)
 
-    def step(self, state):
-        if state.closure is None: raise ValueError("MakeClosure requires a closure")
+    def step(self, vars):
+        if vars.closure is None: raise ValueError("MakeClosure requires a closure")
 
         params = self.get_params()
-        orig_closure = state.closure
-        orig_state = state.copy(True)
+        orig_closure = vars.closure
+        orig_state = vars.copy(True)
 
         def new_closure(backward = True):
             if backward:
@@ -110,6 +110,6 @@ class MakeClosure(OptimizerModule):
             else:
                 return orig_closure(False)
 
-        state.closure = new_closure # type:ignore
-        return self._update_params_or_step_with_next(state)
+        vars.closure = new_closure # type:ignore
+        return self._update_params_or_step_with_next(vars)
 

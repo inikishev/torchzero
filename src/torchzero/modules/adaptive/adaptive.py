@@ -33,16 +33,16 @@ class Cautious(OptimizerModule):
         self.mode: typing.Literal['zero', 'grad', 'backtrack'] = mode
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
-        grad = state.maybe_compute_grad_(params)
+        grad = vars.maybe_compute_grad_(params)
 
         # mask will be > 0 for parameters where both signs are the same
         mask = (ascent * grad) > 0
         if self.mode in ('zero', 'grad'):
             if self.normalize and self.mode == 'zero':
                 fmask = mask.to(ascent[0].dtype)
-                fmask /= fmask.total_mean() + self.eps
+                fmask /= fmask.total_mean() + self.eps # type:ignore
             else:
                 fmask = mask
 
@@ -66,9 +66,9 @@ class UseGradSign(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
-        grad = state.maybe_compute_grad_(params)
+        grad = vars.maybe_compute_grad_(params)
 
         return ascent.abs_().mul_(grad.sign())
 
@@ -80,9 +80,9 @@ class UseGradMagnitude(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
-        grad = state.maybe_compute_grad_(params)
+        grad = vars.maybe_compute_grad_(params)
 
         return ascent.sign_().mul_(grad.abs())
 
@@ -109,10 +109,10 @@ class ScaleLRBySignChange(OptimizerModule):
         self.use_grad = use_grad
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
 
-        if self.use_grad: cur = state.maybe_compute_grad_(params)
+        if self.use_grad: cur = vars.maybe_compute_grad_(params)
         else: cur = ascent
 
         nplus, nminus, lb, ub = self.get_group_keys('nplus', 'nminus', 'lb', 'ub')
@@ -168,10 +168,10 @@ class NegateOnSignChange(OptimizerModule):
         self.current_step = 0
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
 
-        if self.use_grad: cur = state.maybe_compute_grad_(params)
+        if self.use_grad: cur = vars.maybe_compute_grad_(params)
         else: cur = ascent
 
         prev = self.get_state_key('prev')

@@ -71,7 +71,7 @@ class LR(OptimizerModule):
         self._skip = False
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         # step with scheduler
         if self._scheduler_step_fn is not None:
             if self.cur != 0 and self.cur % self.sheduler_step_every == 0:
@@ -79,7 +79,7 @@ class LR(OptimizerModule):
 
                 # add a hook to cycle momentum
                 if self.cycle_momentum:
-                    state.add_post_step_hook(_set_momentum_hook)
+                    vars.add_post_step_hook(_set_momentum_hook)
 
             # remove init hook to delete reference to scheduler
             if self.cur == 0 and len(self.post_init_hooks) == 1:

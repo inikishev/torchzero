@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import OptimizationState, OptimizerModule
+from ...core import OptimizationVars, OptimizerModule
 from ...modules import ForwardGradient as _ForwardGradient, SGD, WeightDecay, LR
 from ...tensorlist import Distributions
 from ..modular import Modular

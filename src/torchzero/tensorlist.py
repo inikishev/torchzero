@@ -10,7 +10,7 @@ in an optimizer when you have to create one from parameters on each step. The so
 it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
 """
 import builtins
-from collections.abc import Callable, Sequence, Iterable, Generator
+from collections.abc import Callable, Sequence, Iterable, Generator, Iterator
 import math
 import operator
 from typing import Any, Literal, TypedDict
@@ -744,6 +744,13 @@ class NumberList(TensorList):
     Note that this only supports basic arithmetic operations that are overloaded.
 
     Can't use a numpy array because _foreach methods do not work with it."""
+    # remove torch.Tensor from return values
+    def __getitem__(self, i) -> Any:
+        return super().__getitem__(i)
+
+    def __iter__(self) -> Iterator[Any]:
+        return super().__iter__()
+
     def _set_to_method_result_(self, method: str, *args, **kwargs):
         """Sets each element of the tensorlist to the result of calling the specified method on the corresponding element.
         This is used to support/mimic in-place operations."""

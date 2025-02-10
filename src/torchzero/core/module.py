@@ -23,8 +23,8 @@ def _get_loss(fx0, fx0_approx):
     return fx0
 
 
-class OptimizationState:
-    """Holds optimization state. This is usually automatically created by :any:`torchzero.optim.Modular`."""
+class OptimizationVars:
+    """Holds optimization variables. This is usually automatically created by :any:`torchzero.optim.Modular`."""
     def __init__(self, closure: _ClosureType | None, model: torch.nn.Module | None):
 
         self.closure: _ClosureType | None = closure
@@ -121,23 +121,23 @@ class OptimizationState:
         Returns:
             A copy of this OptimizationState.
         """
-        state = OptimizationState(self.closure, self.model)
-        state.fx0 = self.fx0
-        state.fx0_approx = self.fx0_approx
-        state.grad = self.grad
+        vars = OptimizationVars(self.closure, self.model)
+        vars.fx0 = self.fx0
+        vars.fx0_approx = self.fx0_approx
+        vars.grad = self.grad
 
-        if clone_ascent and self.ascent is not None: state.ascent = self.ascent.clone()
-        else: state.ascent = self.ascent
+        if clone_ascent and self.ascent is not None: vars.ascent = self.ascent.clone()
+        else: vars.ascent = self.ascent
 
-        return state
+        return vars
 
-    def update_attrs_(self, state: "OptimizationState"):
+    def update_attrs_(self, vars: "OptimizationVars"):
         """Updates attributes of this state with attributes of another state.
 
         This updates `grad`, `fx0` and `fx0_approx`."""
-        if state.grad is not None: self.grad = state.grad
-        if state.fx0 is not None: self.fx0 = state.fx0
-        if state.fx0_approx is not None: self.fx0_approx = state.fx0_approx
+        if vars.grad is not None: self.grad = vars.grad
+        if vars.fx0 is not None: self.fx0 = vars.fx0
+        if vars.fx0_approx is not None: self.fx0_approx = vars.fx0_approx
 
 
     def add_post_step_hook(self, hook: Callable):
@@ -283,7 +283,7 @@ class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
         for c in self.children.values():
             self._update_child_params_(c)
 
-    def _update_params_or_step_with_next(self, state: OptimizationState, params: TensorList | None = None) -> _ScalarLoss | None:
+    def _update_params_or_step_with_next(self, vars: OptimizationVars, params: TensorList | None = None) -> _ScalarLoss | None:
         """If this has no children, update params and return loss. Otherwise step with the next module.
 
         Optionally pass params to not recreate them if you've already made them.
@@ -293,29 +293,29 @@ class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
         """
         # if this has no children, update params and return loss.
         if self.next_module is None:
-            if state.ascent is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
+            if vars.ascent is None: raise ValueError('Called _update_params_or_step_with_child but ascent_direction is None...')
             if params is None: params = self.get_params()
-            params -= state.ascent # type:ignore
-            return state.get_loss()
+            params -= vars.ascent # type:ignore
+            return vars.get_loss()
 
         # otherwise pass the updated ascent direction to the child
-        return self.next_module.step(state)
+        return self.next_module.step(vars)
 
     @torch.no_grad
-    def _step_update_closure(self, state: OptimizationState) -> _ScalarLoss | None:
+    def _step_update_closure(self, vars: OptimizationVars) -> _ScalarLoss | None:
         """Create a new closure which applies the `_update` method and passes it to the next module."""
-        if state.closure is None: raise ValueError('If target == "closure", closure must be provided')
+        if vars.closure is None: raise ValueError('If target == "closure", closure must be provided')
 
         params = self.get_params()
-        closure = state.closure # closure shouldn't reference state attribute because it can be changed
-        ascent_direction = state.ascent
+        closure = vars.closure # closure shouldn't reference state attribute because it can be changed
+        ascent_direction = vars.ascent
 
         def update_closure(backward = True):
             loss = _maybe_pass_backward(closure, backward)
 
             # on backward, update the ascent direction
             if backward:
-                grad = self._update(state, ascent_direction) # type:ignore
+                grad = self._update(vars, ascent_direction) # type:ignore
                 # set new ascent direction as gradients
                 # (accumulation doesn't make sense here as closure always calls zero_grad)
                 for p, g in zip(params,grad):
@@ -327,12 +327,12 @@ class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
         # if self.next_module is None:
         #     raise ValueError(f'{self.__class__.__name__} has no child to step with (maybe set "target" from "closure" to something else??).')
 
-        state.closure = update_closure
-        return self._update_params_or_step_with_next(state)
+        vars.closure = update_closure
+        return self._update_params_or_step_with_next(vars)
 
 
     @torch.no_grad
-    def _step_update_target(self, state: OptimizationState) -> _ScalarLoss | None:
+    def _step_update_target(self, vars: OptimizationVars) -> _ScalarLoss | None:
         """Apply _update method to the ascent direction and pass it to the child, or make a step if child is None."""
         # the following code by default uses `_update` method which simple modules can override.
         # But you can also just override the entire `step`.
@@ -342,50 +342,73 @@ class OptimizerModule(TensorListOptimizer, ABC): # type:ignore
         # update ascent direction
         if self._default_step_target == 'ascent':
             # if this is the first module, it uses the gradients
-            if state.grad is None: params = self.get_params()
-            t = state.maybe_use_grad_(params)
-            state.ascent = self._update(state, t)
+            if vars.grad is None: params = self.get_params()
+            t = vars.maybe_use_grad_(params)
+            vars.ascent = self._update(vars, t)
 
         # update gradients
         elif self._default_step_target == 'grad':
             if params is None: params = self.get_params()
-            g = state.maybe_compute_grad_(params)
-            g = self._update(state, g)
-            state.set_grad_(g, params)
+            g = vars.maybe_compute_grad_(params)
+            g = self._update(vars, g)
+            vars.set_grad_(g, params)
         else:
             raise ValueError(f"Invalid {self._default_step_target = }")
 
         # peform an update with the new state, or pass it to the child.
-        return self._update_params_or_step_with_next(state, params=params)
+        return self._update_params_or_step_with_next(vars, params=params)
 
     @torch.no_grad
     def step( # type:ignore # pylint:disable=signature-differs # pylint:disable = arguments-renamed
         self,
-        state: OptimizationState
+        vars: OptimizationVars
     ) -> _ScalarLoss | None:
         """Perform a single optimization step to update parameter."""
 
-        if self._default_step_target == 'closure': return self._step_update_closure(state)
-        return self._step_update_target(state)
+        if self._default_step_target == 'closure': return self._step_update_closure(vars)
+        return self._step_update_target(vars)
 
     @torch.no_grad
-    def _update(self, state: OptimizationState, ascent: TensorList) -> TensorList:
+    def _update(self, vars: OptimizationVars, ascent: TensorList) -> TensorList:
         """Update `ascent_direction` and return the new ascent direction (but it may update it in place).
-        Make sure it doesn't return anything from `state` to avoid future modules modifying that in-place.
+        Make sure it doesn't return anything from `self.state` to avoid future modules modifying that in-place.
 
         Before calling `_update`, if ascent direction was not provided to `step`, it will be set to the gradients.
 
         After generating a new ascent direction with this `_update` method,
         if this module has no child, ascent direction will be subtracted from params.
         Otherwise everything is passed to the child."""
+        params = self.get_params()
+        gradients = ascent.grad
+        if gradients is None: gradients = [None] * len(params)
+        settings = tuple(self.get_all_group_keys(list).items())
+
+        new_ascent = TensorList()
+        for i, (asc, param, grad) in enumerate(zip(ascent, params, gradients)):
+            kwargs = {"vars": vars, "ascent": asc, "param": param, "grad": grad}
+            kwargs.update({k:v[i] for k,v in settings})
+            new_ascent.append(self._single_tensor_update(**kwargs))
+        return new_ascent
+
+
+    def _single_tensor_update(self, vars: OptimizationVars, ascent: torch.Tensor, param: torch.Tensor, grad: torch.Tensor | None, **kwargs) -> torch.Tensor:
+        """Update function for a single tensor.
+
+        Args:
+            vars (OptimizationState): holds loss, gradients, etc.
+            ascent (torch.Tensor): update tensor.
+            param (torch.Tensor): parameter tensor.
+            grad (torch.Tensor | None): gradient tensor (may be None)
+            **kwargs: all per-parameter settings (stuff that you put in `defaults = dict(beta1=beta1, beta2=beta2, eps=eps)`).
+        """
         raise NotImplementedError()
 
-    def return_ascent(self, state: OptimizationState, params=None) -> TensorList:
+    def return_ascent(self, vars: OptimizationVars, params=None) -> TensorList:
         """step with this module and return the ascent as tensorlist"""
         if params is None: params = self.get_params()
         true_next = self.next_module
         self.next_module = _ReturnAscent(params) # type:ignore
-        ascent: TensorList = self.step(state) # type:ignore
+        ascent: TensorList = self.step(vars) # type:ignore
         self.next_module = true_next
         return ascent
 
@@ -412,8 +435,8 @@ class _ReturnAscent:
         self.next_module = None
 
     @torch.no_grad
-    def step(self, state: OptimizationState) -> TensorList: # type:ignore
-        update = state.maybe_use_grad_(self.params) # this will execute the closure which might be modified
+    def step(self, vars: OptimizationVars) -> TensorList: # type:ignore
+        update = vars.maybe_use_grad_(self.params) # this will execute the closure which might be modified
         return update
 
 
@@ -424,13 +447,13 @@ class _MaybeReturnAscent(OptimizerModule):
         self._return_ascent = False
 
     @torch.no_grad
-    def step(self, state: OptimizationState):
+    def step(self, vars: OptimizationVars):
         assert self.next_module is None, self.next_module
 
         if self._return_ascent:
-            return state.ascent
+            return vars.ascent
 
-        return self._update_params_or_step_with_next(state)
+        return self._update_params_or_step_with_next(vars)
 
 _Chainable = OptimizerModule | Iterable[OptimizerModule]
 
@@ -456,16 +479,16 @@ class _Chain(OptimizerModule):
         self._chain_modules = flat_modules
 
     @torch.no_grad
-    def step(self, state: OptimizationState):
+    def step(self, vars: OptimizationVars):
         # no next module, step with the child
         if self.next_module is None:
-            return self.children['first'].step(state)
+            return self.children['first'].step(vars)
 
         # return ascent and pass it to next module
         # we do this because updating parameters directly is often more efficient
         params = self.get_params()
         self._last_module.next_module = _ReturnAscent(params) # type:ignore
-        state.ascent: TensorList = self.children['first'].step(state) # type:ignore
+        vars.ascent: TensorList = self.children['first'].step(vars) # type:ignore
         self._last_module.next_module = None
 
-        return self._update_params_or_step_with_next(state)
+        return self._update_params_or_step_with_next(vars)

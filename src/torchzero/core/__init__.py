@@ -1,7 +1,7 @@
 import sys
 
 from .module import (
-    OptimizationState,
+    OptimizationVars,
     OptimizerModule,
     _Chain,
     _Chainable,

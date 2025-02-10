@@ -5,14 +5,14 @@ from collections import abc
 import torch
 
 from ... import tensorlist as tl
-from ...core import OptimizationState, OptimizerModule, _Chain, _maybe_pass_backward
+from ...core import OptimizationVars, OptimizerModule, _Chain, _maybe_pass_backward
 # this whole thing can also be implemented via parameter vectors.
 # Need to test which one is more efficient...
 
 class Projection(ABC):
     n = 1
     @abstractmethod
-    def sample(self, params: tl.TensorList, state: OptimizationState) -> list[tl.TensorList]:
+    def sample(self, params: tl.TensorList, vars: OptimizationVars) -> list[tl.TensorList]:
         """Generate a projection.
 
         Args:
@@ -28,7 +28,7 @@ class ProjRandom(Projection):
         self.distribution: tl.Distributions = distribution
         self.n = n
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
         return [params.sample_like(distribution=self.distribution) for _ in range(self.n)]
 
 
@@ -42,7 +42,7 @@ class Proj2Masks(Projection):
     def n(self):
         return self.n_pairs * 2
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
         projections = []
         for i in range(self.n_pairs):
             mask = params.bernoulli_like(0.5)
@@ -55,9 +55,9 @@ class Proj2Masks(Projection):
 
 class ProjAscent(Projection):
     """Use ascent direction as the projection."""
-    def sample(self, params: tl.TensorList, state: OptimizationState):
-        if state.ascent is None: raise ValueError
-        return [state.ascent]
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
+        if vars.ascent is None: raise ValueError
+        return [vars.ascent]
 
 class ProjAscentRay(Projection):
     def __init__(self, eps = 0.1, n = 1, distribution: tl.Distributions = 'normal', ):
@@ -65,14 +65,14 @@ class ProjAscentRay(Projection):
         self.distribution: tl.Distributions = distribution
         self.n = n
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
-        if state.ascent is None: raise ValueError
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
+        if vars.ascent is None: raise ValueError
         mean = params.total_mean().detach().cpu().item()
-        return [state.ascent + state.ascent.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
+        return [vars.ascent + vars.ascent.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
 
 class ProjGrad(Projection):
-    def sample(self, params: tl.TensorList, state: OptimizationState):
-        grad = state.maybe_compute_grad_(params)
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
+        grad = vars.maybe_compute_grad_(params)
         return [grad]
 
 class ProjGradRay(Projection):
@@ -81,8 +81,8 @@ class ProjGradRay(Projection):
         self.distribution: tl.Distributions = distribution
         self.n = n
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
-        grad = state.maybe_compute_grad_(params)
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
+        grad = vars.maybe_compute_grad_(params)
         mean = params.total_mean().detach().cpu().item()
         return [grad + grad.sample_like(mean * self.eps, distribution=self.distribution) for _ in range(self.n)]
 
@@ -95,23 +95,23 @@ class ProjGradAscentDifference(Projection):
         """
         self.normalize = normalize
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
-        grad = state.maybe_compute_grad_(params)
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
+        grad = vars.maybe_compute_grad_(params)
         if self.normalize:
-            return [state.ascent / state.ascent.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
+            return [vars.ascent / vars.ascent.total_vector_norm(2) - grad / grad.total_vector_norm(2)] # type:ignore
 
-        return [state.ascent - grad] # type:ignore
+        return [vars.ascent - grad] # type:ignore
 
 class ProjLastGradDifference(Projection):
     def __init__(self):
         """Use difference between last two gradients as the projection."""
         self.last_grad = None
-    def sample(self, params: tl.TensorList, state: OptimizationState):
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
         if self.last_grad is None:
-            self.last_grad = state.maybe_compute_grad_(params)
+            self.last_grad = vars.maybe_compute_grad_(params)
             return [self.last_grad]
 
-        grad = state.maybe_compute_grad_(params)
+        grad = vars.maybe_compute_grad_(params)
         diff = grad - self.last_grad
         self.last_grad = grad
         return [diff]
@@ -121,13 +121,13 @@ class ProjLastAscentDifference(Projection):
         """Use difference between last two ascent directions as the projection."""
         self.last_direction = T.cast(tl.TensorList, None)
 
-    def sample(self, params: tl.TensorList, state: OptimizationState):
+    def sample(self, params: tl.TensorList, vars: OptimizationVars):
         if self.last_direction is None:
-            self.last_direction: tl.TensorList = state.ascent # type:ignore
+            self.last_direction: tl.TensorList = vars.ascent # type:ignore
             return [self.last_direction]
 
-        diff = state.ascent - self.last_direction # type:ignore
-        self.last_direction = state.ascent # type:ignore
+        diff = vars.ascent - self.last_direction # type:ignore
+        self.last_direction = vars.ascent # type:ignore
         return [diff]
 
 class ProjNormalize(Projection):
@@ -139,10 +139,10 @@ class ProjNormalize(Projection):
     def n(self):
         return sum(proj.n for proj in self.projections)
 
-    def sample(self, params: tl.TensorList, state: OptimizationState): # type:ignore
-        vecs = [proj for obj in self.projections for proj in obj.sample(params, state)]
+    def sample(self, params: tl.TensorList, vars: OptimizationVars): # type:ignore
+        vecs = [proj for obj in self.projections for proj in obj.sample(params, vars)]
         norms = [v.total_vector_norm(2) for v in vecs]
-        return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)]
+        return [v/norm if norm!=0 else v.randn_like() for v,norm in zip(vecs,norms)] # type:ignore
 
 class Subspace(OptimizerModule):
     """This is pretty inefficient, I thought of a much better way to do this via jvp and I will rewrite this soon.
@@ -198,17 +198,17 @@ class Subspace(OptimizerModule):
             child.add_param_group({"params": params})
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         #if self.next_module is None: raise ValueError('RandomProjection needs a child')
-        if state.closure is None: raise ValueError('RandomProjection needs a closure')
-        closure = state.closure
+        if vars.closure is None: raise ValueError('RandomProjection needs a closure')
+        closure = vars.closure
         params = self.get_params()
 
         # every `regenerate_every` steps we generate new random projections.
         if self.current_step == 0 or (self.update_every is not None and self.current_step % self.update_every == 0):
 
             # generate n projection vetors
-            self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, state)]
+            self.projection_vectors = [sample for proj in self.projections for sample in proj.sample(params, vars)]
 
             # child params is n scalars corresponding to each projection vector
             self.projected_params = self.children['subspace']._params[0] # type:ignore
@@ -235,7 +235,7 @@ class Subspace(OptimizerModule):
         #     ascent_direction = tl.sum([ascent_direction*v for v in self.projection_vectors])
 
         # perform a step with the child
-        subspace_state = state.copy(False)
+        subspace_state = vars.copy(False)
         subspace_state.closure = projected_closure
         subspace_state.ascent = None
         if subspace_state.grad is not None:
@@ -244,11 +244,11 @@ class Subspace(OptimizerModule):
 
         # that is going to update child's paramers, which we now project back to the full parameter space
         residual = tl.sum([vec * p for vec, p in zip(self.projection_vectors, self.projected_params)])
-        state.ascent = residual.neg_()
+        vars.ascent = residual.neg_()
 
         # move fx0 and fx0 approx to state
-        if subspace_state.fx0 is not None: state.fx0 = subspace_state.fx0
-        if subspace_state.fx0_approx is not None: state.fx0 = subspace_state.fx0_approx
+        if subspace_state.fx0 is not None: vars.fx0 = subspace_state.fx0
+        if subspace_state.fx0_approx is not None: vars.fx0 = subspace_state.fx0_approx
         # projected_params are residuals that have been applied to actual params on previous step in some way
         # therefore they need to now become zero (otherwise they work like momentum with no decay).
         # note: THIS WON'T WORK WITH INTEGRATIONS, UNLESS THEY PERFORM FULL MINIMIZATION EACH STEP
@@ -256,4 +256,4 @@ class Subspace(OptimizerModule):
         self.projected_params.zero_()
 
         self.current_step += 1
-        return self._update_params_or_step_with_next(state)
+        return self._update_params_or_step_with_next(vars)

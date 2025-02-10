@@ -50,7 +50,7 @@ class SwitchEMA(OptimizerModule):
         params.set_(self.orig_params)
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         # if self.next_module is not None:
         #     warn(f'EMA should usually be the last module, but {self.next_module.__class__.__name__} is after it.')
         self.cur_step += 1
@@ -58,7 +58,7 @@ class SwitchEMA(OptimizerModule):
         params = self.get_params()
         # state.maybe_use_grad_(params)
         # update params with the child. Averaging is always applied at the end.
-        ret = self._update_params_or_step_with_next(state, params)
+        ret = self._update_params_or_step_with_next(vars, params)
 
         ema = self.get_state_key('ema', init = 'params', params=params)
         momentum = self.get_group_key('momentum')
@@ -67,6 +67,6 @@ class SwitchEMA(OptimizerModule):
 
         if (self.update_every is not None) and (self.cur_step % self.update_every == 0):
             params.set_(ema.clone())
-            if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
+            if self._reset_stats: vars.add_post_step_hook(_reset_stats_hook)
 
         return ret

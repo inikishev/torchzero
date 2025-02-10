@@ -80,7 +80,7 @@ class Orthogonalize(OptimizerModule):
         super().__init__(defaults, target = target)
         self.warn_fail = warn_fail
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         toggle = self.get_group_key('orth', cls=list)
         _orthogonalize_update_(ascent, toggle, self.warn_fail)
         return ascent

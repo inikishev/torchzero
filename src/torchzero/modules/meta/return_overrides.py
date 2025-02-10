@@ -9,12 +9,12 @@ class SetGrad(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         if self.next_module is not None: raise ValueError("SetGrad can't have children")
         params = self.get_params()
-        g = state.maybe_use_grad_(params) # this may execute the closure which might be modified
+        g = vars.maybe_use_grad_(params) # this may execute the closure which might be modified
         params.set_grad_(g)
-        return state.get_loss()
+        return vars.get_loss()
 
 
 class ReturnAscent(OptimizerModule):
@@ -23,10 +23,10 @@ class ReturnAscent(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, state) -> TensorList: # type:ignore
+    def step(self, vars) -> TensorList: # type:ignore
         if self.next_module is not None: raise ValueError("ReturnAscent can't have children")
         params = self.get_params()
-        update = state.maybe_use_grad_(params) # this will execute the closure which might be modified
+        update = vars.maybe_use_grad_(params) # this will execute the closure which might be modified
         return update
 
 class ReturnClosure(OptimizerModule):
@@ -38,9 +38,9 @@ class ReturnClosure(OptimizerModule):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, state) -> _ClosureType: # type:ignore
+    def step(self, vars) -> _ClosureType: # type:ignore
         if self.next_module is not None: raise ValueError("ReturnClosure can't have children")
-        if state.closure is None:
+        if vars.closure is None:
             raise ValueError("MakeClosure requires closure")
-        return state.closure
+        return vars.closure
 

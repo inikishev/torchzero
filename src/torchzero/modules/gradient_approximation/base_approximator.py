@@ -5,7 +5,7 @@ from typing import Any, Literal
 import torch
 
 from ...core import (
-    OptimizationState,
+    OptimizationVars,
     OptimizerModule,
     _ClosureType,
     _maybe_pass_backward,
@@ -39,12 +39,12 @@ class GradientApproximatorBase(OptimizerModule, ABC):
         super().__init__(defaults, target)
         self.requires_fx0 = requires_fx0
 
-    def _step_make_closure_(self, state: OptimizationState, params: TensorList):
-        if state.closure is None: raise ValueError("gradient approximation requires closure")
-        closure = state.closure
+    def _step_make_closure_(self, vars: OptimizationVars, params: TensorList):
+        if vars.closure is None: raise ValueError("gradient approximation requires closure")
+        closure = vars.closure
 
-        if self.requires_fx0: fx0 = state.evaluate_fx0_(False)
-        else: fx0 = state.fx0
+        if self.requires_fx0: fx0 = vars.evaluate_fx0_(False)
+        else: fx0 = vars.fx0
 
         def new_closure(backward=True) -> _ScalarLoss:
             if backward:
@@ -56,35 +56,35 @@ class GradientApproximatorBase(OptimizerModule, ABC):
 
             return closure(False)
 
-        state.closure = new_closure
+        vars.closure = new_closure
 
-    def _step_make_target_(self, state: OptimizationState, params: TensorList):
-        if state.closure is None: raise ValueError("gradient approximation requires closure")
+    def _step_make_target_(self, vars: OptimizationVars, params: TensorList):
+        if vars.closure is None: raise ValueError("gradient approximation requires closure")
 
-        if self.requires_fx0: fx0 = state.evaluate_fx0_(False)
-        else: fx0 = state.fx0
+        if self.requires_fx0: fx0 = vars.evaluate_fx0_(False)
+        else: fx0 = vars.fx0
 
-        g, state.fx0, state.fx0_approx = self._make_ascent(state.closure, params, fx0)
-        if self._default_step_target == 'ascent': state.ascent = g
-        elif self._default_step_target == 'grad': state.set_grad_(g, params)
+        g, vars.fx0, vars.fx0_approx = self._make_ascent(vars.closure, params, fx0)
+        if self._default_step_target == 'ascent': vars.ascent = g
+        elif self._default_step_target == 'grad': vars.set_grad_(g, params)
         else: raise ValueError(f"Unknown target {self._default_step_target}")
 
     @torch.no_grad
-    def step(self, state: OptimizationState):
+    def step(self, vars: OptimizationVars):
         params = self.get_params()
         if self._default_step_target == 'closure':
-            self._step_make_closure_(state, params)
+            self._step_make_closure_(vars, params)
 
         else:
-            self._step_make_target_(state, params)
+            self._step_make_target_(vars, params)
 
-        return self._update_params_or_step_with_next(state, params)
+        return self._update_params_or_step_with_next(vars, params)
 
     @abstractmethod
     @torch.no_grad
     def _make_ascent(
         self,
-        # state: OptimizationState,
+        # vars: OptimizationVars,
         closure: _ClosureType,
         params: TensorList,
         fx0: Any,
@@ -94,11 +94,6 @@ class GradientApproximatorBase(OptimizerModule, ABC):
         .. code:: py
 
             (ascent, fx0, fx0_approx)
-
-        :code:`ascent` is the approximated gradient,
-        :code:`fx0` is loss value strictly with initial parameters of the current step,
-        :code:`fx0_approx` is loss value with perturbed parameters (will be returned by optimizer step if fx0 is None).
-        :code:`fx0` and :code:`fx0_approx` can be None.
 
         Args:
             closure (_ClosureType): closure

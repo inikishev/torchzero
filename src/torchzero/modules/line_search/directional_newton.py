@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from ...tensorlist import TensorList
-from ...core import OptimizationState
+from ...core import OptimizationVars
 from .base_ls import LineSearchBase
 
 _FloatOrTensor = float | torch.Tensor
@@ -57,14 +57,14 @@ class DirectionalNewton(LineSearchBase):
         self.validate_step = validate_step
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
-        if state.closure is None: raise ValueError('QuardaticLS requires closure')
-        closure = state.closure
+    def _find_best_lr(self, vars: OptimizationVars, params: TensorList) -> float:
+        if vars.closure is None: raise ValueError('QuardaticLS requires closure')
+        closure = vars.closure
 
         params = self.get_params()
-        grad = state.maybe_compute_grad_(params)
-        ascent = state.maybe_use_grad_(params)
-        if state.fx0 is None: state.fx0 = state.closure(False) # at this stage maybe_compute_grad could've evaluated fx0
+        grad = vars.maybe_compute_grad_(params)
+        ascent = vars.maybe_use_grad_(params)
+        if vars.fx0 is None: vars.fx0 = vars.closure(False) # at this stage maybe_compute_grad could've evaluated fx0
 
         alpha: float = self.get_first_group_key('alpha') # this doesn't support variable lrs but we still want to support schedulers
 
@@ -78,7 +78,7 @@ class DirectionalNewton(LineSearchBase):
         if y1_prime != 0:
             xmin, a = _fit_and_minimize_quadratic_2points_grad(
                 x1=0,
-                y1=state.fx0,
+                y1=vars.fx0,
                 y1_prime=-y1_prime,
                 x2=alpha,
                 # we stepped in the direction of minus gradient times lr.
@@ -172,14 +172,14 @@ class DirectionalNewton3Points(LineSearchBase):
         self.validate_step = validate_step
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
-        if state.closure is None: raise ValueError('QuardaticLS requires closure')
-        closure = state.closure
-        ascent_direction = state.ascent
+    def _find_best_lr(self, vars: OptimizationVars, params: TensorList) -> float:
+        if vars.closure is None: raise ValueError('QuardaticLS requires closure')
+        closure = vars.closure
+        ascent_direction = vars.ascent
         if ascent_direction is None: raise ValueError('Ascent direction is None')
         alpha: float = self.get_first_group_key('alpha')
 
-        if state.fx0 is None: state.fx0 = state.closure(False)
+        if vars.fx0 is None: vars.fx0 = vars.closure(False)
         params = self.get_params()
 
         # make a step in the direction and evaluate f(x2)
@@ -190,7 +190,7 @@ class DirectionalNewton3Points(LineSearchBase):
 
         # if gradients weren't 0
         xmin, a = _newton_step_3points(
-            0, state.fx0,
+            0, vars.fx0,
             # we stepped in the direction of minus ascent_direction.
             alpha, y2,
             alpha * 2, y3

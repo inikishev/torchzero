@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 
 #         self.id = random.random()
 
-#     def step(self, state):
+#     def step(self, vars):
 #         if self.cur % self.update_every == 0:
 #             self.scheduler_step_fn()
 #             self.cur_lr = self.dummy_opt.first_param_group['lr']
@@ -113,7 +113,7 @@ class LRWarmup(OptimizerModule):
 
         self.cur = 0
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         if self.cur < self.delay_steps:
             if self.start_lr != 1: ascent *= self.start_lr
 

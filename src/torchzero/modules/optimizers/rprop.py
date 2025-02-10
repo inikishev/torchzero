@@ -49,7 +49,7 @@ class Rprop(OptimizerModule):
         self.backtrack = backtrack
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
 
         sign = ascent.sign_()

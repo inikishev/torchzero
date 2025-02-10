@@ -121,16 +121,16 @@ class NewtonFDM(OptimizerModule):
         self.tol = tol
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         """Returns a new ascent direction."""
-        if state.closure is None: raise ValueError('NewtonFDM requires a closure.')
-        if state.ascent is not None: raise ValueError('NewtonFDM got ascent direction')
+        if vars.closure is None: raise ValueError('NewtonFDM requires a closure.')
+        if vars.ascent is not None: raise ValueError('NewtonFDM got ascent direction')
 
         params = self.get_params()
         epsilons = self.get_group_key('eps')
 
         # evaluate fx0.
-        if state.fx0 is None: state.fx0 = state.closure(False)
+        if vars.fx0 is None: vars.fx0 = vars.closure(False)
 
         # evaluate gradients and hessian via finite differences.
         grads = params.zeros_like()
@@ -152,7 +152,7 @@ class NewtonFDM(OptimizerModule):
                             cur2 += 1
                             continue
                         _three_point_2cd_(
-                            closure = state.closure,
+                            closure = vars.closure,
                             idx1 = idx1,
                             idx2 = idx2,
                             p1 = flat_param1,
@@ -161,7 +161,7 @@ class NewtonFDM(OptimizerModule):
                             hessian = hessian,
                             eps1 = eps1,
                             eps2 = eps2,
-                            fx0 = state.fx0,
+                            fx0 = vars.fx0,
                             i1 = cur1,
                             i2 = cur2,
                         )
@@ -181,18 +181,18 @@ class NewtonFDM(OptimizerModule):
                     newton_step, success = _fallback_gd(hessian, gvec)
 
         # update params or pass the gradients to the child.
-        state.ascent = grads.from_vec(newton_step)
+        vars.ascent = grads.from_vec(newton_step)
 
 
         # validate if newton step decreased loss
         if self.validate:
 
-            params.sub_(state.ascent)
-            fx1 = state.closure(False)
-            params.add_(state.ascent)
+            params.sub_(vars.ascent)
+            fx1 = vars.closure(False)
+            params.add_(vars.ascent)
 
             # if loss increases, set ascent direction to gvec times lr
-            if fx1 - state.fx0 > state.fx0 * self.tol:
-                state.ascent = grads.from_vec(gvec) * self.gd_lr
+            if fx1 - vars.fx0 > vars.fx0 * self.tol:
+                vars.ascent = grads.from_vec(gvec) * self.gd_lr
 
-        return self._update_params_or_step_with_next(state, params)
+        return self._update_params_or_step_with_next(vars, params)

@@ -35,9 +35,9 @@ class MinibatchRprop(OptimizerModule):
         self.next_mode = next_mode
 
     @torch.no_grad
-    def step(self, state):
-        if state.closure is None: raise ValueError("Minibatch Rprop requires closure")
-        if state.ascent is not None: raise ValueError("Minibatch Rprop must be the first module.")
+    def step(self, vars):
+        if vars.closure is None: raise ValueError("Minibatch Rprop requires closure")
+        if vars.ascent is not None: raise ValueError("Minibatch Rprop must be the first module.")
         params = self.get_params()
 
         nplus, nminus, lb, ub = self.get_group_keys('nplus', 'nminus', 'lb', 'ub')
@@ -47,7 +47,7 @@ class MinibatchRprop(OptimizerModule):
             params=params
         )
 
-        g1_sign = state.maybe_compute_grad_(params).sign() # no inplace to not modify grads
+        g1_sign = vars.maybe_compute_grad_(params).sign() # no inplace to not modify grads
         # initialize on 1st iteration
         if self.current_step == 0:
             magnitudes.fill_(self.get_group_key('alpha')).clamp_(lb, ub)
@@ -58,8 +58,8 @@ class MinibatchRprop(OptimizerModule):
         # first step
         ascent = g1_sign.mul_(magnitudes).mul_(allowed)
         params -= ascent
-        with torch.enable_grad(): state.fx0_approx = state.closure()
-        f0 = state.fx0; f1 = state.fx0_approx
+        with torch.enable_grad(): vars.fx0_approx = vars.closure()
+        f0 = vars.fx0; f1 = vars.fx0_approx
         assert f0 is not None and f1 is not None
 
         # if loss increased, reduce all lrs and undo the update
@@ -73,9 +73,9 @@ class MinibatchRprop(OptimizerModule):
         # on `continue` we move to params after 1st update
         # therefore state must be updated to have all attributes after 1st update
         if self.next_mode == 'continue':
-            state.fx0 = state.fx0_approx
-            state.grad = params.ensure_grad_().grad
-            sign = state.grad.sign()
+            vars.fx0 = vars.fx0_approx
+            vars.grad = params.ensure_grad_().grad
+            sign = vars.grad.sign()
 
         else:
             sign = params.ensure_grad_().grad.sign_() # can use in-place as this is not fx0 grad
@@ -109,19 +109,19 @@ class MinibatchRprop(OptimizerModule):
 
         # update params or step
         if self.next_mode == 'continue' or (self.next_mode == 'add' and self.next_module is None):
-            state.ascent = ascent2
-            return self._update_params_or_step_with_next(state, params)
+            vars.ascent = ascent2
+            return self._update_params_or_step_with_next(vars, params)
 
         if self.next_mode == 'add':
             # undo 1st step
             params += ascent
-            state.ascent = ascent + ascent2
-            return self._update_params_or_step_with_next(state, params)
+            vars.ascent = ascent + ascent2
+            return self._update_params_or_step_with_next(vars, params)
 
         if self.next_mode == 'undo':
             params += ascent
-            state.ascent = ascent2
-            return self._update_params_or_step_with_next(state, params)
+            vars.ascent = ascent2
+            return self._update_params_or_step_with_next(vars, params)
 
         raise ValueError(f'invalid next_mode: {self.next_mode}')
 
@@ -140,9 +140,9 @@ class GradMin(OptimizerModule):
         self.create_graph = create_graph
 
     @torch.no_grad
-    def step(self, state):
-        if state.closure is None: raise ValueError()
-        if state.ascent is not None:
+    def step(self, vars):
+        if vars.closure is None: raise ValueError()
+        if vars.ascent is not None:
             raise ValueError("GradMin doesn't accept ascent_direction")
 
         params = self.get_params()
@@ -150,26 +150,26 @@ class GradMin(OptimizerModule):
 
         self.zero_grad()
         with torch.enable_grad():
-            state.fx0 = state.closure(False)
-            grads = jacobian([state.fx0], params, create_graph=True, batched=False) # type:ignore
+            vars.fx0 = vars.closure(False)
+            grads = jacobian([vars.fx0], params, create_graph=True, batched=False) # type:ignore
             grads = TensorList(grads).squeeze_(0)
             if self.square:
                 grads = grads ** 2
             else:
                 grads = grads.abs()
 
-            if self.maximize_grad: grads: TensorList = grads - (state.fx0 * loss_term) # type:ignore
-            else: grads = grads + (state.fx0 * loss_term)
+            if self.maximize_grad: grads: TensorList = grads - (vars.fx0 * loss_term) # type:ignore
+            else: grads = grads + (vars.fx0 * loss_term)
             grad_mean = torch.sum(torch.stack(grads.sum())) / grads.total_numel()
 
             if self.create_graph: grad_mean.backward(create_graph=True)
             else: grad_mean.backward(retain_graph=False)
 
-        if self.maximize_grad: state.grad = params.ensure_grad_().grad.neg_()
-        else: state.grad = params.ensure_grad_().grad
+        if self.maximize_grad: vars.grad = params.ensure_grad_().grad.neg_()
+        else: vars.grad = params.ensure_grad_().grad
 
-        state.maybe_use_grad_(params)
-        return self._update_params_or_step_with_next(state)
+        vars.maybe_use_grad_(params)
+        return self._update_params_or_step_with_next(vars)
 
 
 class HVPDiagNewton(OptimizerModule):
@@ -182,26 +182,26 @@ class HVPDiagNewton(OptimizerModule):
         super().__init__(dict(eps=eps))
 
     @torch.no_grad
-    def step(self, state):
-        if state.closure is None: raise ValueError()
-        if state.ascent is not None:
+    def step(self, vars):
+        if vars.closure is None: raise ValueError()
+        if vars.ascent is not None:
             raise ValueError("HVPDiagNewton doesn't accept ascent_direction")
 
         params = self.get_params()
         eps = self.get_group_key('eps')
-        grad_fx0 = state.maybe_compute_grad_(params).clone()
-        state.grad = grad_fx0 # set state grad to the cloned version, since it will be overwritten
+        grad_fx0 = vars.maybe_compute_grad_(params).clone()
+        vars.grad = grad_fx0 # set state grad to the cloned version, since it will be overwritten
 
         params += grad_fx0 * eps
-        with torch.enable_grad(): _ = state.closure()
+        with torch.enable_grad(): _ = vars.closure()
 
         params -= grad_fx0 * eps
 
         newton = grad_fx0 * ((grad_fx0 * eps) / (params.grad - grad_fx0))
         newton.nan_to_num_(0,0,0)
 
-        state.ascent = newton
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = newton
+        return self._update_params_or_step_with_next(vars)
 
 
 
@@ -219,11 +219,11 @@ class ReduceOutwardLR(OptimizerModule):
         self.invert = invert
 
     @torch.no_grad
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
         mul = self.get_group_key('mul')
 
-        if self.use_grad: cur = state.maybe_compute_grad_(params)
+        if self.use_grad: cur = vars.maybe_compute_grad_(params)
         else: cur = ascent
 
         # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
@@ -241,7 +241,7 @@ class NoiseSign(OptimizerModule):
         self.distribution:Distributions = distribution
 
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         return ascent.sample_like(self.alpha, self.distribution).copysign_(ascent)
 
 class ParamSign(OptimizerModule):
@@ -250,7 +250,7 @@ class ParamSign(OptimizerModule):
         super().__init__({})
 
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
 
         return params.copysign(ascent)
@@ -261,7 +261,7 @@ class NegParamSign(OptimizerModule):
         super().__init__({})
 
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         neg_params = self.get_params().abs()
         max = neg_params.total_max()
         neg_params = neg_params.neg_().add(max)
@@ -274,7 +274,7 @@ class InvParamSign(OptimizerModule):
         self.eps = eps
 
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         inv_params = self.get_params().abs().add_(self.eps).reciprocal_()
         return inv_params.copysign(ascent)
 
@@ -286,7 +286,7 @@ class ParamWhereConsistentSign(OptimizerModule):
         self.eps = eps
 
 
-    def _update(self, state, ascent):
+    def _update(self, vars, ascent):
         params = self.get_params()
         same_sign = params.sign() == ascent.sign()
         ascent.masked_set_(same_sign, params)

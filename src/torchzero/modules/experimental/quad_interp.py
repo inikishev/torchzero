@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from ...tensorlist import TensorList
-from ...core import OptimizationState
+from ...core import OptimizationVars
 from ..line_search.base_ls import LineSearchBase
 
 _FloatOrTensor = float | torch.Tensor
@@ -47,12 +47,12 @@ class QuadraticInterpolation2Point(LineSearchBase):
         self.min_dist = min_dist
 
     @torch.no_grad
-    def _find_best_lr(self, state: OptimizationState, params: TensorList) -> float:
-        if state.closure is None: raise ValueError('QuardaticLS requires closure')
-        closure = state.closure
-        if state.fx0 is None: state.fx0 = state.closure(False)
-        grad = state.grad
-        if grad is None: grad = state.ascent # in case we used FDM
+    def _find_best_lr(self, vars: OptimizationVars, params: TensorList) -> float:
+        if vars.closure is None: raise ValueError('QuardaticLS requires closure')
+        closure = vars.closure
+        if vars.fx0 is None: vars.fx0 = vars.closure(False)
+        grad = vars.grad
+        if grad is None: grad = vars.ascent # in case we used FDM
         if grad is None: raise ValueError('QuardaticLS requires gradients.')
 
         params = self.get_params()
@@ -67,7 +67,7 @@ class QuadraticInterpolation2Point(LineSearchBase):
 
         # make min_dist relative
         min_dist = abs(lr) * self.min_dist
-        points = sorted([Point(0, _ensure_float(state.fx0), dfx0), Point(lr, _ensure_float(fx1))], key = lambda x: x.fx)
+        points = sorted([Point(0, _ensure_float(vars.fx0), dfx0), Point(lr, _ensure_float(fx1))], key = lambda x: x.fx)
 
         for i in range(self.max_evals):
             # find new point

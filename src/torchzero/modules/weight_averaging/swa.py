@@ -55,10 +55,10 @@ class PeriodicSWA(OptimizerModule):
         self.swa_cur = 0
         self.n_models = 0
 
-    def step(self, state):
+    def step(self, vars):
         swa = None
         params = self.get_params()
-        ret = self._update_params_or_step_with_next(state, params)
+        ret = self._update_params_or_step_with_next(vars, params)
 
         # start first period after `pswa_start` steps
         if self.cur >= self.pswa_start:
@@ -88,7 +88,7 @@ class PeriodicSWA(OptimizerModule):
 
             params.set_(swa)
             # add a hook that resets momentum, which also deletes `swa` in this module
-            if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
+            if self._reset_stats: vars.add_post_step_hook(_reset_stats_hook)
 
         return ret
 
@@ -127,13 +127,13 @@ class CyclicSWA(OptimizerModule):
 
         self.cur_lr = self.init_lr
 
-    def step(self, state):
+    def step(self, vars):
         params = self.get_params()
 
         # start first period after `cswa_start` steps
         if self.cur >= self.cswa_start:
 
-            ascent = state.maybe_use_grad_(params)
+            ascent = vars.maybe_use_grad_(params)
 
             # determine the lr
             point = self.cycle_cur / self.cycle_length
@@ -146,7 +146,7 @@ class CyclicSWA(OptimizerModule):
                 lr = init_lr * (1-p2) + peak_lr * p2
 
             ascent *= lr
-            ret = self._update_params_or_step_with_next(state, params)
+            ret = self._update_params_or_step_with_next(vars, params)
 
             if self.sample_all or self.cycle_cur in (0, self.cycle_length, self.cycle_length // 2):
                 swa = self.get_state_key('swa')
@@ -159,12 +159,12 @@ class CyclicSWA(OptimizerModule):
                     self.cycle_cur = -1
 
                     params.set_(swa)
-                    if self._reset_stats: state.add_post_step_hook(_reset_stats_hook)
+                    if self._reset_stats: vars.add_post_step_hook(_reset_stats_hook)
 
             self.cycle_cur += 1
 
         else:
-            ret = self._update_params_or_step_with_next(state, params)
+            ret = self._update_params_or_step_with_next(vars, params)
 
         self.cur += 1
 

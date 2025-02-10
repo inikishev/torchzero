@@ -45,15 +45,15 @@ class Graft(OptimizerModule):
 
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent=True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent=True)
         magnitude = self.children['magnitude'].return_ascent(state_copy)
 
-        if state_copy.grad is not None: state.grad = state_copy.grad
-        if state_copy.fx0 is not None: state.fx0 = state_copy.fx0
-        if state_copy.fx0_approx is not None: state.fx0_approx = state_copy.fx0_approx
+        if state_copy.grad is not None: vars.grad = state_copy.grad
+        if state_copy.fx0 is not None: vars.fx0 = state_copy.fx0
+        if state_copy.fx0_approx is not None: vars.fx0_approx = state_copy.fx0_approx
 
-        direction = self.children['direction'].return_ascent(state)
+        direction = self.children['direction'].return_ascent(vars)
 
         if self.layerwise:
             M = magnitude.norm(self.ord)
@@ -65,8 +65,8 @@ class Graft(OptimizerModule):
             D = direction.total_vector_norm(self.ord)
             if D == 0: D = M
 
-        state.ascent = direction.mul_(M / (D + self.eps))
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = direction.mul_(M / (D + self.eps))
+        return self._update_params_or_step_with_next(vars)
 
 
 
@@ -94,17 +94,17 @@ class SignGrafting(OptimizerModule):
 
 
     @torch.no_grad
-    def step(self, state):
-        state_copy = state.copy(clone_ascent=True)
+    def step(self, vars):
+        state_copy = vars.copy(clone_ascent=True)
         magnitude = self.children['magnitude'].return_ascent(state_copy)
 
         # make sure to store grad and fx0 if it was calculated
-        state.update_attrs_(state_copy)
+        vars.update_attrs_(state_copy)
 
-        sign = self.children['sign'].return_ascent(state)
+        sign = self.children['sign'].return_ascent(vars)
 
-        state.ascent = magnitude.copysign_(sign)
-        return self._update_params_or_step_with_next(state)
+        vars.ascent = magnitude.copysign_(sign)
+        return self._update_params_or_step_with_next(vars)
 
 
 class IntermoduleCautious(OptimizerModule):
@@ -153,17 +153,17 @@ class IntermoduleCautious(OptimizerModule):
         self.mode: Literal["zero", "grad", "backtrack", "compare_module"]  = mode
 
     @torch.no_grad
-    def step(self, state):
+    def step(self, vars):
         params = None
-        state_copy = state.copy(clone_ascent=True)
+        state_copy = vars.copy(clone_ascent=True)
         ascent = self.children['main'].return_ascent(state_copy)
-        state.update_attrs_(state_copy)
+        vars.update_attrs_(state_copy)
 
-        if self.compare_mode == 'module': compare = self.children['compare'].return_ascent(state)
+        if self.compare_mode == 'module': compare = self.children['compare'].return_ascent(vars)
         else:
             params = self.get_params()
-            if self.compare_mode == 'ascent': compare: TensorList = state.maybe_use_grad_(params)
-            elif self.compare_mode == 'grad': compare: TensorList = state.maybe_compute_grad_(params)
+            if self.compare_mode == 'ascent': compare: TensorList = vars.maybe_use_grad_(params)
+            elif self.compare_mode == 'grad': compare: TensorList = vars.maybe_compute_grad_(params)
             else: raise ValueError(f'Invalid compare_module: {self.compare_mode}')
 
         # mask will be > 0 for parameters where both signs are the same
@@ -185,11 +185,11 @@ class IntermoduleCautious(OptimizerModule):
 
             if self.mode == 'grad':
                 params = self.get_params()
-                ascent += state.maybe_compute_grad_(params) * mask.logical_not_()
+                ascent += vars.maybe_compute_grad_(params) * mask.logical_not_()
 
             elif self.mode == 'compare_module':
                 ascent += compare * mask.logical_not_()
 
-        state.ascent = ascent
-        return self._update_params_or_step_with_next(state, params)
+        vars.ascent = ascent
+        return self._update_params_or_step_with_next(vars, params)
 

@@ -5,7 +5,7 @@ import torch
 
 from ...tensorlist import TensorList, Distributions, mean as tlmean
 from ...utils.python_tools import _ScalarLoss
-from ...core import _ClosureType, OptimizationState, OptimizerModule, _maybe_pass_backward
+from ...core import _ClosureType, OptimizationVars, OptimizerModule, _maybe_pass_backward
 
 
 def _numpy_or_torch_mean(losses: list):
@@ -14,7 +14,7 @@ def _numpy_or_torch_mean(losses: list):
         return torch.mean(torch.stack(losses))
     return np.mean(losses).item()
 
-class GaussianSmoothing(OptimizerModule):
+class GaussianHomotopy(OptimizerModule):
     """Samples and averages value and gradients in multiple random points around current position.
     This effectively applies smoothing to the function.
 
@@ -43,9 +43,9 @@ class GaussianSmoothing(OptimizerModule):
         self.sample_x0 = sample_x0
 
     @torch.no_grad()
-    def step(self, state: OptimizationState):
-        if state.closure is None: raise ValueError('GaussianSmoothing requires closure.')
-        closure = state.closure
+    def step(self, vars: OptimizationVars):
+        if vars.closure is None: raise ValueError('GaussianSmoothing requires closure.')
+        closure = vars.closure
         params = self.get_params()
         sigmas = self.get_group_key('sigma')
 
@@ -83,8 +83,8 @@ class GaussianSmoothing(OptimizerModule):
 
 
         self.current_step += 1
-        state.closure = smooth_closure
-        return self._update_params_or_step_with_next(state)
+        vars.closure = smooth_closure
+        return self._update_params_or_step_with_next(vars)
 
 
 # todo single loop gaussian homotopy?
