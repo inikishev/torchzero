@@ -23,12 +23,12 @@ Note: please don't use :code:`lr` setting in your modules. When learning rate is
 
 Implementing the update rule
 =============================
-Update logic in :code:`OptimizerModule` is defined in the :code:`step` method. By default it calls :code:`_update`, which in turn calls :code:`_single_tensor_update`. You can overwrite one of those three methods depending on how much control you need.
+Update logic in :code:`OptimizerModule` is defined in the :code:`step` method. By default it calls :code:`_update`, which in turn calls :code:`_single_tensor_update` on each parameter. You can overwrite one of those three methods depending on how much control you need.
 
 Method 1. Overwriting _single_tensor_update
 +++++++++++++++++++++++++++++++++++++++++++++
 
-For most update rules overwriting `_single_tensor_update` is the most convenient way. It allows you to define update rule for a single tensor, and it is then looped over all model parameters.
+Usually overwriting :code:`_single_tensor_update` is the most convenient way. It allows you to define update rule for a single tensor, and :code:`_update` then loops over all model parameters.
 
 :code:`_single_tensor_update` accepts the following arguments:
 
