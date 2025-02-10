@@ -13,8 +13,8 @@ import builtins
 from collections.abc import Callable, Sequence, Iterable, Generator
 import math
 import operator
-from typing import TypeAlias, Any, Literal, TypedDict, Unpack
-from typing_extensions import Self
+from typing import Any, Literal, TypedDict, Unpack
+from typing_extensions import Self, TypeAlias
 
 import torch
 

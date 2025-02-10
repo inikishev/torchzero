@@ -2,7 +2,8 @@ import sys
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, Literal, Self, TypeAlias
+from typing import Any, Literal
+from typing_extensions import Self, TypeAlias
 
 import torch
 from torch.optim.optimizer import ParamsT
