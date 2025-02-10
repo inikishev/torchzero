@@ -13,7 +13,8 @@ import builtins
 from collections.abc import Callable, Sequence, Iterable, Generator
 import math
 import operator
-from typing import TypeAlias, Any, Literal, TypedDict, Self, Unpack
+from typing import TypeAlias, Any, Literal, TypedDict, Unpack
+from typing_extensions import Self
 
 import torch
 
@@ -574,6 +575,9 @@ class TensorList(list[torch.Tensor | Any]):
         if max is not None: self.clamp_max_(max)
         return self
 
+    def clip(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None): return self.clamp(min,max)
+    def clip_(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None): return self.clamp_(min,max)
+
     def clamp_magnitude(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
         return self.abs().clamp_(min, max) * self.sign().add_(0.5).sign_() # this prevents zeros
     def clamp_magnitude_(self, min: "_Scalar | _STSequence | None" = None, max: "_Scalar | _STSequence | None" = None):
@@ -671,7 +675,7 @@ class TensorList(list[torch.Tensor | Any]):
             norm_self = self.total_vector_norm(2)
             norm_other = other.total_vector_norm(2)
 
-        return self * (norm_other / norm_self.clip_(min=eps))
+        return self * (norm_other / norm_self.clip_(min=eps)) # type:ignore
 
     def graft_(self, other: "_TensorSequence", tensorwise=False, eps = 1e-6):
         if not isinstance(other, TensorList): other = TensorList(other)
@@ -682,7 +686,7 @@ class TensorList(list[torch.Tensor | Any]):
             norm_self = self.total_vector_norm(2)
             norm_other = other.total_vector_norm(2)
 
-        return self.mul_(norm_other / norm_self.clip_(min=eps))
+        return self.mul_(norm_other / norm_self.clip_(min=eps)) # type:ignore
 
 
     def where(self, condition: "torch.Tensor | _TensorSequence", other: _STOrSTSequence):
