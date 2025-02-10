@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torchzero"
-description = ""
+description = "Modular optimization library for PyTorch."
 
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
   "torch",
   "numpy",
@@ -18,7 +18,7 @@ authors = [
   {name = "Ivan Nikishev", email = "nkshv2@gmail.com"},
 ]
 license = {file = "LICENSE"}
-keywords = []
+keywords = ["optimization", "optimizers", "torch", "neural networks", "zeroth order", "second order"]
 
 
 [project.urls]
