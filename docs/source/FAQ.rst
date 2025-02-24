@@ -255,7 +255,7 @@ Whenever possible I used `_foreach_xxx <https://pytorch.org/docs/stable/torch.ht
 
 Is there support for complex-valued parameters?
 =================================================
-:code:`tz.m.ViewAsReal()` and :code:`tz.m.ViewAsComplex()` modules will be added soon. This will also allow to use custom pytorch optimizers with complex networks (via :code:`tz.m.Wrap`), even if they don't support those natively.
+Pass :code:`[i.view_as_real() for i in model.parameters()]` as parameters.
 
 Is there support for optimized parameters being on different devices?
 ======================================================================
