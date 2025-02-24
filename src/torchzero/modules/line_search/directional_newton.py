@@ -13,9 +13,9 @@ def _fit_and_minimize_quadratic_2points_grad(x1:_FloatOrTensor,y1:_FloatOrTensor
     # c = -(a*x1**2 + b*x1 - y1)
     return -b / (2 * a), a
 
-def _ensure_float(x):
+def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return x.item()
+    if isinstance(x, np.ndarray): return x.item() # type:ignore
     return float(x)
 
 class DirectionalNewton(LineSearchBase):
