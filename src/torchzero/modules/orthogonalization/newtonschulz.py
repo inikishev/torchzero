@@ -45,7 +45,7 @@ def _zeropower_via_newtonschulz5(G, steps):
 _compiled_zeropower_via_newtonschulz5 = torch.compile(_zeropower_via_newtonschulz5)
 
 
-def zeropower_via_newtonschulz_(params: Iterable[torch.Tensor], steps: int = 6, adaptive = False, compiled = True):
+def newtonschulz_(params: Iterable[torch.Tensor], steps: int = 6, adaptive = False, compiled = True):
     """Uses newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
     This sets gradients in-place.
@@ -78,7 +78,7 @@ def zeropower_via_newtonschulz_(params: Iterable[torch.Tensor], steps: int = 6, 
             p.grad = X.reshape_as(p.grad).to(p.grad, copy=False)
 
 
-class ZeropowerViaNewtonSchulz(OptimizerModule):
+class NewtonSchulz(OptimizerModule):
     """Uses Newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "newtonshultz" = False.
