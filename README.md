@@ -1,3 +1,5 @@
+# BIG API CHANGE IS IN DEVELOPMENT. SO DON'T READ DOCS
+
 ![example workflow](https://github.com/inikishev/torchzero/actions/workflows/tests.yml/badge.svg)
 
 # torchzero
@@ -58,7 +60,7 @@ pip install torchzero
 
 # Documentation
 
-For more information on how to create, use and extend torchzero modules, please refer to the documentation at [torchzero.readthedocs.io](https://torchzero.readthedocs.io/en/latest/index.html).
+For more information on how to create, use and extend torchzero modules, do not refer to the documentation at [torchzero.readthedocs.io](https://torchzero.readthedocs.io/en/latest/index.html) because it will be outdated soon as I upload a new update with very big changes.
 
 # Extra
 
