@@ -31,7 +31,7 @@ _STOrSTSeq = _Scalar | torch.Tensor | _ScalarSeq | _TensorSeq
 
 _Dim = int | list[int] | tuple[int,...] | Literal['global'] | None
 
-Distributions = Literal['normal', 'uniform', 'sphere', 'rademacher']
+Distributions = Literal['normal', 'gaussian', 'uniform', 'sphere', 'rademacher']
 class _NewTensorKwargs(TypedDict, total = False):
     memory_format: Any
     dtype: Any
@@ -375,7 +375,7 @@ class TensorList(list[torch.Tensor | Any]):
 
     def sample_like(self, eps: "_Scalar | _ScalarSeq" = 1, distribution: Distributions = 'normal', generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         """Sample around 0."""
-        if distribution == 'normal': return self.randn_like(generator=generator, **kwargs) * eps
+        if distribution in ('normal', 'gaussian'): return self.randn_like(generator=generator, **kwargs) * eps
         if distribution == 'uniform':
             if isinstance(eps, (list,tuple)):
                 return self.uniform_like([-i/2 for i in eps], [i/2 for i in eps], generator=generator, **kwargs)
