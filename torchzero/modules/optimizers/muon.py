@@ -12,7 +12,9 @@ from ...utils import _maybe_compile
 def reverse_dims(t:torch.Tensor):
     return t.permute(*reversed(range(t.ndim)))
 
-# from ...utils.compile import maybe_compile
+def _is_at_least_2d(p: torch.Tensor):
+    if (p.ndim >= 2) and (p.size(0) > 1) and (p.size(1) > 1): return True
+    return False
 
 # stolen from:
 # https://github.com/KellerJordan/Muon/blob/master/muon.py
@@ -47,15 +49,13 @@ def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
         X = X.mT
     return X
 
-
+# stolen from https://github.com/MarkTuddenham/Orthogonal-Optimisers.
+# Tuddenham, M., Prügel-Bennett, A., & Hare, J. (2022).
+# Orthogonalising gradients to speed up neural network optimisation. arXiv preprint arXiv:2202.07052.
 @torch.no_grad
 def _svd_orthogonalize(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
-    """stolen from https://github.com/MarkTuddenham/Orthogonal-Optimisers.
-
+    """
     Applies to first 2 dims and isn't batched - rest of dimensions are flattened.
-
-    Tuddenham, M., Prügel-Bennett, A., & Hare, J. (2022).
-    Orthogonalising gradients to speed up neural network optimisation. arXiv preprint arXiv:2202.07052.
     """
     X = G.view(G.shape[0], -1)
 
@@ -88,6 +88,7 @@ def _svd_orthogonalize(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
 
 @torch.no_grad
 def _dual_norm_correction(X: torch.Tensor, g: torch.Tensor, batch_first):
+    """batch first means it applies to last 2 dims, otherwise to 1st two dims"""
     # this is from https://github.com/leloykun/adaptive-muon
     # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
     if batch_first: X = torch.einsum('...ij,...ij,...ab->...ab', g.type_as(X), X, X)
@@ -105,7 +106,6 @@ def adjust_lr_for_muon(lr, param_shape):
     adjusted_lr = lr * adjusted_ratio
     return adjusted_lr
 
-
 def _orthogonalize_tensor(
     tensor: torch.Tensor,
     steps: int = 5,
@@ -119,25 +119,29 @@ def _orthogonalize_tensor(
 def orthogonalize_grads_(
     params: Iterable[torch.Tensor],
     steps: int = 5,
-    adaptive=True,
+    dual_norm_correction=False,
     method: Literal["newton-schulz", "svd"] = "newton-schulz",
 ):
     """Uses newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
-    This sets gradients in-place. Applies to first 2 dims.
+    This sets gradients in-place. Applies along first 2 dims (expected to be `out_channels, in_channels`).
 
     Note that the Muon page says that embeddings and classifier heads should not be orthogonalized.
     Args:
         params (abc.Iterable[torch.Tensor]): parameters that hold gradients to orthogonalize.
-        steps (int):
-            The number of Newton-Schulz iterations to run. (5 is probably always enough). Defaults to 5.
-        adaptive (bool, optional):
-            Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to False.
+        steps (int, optional):
+            The number of Newton-Schulz iterations to run. Defaults to 5.
+        dual_norm_correction (bool, optional):
+            enables dual norm correction from https://github.com/leloykun/adaptive-muon. Defaults to False.
+        method (str, optional):
+            Newton-Schulz is very fast, SVD is extremely slow but can be slighly more precise.
+        target (str, optional):
+            what to set on vars.
     """
     for p in params:
-        if (p.grad is not None) and (p.grad.ndim >= 2) and (p.grad.size(0) > 1) and (p.grad.size(1) > 1):
+        if (p.grad is not None) and _is_at_least_2d(p.grad):
             X = _orthogonalize_tensor(p.grad, steps, method)
-            if adaptive: X = _dual_norm_correction(X, p.grad, batch_first=False)
+            if dual_norm_correction: X = _dual_norm_correction(X, p.grad, batch_first=False)
             p.grad.set_(X.view_as(p)) # pyright:ignore[reportArgumentType]
 
 
@@ -155,7 +159,7 @@ class Orthogonalize(ParameterwiseTransform):
         ns_steps (int, optional):
             The number of Newton-Schulz iterations to run. Defaults to 5.
         adjust_lr (bool, optional):
-            Enables LR adjustment for Muon based on parameter size from "Muon is Scalable for LLM Training". Defaults to False.
+            Enables LR adjustment based on parameter size from "Muon is Scalable for LLM Training". Defaults to False.
         dual_norm_correction (bool, optional):
             enables dual norm correction from https://github.com/leloykun/adaptive-muon. Defaults to False.
         method (str, optional):
@@ -173,7 +177,7 @@ class Orthogonalize(ParameterwiseTransform):
         settings = self.settings[param]
         if not settings['orthogonalize']: return target
 
-        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
+        if _is_at_least_2d(target):
 
             X = _orthogonalize_tensor(target, settings['ns_steps'], settings['method'])
 
@@ -200,9 +204,6 @@ class DualNormCorrection(ParameterwiseTransform):
             return _dual_norm_correction(target, grad, batch_first=False)
         return target
 
-def _filter_2dplus(p: torch.Tensor):
-    if (p.ndim >= 2) and (p.size(0) > 1) and (p.size(1) > 1): return True
-    return False
 
 class MuonAdjustLR(Transform):
     """LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
@@ -213,7 +214,7 @@ class MuonAdjustLR(Transform):
 
     def transform(self, target, vars):
         alphas = self.get_settings('alpha', params=vars)
-        tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(target, alphas) if _filter_2dplus(t)]
+        tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(target, alphas) if _is_at_least_2d(t)]
         tensors = [i[0] for i in tensors_alphas]
         a = [i[1] for i in alphas]
         torch._foreach_mul_(tensors, a)
