@@ -130,17 +130,18 @@ def orthogonalize_grads_(params: Iterable[torch.Tensor], steps: int = 5, adaptiv
         if (p.grad is not None) and (p.grad.ndim >= 2) and (p.grad.size(0) > 1) and (p.grad.size(1) > 1):
 
             if method == 'newton-schulz':
-                X = zeropower_via_newtonschulz5(reverse_dims(p.grad), steps)
-                if adaptive: X = _adaptive_scaling(X, p.grad)
+                grad = reverse_dims(p.grad)
+                X = zeropower_via_newtonschulz5(grad, steps)
+                if adaptive: X = _adaptive_scaling(X, grad)
                 X = reverse_dims(X)
 
             elif method == 'svd':
                 X = _svd_orthogonalize_(p.grad, warn_fail=False)
-                if adaptive: X = reverse_dims(_adaptive_scaling(reverse_dims(X), p.grad))
+                if adaptive: X = reverse_dims(_adaptive_scaling(reverse_dims(X), reverse_dims(p.grad)))
 
             else: raise ValueError(method)
 
-            p.grad.set_(X.view_as(p.grad)) # pyright:ignore[reportArgumentType]
+            p.grad.set_(X.view_as(p)) # pyright:ignore[reportArgumentType]
 
 
 
@@ -168,7 +169,7 @@ class Orthogonalize(ParameterwiseTransform):
     """
     def __init__(self, ns_steps=5, adaptive=True, method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
         defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=adaptive, method=method)
-        super().__init__(requires_grad=adaptive, defaults=defaults, target=target)
+        super().__init__(requires_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
     def transform(self, target, param, grad, vars):
@@ -180,21 +181,18 @@ class Orthogonalize(ParameterwiseTransform):
             adaptive = settings['adaptive']
 
             if method == 'newton-schulz':
-                X = zeropower_via_newtonschulz5(reverse_dims(target), settings['ns_steps'])
-                if adaptive:
-                    assert grad is not None
-                    X = _adaptive_scaling(X, grad)
+                target = reverse_dims(target)
+                X = zeropower_via_newtonschulz5(target, settings['ns_steps'])
+                if adaptive: X = _adaptive_scaling(X, target)
                 X = reverse_dims(X)
 
             elif method == 'svd':
                 X = _svd_orthogonalize_(target)
-                if adaptive:
-                    assert grad is not None
-                    X = reverse_dims(_adaptive_scaling(reverse_dims(X), grad))
+                if adaptive: X = reverse_dims(_adaptive_scaling(reverse_dims(X), reverse_dims(target)))
 
             else: raise ValueError(method)
 
-            return X.view_as(target)
+            return X.view_as(param)
 
         return target
 
