@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchzero"
+description = "Modular optimization library for PyTorch."
+
+version = "0.3.0"
+dependencies = [
+  "torch",
+  "numpy",
+  "typing_extensions",
+]
+requires-python = ">= 3.10"
+readme = "README.md"
+authors = [
+  {name = "Ivan Nikishev", email = "nkshv2@gmail.com"},
+]
+license = {file = "LICENSE"}
+keywords = ["optimization", "optimizers", "torch", "neural networks", "zeroth order", "second order"]
+
+
+[project.urls]
+Homepage = "https://github.com/inikishev/torchzero"
+Repository = "https://github.com/inikishev/torchzero"
+Issues = "https://github.com/inikishev/torchzero/isses"
+
+# [tool.setuptools]
+# package-dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+
+[tool.setuptools.packages]
+find = {}  # Scanning implicit namespaces is active by default
