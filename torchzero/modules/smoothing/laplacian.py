@@ -102,18 +102,19 @@ class LaplacianSmoothing(Transform):
 
             # apply the smoothing
             smoothed_direction = TensorList()
-            for g, sigma, den in zip(ascent, sigmas, denominators):
-                smoothed_direction.append(torch.fft.ifft(torch.fft.fft(g.view(-1)) / den).real.reshape(g.shape)) # pylint: disable = not-callable
+            for t, sigma, den in zip(target, sigmas, denominators):
+                smoothed_direction.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.reshape(t.shape)) # pylint: disable = not-callable
             return smoothed_direction
 
         # else
         # full laplacian smoothing
         # precompute full denominator
+        target = TensorList(target)
         if self.full_denominator is None:
-            self.full_denominator = _precompute_denominator(ascent.to_vec(), self.sigma)
+            self.full_denominator = _precompute_denominator(target.to_vec(), self.sigma)
 
         # apply the smoothing
-        vec = ascent.to_vec()
-        return ascent.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
+        vec = target.to_vec()
+        return target.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
 
 
