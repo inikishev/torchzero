@@ -1,10 +1,13 @@
+import math
 import warnings
 from collections.abc import Iterable, Sequence
 from typing import Literal
+
 import torch
 
 from ...core import Modular, ParameterwiseTransform, Target
 from ...utils import _maybe_compile
+
 
 def reverse_dims(t:torch.Tensor):
     return t.permute(*reversed(range(t.ndim)))
@@ -16,7 +19,7 @@ def reverse_dims(t:torch.Tensor):
 @_maybe_compile
 def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
     """
-    applies to last 2 dims.
+    Applies to last 2 dims - so usually reverse_dims should be applied to G before and after.
 
     Newton-Schulz iteration to compute the zeroth power / orthogonalization of G. We opt to use a
     quintic iteration whose coefficients are selected to maximize the slope at zero. For the purpose
@@ -46,8 +49,10 @@ def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
 
 
 @torch.no_grad
-def _svd_orthogonalize_(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
-    """stolen from https://github.com/MarkTuddenham/Orthogonal-Optimisers
+def _svd_orthogonalize(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
+    """stolen from https://github.com/MarkTuddenham/Orthogonal-Optimisers.
+
+    Applies to first 2 dims and isn't batched - rest of dimensions are flattened.
 
     Tuddenham, M., Prügel-Bennett, A., & Hare, J. (2022).
     Orthogonalising gradients to speed up neural network optimisation. arXiv preprint arXiv:2202.07052.
@@ -82,37 +87,62 @@ def _svd_orthogonalize_(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
 
 
 @torch.no_grad
-def _adaptive_scaling(X: torch.Tensor, g: torch.Tensor):
-    """applies to last 2 dims"""
+def _adaptive_scaling(X: torch.Tensor, g: torch.Tensor, batch_first):
     t = False
     # is this needed?
-    if X.size(-2) > X.size(-1):
-        X = X.mT
-        g = g.mT
-        t = True
+    if batch_first:
+        if X.size(-2) > X.size(-1):
+            X = X.mT
+            g = g.mT
+            t = True
+    else:
+        if X.size(0) > X.size(1):
+            X = X.swapaxes(0,1)
+            g = g.swapaxes(0,1)
+            t = True
 
     # this is from https://github.com/leloykun/adaptive-muon
     # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
-    X = torch.einsum('...ij,...ij,...ab->...ab', g.type_as(X), X, X)
-    if t: X = X.mT
+    if batch_first: X = torch.einsum('...ij,...ij,...ab->...ab', g.type_as(X), X, X)
+    else: X = torch.einsum('ij...,ij...,ab...->ab...', g.type_as(X), X, X)
+
+    if t:
+        if batch_first: X = X.mT
+        else: X = X.swapaxes(0,1)
+
     return X
-    # TODO make a separate module
 
-# TODO
+
+# code from
 # https://github.com/MoonshotAI/Moonlight/blob/master/examples/toy_train.py
-# def adjust_lr_for_muon(self, lr, param_shape):
-#     A, B = param_shape[:2]
-#     # We adjust the learning rate and weight decay based on the size of the parameter matrix
-#     # as describted in the paper
-#     adjusted_ratio = 0.2 * math.sqrt(max(A, B))
-#     adjusted_lr = lr * adjusted_ratio
-#     return adjusted_lr
+def adjust_lr_for_muon(lr, param_shape):
+    A, B = param_shape[:2]
+    # We adjust the learning rate and weight decay based on the size of the parameter matrix
+    # as describted in the paper
+    adjusted_ratio = 0.2 * math.sqrt(max(A, B))
+    adjusted_lr = lr * adjusted_ratio
+    return adjusted_lr
 
 
-def orthogonalize_grads_(params: Iterable[torch.Tensor], steps: int = 5, adaptive=True, method: Literal['newton-schulz', 'svd'] = 'newton-schulz'):
+def _orthogonalize_tensor(
+    tensor: torch.Tensor,
+    steps: int = 5,
+    method: Literal["newton-schulz", "svd"] = "newton-schulz",
+):
+    if method == 'newton-schulz': return reverse_dims(zeropower_via_newtonschulz5(reverse_dims(tensor), steps))
+    if method == 'svd': return _svd_orthogonalize(tensor, False)
+    raise ValueError(method)
+
+
+def orthogonalize_grads_(
+    params: Iterable[torch.Tensor],
+    steps: int = 5,
+    adaptive=True,
+    method: Literal["newton-schulz", "svd"] = "newton-schulz",
+):
     """Uses newton-Schulz iteration to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
 
-    This sets gradients in-place.
+    This sets gradients in-place. Applies to first 2 dims.
 
     Note that the Muon page says that embeddings and classifier heads should not be orthogonalized.
     Args:
@@ -121,32 +151,18 @@ def orthogonalize_grads_(params: Iterable[torch.Tensor], steps: int = 5, adaptiv
             The number of Newton-Schulz iterations to run. (5 is probably always enough). Defaults to 5.
         adaptive (bool, optional):
             Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to False.
-        compiled (bool, optional):
-            Uses compiled newton-Schulz iteration function. Faster but won't work on windows. Defaults to True.
-
-
     """
     for p in params:
         if (p.grad is not None) and (p.grad.ndim >= 2) and (p.grad.size(0) > 1) and (p.grad.size(1) > 1):
-
-            if method == 'newton-schulz':
-                grad = reverse_dims(p.grad)
-                X = zeropower_via_newtonschulz5(grad, steps)
-                if adaptive: X = _adaptive_scaling(X, grad)
-                X = reverse_dims(X)
-
-            elif method == 'svd':
-                X = _svd_orthogonalize_(p.grad, warn_fail=False)
-                if adaptive: X = reverse_dims(_adaptive_scaling(reverse_dims(X), reverse_dims(p.grad)))
-
-            else: raise ValueError(method)
-
+            X = _orthogonalize_tensor(p.grad, steps, method)
+            if adaptive: X = _adaptive_scaling(X, p.grad, batch_first=False)
             p.grad.set_(X.view_as(p)) # pyright:ignore[reportArgumentType]
 
 
 
 class Orthogonalize(ParameterwiseTransform):
-    """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of gradients of an iterable of parameters.
+    """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of gradients.
+    Applies to first 2 dims.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "orthogonalize" = False.
     The Muon page says that embeddings and classifier heads should not be orthogonalized.
@@ -161,14 +177,15 @@ class Orthogonalize(ParameterwiseTransform):
 
     Args:
         ns_steps (int, optional):
-            The number of Newton-Schulz iterations to run. (56 is probably always enough). Defaults to 5.
+            The number of Newton-Schulz iterations to run. (5 is probably always enough). Defaults to 5.
         adaptive (bool, optional):
             Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to True.
         target (str, optional):
             what to set on vars.
     """
-    def __init__(self, ns_steps=5, adaptive=True, method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
-        defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=adaptive, method=method)
+    def __init__(self, ns_steps=5, adaptive=True, adjust_lr=True,
+                 method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
+        defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=adaptive, adjust_lr=adjust_lr, method=method)
         super().__init__(requires_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
@@ -177,24 +194,38 @@ class Orthogonalize(ParameterwiseTransform):
         if not settings['orthogonalize']: return target
 
         if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
-            method = settings['method']
-            adaptive = settings['adaptive']
 
-            if method == 'newton-schulz':
-                target = reverse_dims(target)
-                X = zeropower_via_newtonschulz5(target, settings['ns_steps'])
-                if adaptive: X = _adaptive_scaling(X, target)
-                X = reverse_dims(X)
+            X = _orthogonalize_tensor(target, settings['ns_steps'], settings['method'])
 
-            elif method == 'svd':
-                X = _svd_orthogonalize_(target)
-                if adaptive: X = reverse_dims(_adaptive_scaling(reverse_dims(X), reverse_dims(target)))
+            if settings['adaptive']:
+                X = _adaptive_scaling(X, target, batch_first=False)
 
-            else: raise ValueError(method)
+            if settings['adjust_lr']:
+                X.mul_(adjust_lr_for_muon(1, param.shape))
 
             return X.view_as(param)
 
         return target
+
+
+class MuonAdaptiveScaling(ParameterwiseTransform):
+    """adaptive scaling for Muon"""
+    def __init__(self, target: Target='update'):
+        super().__init__(requires_grad=True, target=target)
+
+    def transform(self, target, param, grad, vars):
+        assert grad is not None
+        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
+            return _adaptive_scaling(target, grad, batch_first=False)
+        return target
+
+class MuonAdjustLR(ParameterwiseTransform):
+    """LR adjustment for Muon"""
+    def __init__(self, target: Target='update'):
+        super().__init__(requires_grad=False, target=target)
+
+    def transform(self, target, param, grad, vars):
+        return target.mul_(adjust_lr_for_muon(1, param.shape))
 
 
 
