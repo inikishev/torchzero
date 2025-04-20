@@ -88,28 +88,10 @@ def _svd_orthogonalize(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
 
 @torch.no_grad
 def _adaptive_scaling(X: torch.Tensor, g: torch.Tensor, batch_first):
-    t = False
-    # is this needed?
-    if batch_first:
-        if X.size(-2) > X.size(-1):
-            X = X.mT
-            g = g.mT
-            t = True
-    else:
-        if X.size(0) > X.size(1):
-            X = X.swapaxes(0,1)
-            g = g.swapaxes(0,1)
-            t = True
-
     # this is from https://github.com/leloykun/adaptive-muon
     # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
     if batch_first: X = torch.einsum('...ij,...ij,...ab->...ab', g.type_as(X), X, X)
     else: X = torch.einsum('ij...,ij...,ab...->ab...', g.type_as(X), X, X)
-
-    if t:
-        if batch_first: X = X.mT
-        else: X = X.swapaxes(0,1)
-
     return X
 
 
@@ -129,7 +111,7 @@ def _orthogonalize_tensor(
     steps: int = 5,
     method: Literal["newton-schulz", "svd"] = "newton-schulz",
 ):
-    if method == 'newton-schulz': return reverse_dims(zeropower_via_newtonschulz5(reverse_dims(tensor), steps))
+    if method == 'newton-schulz': return reverse_dims(zeropower_via_newtonschulz5(reverse_dims(tensor), steps)).type_as(tensor)
     if method == 'svd': return _svd_orthogonalize(tensor, False)
     raise ValueError(method)
 

@@ -41,7 +41,7 @@ def gradient_laplacian_smoothing_(params: Iterable[torch.Tensor], sigma: float =
     if layerwise:
         for g in grads:
             if g.numel() >= min_numel:
-                g.set_(vector_laplacian_smoothing(g, sigma).reshape(g.shape)) # type:ignore
+                g.set_(vector_laplacian_smoothing(g, sigma).view_as(g)) # pyright:ignore[reportArgumentType]
     else:
         vec = grads.to_vec()
         grads.from_vec_(vector_laplacian_smoothing(vec, sigma))
@@ -103,7 +103,7 @@ class LaplacianSmoothing(Transform):
             # apply the smoothing
             smoothed_direction = TensorList()
             for t, sigma, den in zip(target, sigmas, denominators):
-                smoothed_direction.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.reshape(t.shape)) # pylint: disable = not-callable
+                smoothed_direction.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.view_as(t)) # pylint: disable = not-callable
             return smoothed_direction
 
         # else
