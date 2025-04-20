@@ -64,7 +64,8 @@ def _svd_orthogonalize_(G: torch.Tensor, dims = (0, 1), warn_fail=True) -> torch
     d0, d1 = dims
     X = G
     if dims != (0, 1): X = X.swapdims(d0, 0).swapdims(d1, 1)
-    X = X.view(0, -1)
+    X_full = X
+    X = X_full.view(X_full.shape[0], -1)
 
     t = False
     if X.size(0) > X.size(1):
@@ -88,6 +89,7 @@ def _svd_orthogonalize_(G: torch.Tensor, dims = (0, 1), warn_fail=True) -> torch
                             ' skipping gradient orthogonalisation'))
     if orth_X is not None:
         if t: orth_X = orth_X.T
+        orth_X = orth_X.view_as(X_full)
         if dims != (0, 1): orth_X = orth_X.swapdims(d0, 0).swapdims(d1, 1)
         return orth_X.view_as(G)
 
