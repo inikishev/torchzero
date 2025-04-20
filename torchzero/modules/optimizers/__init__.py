@@ -1,6 +1,12 @@
 from .adagrad import Adagrad
 from .adam import Adam
 from .lion import Lion
+from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .rmsprop import RMSprop
-from .rprop import BacktrackOnSignChange, Rprop, ScaleLRBySignChange, SignConsistencyLRs, SignConsistencyMask
-from .muon import Orthogonalize, DualNormCorrection, orthogonalize_grads_, MuonAdaptiveScaling, MuonAdjustLR
+from .rprop import (
+    BacktrackOnSignChange,
+    Rprop,
+    ScaleLRBySignChange,
+    SignConsistencyLRs,
+    SignConsistencyMask,
+)

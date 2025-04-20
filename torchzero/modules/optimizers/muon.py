@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Modular, ParameterwiseTransform, Target
+from ...core import Modular, ParameterwiseTransform, Target, Transform
 from ...utils import _maybe_compile
 
 
@@ -87,7 +87,7 @@ def _svd_orthogonalize(G: torch.Tensor, warn_fail=True) -> torch.Tensor:
 
 
 @torch.no_grad
-def _adaptive_scaling(X: torch.Tensor, g: torch.Tensor, batch_first):
+def _dual_norm_correction(X: torch.Tensor, g: torch.Tensor, batch_first):
     # this is from https://github.com/leloykun/adaptive-muon
     # Adaptive scaling,`(G * X).sum() * X` == (G.T @ X).trace() * X
     if batch_first: X = torch.einsum('...ij,...ij,...ab->...ab', g.type_as(X), X, X)
@@ -137,37 +137,35 @@ def orthogonalize_grads_(
     for p in params:
         if (p.grad is not None) and (p.grad.ndim >= 2) and (p.grad.size(0) > 1) and (p.grad.size(1) > 1):
             X = _orthogonalize_tensor(p.grad, steps, method)
-            if adaptive: X = _adaptive_scaling(X, p.grad, batch_first=False)
+            if adaptive: X = _dual_norm_correction(X, p.grad, batch_first=False)
             p.grad.set_(X.view_as(p)) # pyright:ignore[reportArgumentType]
 
 
 
 class Orthogonalize(ParameterwiseTransform):
-    """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of gradients.
-    Applies to first 2 dims.
+    """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of update along first 2 dims.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "orthogonalize" = False.
     The Muon page says that embeddings and classifier heads should not be orthogonalized.
+    Usually only matrix parameters that are directly used in matmuls should be orthogonalized.
 
-    The orthogonalization code is taken from https://github.com/KellerJordan/Muon.
-
-    Note that unlike this module, Muon also uses Adam for gradients that are not orthogonalized.
-    You can achive the same by TODO....
-
-    However not using Adam, or putting Adam module after this to apply it to ALL updates, both seem
-    to work quite well too.
+    To make Muon, use Split with Adam on 1d params: TODO code example.
 
     Args:
         ns_steps (int, optional):
-            The number of Newton-Schulz iterations to run. (5 is probably always enough). Defaults to 5.
-        adaptive (bool, optional):
-            Enables adaptation to scale of gradients (from https://github.com/leloykun/adaptive-muon). Defaults to True.
+            The number of Newton-Schulz iterations to run. Defaults to 5.
+        adjust_lr (bool, optional):
+            Enables LR adjustment for Muon based on parameter size from "Muon is Scalable for LLM Training". Defaults to False.
+        dual_norm_correction (bool, optional):
+            enables dual norm correction from https://github.com/leloykun/adaptive-muon. Defaults to False.
+        method (str, optional):
+            Newton-Schulz is very fast, SVD is extremely slow but can be slighly more precise.
         target (str, optional):
             what to set on vars.
     """
-    def __init__(self, ns_steps=5, adaptive=True, adjust_lr=True,
+    def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
                  method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
-        defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=adaptive, adjust_lr=adjust_lr, method=method)
+        defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=dual_norm_correction, adjust_lr=adjust_lr, method=method.lower())
         super().__init__(requires_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
@@ -180,7 +178,7 @@ class Orthogonalize(ParameterwiseTransform):
             X = _orthogonalize_tensor(target, settings['ns_steps'], settings['method'])
 
             if settings['adaptive']:
-                X = _adaptive_scaling(X, target, batch_first=False)
+                X = _dual_norm_correction(X, target, batch_first=False)
 
             if settings['adjust_lr']:
                 X.mul_(adjust_lr_for_muon(1, param.shape))
@@ -190,54 +188,35 @@ class Orthogonalize(ParameterwiseTransform):
         return target
 
 
-class MuonAdaptiveScaling(ParameterwiseTransform):
-    """adaptive scaling for Muon"""
-    def __init__(self, target: Target='update'):
-        super().__init__(requires_grad=True, target=target)
-
-    def transform(self, target, param, grad, vars):
-        assert grad is not None
-        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
-            return _adaptive_scaling(target, grad, batch_first=False)
-        return target
-
-class MuonAdjustLR(ParameterwiseTransform):
-    """LR adjustment for Muon"""
-    def __init__(self, target: Target='update'):
-        super().__init__(requires_grad=False, target=target)
-
-    def transform(self, target, param, grad, vars):
-        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
-            return target.mul_(adjust_lr_for_muon(1, param.shape))
-        return target
-
-
-
 class DualNormCorrection(ParameterwiseTransform):
-    """Dual norm correction from https://github.com/leloykun/adaptive-muon.
+    """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon)"""
+    def __init__(self, target: Target='update'):
+        super().__init__({}, requires_grad=True, target=target)
 
-    Description from the page:
-
-    Single-line modification to any (dualizer-based) optimizer that allows
-    the optimizer to adapt to the scale of the gradients as they change during training.
-    This is done by scaling the dualized gradient by the clipped dual norm of the original gradient.
-    """
-    def __init__(self, adaptive_scale_min: int | None = -1, adaptive_scale_max: int | None = 1):
-        defaults = dict(adaptive_scale_min = adaptive_scale_min, adaptive_scale_max = adaptive_scale_max)
-        super().__init__(requires_grad=True, defaults=defaults)
-
-    @torch.no_grad
     def transform(self, target, param, grad, vars):
         assert grad is not None
-        settings = self.settings[param]
-        adaptive_scale_min, adaptive_scale_max = settings['adaptive_scale_min'], settings['adaptive_scale_max']
-
-        if len([s for s in target.shape if s > 1]) >= 2:
-            scale = torch.einsum('ij...,ij...->', grad, target)
-            if adaptive_scale_min is not None or adaptive_scale_max is not None:
-                scale = scale.clip(adaptive_scale_min, adaptive_scale_max)
-            target *= scale
-
+        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
+            return _dual_norm_correction(target, grad, batch_first=False)
         return target
+
+def _filter_2dplus(p: torch.Tensor):
+    if (p.ndim >= 2) and (p.size(0) > 1) and (p.size(1) > 1): return True
+    return False
+
+class MuonAdjustLR(Transform):
+    '''LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
+    Orthogonalize already has this built in with the `adjust_lr` setting.'''
+    def __init__(self, alpha: float = 1, target: Target='update'):
+        defaults = dict(alpha=alpha)
+        super().__init__(defaults=defaults, target=target)
+
+    def transform(self, target, vars):
+        alphas = self.get_settings('alpha', params=vars)
+        tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(target, alphas) if _filter_2dplus(t)]
+        tensors = [i[0] for i in tensors_alphas]
+        a = [i[1] for i in alphas]
+        torch._foreach_mul_(tensors, a)
+        return target
+
 
 

@@ -74,7 +74,7 @@ class Transform(Module, ABC):
 
 
 class ParameterwiseTransform(Module, ABC):
-    def __init__(self, requires_grad: bool, defaults: dict[str,Any] | None = None, target: Target = 'update'):
+    def __init__(self, defaults: dict[str,Any] | None, requires_grad: bool, target: Target = 'update'):
         super().__init__(defaults)
         self._target: Target = target
         self._requires_grad: bool = requires_grad
