@@ -207,7 +207,9 @@ class MuonAdjustLR(ParameterwiseTransform):
         super().__init__(requires_grad=False, target=target)
 
     def transform(self, target, param, grad, vars):
-        return target.mul_(adjust_lr_for_muon(1, param.shape))
+        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
+            return target.mul_(adjust_lr_for_muon(1, param.shape))
+        return target
 
 
 
