@@ -189,7 +189,8 @@ class Orthogonalize(ParameterwiseTransform):
 
 
 class DualNormCorrection(ParameterwiseTransform):
-    """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon)"""
+    """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon).
+    Orthogonalize already has this built in with the `dual_norm_correction` setting."""
     def __init__(self, target: Target='update'):
         super().__init__({}, requires_grad=True, target=target)
 
@@ -204,8 +205,8 @@ def _filter_2dplus(p: torch.Tensor):
     return False
 
 class MuonAdjustLR(Transform):
-    '''LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
-    Orthogonalize already has this built in with the `adjust_lr` setting.'''
+    """LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
+    Orthogonalize already has this built in with the `adjust_lr` setting."""
     def __init__(self, alpha: float = 1, target: Target='update'):
         defaults = dict(alpha=alpha)
         super().__init__(defaults=defaults, target=target)
