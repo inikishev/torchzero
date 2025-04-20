@@ -1,6 +1,6 @@
 ![example workflow](https://github.com/inikishev/torchzero/actions/workflows/tests.yml/badge.svg)
 
-note - I've recently revamped the internals to be significantly cleaner and allow for projections (e.g. GaLore, GWT), docs are WIP but should be finished soon after I re-add all modules.
+note - I've recently revamped the internals to be significantly cleaner and allow for projections (e.g. GaLore, GWT), new docs are WIP but should be finished soon after I re-add all modules.
 
 # torchzero
 

@@ -24,7 +24,7 @@ class _OptionalCompiler:
             return torch.compile(x, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
         return x
 
-COMPILER = _OptionalCompiler()
+_optional_compiler = _OptionalCompiler()
 """this holds .enable attribute, set to True to enable compiling for a few functions that benefit from it."""
 
 
