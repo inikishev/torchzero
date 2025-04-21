@@ -93,9 +93,9 @@ class LaplacianSmoothing(Transform):
             for p, t in zip(params, target):
                 settings = self.settings[p]
                 if p.numel() > settings['min_numel']:
-                    den = self.state[p]
-                    if 'denominator' not in den: den['denominator'] = _precompute_denominator(p, settings['sigma'])
-                    smoothed_target.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.view_as(t)) #pylint:disable=not-callable
+                    state = self.state[p]
+                    if 'denominator' not in state: state['denominator'] = _precompute_denominator(p, settings['sigma'])
+                    smoothed_target.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / state['denominator']).real.view_as(t)) #pylint:disable=not-callable
                 else:
                     smoothed_target.append(t)
 
