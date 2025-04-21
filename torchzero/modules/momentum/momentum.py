@@ -32,11 +32,12 @@ def nag_(
 class NAG(Transform):
     def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False, target: Target = 'update'):
         defaults = dict(momentum=momentum,dampening=dampening, lerp=lerp)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        velocity = self.get_state('velocity', params=vars, cls=TensorList)
-        lerp = self.defaults['lerp']
-        momentum,dampening = self.get_settings('momentum','dampening', params=vars, cls=NumberList)
+    def transform(self, target, params, grad, vars):
+        velocity = self.get_state('velocity', params=params, cls=TensorList)
+        lerp = self.settings[params[0]]['lerp']
+
+        momentum,dampening = self.get_settings('momentum','dampening', params=params, cls=NumberList)
         return nag_(TensorList(target), velocity_=velocity,momentum=momentum,dampening=dampening,lerp=lerp)

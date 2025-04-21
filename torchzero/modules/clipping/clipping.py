@@ -129,11 +129,11 @@ def normalize_grads_(
 class ClipValue(Transform):
     def __init__(self, value: float, target: Target = 'update'):
         defaults = dict(value=value)
-        super().__init__(defaults, target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        value = self.get_settings('value', params=vars.params)
+    def transform(self, target, params, grad, vars):
+        value = self.get_settings('value', params=params)
         return TensorList(target).clip_([-v for v in value], value)
 
 class ClipNorm(Transform):
@@ -160,11 +160,11 @@ class ClipNorm(Transform):
         min_norm: float | None = None,
     ):
         defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,min_norm=min_norm)
-        super().__init__(defaults, target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=vars.params, cls=NumberList)
+    def transform(self, target, params, grad, vars):
+        max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=params, cls=NumberList)
         ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.defaults)
         _clip_norm_(
             tensors_ = TensorList(target),
@@ -200,11 +200,11 @@ class Normalize(Transform):
         target: Target = "update",
     ):
         defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size)
-        super().__init__(defaults, target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        norm_value = self.get_settings('norm_value', params=vars.params, cls=NumberList)
+    def transform(self, target, params, grad, vars):
+        norm_value = self.get_settings('norm_value', params=params, cls=NumberList)
         ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.defaults)
 
         _clip_norm_(

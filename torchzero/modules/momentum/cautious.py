@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform
+from ...core import Target, Transform
 from ...utils import NumberList, TensorList
 
 
@@ -67,24 +67,24 @@ class Cautious(Transform):
         target: Target = "update",
     ):
         defaults = dict(normalize=normalize, eps=eps, mode=mode)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        grad = vars.get_grad()
-        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.defaults)
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[params[0]])
         return cautious_(TensorList(target), TensorList(grad), normalize=normalize, eps=eps, mode=mode)
 
 class UpdateGradientSignConsistency(Transform):
     """1 where signs match 0 otherwise"""
     def __init__(self, normalize = False, eps=1e-6, target: Target = 'update'):
         defaults = dict(normalize=normalize, eps=eps)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        grad = vars.get_grad()
-        normalize, eps = itemgetter('normalize', 'eps')(self.defaults)
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        normalize, eps = itemgetter('normalize', 'eps')(self.settings[params[0]])
 
         mask = (TensorList(target).mul_(grad)).gt_(0)
         if normalize: mask = mask / mask.global_mean().clip(min = eps) # pyright: ignore[reportOperatorIssue]

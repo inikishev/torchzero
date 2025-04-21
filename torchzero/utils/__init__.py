@@ -24,7 +24,7 @@ from .params import (
 )
 from .python_tools import FallbackDict, flatten, generic_eq, reduce_dim
 from .tensorlist import TensorList, as_tensorlist, Distributions
-from .torch_tools import tofloat, tolist, tonumpy, totensor, vec_to_tensors, vec_to_tensors_
+from .torch_tools import tofloat, tolist, tonumpy, totensor, vec_to_tensors, vec_to_tensors_, set_storage_
 
 
 def set_compilation(enable: bool):

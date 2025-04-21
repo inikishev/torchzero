@@ -48,22 +48,22 @@ class Adagrad(Transform):
     ):
         defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
                         eps = eps, beta=beta, decay = decay, pow=pow, use_sqrt = use_sqrt)
-        super().__init__(defaults=defaults, target=target)
+        super().__init__(defaults=defaults, uses_grad=False, target=target)
         self.current_step = 0
 
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         target = TensorList(target)
         self.current_step += 1
 
-        lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=vars, cls=NumberList)
+        lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=params, cls=NumberList)
 
-        pow, use_sqrt = itemgetter('pow', 'use_sqrt')(self.defaults)
+        pow, use_sqrt = itemgetter('pow', 'use_sqrt')(self.settings[params[0]])
 
-        sq_sum = self.get_state('sq_sum', params=vars, cls=TensorList)
+        sq_sum = self.get_state('sq_sum', params=params, cls=TensorList)
 
         # initialize accumulator on 1st step
         if self.current_step == 1:
-            sq_sum.set_(target.full_like(self.get_settings('initial_accumulator_value', params=vars)))
+            sq_sum.set_(target.full_like(self.get_settings('initial_accumulator_value', params=params)))
 
         return adagrad_(target,sq_sum_=sq_sum,alpha=alpha,lr_decay=lr_decay,eps=eps,beta=beta,
                         decay=decay,step=self.current_step,pow=pow,use_sqrt=use_sqrt)

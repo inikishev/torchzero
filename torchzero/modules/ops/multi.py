@@ -1,3 +1,4 @@
+#pyright: reportIncompatibleMethodOverride=false
 """"""
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
@@ -35,7 +36,6 @@ class MultiOperation(Module, ABC):
     @torch.no_grad
     def step(self, vars: Vars) -> Vars:
         # pass cloned update to all module operands
-        params = vars.params
         processed_operands: dict[str, Any | list[torch.Tensor]] = self.operands.copy()
 
         for k,v in self.operands.items():

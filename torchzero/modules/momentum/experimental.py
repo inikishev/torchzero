@@ -45,20 +45,20 @@ def precentered_ema_sq_(
 class PrecenteredEMASquared(Transform):
     def __init__(self, beta1:float=0.99, beta2=0.99, min_step: int = 2, amsgrad=False, pow:float=2, target: Target = 'update'):
         defaults = dict(beta1=beta1,beta2=beta2,pow=pow,amsgrad=amsgrad, min_step=min_step)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         self.current_step += 1
 
-        beta1, beta2 = self.get_settings('beta1','beta2', params=vars, cls=NumberList)
-        amsgrad, pow, min_step = itemgetter('amsgrad', 'pow', 'min_step')(self.defaults)
+        beta1, beta2 = self.get_settings('beta1','beta2', params=params, cls=NumberList)
+        amsgrad, pow, min_step = itemgetter('amsgrad', 'pow', 'min_step')(self.settings[params[0]])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', params=vars, cls=TensorList)
+            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', params=params, cls=TensorList)
         else:
-            exp_avg, exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', params=vars, cls=TensorList)
+            exp_avg, exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', params=params, cls=TensorList)
             max_exp_avg_sq = None
 
         return precentered_ema_sq_(
@@ -141,49 +141,49 @@ def coordinate_momentum_(
 
 
 class CoordinateMomentum(Transform):
-    def __init__(self, p: float = 0.1):
+    def __init__(self, p: float = 0.1, target: Target = 'update'):
         defaults = dict(p=p)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        p = self.get_settings('p', params=vars, cls=NumberList)
-        velocity = self.get_state('velocity', params=vars, cls=TensorList)
+    def transform(self, target, params, grad, vars):
+        p = self.get_settings('p', params=params, cls=NumberList)
+        velocity = self.get_state('velocity', params=params, cls=TensorList)
         return coordinate_momentum_(TensorList(target), velocity_=velocity, p=p).clone()
 
 
-def multiplicative_momentum_(
-    tensors_: TensorList,
-    velocity_: TensorList,
-    momentum: float | NumberList,
-    dampening: float | NumberList,
-    normalize_velocity: bool = True,
-    abs: bool = False,
-    lerp: bool = False,
-):
-    """
-    abs: if True, tracks momentum of absolute magnitudes.
+# def multiplicative_momentum_(
+#     tensors_: TensorList,
+#     velocity_: TensorList,
+#     momentum: float | NumberList,
+#     dampening: float | NumberList,
+#     normalize_velocity: bool = True,
+#     abs: bool = False,
+#     lerp: bool = False,
+# ):
+#     """
+#     abs: if True, tracks momentum of absolute magnitudes.
 
-    returns `tensors_`.
-    """
-    tensors_into_velocity = tensors_.abs() if abs else tensors_
-    ema_(tensors_into_velocity, exp_avg_=velocity_, beta=momentum, dampening=0, lerp=lerp)
+#     returns `tensors_`.
+#     """
+#     tensors_into_velocity = tensors_.abs() if abs else tensors_
+#     ema_(tensors_into_velocity, exp_avg_=velocity_, beta=momentum, dampening=0, lerp=lerp)
 
-    if normalize_velocity: velocity_ = velocity_ / velocity_.std().add_(1e-8)
-    return tensors_.mul_(velocity_.lazy_mul(1-dampening) if abs else velocity_.abs().lazy_mul_(1-dampening))
+#     if normalize_velocity: velocity_ = velocity_ / velocity_.std().add_(1e-8)
+#     return tensors_.mul_(velocity_.lazy_mul(1-dampening) if abs else velocity_.abs().lazy_mul_(1-dampening))
 
 
-class MultiplicativeMomentum(Transform):
-    """sucks"""
-    def __init__(self, momentum: float = 0.9, dampening: float = 0,normalize_velocity: bool = True, abs: bool = False, lerp: bool = False):
-        defaults = dict(momentum=momentum, dampening=dampening, normalize_velocity=normalize_velocity,abs=abs, lerp=lerp)
-        super().__init__(defaults)
+# class MultiplicativeMomentum(Transform):
+#     """sucks"""
+#     def __init__(self, momentum: float = 0.9, dampening: float = 0,normalize_velocity: bool = True, abs: bool = False, lerp: bool = False):
+#         defaults = dict(momentum=momentum, dampening=dampening, normalize_velocity=normalize_velocity,abs=abs, lerp=lerp)
+#         super().__init__(defaults, uses_grad=False)
 
-    @torch.no_grad
-    def transform(self, target, vars):
-        momentum,dampening = self.get_settings('momentum','dampening', params=vars, cls=NumberList)
-        abs,lerp,normalize_velocity = itemgetter('abs','lerp','normalize_velocity')(self.defaults)
-        velocity = self.get_state('velocity', params=vars, cls=TensorList)
-        return multiplicative_momentum_(TensorList(target), velocity_=velocity, momentum=momentum, dampening=dampening,
-                                        normalize_velocity=normalize_velocity,abs=abs,lerp=lerp)
+#     @torch.no_grad
+#     def transform(self, target, params, grad, vars):
+#         momentum,dampening = self.get_settings('momentum','dampening', params=params, cls=NumberList)
+#         abs,lerp,normalize_velocity = self.first_setting('abs','lerp','normalize_velocity', params=params)
+#         velocity = self.get_state('velocity', params=params, cls=TensorList)
+#         return multiplicative_momentum_(TensorList(target), velocity_=velocity, momentum=momentum, dampening=dampening,
+#                                         normalize_velocity=normalize_velocity,abs=abs,lerp=lerp)
 

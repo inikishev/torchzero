@@ -122,7 +122,7 @@ class RandomizedFDM(GradApproximator):
                 if i >= len(perts):
                     perts.append(new_pert)
                 else:
-                    perts[i].lerp_(new_pert, beta)
+                    perts[i].lerp_(new_pert, [1-b for b in beta])
 
     @torch.no_grad
     def approximate(self, closure, params, loss, vars):

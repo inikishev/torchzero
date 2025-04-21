@@ -4,46 +4,66 @@ from typing import Any, Literal
 
 import torch
 
+from ..utils import set_storage_
 from .module import Module, Vars
 
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 
 class Transform(Module, ABC):
-    def __init__(self, defaults: dict[str,Any] | None = None, target: Target = 'update'):
+    """Base class for a transform. This represents an update rule that is applied to a direction to obtain a new direction.
+    The update rule is usually applied to the current update direction, but with different `target` it can be applied to params,
+    gradients, or can be used to create a closure which modifies the gradients on each closure call.
+
+    This is an abstract class, to use it, subclass it and override `transform`.
+
+    Args:
+        defaults (dict[str,Any] | None): dict with default values.
+        uses_grad (bool):
+            Set this to True if `transform` method uses the `grad` argument. This will ensure
+            `grad` is always computed and can't be None. Otherwise set to False.
+        target (Target, optional):
+            what to set on vars. Defaults to 'update'.
+    """
+    def __init__(self, defaults: dict[str,Any] | None, uses_grad: bool, target: Target = 'update'):
         super().__init__(defaults)
         self._target: Target = target
+        self._uses_grad = uses_grad
 
     @abstractmethod
-    def transform(self, target: list[torch.Tensor], vars: Vars) -> Iterable[torch.Tensor]:
-        """applies the update rule to `target`"""
+    def transform(self, target: list[torch.Tensor], params: list[torch.Tensor], grad: list[torch.Tensor] | None, vars: Vars) -> Iterable[torch.Tensor]:
+        """applies the update rule to `target`."""
 
     def step(self, vars: Vars) -> Vars:
+        # vars may change, therefore current params and grads have to be extracted and passed explicitly
+        if self._uses_grad: vars.get_grad()
+        params=vars.params; grad = vars.grad
+
         # ---------------------------------- update ---------------------------------- #
         if self._target == 'update':
-            vars.update = list(self.transform(vars.get_update(), vars))
+            vars.update = list(self.transform(vars.get_update(), params, grad, vars))
             return vars
 
         # ----------------------------------- grad ----------------------------------- #
         if self._target == 'grad':
-            vars.grad = list(self.transform(vars.get_grad(), vars))
+            vars.grad = list(self.transform(vars.get_grad(), params, grad, vars))
             return vars
 
         # ------------------------------- params_direct ------------------------------ #
         if self._target == 'params_direct':
-            new_params = self.transform(vars.params, vars)
-            for p, new_p in zip(vars.params, new_params): p.set_(new_p) # pyright: ignore[reportArgumentType]
+            new_params = self.transform(vars.params, params, grad, vars)
+            for p, new_p in zip(vars.params, new_params): set_storage_(p, new_p)
             return vars
 
         # ----------------------------- params_differnce ----------------------------- #
         if self._target == 'params_difference':
-            new_params = tuple(self.transform([p.clone() for p in vars.params], vars))
+            new_params = tuple(self.transform([p.clone() for p in vars.params], params, grad, vars))
             vars.update = list(torch._foreach_sub(vars.params, new_params))
             return vars
 
         # ----------------------------- update_difference ---------------------------- #
         if self._target == 'update_difference':
             update = vars.get_update()
-            new_update = tuple(self.transform([u.clone() for u in update], vars))
+            new_update = tuple(self.transform([u.clone() for u in update], params, grad, vars))
             vars.update = list(torch._foreach_sub(update, new_update))
             return vars
 
@@ -56,8 +76,8 @@ class Transform(Module, ABC):
             def transformed_closure(backward=True):
                 if backward:
                     loss = original_closure()
-                    grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-                    transformed_grad = list(self.transform(grad, vars))
+                    current_grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+                    transformed_grad = list(self.transform(current_grad, params, grad, vars))
                     for p, g in zip(params, transformed_grad):
                         p.grad = g
 
@@ -74,10 +94,25 @@ class Transform(Module, ABC):
 
 
 class ParameterwiseTransform(Module, ABC):
-    def __init__(self, defaults: dict[str,Any] | None, requires_grad: bool, target: Target = 'update'):
+    """Base class for a parameter-wise transform. Similar to `Transform`, but loops over all parameters.
+    This represents an update rule that is applied to a direction to obtain a new direction.
+    The update rule is usually applied to the current update direction, but with different `target` it can be applied to params,
+    gradients, or can be used to create a closure which modifies the gradients on each closure call.
+
+    This is an abstract class, to use it, subclass it and override `transform`.
+
+    Args:
+        defaults (dict[str,Any] | None): dict with default values.
+        uses_grad (bool):
+            Set this to True if `transform` method uses the `grad` argument. This will ensure
+            `grad` is always computed and can't be None. Otherwise set to False.
+        target (Target, optional):
+            what to set on vars. Defaults to 'update'.
+    """
+    def __init__(self, defaults: dict[str,Any] | None, uses_grad: bool, target: Target = 'update'):
         super().__init__(defaults)
         self._target: Target = target
-        self._requires_grad: bool = requires_grad
+        self._uses_grad: bool = uses_grad
 
     @abstractmethod
     def transform(
@@ -91,7 +126,7 @@ class ParameterwiseTransform(Module, ABC):
 
     def step(self, vars: Vars) -> Vars:
         params = vars.params
-        if self._requires_grad and vars.grad is None: vars.get_grad()
+        if self._uses_grad and vars.grad is None: vars.get_grad()
 
         # ---------------------------------- update ---------------------------------- #
         if self._target == 'update':
@@ -99,7 +134,9 @@ class ParameterwiseTransform(Module, ABC):
             grad = vars.grad if vars.grad is not None else [None] * len(params)
             transformed_update = []
 
-            for i, (p, g, u) in enumerate(zip(params, grad, update)):
+            for p, g, u in zip(params, grad, update):
+                # settings = self.settings[p] # couldn't make typing work with this
+                #, self.transform(target=u, param=p, grad=g, vars=vars, **{k:settings[k] for k in self.defaults})
                 transformed_update.append(self.transform(target=u, param=p, grad=g, vars=vars))
 
             vars.update = transformed_update
@@ -110,7 +147,7 @@ class ParameterwiseTransform(Module, ABC):
             grad = vars.get_grad()
             transformed_grad = []
 
-            for i, (p, g) in enumerate(zip(params, grad)):
+            for p, g in zip(params, grad):
                 transformed_grad.append(self.transform(target=g, param=p, grad=g, vars=vars))
 
             vars.grad = transformed_grad
@@ -120,8 +157,8 @@ class ParameterwiseTransform(Module, ABC):
         if self._target == 'params_direct':
             grad = vars.grad if vars.grad is not None else [None] * len(params)
 
-            for i, (p, g) in enumerate(zip(params, grad)):
-                p.set_(self.transform(target=p, param=p, grad=g, vars=vars)) # type:ignore
+            for p, g in zip(params, grad):
+                set_storage_(p, self.transform(target=p, param=p, grad=g, vars=vars))
 
             return vars
 
@@ -130,8 +167,10 @@ class ParameterwiseTransform(Module, ABC):
             grad = vars.grad if vars.grad is not None else [None] * len(params)
             transformed_params = []
 
-            for i, (p, g) in enumerate(zip(params, grad)):
-                transformed_params.append(self.transform(target=p.clone(), param=p, grad=g, vars=vars))
+            for p, g in zip(params, grad):
+                transformed_params.append(
+                    self.transform(target=p.clone(), param=p, grad=g, vars=vars)
+                )
 
             vars.update = list(torch._foreach_sub(params, transformed_params))
             return vars
@@ -142,8 +181,10 @@ class ParameterwiseTransform(Module, ABC):
             grad = vars.grad if vars.grad is not None else [None] * len(params)
             transformed_update = []
 
-            for i, (p, g, u) in enumerate(zip(params, grad, update)):
-                transformed_update.append(self.transform(target=u.clone(), param=p, grad=g, vars=vars))
+            for p, g, u in zip(params, grad, update):
+                transformed_update.append(
+                    self.transform(target=u.clone(), param=p, grad=g, vars=vars)
+                )
 
             vars.update = list(torch._foreach_sub(update, transformed_update))
             return vars
@@ -160,7 +201,7 @@ class ParameterwiseTransform(Module, ABC):
                     grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
                     transformed_grad = []
 
-                    for i, (p, g) in enumerate(zip(params, grad)):
+                    for p, g in zip(params, grad):
                         transformed_grad.append(self.transform(target=g, param=p, grad=g, vars=vars))
 
                     for p, g in zip(params, transformed_grad):

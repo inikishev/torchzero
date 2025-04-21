@@ -11,12 +11,11 @@ from ...utils import tolist
 class Averaging(ParameterwiseTransform):
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size=history_size)
-        super().__init__(requires_grad=False, defaults=defaults, target=target)
+        super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
     def transform(self, target, param, grad, vars):
         history_size = self.settings[param]['history_size']
-
         state = self.state[param]
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)
@@ -32,7 +31,7 @@ class Averaging(ParameterwiseTransform):
 class WeightedAveraging(ParameterwiseTransform):
     def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: Target = 'update'):
         defaults = dict(weights = tolist(weights))
-        super().__init__(requires_grad=False, defaults=defaults, target=target)
+        super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
     def transform(self, target, param, grad, vars):
@@ -56,12 +55,13 @@ class WeightedAveraging(ParameterwiseTransform):
 class MedianAveraging(ParameterwiseTransform):
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size = history_size)
-        super().__init__(requires_grad=False, defaults=defaults, target=target)
+        super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
     def transform(self, target, param, grad, vars):
         history_size = self.settings[param]['history_size']
         state = self.state[param]
+
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)
 

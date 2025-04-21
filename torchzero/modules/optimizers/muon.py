@@ -1,3 +1,4 @@
+from operator import itemgetter
 import math
 import warnings
 from collections.abc import Iterable, Sequence
@@ -169,22 +170,24 @@ class Orthogonalize(ParameterwiseTransform):
     """
     def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
                  method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
-        defaults = dict(orthogonalize=True, ns_steps=ns_steps, adaptive=dual_norm_correction, adjust_lr=adjust_lr, method=method.lower())
-        super().__init__(requires_grad=False, defaults=defaults, target=target)
+        defaults = dict(orthogonalize=True, ns_steps=ns_steps, dual_norm_correction=dual_norm_correction, adjust_lr=adjust_lr, method=method.lower())
+        super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
     def transform(self, target, param, grad, vars):
-        settings = self.settings[param]
-        if not settings['orthogonalize']: return target
+        orthogonalize, ns_steps, dual_norm_correction, adjust_lr, method = itemgetter(
+            'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(self.settings[param])
+
+        if not orthogonalize: return target
 
         if _is_at_least_2d(target):
 
-            X = _orthogonalize_tensor(target, settings['ns_steps'], settings['method'])
+            X = _orthogonalize_tensor(target, ns_steps, method)
 
-            if settings['adaptive']:
+            if dual_norm_correction:
                 X = _dual_norm_correction(X, target, batch_first=False)
 
-            if settings['adjust_lr']:
+            if adjust_lr:
                 X.mul_(adjust_lr_for_muon(1, param.shape))
 
             return X.view_as(param)
@@ -196,7 +199,7 @@ class DualNormCorrection(ParameterwiseTransform):
     """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon).
     Orthogonalize already has this built in with the `dual_norm_correction` setting."""
     def __init__(self, target: Target='update'):
-        super().__init__({}, requires_grad=True, target=target)
+        super().__init__({}, uses_grad=True, target=target)
 
     def transform(self, target, param, grad, vars):
         assert grad is not None
@@ -207,18 +210,15 @@ class DualNormCorrection(ParameterwiseTransform):
 
 class MuonAdjustLR(Transform):
     """LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
-    Orthogonalize already has this built in with the `adjust_lr` setting."""
+    Orthogonalize already has this built in with the `adjust_lr` setting, however you might want to move this to be later in the chain."""
     def __init__(self, alpha: float = 1, target: Target='update'):
         defaults = dict(alpha=alpha)
-        super().__init__(defaults=defaults, target=target)
+        super().__init__(defaults=defaults, uses_grad=False, target=target)
 
-    def transform(self, target, vars):
-        alphas = self.get_settings('alpha', params=vars)
+    def transform(self, target, params, grad, vars):
+        alphas = self.get_settings('alpha', params=params)
         tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(target, alphas) if _is_at_least_2d(t)]
         tensors = [i[0] for i in tensors_alphas]
         a = [i[1] for i in alphas]
         torch._foreach_mul_(tensors, a)
         return target
-
-
-

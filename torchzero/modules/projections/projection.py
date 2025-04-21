@@ -216,7 +216,7 @@ class NoopProjection(Projection):
 
     @torch.no_grad
     def unproject(self, tensors, vars):
-        return
+        return tensors
 
 class MultipyProjection(Projection):
     """an example projection which multiplies everything by 2"""

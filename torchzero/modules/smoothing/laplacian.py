@@ -75,46 +75,41 @@ class LaplacianSmoothing(Transform):
 
     """
     def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: Target = 'update'):
-        defaults = dict(sigma = sigma)
-        self.sigma = 1
-        super().__init__(defaults, target=target)
-        self.layerwise = layerwise
-        self.min_numel = min_numel
-
+        defaults = dict(sigma = sigma, layerwise=layerwise, min_numel=min_numel)
+        super().__init__(defaults, uses_grad=False, target=target)
         # precomputed denominator for when layerwise=False
-        self.full_denominator = None
+        self.global_state['full_denominator'] = None
 
 
     @torch.no_grad
-    def transform(self, target, vars):
-        sigmas = self.get_settings('sigma', params=vars)
+    def transform(self, target, params, grad, vars):
+        layerwise = self.settings[params[0]]['layerwise']
 
         # layerwise laplacian smoothing
-        if self.layerwise:
+        if layerwise:
 
             # precompute the denominator for each layer and store it in each parameters state
-            denominators = TensorList()
-            for p, sigma in zip(vars.params, sigmas):
-                if p.numel() > self.min_numel:
+            smoothed_target = TensorList()
+            for p, t in zip(params, target):
+                settings = self.settings[p]
+                if p.numel() > settings['min_numel']:
                     den = self.state[p]
-                    if 'denominator' not in den: den['denominator'] = _precompute_denominator(p, sigma)
-                    denominators.append(den['denominator'])
+                    if 'denominator' not in den: den['denominator'] = _precompute_denominator(p, settings['sigma'])
+                    smoothed_target.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.view_as(t)) #pylint:disable=not-callable
+                else:
+                    smoothed_target.append(t)
 
-            # apply the smoothing
-            smoothed_direction = TensorList()
-            for t, sigma, den in zip(target, sigmas, denominators):
-                smoothed_direction.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / den).real.view_as(t)) # pylint: disable = not-callable
-            return smoothed_direction
+            return smoothed_target
 
         # else
         # full laplacian smoothing
         # precompute full denominator
         target = TensorList(target)
-        if self.full_denominator is None:
-            self.full_denominator = _precompute_denominator(target.to_vec(), self.sigma)
+        if self.global_state['full_denominator'] is None:
+            self.global_state['full_denominator'] = _precompute_denominator(target.to_vec(), self.settings[params[0]]['sigma'])
 
         # apply the smoothing
         vec = target.to_vec()
-        return target.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.full_denominator).real) # pylint: disable = not-callable
+        return target.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.global_state['full_denominator']).real)#pylint:disable=not-callable
 
 

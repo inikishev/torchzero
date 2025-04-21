@@ -7,13 +7,13 @@ from ...utils import TensorList, as_tensorlist
 class PolakRibiere(Transform):
     """Polak-Ribière-Polyak nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         grad = as_tensorlist(target) # for brevity
 
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, grad])
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
 
         denom = prev_grad.dot(prev_grad)
         if denom == 0: beta = 0
@@ -28,16 +28,16 @@ class PolakRibiere(Transform):
 class FletcherReeves(Transform):
     """Fletcher–Reeves nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         grad = as_tensorlist(target) # for brevity
 
         if 'prev_dot' not in self.global_state:
             self.global_state['prev_dot'] = grad.dot(grad)
 
-        prev_dir = self.get_state('prev_dir', params=vars, cls=TensorList)
+        prev_dir = self.get_state('prev_dir', params=params, cls=TensorList)
         prev_dot = self.global_state['prev_dot']
 
         cur_dot = grad.dot(grad)
@@ -68,11 +68,11 @@ def hestenes_stiefel_(grad: TensorList, prev_dir_: TensorList,prev_grad_: Tensor
 class HestenesStiefel(Transform):
     """Hestenes–Stiefel nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, target])
+    def transform(self, target, params, grad, vars):
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
         return hestenes_stiefel_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)
 
 
@@ -93,11 +93,11 @@ def dai_yuan_(grad: TensorList, prev_dir_: TensorList,prev_grad_: TensorList):
 class DaiYuan(Transform):
     """Dai–Yuan nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, target])
+    def transform(self, target, params, grad, vars):
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
         return dai_yuan_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)
 
 
@@ -105,13 +105,13 @@ class DaiYuan(Transform):
 class LiuStorey(Transform):
     """Liu-Storey nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         grad = as_tensorlist(target) # for brevity
 
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, grad])
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
 
         denom = prev_grad.dot(prev_dir)
         if denom == 0: beta = 0
@@ -126,13 +126,13 @@ class LiuStorey(Transform):
 class ConjugateDescent(Transform):
     """Conjugate Descent (CD). This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         grad = as_tensorlist(target) # for brevity
 
-        prev_dir = self.get_state('prev_dir', params=vars, cls=TensorList, init = [torch.zeros_like, grad])
+        prev_dir = self.get_state('prev_dir', params=params, cls=TensorList, init = [torch.zeros_like, grad])
         if 'denom' not in self.global_state:
             self.global_state['denom'] = torch.tensor(0.).to(grad[0])
 
@@ -152,13 +152,13 @@ class HagerZhang(Transform):
     it's the most complicated one so surely it must be better that the other ones.
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         grad = as_tensorlist(target) # for brevity
 
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, grad])
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
         grad_diff = grad - prev_grad
 
         # term 1
@@ -203,9 +203,9 @@ class HybridHS_DY(Transform):
     """HS-DY hybrid conjugate gradient method.
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
     def __init__(self):
-        super().__init__(defaults={})
+        super().__init__(defaults={}, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=vars, cls=TensorList, init=[torch.zeros_like, target])
+    def transform(self, target, params, grad, vars):
+        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
         return hd_dy_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)

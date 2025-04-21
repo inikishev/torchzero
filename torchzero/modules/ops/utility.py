@@ -2,78 +2,96 @@ from collections import deque
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform, Module
+from ...core import Target, Transform, Module
 from ...utils.tensorlist import Distributions, TensorList
 
 
 class Clone(Transform):
-    def __init__(self): super().__init__()
+    def __init__(self): super().__init__({}, uses_grad=False)
     @torch.no_grad
-    def transform(self, target, vars): return [t.clone() for t in target]
+    def transform(self, target, params, grad, vars): return [t.clone() for t in target]
 
-class Grad(Transform):
-    def __init__(self, target: "Target" = 'update'): super().__init__(target=target)
+class Grad(Module):
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def transform(self, target, vars): return [g.clone() for g in vars.get_grad()]
+    def step(self, vars):
+        vars.update = [g.clone() for g in vars.get_grad()]
+        return vars
 
-class Params(Transform):
-    def __init__(self, target: "Target" = 'update'): super().__init__(target=target)
+class Params(Module):
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def transform(self, target, vars): return [p.clone() for p in vars.params]
+    def step(self, vars):
+        vars.update = [p.clone() for p in vars.params]
+        return vars
 
-class Update(Transform):
-    def __init__(self, target: "Target" = 'update'): super().__init__(target=target)
+class Update(Module):
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def transform(self, target, vars): return [u.clone() for u in vars.get_update()]
+    def step(self, vars):
+        vars.update = [u.clone() for u in vars.get_update()]
+        return vars
 
-class Zeros(Transform):
-    def __init__(self, target: "Target" = 'update'): super().__init__(target=target)
+class Zeros(Module):
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def transform(self, target, vars):
-        torch._foreach_zero_(target)
-        return target
+    def step(self, vars):
+        vars.update = [torch.zeros_like(p) for p in vars.params]
+        return vars
 
-class Ones(Transform):
-    def __init__(self, target: "Target" = 'update'): super().__init__(target=target)
+class Ones(Module):
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def transform(self, target, vars): return [t.fill_(1) for t in target]
+    def step(self, vars):
+        vars.update = [torch.ones_like(p) for p in vars.params]
+        return vars
 
-class Fill(Transform):
-    def __init__(self, value: float, target: "Target" = 'update'):
+class Fill(Module):
+    def __init__(self, value: float):
         defaults = dict(value=value)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        return [t.fill_(v) for t,v in zip(target, self.get_settings('value', params=vars))]
+    def step(self, vars):
+        vars.update = [torch.full_like(p, self.settings[p]['value']) for p in vars.params]
+        return vars
 
-class RandomSample(Transform):
-    def __init__(self, eps: float = 1, distribution: Distributions = 'normal', target: "Target" = 'update'):
+class RandomSample(Module):
+    def __init__(self, eps: float = 1, distribution: Distributions = 'normal'):
         defaults = dict(eps=eps, distribution=distribution)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        return TensorList(target).sample_like(eps=self.get_settings('value',params=vars), distribution=self.defaults['distribution'])
+    def step(self, vars):
+        vars.update = TensorList(vars.params).sample_like(
+            eps=self.get_settings('value',params=vars.params), distribution=self.defaults['distribution']
+        )
+        return vars
 
-class Randn(Transform):
-    def __init__(self, target: "Target" = 'update'):
-        super().__init__({}, target=target)
+class Randn(Module):
+    def __init__(self):
+        super().__init__({})
 
     @torch.no_grad
-    def transform(self, target, vars):
-        return [torch.randn_like(t) for t in target]
+    def step(self, vars):
+        vars.update = [torch.randn_like(p) for p in vars.params]
+        return vars
 
-class Uniform(Transform):
-    def __init__(self, low: float, high: float, target: "Target" = 'update'):
+class Uniform(Module):
+    def __init__(self, low: float, high: float):
         defaults = dict(low=low, high=high)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        low,high = self.get_settings('low','high', params=vars)
-        return [t.uniform_(l,h) for t,l,h in zip(target, low, high)]
-
+    def step(self, vars):
+        low,high = self.get_settings('low','high', params=vars.params)
+        vars.update = [torch.empty_like(t).uniform_(l,h) for t,l,h in zip(vars.params, low, high)]
+        return vars
 
 class GradToNone(Module):
     def __init__(self): super().__init__()

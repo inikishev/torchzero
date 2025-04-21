@@ -11,7 +11,7 @@ class Previous(ParameterwiseTransform):
     """Maintains an update from n steps back, for example if n=1, returns previous update"""
     def __init__(self, n=1, target: Target = 'update'):
         defaults = dict(n=n)
-        super().__init__(requires_grad=False, defaults=defaults, target=target)
+        super().__init__(uses_grad=False, defaults=defaults, target=target)
 
 
     @torch.no_grad
@@ -29,38 +29,39 @@ class Previous(ParameterwiseTransform):
 
 class LastDifference(Transform):
     """Difference between past two updates."""
-    def __init__(self):
-        super().__init__()
+    def __init__(self,target: Target = 'update'):
+        super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        prev_target = self.get_state('prev_target', params=vars) # initialized to 0
+    def transform(self, target, params, grad, vars):
+        prev_target = self.get_state('prev_target', params=params) # initialized to 0
         difference = torch._foreach_sub(target, prev_target)
         for p, c in zip(prev_target, target): p.set_(c)
         return difference
 
-class LastGradDifference(Transform):
+class LastGradDifference(Module):
     """Difference between past two grads."""
-    def __init__(self,target: Target = 'update'):
-        super().__init__(target=target)
+    def __init__(self):
+        super().__init__({})
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def step(self, vars):
         grad = vars.get_grad()
-        prev_grad = self.get_state('prev_grad', params=vars) # initialized to 0
+        prev_grad = self.get_state('prev_grad', params=vars.params) # initialized to 0
         difference = torch._foreach_sub(grad, prev_grad)
         for p, c in zip(prev_grad, grad): p.set_(c)
-        return difference
+        vars.update = list(difference)
+        return vars
 
 
 class LastProduct(Transform):
-    """Product of past two updates."""
-    def __init__(self):
-        super().__init__()
+    """Difference between past two updates."""
+    def __init__(self,target: Target = 'update'):
+        super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        prev_target = self.get_state('prev_target', params=vars) # initialized to 0
+    def transform(self, target, params, grad, vars):
+        prev_target = self.get_state('prev_target', params=params, init=torch.ones_like) # initialized to 1 for prod
         prod = torch._foreach_mul(target, prev_target)
         for p, c in zip(prev_target, target): p.set_(c)
         return prod
@@ -68,88 +69,93 @@ class LastProduct(Transform):
 class GradSign(Transform):
     """copy gradient sign to update."""
     def __init__(self, target: Target = 'update'):
-        super().__init__(target=target)
+        super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        return [t.copysign_(g) for t,g in zip(target, vars.get_grad())]
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        return [t.copysign_(g) for t,g in zip(target, grad)]
 
 class UpdateSign(Transform):
     """use per-weight magnitudes from grad while using sign from update."""
     def __init__(self, target: Target = 'update'):
-        super().__init__(target=target)
+        super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        return [g.copysign(t) for t,g in zip(target, vars.get_grad())] # no in-place
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        return [g.copysign(t) for t,g in zip(target, grad)] # no in-place
 
 class GraftToGrad(Transform):
     """use gradient norm and update direction."""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
-        return TensorList(target).graft_(vars.get_grad(), tensorwise=tensorwise, ord=ord, eps=eps)
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
+        return TensorList(target).graft_(grad, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class GraftGradToUpdate(Transform):
     """use update norm and gradient direction."""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
-        return TensorList(vars.get_grad()).graft(target, tensorwise=tensorwise, ord=ord, eps=eps)
+        return TensorList(grad).graft(target, tensorwise=tensorwise, ord=ord, eps=eps)
 
 
 class GraftToParams(Transform):
     """makes update norm be set to parameter norm, but norm won't go below eps"""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-4, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
-        return TensorList(target).graft_(vars.params, tensorwise=tensorwise, ord=ord, eps=eps)
+        return TensorList(target).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(Transform):
     """multiplies update by absolute parameter values to make it relative to their magnitude, min_value is minimum value to avoid getting stuck at 0"""
     def __init__(self, min_value:float = 1e-4, target: Target = 'update'):
         defaults = dict(min_value=min_value)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        mul = TensorList(vars.params).abs().clamp_(self.get_settings('min_value', params=vars))
+    def transform(self, target, params, grad, vars):
+        mul = TensorList(params).abs().clamp_(self.get_settings('min_value', params=params))
         torch._foreach_mul_(target, mul)
         return target
 
-class FillLoss(Transform):
-    """returns update filled with loss value times alpha"""
-    def __init__(self, alpha: float = 1, backward: bool = True, target: "Target" = 'update'):
+class FillLoss(Module):
+    """makes tensors filled with loss value times alpha"""
+    def __init__(self, alpha: float = 1, backward: bool = True):
         defaults = dict(alpha=alpha, backward=backward)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
-    def transform(self, target, vars):
-        alpha = self.get_settings('alpha', params=vars)
-        loss = vars.get_loss(backward=self.defaults['backward'])
-        return [t.fill_(loss*a) for t,a in zip(target, alpha)]
+    def step(self, vars):
+        alpha = self.get_settings('alpha', params=vars.params)
+        loss = vars.get_loss(backward=self.settings[vars.params[0]]['backward'])
+        vars.update = [torch.full_like(p, loss*a) for p,a in zip(vars.params, alpha)]
+        return vars
 
 class MulByLoss(Transform):
     """multiplies update by loss times alpha"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True, target: Target = 'update'):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        alpha, min_value = self.get_settings('alpha', 'min_value', params=vars)
-        loss = vars.get_loss(backward=self.defaults['backward'])
+    def transform(self, target, params, grad, vars): #vars used for loss
+        alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
+        loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_mul_(target, mul)
         return target
@@ -158,12 +164,12 @@ class DivByLoss(Transform):
     """divides update by loss times alpha"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True, target: Target = 'update'):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, vars):
-        alpha, min_value = self.get_settings('alpha', 'min_value', params=vars)
-        loss = vars.get_loss(backward=self.defaults['backward'])
+    def transform(self, target, params, grad, vars): #vars used for loss
+        alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
+        loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_div_(target, mul)
         return target

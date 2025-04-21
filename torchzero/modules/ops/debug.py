@@ -2,7 +2,7 @@ from collections import deque
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform, Module
+from ...core import Module
 from ...utils.tensorlist import Distributions
 
 class PrintUpdate(Module):

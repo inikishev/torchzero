@@ -9,7 +9,7 @@ from ...utils import TensorList, as_tensorlist
 class LBFGS(Transform):
     def __init__(self, history_size=10):
         defaults = dict(history_size = history_size)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_grad=False)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
@@ -17,10 +17,10 @@ class LBFGS(Transform):
         self.global_state['step'] = 0
 
     @torch.no_grad
-    def transform(self, target, vars):
+    def transform(self, target, params, grad, vars):
         params = vars.params
         grad = as_tensorlist(target) # fr brevity
-        prev_params, prev_grad = self.get_state('prev_params', 'prev_grad', params=vars, cls=TensorList, init=[params, grad])
+        prev_params, prev_grad = self.get_state('prev_params', 'prev_grad', params=params, cls=TensorList, init=[params, grad])
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']

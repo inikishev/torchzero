@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, MutableMapping, Sequence
 from typing import Any, overload
+from operator import itemgetter
 
 import torch
 
@@ -152,6 +153,7 @@ class Vars:
         copy.loss = self.loss
         copy.loss_approx = self.loss_approx
         copy.post_step_hooks = self.post_step_hooks
+        copy.stop = self.stop
 
         return copy
 
@@ -210,35 +212,35 @@ class Module(ABC):
 
     @overload
     def get_settings(self, key: str, *,
-                     params: Sequence[torch.Tensor] | Vars, cls: type[ListLike] = list) -> ListLike: ...
+                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> ListLike: ...
     @overload
     def get_settings(self, key: list[str] | tuple[str,...], *,
-                     params: Sequence[torch.Tensor] | Vars, cls: type[ListLike] = list) -> list[ListLike]: ...
+                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> list[ListLike]: ...
     @overload
     def get_settings(self, key: str, key2: str, *keys: str,
-                     params: Sequence[torch.Tensor] | Vars, cls: type[ListLike] = list) -> list[ListLike]: ...
+                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> list[ListLike]: ...
 
     def get_settings(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                     params: Sequence[torch.Tensor] | Vars, cls: type[ListLike] = list) -> ListLike | list[ListLike]:
-        if isinstance(params, Vars): params = params.params
+                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> ListLike | list[ListLike]:
+        # if isinstance(params, Vars): params = params.params
         return get_state_vals(self.settings, params, key, key2, *keys, must_exist=True, cls=cls) # pyright:ignore[reportArgumentType]
 
 
     @overload
     def get_state(self, key: str, *,
-                   params: Sequence[torch.Tensor] | Vars, must_exist: bool = False, init: Init = torch.zeros_like,
+                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init = torch.zeros_like,
                    cls: type[ListLike] = list) -> ListLike: ...
     @overload
     def get_state(self, key: list[str] | tuple[str,...], *,
-                   params: Sequence[torch.Tensor] | Vars, must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> list[ListLike]: ...
     @overload
     def get_state(self, key: str, key2: str, *keys: str,
-                   params: Sequence[torch.Tensor] | Vars, must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> list[ListLike]: ...
 
     def get_state(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                   params: Sequence[torch.Tensor] | Vars, must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> ListLike | list[ListLike]:
         """Returns values of per-parameter state for a given key.
         If key doesn't exist, create it with inits.
@@ -291,8 +293,12 @@ class Module(ABC):
             - if state_keys has multiple keys and keys has a single key, return cls.
             - if state_keys has multiple keys and keys has multiple keys, return list of cls.
         """
-        if isinstance(params, Vars): params = params.params
+        # if isinstance(params, Vars): params = params.params
         return get_state_vals(self.state, params, key, key2, *keys, must_exist=must_exist, init=init, cls=cls) # pyright:ignore[reportArgumentType]
+
+    # def first_setting(self, *keys:str, params:Sequence[torch.Tensor]):
+    #     # if isinstance(params, Vars): params = params.params
+    #     return itemgetter(*keys)(self.settings[params[0]])
 
     def state_dict(self):
         """state dict"""
@@ -370,7 +376,7 @@ class Modular(torch.optim.Optimizer):
             self._per_parameter_global_settings[p] = [m.settings[p].maps[1] for m in self.unrolled_modules]
 
 
-    def step(self, closure=None):
+    def step(self, closure=None): # pyright: ignore[reportIncompatibleMethodOverride]
         # propagate global per-parameter setting overrides
         for g in self.param_groups:
             settings = dict(g.maps[0]) # ignore defaults
@@ -400,9 +406,9 @@ class Modular(torch.optim.Optimizer):
             if (i == n_modules - 1) or ((i == n_modules - 2) and (last_lr is not None)):
                 if module.children: vars.nested_is_last = True
                 else: vars.is_last = True
-                if last_lr is not None: vars.last_module_lrs = last_module.get_settings('lr', params=vars)
+                if last_lr is not None: vars.last_module_lrs = last_module.get_settings('lr', params=vars.params)
 
-            vars = module.step(vars)
+            vars = module.step(vars.clone(clone_update=False))
             if vars.stop: break
 
         # apply update

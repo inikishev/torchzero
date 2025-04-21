@@ -41,3 +41,6 @@ def vec_to_tensors_(vec: torch.Tensor, tensors_: Iterable[torch.Tensor]):
         t.set_(vec[cur:cur+numel].view_as(t)) # pyright: ignore[reportArgumentType]
         cur += numel
 
+def set_storage_(tensor: torch.Tensor, storage: torch.Tensor):
+    """just calls `tensor.set_(storage)`. But the typing is correct"""
+    return tensor.set_(storage) # pyright:ignore[reportArgumentType]
