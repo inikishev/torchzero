@@ -18,7 +18,6 @@ class LBFGS(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        params = vars.params
         grad = as_tensorlist(target) # fr brevity
         prev_params, prev_grad = self.get_state('prev_params', 'prev_grad', params=params, cls=TensorList, init=[params, grad])
 

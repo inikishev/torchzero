@@ -11,5 +11,5 @@ class PrintUpdate(Module):
         super().__init__(defaults)
 
     def step(self, vars):
-        self.defaults["print_fn"](f'{self.defaults["text"]}{vars.update}')
+        self.settings[vars.params[0]]["print_fn"](f'{self.settings[vars.params[0]]["text"]}{vars.update}')
         return vars

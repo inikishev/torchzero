@@ -32,7 +32,7 @@ class Alternate(Module):
         vars = module.step(vars.clone(clone_update=False))
 
         # number of steps until next module
-        steps = self.defaults['steps']
+        steps = self.settings[vars.params[0]]['steps']
         if isinstance(steps, int): steps = [steps]*len(self.children)
 
         self.global_state['steps_to_next'] -= 1

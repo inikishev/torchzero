@@ -58,7 +58,7 @@ class SubModules(MultiOperation):
 
     @torch.no_grad
     def transform(self, vars: Vars, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
-        alpha = self.defaults['alpha']
+        alpha = self.settings[vars.params[0]]['alpha']
 
         if isinstance(input, (int,float)):
             assert isinstance(other, list)
@@ -103,7 +103,7 @@ class LerpModules(MultiOperation):
 
     @torch.no_grad
     def transform(self, vars: Vars, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
-        torch._foreach_lerp_(input, end, weight=self.defaults['weight'])
+        torch._foreach_lerp_(input, end, weight=self.settings[vars.params[0]]['weight'])
         return input
 
 class ClipModules(MultiOperation):
@@ -123,7 +123,7 @@ class GraftModules(MultiOperation):
 
     @torch.no_grad
     def transform(self, vars, magnitude: list[torch.Tensor], direction:list[torch.Tensor]):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[vars.params[0]])
         return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
 
 

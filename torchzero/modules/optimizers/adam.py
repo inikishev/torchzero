@@ -75,7 +75,7 @@ class Adam(Module):
         self.current_step += 1
 
         beta1,beta2,eps,alpha=self.get_settings('beta1','beta2','eps','alpha', params=vars.params, cls=NumberList)
-        amsgrad,pow,debiased = self.getter(self.defaults)
+        amsgrad,pow,debiased = self.getter(self.settings[vars.params[0]])
 
         if amsgrad:
             exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg','exp_avg_sq','max_exp_avg_sq', params=vars.params, cls=TensorList)

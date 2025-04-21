@@ -104,8 +104,9 @@ class RandomizedFDM(GradApproximator):
 
     def pre_step(self, vars):
         h, beta = self.get_settings('h', 'beta', params=vars.params)
-        n_samples = self.defaults['n_samples']
-        distribution = self.defaults['distribution']
+        settings = self.settings[vars.params[0]]
+        n_samples = settings['n_samples']
+        distribution = settings['distribution']
 
         if all(i==0 for i in beta):
             # just pre-generate perturbations
@@ -130,8 +131,9 @@ class RandomizedFDM(GradApproximator):
         loss_approx = None
 
         h = self.get_settings('h', params=vars.params, cls=NumberList)
-        n_samples = self.defaults['n_samples']
-        fd_fn = _RFD_FUNCS[self.defaults['formula']]
+        settings = self.settings[params[0]]
+        n_samples = settings['n_samples']
+        fd_fn = _RFD_FUNCS[settings['formula']]
         perturbations = self.global_state['perturbations']
 
         grad = None
@@ -153,8 +155,9 @@ class MeZO(GradApproximator):
 
     def pre_step(self, vars):
         h = self.get_settings('h', params=vars.params)
-        n_samples = self.defaults['n_samples']
-        distribution = self.defaults['distribution']
+        settings = self.settings[vars.params[0]]
+        n_samples = settings['n_samples']
+        distribution = settings['distribution']
 
         step = vars.current_step
 
@@ -176,8 +179,9 @@ class MeZO(GradApproximator):
         loss_approx = None
 
         h = self.get_settings('h', params=vars.params, cls=NumberList)
-        n_samples = self.defaults['n_samples']
-        fd_fn = _RFD_FUNCS[self.defaults['formula']]
+        settings = self.settings[params[0]]
+        n_samples = settings['n_samples']
+        fd_fn = _RFD_FUNCS[settings['formula']]
         prt_fns = self.global_state['prt_fns']
 
         grad = None

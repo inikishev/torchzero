@@ -30,7 +30,7 @@ class CustomUnaryOperation(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        return getattr(target, self.defaults['name'])()
+        return getattr(target, self.settings[params[0]]['name'])()
 
 
 class Abs(Transform):
@@ -110,6 +110,6 @@ class Rescale(Transform):
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         min,max = self.get_settings('min','max', params=params)
-        tensorwise = self.defaults['tensorwise']
+        tensorwise = self.settings[params[0]]['tensorwise']
         dim = None if tensorwise else 'global'
         return TensorList(target).rescale(min=min, max=max, eps=self.settings[params[0]]['eps'], dim=dim)

@@ -10,9 +10,7 @@ from .module import Module, Vars
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 
 class Transform(Module, ABC):
-    """Base class for a transform. This represents an update rule that is applied to a direction to obtain a new direction.
-    The update rule is usually applied to the current update direction, but with different `target` it can be applied to params,
-    gradients, or can be used to create a closure which modifies the gradients on each closure call.
+    """Base class for a transform.
 
     This is an abstract class, to use it, subclass it and override `transform`.
 
@@ -94,10 +92,7 @@ class Transform(Module, ABC):
 
 
 class ParameterwiseTransform(Module, ABC):
-    """Base class for a parameter-wise transform. Similar to `Transform`, but loops over all parameters.
-    This represents an update rule that is applied to a direction to obtain a new direction.
-    The update rule is usually applied to the current update direction, but with different `target` it can be applied to params,
-    gradients, or can be used to create a closure which modifies the gradients on each closure call.
+    """Base class for a parameter-wise transform.
 
     This is an abstract class, to use it, subclass it and override `transform`.
 

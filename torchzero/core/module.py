@@ -20,6 +20,13 @@ from ..utils.python_tools import flatten
 # region Vars
 # ----------------------------------- vars ----------------------------------- #
 class Vars:
+    """
+    Holds the state and context passed between optimizer modules during a step.
+
+    This class acts as a mutable container for information relevant to the current
+    optimization step, such as parameters, gradients, loss, and the computed update.
+    Modules read from and write to this object to coordinate their actions.
+    """
     def __init__(
         self,
         params: list[torch.Tensor],
@@ -47,10 +54,10 @@ class Vars:
         """
 
         self.grad: list[torch.Tensor] | None = None
-        """gradient at current point. If closure is not None, this is set to None and can be calculated if needed."""
+        """gradient with current parameters. If closure is not None, this is set to None and can be calculated if needed."""
 
         self.loss: torch.Tensor | float | None = None
-        """loss at current point."""
+        """loss with current parameters."""
 
         self.loss_approx: torch.Tensor | float | None = None
         """loss at a point near current point. This can be useful as some modules only calculate loss at perturbed points,
@@ -68,30 +75,19 @@ class Vars:
 
         self.is_last: bool = False
         """
-        This is set to True if current module is last or next to last before a learning rate module.
-        If learning rate module is next, :code:`vars.last_module_lrs` will be set to a list of per-parameter learning rates,
-        otherwise it will be None and learning rate is assumed to be 1.
-
-        This can be used to apply the update directly to parameters instead of calculating a new update.
-        If you apply the update manually, make sure to scale the update by :code:`vars.last_module_lrs` if it is not None,
-        and set :code:`vars.update = None` and :code:`vars.stop = True` to prevent learning rate module from stepping
-        and update from being applied twice.
-
-        If current module has children, :code:`is_last` will always be False, and :code:`nested_is_last`
-        is used instead. Note that :code:`nested_is_last` requires more careful handling because
-        if it is True, children will also receive vars with :code:`nested_is_last = True`. If applying
-        the update directly, make sure the module is not a child by checking :code:`if not self.is_child`.
+        Indicates that current module is either last or next-to-last before a learning rate module.
+        This is always False if current module has children or is a child.
         """
 
         self.nested_is_last: bool = False
         """
-        This is set to True if current module is last or next to last before a learning rate module, and
-        current module either has children or is a child. Please refer to :code:`vars.is_last` documentation
-        for more details.
+        Indicates that current module is either last or next-to-last before a learning rate module, for modules
+        that have children.
         """
+
         self.last_module_lrs: list[float] | None = None
         """
-        This is set to a list of per-parameter learning rates if current module is next to last before a
+        List of per-parameter learning rates if current module is next-to-last before a
         learning rate module, otherwise this is set to None. Ignore this unless you are manually applying
         update to parameters.
         """
@@ -100,7 +96,8 @@ class Vars:
         """if True, all following modules will be skipped."""
 
     def get_loss(self, backward: bool) -> torch.Tensor | float:
-        """evaluates loss is it hasn't been evaluated yet and returns it. This should only be called at current point."""
+        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
+        Do not call this at perturbed parameters."""
         if self.loss is None:
             if self.closure is None: raise RuntimeError("closure is None")
             if backward:
@@ -127,7 +124,8 @@ class Vars:
         return self.loss # type:ignore
 
     def get_grad(self) -> list[torch.Tensor]:
-        """evaluates grad if it hasn't been evaluated yet and returns it. This should only be called at current point."""
+        """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
+        :code:`vars.grad` and potentially :code:`vars.loss`. Do not call this at perturbed parameters."""
         if self.grad is None:
             if self.closure is None: raise RuntimeError("closure is None")
             self.get_loss(backward=True) # evaluate and set self.loss and self.grad
@@ -136,12 +134,14 @@ class Vars:
         return self.grad
 
     def get_update(self) -> list[torch.Tensor]:
-        """returns update, if it hasn't been assigned, sets it to cloned gradient, which is calculated if needed. This should only be called at current point."""
+        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to :code:`vars.update`.
+        Computing the gradients may assign :code:`vars.grad` and :code:`vars.loss` if they haven't been computed.
+        Do not call this at perturbed parameters."""
         if self.update is None: self.update = [g.clone() for g in self.get_grad()]
         return self.update
 
     def clone(self, clone_update: bool):
-        """clone vars, optionally clone update. Make sure to clone vars when passing it to a child."""
+        """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via :code:`torch.clone`)."""
         copy = Vars(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step)
 
         if clone_update and self.update is not None:
@@ -158,8 +158,12 @@ class Vars:
         return copy
 
     def update_attrs_from_clone_(self, vars: "Vars"):
-        """when Vars is copied, a child might evaluate loss and gradients, this updates those from it to the main Vars.
-        This updates loss, loss_approx, grad"""
+        """Updates attributes of this `Vars` instance from a cloned instance.
+        Typically called after a child module has processed a cloned `Vars`
+        object. This propagates any newly computed loss or gradient values
+        from the child's context back to the parent `Vars` if the parent
+        didn't have them computed already.
+        """
         if self.loss is None: self.loss = vars.loss
         if self.loss_approx is None: self.loss_approx = vars.loss_approx
         if self.grad is None: self.grad = vars.grad
@@ -168,6 +172,18 @@ class Vars:
 # region Module
 # ---------------------------------- module ---------------------------------- #
 class Module(ABC):
+    """Abstract base class for an optimizer modules.
+
+    Modules represent distinct steps or transformations within the optimization
+    process (e.g., momentum, line search, gradient accumulation).
+
+    A module does not store parameters, but it maintains per-parameter state and per-parameter settings
+    where tensors are used as keys (same as torch.optim.Optimizer state.)
+
+    Args:
+        defaults (dict[str, Any] | None):
+            a dict containing default values of optimization options (used when a parameter group doesn't specify them).
+"""
     def __init__(self, defaults: dict[str, Any] | None = None):
         if defaults is None: defaults = {}
         self.defaults: dict[str, Any] = defaults
@@ -177,16 +193,23 @@ class Module(ABC):
         # 1 - global per-parameter setting overrides in param_groups passed to Modular - medium priority
         # 2 - `defaults` - lowest priority
         self.settings: defaultdict[torch.Tensor, ChainMap[str, Any]] = defaultdict(lambda: ChainMap({}, {}, self.defaults))
+        """per-parameter settings."""
 
         self.state: defaultdict[torch.Tensor, dict[str, Any]] = defaultdict(dict)
+        """Per-parameter state (e.g., momentum buffers)."""
+
         self.global_state: dict[str, Any] = {}
+        """Global state for things that are not per-parameter."""
 
         self.children: dict[str, Module] = {}
+        """A dictionary of child modules."""
 
         self._overridden_keys = set()
+        """tracks keys overridden with `set_param_groups`, only used to not give a warning"""
 
 
     def set_param_groups(self, param_groups: Params):
+        """Set custom parameter groups with per-parameter settings that this module will use."""
         param_groups = _make_param_groups(param_groups, differentiable=False)
         for group in param_groups:
             settings = group.copy()
@@ -306,10 +329,10 @@ class Module(ABC):
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     @abstractmethod
     def step(self, vars: Vars) -> Vars:
-        """perform a step, returns new vars but may update them in-place."""
+        """performs a step, returns new vars but may update them in-place."""
 
     def reset_stats(self):
-        """Resets running stats of this module, by default completely clears per-parameter states and global_state."""
+        """Resets the internal state of the module (e.g. momentum)."""
         self.state.clear()
         self.global_state.clear()
 # endregion
@@ -333,17 +356,31 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
 # region Modular
 # ---------------------------------- Modular --------------------------------- #
 class Modular(torch.optim.Optimizer):
+    """Chains multiple modules into an optimizer.
+
+    Args:
+        params (Params | torch.nn.Module): An iterable of parameters to optimize
+            (typically `model.parameters()`), an iterable of parameter group dicts,
+            or a `torch.nn.Module` instance.
+        *modules (Module): A sequence of `Module` instances that define the
+            optimization algorithm steps.
+    """
     # this is specifically for lr schedulers
     param_groups: list[ChainMap[str, Any]] # pyright:ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, params: Params | torch.nn.Module, *modules: Module):
-        self.model = None
+        self.model: torch.nn.Module | None = None
+        """The model whose parameters are being optimized, if a model instance was passed to `__init__`."""
         if isinstance(params, torch.nn.Module):
             self.model = params
             params = params.parameters()
 
         self.modules = modules
+        """Top-level modules providedduring initialization."""
+
         self.unrolled_modules = unroll_modules(self.modules)
+        """A flattened list of all modules including all children."""
+
         param_groups = _make_param_groups(params, differentiable=False)
         self._per_parameter_global_settings: dict[torch.Tensor, list[MutableMapping[str, Any]]] = {}
 
@@ -366,6 +403,7 @@ class Modular(torch.optim.Optimizer):
         super().__init__(param_groups, defaults=defaults)
 
         self.current_step = 0
+        """The global step counter for the optimizer."""
 
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]
@@ -426,6 +464,7 @@ class Modular(torch.optim.Optimizer):
 # region Chain
 # ----------------------------------- Chain ---------------------------------- #
 class Chain(Module):
+    """Chain of modules, mostly used internally"""
     def __init__(self, *modules: Module | Iterable[Module]):
         super().__init__()
         flat_modules: list[Module] = flatten(modules)
@@ -439,7 +478,7 @@ class Chain(Module):
         return vars
 
 def maybe_chain(*modules: Chainable) -> Module:
-    """if more than 1 modules returns chain else returns module"""
+    """Returns a single module directly if only one is provided, otherwise wraps them in a :code:`Chain`."""
     flat_modules: list[Module] = flatten(modules)
     if len(flat_modules) == 1:
         return flat_modules[0]

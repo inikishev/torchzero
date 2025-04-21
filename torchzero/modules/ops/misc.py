@@ -107,7 +107,7 @@ class GraftGradToUpdate(Transform):
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         assert grad is not None
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
         return TensorList(grad).graft(target, tensorwise=tensorwise, ord=ord, eps=eps)
 
 
@@ -119,7 +119,7 @@ class GraftToParams(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
         return TensorList(target).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(Transform):
@@ -178,7 +178,7 @@ class DivByLoss(Transform):
 
 def _sequential_step(self: Module, vars: Vars, sequential: bool):
     params = vars.params
-    steps = self.defaults['steps']
+    steps = self.settings[params[0]]['steps']
 
     if sequential: modules = self.get_children_sequence()
     else: modules = [self.children['module']] * steps

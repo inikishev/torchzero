@@ -46,8 +46,9 @@ class FFTProjection(Projection):
 
     @torch.no_grad
     def project(self, tensors, vars):
-        one_d = self.defaults['one_d']
-        norm = self.defaults['norm']
+        settings = self.settings[vars.params[0]]
+        one_d = settings['one_d']
+        norm = settings['norm']
 
         # 1d fft, concatenate all parameters into a vector and calculate fft
         if one_d:
@@ -60,8 +61,9 @@ class FFTProjection(Projection):
 
     @torch.no_grad
     def unproject(self, tensors, vars):
-        one_d = self.defaults['one_d']
-        norm = self.defaults['norm']
+        settings = self.settings[vars.params[0]]
+        one_d = settings['one_d']
+        norm = settings['norm']
 
         if one_d:
             vec = torch.view_as_complex(tensors[0])

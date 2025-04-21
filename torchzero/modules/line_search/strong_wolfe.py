@@ -193,7 +193,7 @@ class StrongWolfe(LineSearch):
 
         initial_step_size, c1, c2, max_ls_iter, alpha_max, increase_factor, adaptive, fallback = itemgetter(
             'initial_step_size', 'c1', 'c2', 'max_ls_iter', 'alpha_max',
-            'increase_factor', 'adaptive', 'fallback')(self.defaults)
+            'increase_factor', 'adaptive', 'fallback')(self.settings[vars.params[0]])
 
         step_size = strong_wolfe(
             objective,

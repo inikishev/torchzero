@@ -165,7 +165,7 @@ class ClipNorm(Transform):
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=params, cls=NumberList)
-        ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.defaults)
+        ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.settings[params[0]])
         _clip_norm_(
             tensors_ = TensorList(target),
             min = min_norm if min_norm[0] is not None else None,
@@ -205,7 +205,7 @@ class Normalize(Transform):
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         norm_value = self.get_settings('norm_value', params=params, cls=NumberList)
-        ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.defaults)
+        ord, dim, min_size = itemgetter('ord', 'dim', 'min_size')(self.settings[params[0]])
 
         _clip_norm_(
             tensors_ = TensorList(target),

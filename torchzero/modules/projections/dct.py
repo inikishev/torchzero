@@ -35,8 +35,9 @@ class DCTProjection(Projection):
 
     @torch.no_grad
     def project(self, tensors, vars):
-        dims = self.defaults['dims']
-        norm = self.defaults['norm']
+        settings = self.settings[vars.params[0]]
+        dims = settings['dims']
+        norm = settings['norm']
 
         projected = []
         for u in tensors:
@@ -54,8 +55,9 @@ class DCTProjection(Projection):
 
     @torch.no_grad
     def unproject(self, tensors, vars):
-        dims = self.defaults['dims']
-        norm = self.defaults['norm']
+        settings = self.settings[vars.params[0]]
+        dims = settings['dims']
+        norm = settings['norm']
 
         unprojected = []
         for u in tensors:

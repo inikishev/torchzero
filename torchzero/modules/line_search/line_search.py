@@ -167,7 +167,7 @@ class GridLineSearch(LineSearch):
 
     @torch.no_grad
     def search(self, update, vars):
-        start,end,num=itemgetter('start','end','num')(self.defaults)
+        start,end,num=itemgetter('start','end','num')(self.settings[vars.params[0]])
 
         for lr in torch.linspace(start,end,num):
             self.evaluate_step_size(lr.item(), vars=vars, backward=False)
