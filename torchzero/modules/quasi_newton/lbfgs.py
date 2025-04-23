@@ -92,7 +92,7 @@ def lbfgs(
 
 
 class LBFGS(Transform):
-    def __init__(self, history_size=10, tol:float|None=1e-10, damping:bool = False, init_damping = 0.99, eigval_bounds = (0.01, 1.5)):
+    def __init__(self, history_size=10, tol:float|None=1e-10, damping:bool = False, init_damping = 0.99, eigval_bounds = (0.5, 100)):
         defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds)
         super().__init__(defaults, uses_grad=False)
 
