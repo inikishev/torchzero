@@ -35,7 +35,7 @@ def _update_lbfgs_history_(
         ys_k = s_k.dot(y_k)
 
     # only add pair if curvature is positive
-    if ys_k > 0:
+    if ys_k > 1e-10:
         s_history.append(s_k)
         y_history.append(y_k)
         sy_history.append(ys_k)
@@ -57,7 +57,7 @@ def lbfgs(
     ys_k: torch.Tensor,
     step: int,
 ):
-    if step == 0:
+    if step == 0 or len(s_history) == 0:
         # dir = params.grad.sign() # may work fine
 
         # initial step size guess taken from pytorch L-BFGS
@@ -78,7 +78,6 @@ def lbfgs(
         # s.y/y.y is also this weird y-looking symbol I couldn't find
         # z is it times q
         # actually H0 = (s.y/y.y) * I, and z = H0 @ q
-
         z = q * (ys_k / (y_k.dot(y_k)))
 
         assert z is not None
@@ -91,9 +90,10 @@ def lbfgs(
 
         return z
 
+
 class LBFGS(Transform):
-    def __init__(self, history_size=10, damping:bool = False, init_damping = 0.99, eigval_bounds = (0.01, 1.5)):
-        defaults = dict(history_size=history_size, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds)
+    def __init__(self, history_size=10, tol:float|None=1e-10, damping:bool = False, init_damping = 0.99, eigval_bounds = (0.01, 1.5)):
+        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds)
         super().__init__(defaults, uses_grad=False)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -112,7 +112,9 @@ class LBFGS(Transform):
         y_history: deque[TensorList] = self.global_state['y_history']
         sy_history: deque[torch.Tensor] = self.global_state['sy_history']
 
-        damping, init_damping, eigval_bounds = itemgetter('damping', 'init_damping', 'eigval_bounds')(self.settings[params[0]])
+        tol, damping, init_damping, eigval_bounds = itemgetter(
+            'tol', 'damping', 'init_damping', 'eigval_bounds')(self.settings[params[0]])
+
         y_k, ys_k = _update_lbfgs_history_(
             params=params,
             grad=target,
@@ -125,6 +127,9 @@ class LBFGS(Transform):
             init_damping=init_damping,
             eigval_bounds=eigval_bounds,
         )
+
+        if tol is not None and self.global_state['step'] != 0: # it will be 0 on 1st step
+            if y_k.abs().global_max() <= tol: return target
 
         dir = lbfgs(
             tensors_=target,
