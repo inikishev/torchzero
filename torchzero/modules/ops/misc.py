@@ -1,11 +1,12 @@
 from collections.abc import Iterable
 from collections import deque
+from typing import Literal
 from operator import itemgetter
 
 import torch
 
 from ...core import ParameterwiseTransform, Target, Transform, Module, Chainable, Vars
-from ...utils import TensorList
+from ...utils import TensorList, NumberList
 
 class Previous(ParameterwiseTransform):
     """Maintains an update from n steps back, for example if n=1, returns previous update"""
@@ -65,6 +66,41 @@ class LastProduct(Transform):
         prod = torch._foreach_mul(target, prev_target)
         for p, c in zip(prev_target, target): p.set_(c)
         return prod
+
+class LastRatio(Transform):
+    """Ratio between past two updates."""
+    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', target: Target = 'update'):
+        defaults = dict(numerator=numerator)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to ones
+        numerator = self.settings[params[0]]['numerator']
+        if numerator == 'cur': ratio = torch._foreach_div(target, prev_target)
+        else: ratio = torch._foreach_div(prev_target, target)
+        for p, c in zip(prev_target, target): p.set_(c)
+        return ratio
+
+class LastAbsoluteRatio(Transform):
+    """Ratio between absolute values of past two updates."""
+    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8, target: Target = 'update'):
+        defaults = dict(numerator=numerator, eps=eps)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to 0
+        numerator = self.settings[params[0]]['numerator']
+        eps = self.get_settings('eps', params=params, cls = NumberList)
+
+        torch._foreach_abs_(target)
+        torch._foreach_clamp_min_(prev_target, eps)
+
+        if numerator == 'cur': ratio = torch._foreach_div(target, prev_target)
+        else: ratio = torch._foreach_div(prev_target, target)
+        for p, c in zip(prev_target, target): p.set_(c)
+        return ratio
 
 class GradSign(Transform):
     """copy gradient sign to update."""

@@ -49,7 +49,8 @@ def _clip_norm_(
         if len(real_dim) == 0: continue
 
         norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=dim, keepdim=True) # pylint:disable=not-callable
-        if norm == 0: continue
+        if norm.numel() == 1 and norm == 0: continue
+        norm = torch.where(norm == 0, 1, norm)
 
         # normalize = True, perform normalization
         if norm_value is not None:

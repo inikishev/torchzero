@@ -1,0 +1,180 @@
+from operator import itemgetter
+
+import torch
+
+from ...core import ParameterwiseTransform, Target, Transform
+from ...utils import TensorList, as_tensorlist
+
+
+class ClipValueGrowth(ParameterwiseTransform):
+    """Clips update value magnitude growth.
+
+    Args:
+        add (float | None, optional): additive clipping, next update is at most `previous update + add`. Defaults to None.
+        mul (float | None, optional): multiplicative clipping, next update is at most `previous update * mul`. Defaults to 1.5.
+        min_value (float | None, optional):
+            minimum value for multiplicative clipping to prevent collapse to 0.
+            Next update is at most :code:`max(prev_update, min_value) * mul`. Defaults to 1e-4.
+        max_decay (float | None, optional):
+            bounds the tracked multiplicative clipping decay to prevent collapse to 0.
+            Next update is at most :code:`max(previous update * mul, max_decay)`.
+            Defaults to 2.
+        target (Target, optional): what to set on vars.. Defaults to "update".
+    """
+    def __init__(
+        self,
+        add: float | None = None,
+        mul: float | None = 1.5,
+        min_value: float | None = 1e-4,
+        max_decay: float | None = 2,
+        target: Target = "update",
+    ):
+        defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+
+    def transform(self, target, param, grad, vars):
+        add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(self.settings[param])
+        add: float | None
+
+        state = self.state[param]
+
+        if add is None and mul is None:
+            return target
+
+        if 'prev' not in state:
+            state['prev'] = target
+            return target
+
+        prev: torch.Tensor = state['prev']
+
+        # additive bound
+        if add is not None:
+            growth = (target - prev).abs()
+            target.sub_(torch.where(growth > add, (growth-add).copysign_(target), 0))
+
+        # multiplicative bound
+        if mul is not None:
+            prev_magn = prev.abs()
+            if min_value is not None: prev_magn.clip_(min=min_value)
+            growth = (target.abs() / prev_magn).clamp_(min=1e-8)
+
+            denom = torch.where(growth > mul, growth/mul, 1)
+
+            # limit max growth decay
+            if max_decay is not None and 'prev_denom' in state:
+                prev_denom = state['prev_denom']
+                denom_growth = denom / prev_denom
+                denom = torch.where(denom_growth > max_decay, max_decay, denom)
+
+            target.div_(denom)
+            if max_decay is not None: state['prev_denom'] = denom
+
+        state['prev'] = target
+        return target
+
+
+def norm_growth_clip_(
+    tensor_: torch.Tensor,
+    prev_norm: torch.Tensor,
+    prev_denom: torch.Tensor | None,
+    add: float | None,
+    mul: float | None,
+    min_value: float | None,
+    max_decay: float | None,
+    ord: float,
+):
+    if add is None and mul is None: return tensor_
+    norm = torch.linalg.norm(tensor_, ord=ord) # pylint:disable=not-callable
+
+    denom = 1
+    # additive bound
+    if add is not None:
+        allowed_norm = prev_norm + add
+        if norm > allowed_norm: denom = norm / allowed_norm
+
+    # multiplicative bound
+    if mul is not None:
+        allowed_norm = prev_norm * mul
+        if norm > allowed_norm: denom = max(denom, norm / allowed_norm)
+
+    if max_decay is not None:
+        if prev_denom is not None:
+            denom_growth = denom / prev_denom
+            if denom_growth > max_decay: denom = max_decay
+
+    if min_value is not None:
+        denom = max(denom, min_value)
+
+    return tensor_.div_(denom), norm, denom
+
+
+class ClipNormGrowth(Transform):
+    """Clips update norm growth.
+
+    Args:
+        add (float | None, optional): additive clipping, next update norm is at most `previous norm + add`. Defaults to None.
+        mul (float | None, optional): multiplicative clipping, next update norm is at most `previous norm * mul`. Defaults to 1.5.
+        min_value (float | None, optional):
+            minimum value for multiplicative clipping to prevent collapse to 0.
+            Next norm is at most :code:`max(prev_norm, min_value) * mul`. Defaults to 1e-4.
+        max_decay (float | None, optional):
+            bounds the tracked multiplicative clipping decay to prevent collapse to 0.
+            Next norm is at most :code:`max(previous norm * mul, max_decay)`.
+            Defaults to 2.
+        ord (float, optional): norm order. Defaults to 2.
+        parameterwise (bool, optional):
+            if True, norms are calculated parameter-wise, otherwise treats all parameters as single vector. Defaults to True.
+        target (Target, optional): what to set on vars. Defaults to "update".
+    """
+    def __init__(
+        self,
+        add: float | None = None,
+        mul: float | None = 1.5,
+        min_value: float | None = 1e-4,
+        max_decay: float | None = 2,
+        ord: float = 2,
+        parameterwise=True,
+        target: Target = "update",
+    ):
+        defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay, ord=ord, parameterwise=parameterwise)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+
+
+    def transform(self, target, params, grad, vars):
+        parameterwise = self.settings[params[0]]['parameterwise']
+        target = TensorList(target)
+
+        if parameterwise:
+            ts = target
+            stts = [self.state[p] for p in params]
+            stns = [self.settings[p] for p in params]
+
+        else:
+            ts = [target.to_vec()]
+            stts = [self.global_state]
+            stns = [self.settings[params[0]]]
+
+
+        for t,state, settings in zip(ts, stts, stns):
+            if 'prev_norm' not in state:
+                state['prev_norm'] = torch.linalg.vector_norm(t, ord=settings['ord']) # pylint:disable=not-callable
+                state['prev_denom'] = 1
+                continue
+
+            _,  state['prev_norm'], state['prev_denom'] = norm_growth_clip_(
+                tensor_ = t,
+                prev_norm = state['prev_norm'],
+                prev_denom = state['prev_denom'],
+                add = settings['add'],
+                mul = settings['mul'],
+                min_value = settings['min_value'],
+                max_decay = settings['max_decay'],
+                ord = settings['ord'],
+            )
+
+        if not parameterwise:
+            target.from_vec_(ts[0])
+
+        return target
