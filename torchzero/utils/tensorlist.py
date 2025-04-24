@@ -782,7 +782,7 @@ class TensorList(list[torch.Tensor | Any]):
         for t, o in zip(self, other): t.copysign_(o)
         return self
 
-    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6):
+    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -790,10 +790,12 @@ class TensorList(list[torch.Tensor | Any]):
         else:
             norm_self = self.global_vector_norm(ord)
             norm_other = magnitude.global_vector_norm(ord)
+
+        if not generic_eq(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
         return self * (norm_other / norm_self.clip_(min=eps))
 
-    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6):
+    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -801,6 +803,8 @@ class TensorList(list[torch.Tensor | Any]):
         else:
             norm_self = self.global_vector_norm(ord)
             norm_other = magnitude.global_vector_norm(ord)
+
+        if not generic_eq(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
         return self.mul_(norm_other / norm_self.clip_(min=eps))
 

@@ -1,7 +1,7 @@
 #pyright: reportIncompatibleMethodOverride=false
 """"""
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from operator import itemgetter
 from typing import Any
 
@@ -19,7 +19,7 @@ class MultiOperation(Module, ABC):
         self.operands = {}
         for k,v in operands.items():
 
-            if isinstance(v, (Module, Iterable)):
+            if isinstance(v, (Module, Sequence)):
                 v = maybe_chain(v)
                 self.set_child(k, v)
 
@@ -117,14 +117,14 @@ class ClipModules(MultiOperation):
 
 
 class GraftModules(MultiOperation):
-    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=False, ord:float=2, eps:float = 1e-6):
-        defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
+    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, strength:float=1):
+        defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
         super().__init__(defaults, direction=direction, magnitude=magnitude)
 
     @torch.no_grad
     def transform(self, vars, magnitude: list[torch.Tensor], direction:list[torch.Tensor]):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[vars.params[0]])
-        return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
+        tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[vars.params[0]])
+        return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
 
 
 class Where(MultiOperation):

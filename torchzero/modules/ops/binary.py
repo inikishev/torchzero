@@ -1,7 +1,7 @@
 #pyright: reportIncompatibleMethodOverride=false
 """"""
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from operator import itemgetter
 from typing import Any
 
@@ -19,7 +19,7 @@ class BinaryOperation(Module, ABC):
         self.operands = {}
         for k,v in operands.items():
 
-            if isinstance(v, (Module, Iterable)):
+            if isinstance(v, (Module, Sequence)):
                 self.set_child(k, v)
 
             self.operands[k] = v

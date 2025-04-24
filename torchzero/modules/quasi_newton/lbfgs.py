@@ -2,7 +2,7 @@ from collections import deque
 from operator import itemgetter
 import torch
 
-from ...core import Transform
+from ...core import Transform, Chainable, maybe_chain, Module
 from ...utils import TensorList, as_tensorlist, NumberList
 
 
@@ -91,21 +91,32 @@ def lbfgs(
         return z
 
 
-class LBFGS(Transform):
-    def __init__(self, history_size=10, tol:float|None=1e-10, damping:bool = False, init_damping = 0.9, eigval_bounds = (0.5, 50)):
+class LBFGS(Module):
+    def __init__(
+        self,
+        history_size=10,
+        tol: float | None = 1e-10,
+        damping: bool = False,
+        init_damping=0.9,
+        eigval_bounds=(0.5, 50),
+        inner: Chainable | None = None,
+    ):
         defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds)
-        super().__init__(defaults, uses_grad=False)
+        super().__init__(defaults)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
         self.global_state['sy_history'] = deque(maxlen=history_size)
         self.global_state['step'] = 0
 
+        if inner is not None:
+            self.set_child('inner', inner)
+
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        prev_params, prev_grad = self.get_state('prev_params', 'prev_grad', params=params, cls=TensorList, init=[params, target])
-        params = as_tensorlist(params)
-        target = as_tensorlist(target)
+    def step(self, vars):
+        params = as_tensorlist(vars.params)
+        g = as_tensorlist(vars.get_update())
+        prev_params, prev_grad = self.get_state('prev_params', 'prev_grad', params=params, cls=TensorList, init=[params, g])
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
@@ -115,9 +126,10 @@ class LBFGS(Transform):
         tol, damping, init_damping, eigval_bounds = itemgetter(
             'tol', 'damping', 'init_damping', 'eigval_bounds')(self.settings[params[0]])
 
+        # update effective preconditioning state
         y_k, ys_k = _update_lbfgs_history_(
             params=params,
-            grad=target,
+            grad=g,
             prev_params_=prev_params,
             prev_grad_=prev_grad,
             s_history=s_history,
@@ -129,10 +141,19 @@ class LBFGS(Transform):
         )
 
         if tol is not None and self.global_state['step'] != 0: # it will be 0 on 1st step
-            if y_k.abs().global_max() <= tol: return target
+            if y_k.abs().global_max() <= tol: return vars
 
+        # step with inner module before applying preconditioner
+        if self.children:
+            inner_module = self.children['inner']
+            inner_vars = inner_module.step(vars.clone(clone_update=False))
+            vars.update_attrs_from_clone_(inner_vars)
+            g = inner_vars.update
+            assert g is not None
+
+        # precondition
         dir = lbfgs(
-            tensors_=target,
+            tensors_=as_tensorlist(g),
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
@@ -142,5 +163,6 @@ class LBFGS(Transform):
         )
 
         self.global_state['step'] += 1
-        return dir
+        vars.update = dir
+        return vars
 

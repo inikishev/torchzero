@@ -221,10 +221,10 @@ class Module(ABC):
                 self.settings[param].maps[0].update(settings) # set module-specific per-parameter settings
         return self
 
-    def set_child(self, key: str, module: "Module | Iterable[Module]"):
+    def set_child(self, key: str, module: "Module | Sequence[Module]"):
         self.children[key] = maybe_chain(module)
 
-    def set_children_sequence(self, modules: "Iterable[Module | Iterable[Module]]", prefix = 'module_'):
+    def set_children_sequence(self, modules: "Iterable[Module | Sequence[Module]]", prefix = 'module_'):
         modules = list(modules)
         for i, m in enumerate(modules):
             self.set_child(f'{prefix}{i}', maybe_chain(m))
@@ -333,11 +333,14 @@ class Module(ABC):
 
     def reset_stats(self):
         """Resets the internal state of the module (e.g. momentum)."""
+        has_step = 'step' in self.global_state
         self.state.clear()
         self.global_state.clear()
+        if has_step: self.global_state['step'] = 0
+
 # endregion
 
-Chainable = Module | Iterable[Module]
+Chainable = Module | Sequence[Module]
 
 
 def unroll_modules(*modules: Chainable) -> list[Module]:
@@ -346,7 +349,7 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
     for m in modules:
         if isinstance(m, Module):
             unrolled.append(m)
-            unrolled.extend(unroll_modules(m.children.values()))
+            unrolled.extend(unroll_modules(list(m.children.values())))
         else:
             unrolled.extend(unroll_modules(*m))
 

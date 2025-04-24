@@ -2,7 +2,7 @@ from collections import deque
 
 import torch
 
-from ...core import Target, Transform, Module
+from ...core import Module, Target, Transform
 from ...utils.tensorlist import Distributions, TensorList
 
 

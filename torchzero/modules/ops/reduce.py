@@ -1,6 +1,6 @@
 """"""
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable,Sequence
 from typing import Any, cast
 
 import torch
@@ -16,7 +16,7 @@ class ReduceOperation(Module, ABC):
         self.operands = []
         for i, v in enumerate(operands):
 
-            if isinstance(v, (Module, Iterable)):
+            if isinstance(v, (Module, Sequence)):
                 v = maybe_chain(v)
                 self.set_child(f'operand_{i}', v)
 
