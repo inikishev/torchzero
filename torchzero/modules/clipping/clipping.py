@@ -48,7 +48,7 @@ def _clip_norm_(
         real_dim = [d for d in dim if (d < tensor.ndim) and (tensor.shape[d] >= min_size)]
         if len(real_dim) == 0: continue
 
-        norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=dim, keepdim=True) # pylint:disable=not-callable
+        norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=real_dim, keepdim=True) # pylint:disable=not-callable
         if norm.numel() == 1 and norm == 0: continue
         norm = torch.where(norm == 0, 1, norm)
 
