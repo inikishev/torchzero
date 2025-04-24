@@ -53,8 +53,9 @@ def _clip_norm_(
         norm = torch.where(norm == 0, 1, norm)
 
         # normalize = True, perform normalization
-        if norm_value is not None:
-            mul = norm_value / norm
+        norm_v = norm_value[i] if isinstance(norm_value, (list,tuple)) else norm_value
+        if norm_v is not None:
+            mul = norm_v / norm
 
         # else clip to min and max norms
         else:
