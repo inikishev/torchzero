@@ -43,7 +43,7 @@ def _clip_norm_(
     tensors_to_mul = []
     if isinstance(dim, int): dim = (dim, )
 
-    for tensor in tensors_:
+    for i, tensor in enumerate(tensors_):
         # remove dimensions that overflow tensor.ndim or are too small
         real_dim = [d for d in dim if (d < tensor.ndim) and (tensor.shape[d] >= min_size)]
         if len(real_dim) == 0: continue
@@ -58,19 +58,25 @@ def _clip_norm_(
 
         # else clip to min and max norms
         else:
+            minv = min[i] if isinstance(min, (list,tuple)) else min
+            maxv = max[i] if isinstance(max, (list,tuple)) else max
+
             mul = 0
-            if min is not None:
-                mul_to_min = (min / norm).clamp_(min=1) # type:ignore
+            if minv is not None:
+                mul_to_min = (minv / norm).clamp(min=1)
                 mul *= mul_to_min
 
-            if max is not None:
-                mul_to_max = (max / norm).clamp_(max=1) # type:ignore
+            if maxv is not None:
+                mul_to_max = (maxv / norm).clamp(max=1)
                 mul *= mul_to_max
 
         muls.append(mul)
         tensors_to_mul.append(tensor)
 
-    if len(muls) > 0: torch._foreach_mul_(tensors_to_mul, muls)
+    if len(muls) > 0:
+
+
+        torch._foreach_mul_(tensors_to_mul, muls)
     return tensors_
 
 

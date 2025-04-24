@@ -22,6 +22,11 @@ def maybe_numberlist(x):
     if isinstance(x, (list,tuple)): return as_numberlist(x)
     return x
 
+def _clamp(x,min,max):
+    if min is not None and x < min: return min
+    if max is not None and x > max: return max
+    return x
+
 class NumberList(list[int | float | Any]):
     """List of python numbers.
     Note that this only supports basic arithmetic operations that are overloaded.
@@ -80,6 +85,12 @@ class NumberList(list[int | float | Any]):
         Returns a new TensorList with return values of the callable."""
         return zipmap(self, fn, other, *args, **kwargs)
 
+    def zipmap_args(self, fn: Callable[..., Any], *others, **kwargs):
+        """If `args` is list/tuple, applies `fn` to this TensorList zipped with `others`.
+        Otherwise applies `fn` to this TensorList and `other`."""
+        others = [i if isinstance(i, (list, tuple)) else [i]*len(self) for i in others]
+        return self.__class__(fn(*z, **kwargs) for z in zip(self, *others))
+
     # def _set_to_method_result_(self, method: str, *args, **kwargs):
     #     """Sets each element of the tensorlist to the result of calling the specified method on the corresponding element.
     #     This is used to support/mimic in-place operations, although I decided to remove them."""
@@ -113,3 +124,5 @@ class NumberList(list[int | float | Any]):
         and returns a new TensorList with return values of the callable."""
         return self.__class__(fn(i, *args, **kwargs) for i in self)
 
+    def clamp(self, min=None, max=None):
+        return self.zipmap_args(_clamp, min, max)

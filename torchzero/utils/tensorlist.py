@@ -1,3 +1,4 @@
+# pyright: reportIncompatibleMethodOverride=false
 r"""
 TensorList is a data type that can be used to manipulate a sequence of tensors such as model parameters,
 with the same methods that normal tensors have, plus some additional convenience features.

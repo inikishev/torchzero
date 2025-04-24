@@ -85,7 +85,7 @@ def norm_growth_clip_(
     ord: float,
 ):
     if add is None and mul is None: return tensor_
-    norm = torch.linalg.norm(tensor_, ord=ord) # pylint:disable=not-callable
+    norm = torch.linalg.vector_norm(tensor_, ord=ord) # pylint:disable=not-callable
 
     denom = 1
     # additive bound
