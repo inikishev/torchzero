@@ -75,6 +75,8 @@ def lbfgs(
     sy_history: deque[torch.Tensor],
     y_k: TensorList,
     ys_k: torch.Tensor,
+    z_beta: float | None,
+    z_ema: TensorList | None,
     step: int,
 ):
     if step == 0 or len(s_history) == 0:
@@ -87,7 +89,6 @@ def lbfgs(
         # 1st loop
         alpha_list = []
         q = tensors_.clone()
-        z = None
         for s_i, y_i, ys_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
             p_i = 1 / ys_i # this is also denoted as ρ (rho)
             alpha = p_i * s_i.dot(q)
@@ -100,7 +101,12 @@ def lbfgs(
         # actually H0 = (s.y/y.y) * I, and z = H0 @ q
         z = q * (ys_k / (y_k.dot(y_k)))
 
-        assert z is not None
+        # an attempt into adding momentum, lerping initial z seems stable compared to other variables
+        if z_beta is not None:
+            assert z_ema is not None
+            if step == 0: z_ema.copy_(z)
+            else: z_ema.lerp(z, 1-z_beta)
+            z = z_ema
 
         # 2nd loop
         for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
@@ -134,6 +140,29 @@ def _lerp_params_update_(
     return TensorList(params), TensorList(update)
 
 class LBFGS(Module):
+    """L-BFGS
+
+    Args:
+        history_size (int, optional): number of past parameter differences and gradient differences to store. Defaults to 10.
+        tol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability after converging to minima. Defaults to 1e-10.
+        damping (bool, optional):
+            whether to use adaptive damping. Learning rate might need to be lowered with this enabled. Defaults to False.
+        init_damping (float, optional):
+            initial damping for adaptive dampening. Defaults to 0.9.
+        eigval_bounds (tuple, optional):
+            eigenvalue bounds for adaptive dampening. Defaults to (0.5, 50).
+        params_beta (float | None, optional):
+            if not None, EMA of parameters is used for preconditioner update. Defaults to None.
+        grads_beta (float | None, optional):
+            if not None, EMA of gradients is used for preconditioner update. . Defaults to None.
+        update_freq (int, optional):
+            how often to update L-BFGS history. Defaults to 1.
+        z_beta (float | None, optional):
+            optional EMA for initial H^-1 @ g. Defaults to None.
+        inner (Chainable | None, optional):
+            optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
+    """
     def __init__(
         self,
         history_size=10,
@@ -141,12 +170,13 @@ class LBFGS(Module):
         damping: bool = False,
         init_damping=0.9,
         eigval_bounds=(0.5, 50),
-        params_beta = None,
-        grads_beta = None,
+        params_beta: float | None = None,
+        grads_beta: float | None = None,
         update_freq = 1,
+        z_beta: float | None = None,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq)
+        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta)
         super().__init__(defaults)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -168,8 +198,8 @@ class LBFGS(Module):
         y_history: deque[TensorList] = self.global_state['y_history']
         sy_history: deque[torch.Tensor] = self.global_state['sy_history']
 
-        tol, damping, init_damping, eigval_bounds, update_freq = itemgetter(
-            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq')(self.settings[params[0]])
+        tol, damping, init_damping, eigval_bounds, update_freq, z_beta = itemgetter(
+            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta')(self.settings[params[0]])
         params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params, cls=NumberList)
 
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
@@ -210,6 +240,10 @@ class LBFGS(Module):
             update = inner_vars.update
             assert update is not None
 
+        z_ema = None
+        if z_beta is not None:
+            z_ema = self.get_state('z_ema', params=vars.params, cls=TensorList)
+
         # precondition
         dir = lbfgs(
             tensors_=as_tensorlist(update),
@@ -218,6 +252,8 @@ class LBFGS(Module):
             sy_history=sy_history,
             y_k=y_k,
             ys_k=ys_k,
+            z_beta = z_beta,
+            z_ema = z_ema,
             step=self.global_state['step']
         )
 
