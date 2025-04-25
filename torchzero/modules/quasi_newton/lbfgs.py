@@ -123,7 +123,7 @@ class LBFGS(Module):
         update_freq (int, optional):
             how often to update L-BFGS history. Defaults to 1.
         z_beta (float | None, optional):
-            optional EMA for initial H^-1 @ q. Acts as a kind of momentum. Defaults to None.
+            optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
     """
@@ -218,5 +218,6 @@ class LBFGS(Module):
 
         self.global_state['step'] += 1
         vars.update = dir
+
         return vars
 

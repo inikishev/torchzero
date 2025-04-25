@@ -97,7 +97,7 @@ class PowModules(MultiOperation):
         return input
 
 class LerpModules(MultiOperation):
-    def __init__(self, input: Chainable, end: Chainable, weight: float = 1):
+    def __init__(self, input: Chainable, end: Chainable, weight: float):
         defaults = dict(weight=weight)
         super().__init__(defaults, input=input, end=end)
 
