@@ -1,6 +1,6 @@
 import optuna
 
-from ..core import Chain
+from ..core import Chain, Module
 
 from ..modules import (
     EMA,
@@ -15,11 +15,11 @@ from ..modules import (
 )
 
 
-def get_momentum(trial: optuna.Trial, prefix: str, conditional: bool=True):
+def get_momentum(trial: optuna.Trial, prefix: str, conditional: bool=True) -> list[Module]:
     cond = trial.suggest_categorical(f'{prefix}_use_momentum', [True,False]) if conditional else True
     if cond:
-        beta = trial.suggest_categorical(f'{prefix}_beta', [True, False])
-        dampening = trial.suggest_categorical(f'{prefix}_dampening', [True, False])
+        beta = trial.suggest_float(f'{prefix}_beta', -1, 2)
+        dampening = trial.suggest_float(f'{prefix}_dampening', -1, 2)
         lerp = trial.suggest_categorical(f'{prefix}_use_lerp', [True, False])
         nag = trial.suggest_categorical(f'{prefix}_use_NAG', [True, False])
         debiased = trial.suggest_categorical(f'{prefix}_debiased', [True, False])
@@ -31,7 +31,7 @@ def get_momentum(trial: optuna.Trial, prefix: str, conditional: bool=True):
         return [m]
     return []
 
-def get_clip_value(trial: optuna.Trial, prefix: str, conditional: bool=True):
+def get_clip_value(trial: optuna.Trial, prefix: str, conditional: bool=True) -> list[Module]:
     cond = trial.suggest_categorical(f'{prefix}_use_clip_value', [True,False]) if conditional else True
     if cond:
         return [ClipValue(value = trial.suggest_float(f'{prefix}_clip_value', 0, 10))]
