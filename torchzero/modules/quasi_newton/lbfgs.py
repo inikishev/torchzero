@@ -9,15 +9,15 @@ from ...utils import TensorList, as_tensorlist, NumberList
 def _get_sk_yk_ysk(
     params: TensorList,
     grad: TensorList,
-    prev_params_: TensorList,
-    prev_grad_: TensorList,
+    prev_params: TensorList,
+    prev_grad: TensorList,
     damping = False,
     init_damping = 0.99,
     eigval_bounds = (0.01, 1.5)
 ):
 
-    s_k = params - prev_params_
-    y_k = grad - prev_grad_
+    s_k = params - prev_params
+    y_k = grad - prev_grad
     ys_k = s_k.dot(y_k)
 
     if damping:
@@ -30,43 +30,7 @@ def _get_sk_yk_ysk(
         y_k = tau * y_k + (1-tau) * s_k
         ys_k = s_k.dot(y_k)
 
-    prev_params_.copy_(params)
-    prev_grad_.copy_(grad)
-
     return s_k, y_k, ys_k
-
-
-def _update_lbfgs_history_(
-    params: TensorList,
-    grad: TensorList,
-    prev_params_: TensorList,
-    prev_grad_: TensorList,
-    s_history: deque[TensorList],
-    y_history: deque[TensorList],
-    sy_history: deque[torch.Tensor],
-    damping = False,
-    init_damping = 0.99,
-    eigval_bounds = (0.01, 1.5)
-):
-    s_k, y_k, ys_k = _get_sk_yk_ysk(
-        params=params,
-        grad=grad,
-        prev_params_=prev_params_,
-        prev_grad_=prev_grad_,
-        damping=damping,
-        init_damping=init_damping,
-        eigval_bounds=eigval_bounds,
-    )
-    # only add pair if curvature is positive
-    if ys_k > 1e-10:
-        s_history.append(s_k)
-        y_history.append(y_k)
-        sy_history.append(ys_k)
-
-    #else:
-        # print(f'negative curvature: {sy_k}')
-
-    return y_k, ys_k
 
 def lbfgs(
     tensors_: TensorList,
@@ -155,11 +119,11 @@ class LBFGS(Module):
         params_beta (float | None, optional):
             if not None, EMA of parameters is used for preconditioner update. Defaults to None.
         grads_beta (float | None, optional):
-            if not None, EMA of gradients is used for preconditioner update. . Defaults to None.
+            if not None, EMA of gradients is used for preconditioner update. Defaults to None.
         update_freq (int, optional):
             how often to update L-BFGS history. Defaults to 1.
         z_beta (float | None, optional):
-            optional EMA for initial H^-1 @ g. Defaults to None.
+            optional EMA for initial H^-1 @ q. Acts as a kind of momentum. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
     """
@@ -204,30 +168,25 @@ class LBFGS(Module):
 
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
 
+        s_k, y_k, ys_k = _get_sk_yk_ysk(
+            params=l_params,
+            grad=l_update,
+            prev_params=prev_params,
+            prev_grad=prev_grad,
+            damping=damping,
+            init_damping=init_damping,
+            eigval_bounds=eigval_bounds,
+        )
+
+        prev_params.copy_(l_params)
+        prev_grad.copy_(l_update)
+
         # update effective preconditioning state
         if self.global_state['step'] % update_freq == 0:
-            y_k, ys_k = _update_lbfgs_history_(
-                params=l_params,
-                grad=l_update,
-                prev_params_=prev_params,
-                prev_grad_=prev_grad,
-                s_history=s_history,
-                y_history=y_history,
-                sy_history=sy_history,
-                damping=damping,
-                init_damping=init_damping,
-                eigval_bounds=eigval_bounds,
-            )
-        else:
-            s_k, y_k, ys_k = _get_sk_yk_ysk(
-                params=l_params,
-                grad=l_update,
-                prev_params_=prev_params,
-                prev_grad_=prev_grad,
-                damping=damping,
-                init_damping=init_damping,
-                eigval_bounds=eigval_bounds,
-            )
+            if ys_k > 1e-10:
+                s_history.append(s_k)
+                y_history.append(y_k)
+                sy_history.append(ys_k)
 
         if tol is not None and self.global_state['step'] != 0: # it will be 0 on 1st step
             if y_k.abs().global_max() <= tol: return vars
