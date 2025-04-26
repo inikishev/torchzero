@@ -106,7 +106,7 @@ def norm_growth_clip_(
     if min_value is not None:
         denom = max(denom, min_value)
 
-    return tensor_.div_(denom), norm, denom
+    return tensor_.div_(denom), norm/denom, denom
 
 
 class ClipNormGrowth(Transform):
@@ -132,7 +132,7 @@ class ClipNormGrowth(Transform):
         add: float | None = None,
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
-        max_decay: float | None = 2,
+        max_decay: float | None = None,
         ord: float = 2,
         parameterwise=True,
         target: Target = "update",
