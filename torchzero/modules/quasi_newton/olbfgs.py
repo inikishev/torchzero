@@ -1,12 +1,14 @@
 from collections import deque
+from functools import partial
 from operator import itemgetter
 from typing import Literal
-from functools import partial
+
 import torch
 
 from ...core import Chainable, Module, Transform, Vars, maybe_chain
 from ...utils import NumberList, TensorList, as_tensorlist
-from .lbfgs import lbfgs, _adaptive_damping
+from .lbfgs import _adaptive_damping, lbfgs
+
 
 @torch.no_grad
 def _store_sk_yk_after_step_hook(optimizer, vars: Vars, prev_params: TensorList, prev_grad: TensorList, damping, init_damping, eigval_bounds, s_history: deque[TensorList], y_history: deque[TensorList], sy_history: deque[torch.Tensor]):
@@ -33,6 +35,13 @@ class OnlineLBFGS(Module):
 
     Args:
         history_size (int, optional): number of past parameter differences and gradient differences to store. Defaults to 10.
+        sample_grads (str, optional):
+            - "before" - samples current mini-batch gradient at previous and current parameters, calculates y_k
+            and adds it to history before stepping.
+            - "after" - samples current mini-batch gradient at parameters before stepping and after updating parameters.
+                s_k and y_k are added after parameter update, therefore they are delayed by 1 step.
+
+            In practice both modes behave very similarly. Defaults to 'before'.
         tol (float | None, optional):
             tolerance for minimal gradient difference to avoid instability after converging to minima. Defaults to 1e-10.
         damping (bool, optional):

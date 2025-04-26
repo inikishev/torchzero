@@ -1,9 +1,11 @@
 from collections import deque
 from operator import itemgetter
+from typing import Any
+
 import torch
 
-from ....core import Transform, Chainable, maybe_chain, Module, Vars, AnyTransform, apply_transform
-from ....utils import TensorList, as_tensorlist, NumberList
+from ....core import Chainable, Module, Transform, Vars, apply, maybe_chain
+from ....utils import NumberList, TensorList, as_tensorlist
 
 
 def _adaptive_damping(
@@ -26,14 +28,13 @@ def _adaptive_damping(
 
 def lbfgs(
     tensors_: TensorList,
+    vars: Vars,
     s_history: deque[TensorList],
     y_history: deque[TensorList],
     sy_history: deque[torch.Tensor],
     y_k: TensorList | None,
     ys_k: torch.Tensor | None,
-    z_beta: float | None,
-    z_ema: TensorList | None,
-    step: int,
+    z_tfm: Any,
 ):
     if len(s_history) == 0 or y_k is None or ys_k is None:
         # dir = params.grad.sign() # may work fine
@@ -57,12 +58,8 @@ def lbfgs(
         # actually H0 = (s.y/y.y) * I, and z = H0 @ q
         z = q * (ys_k / (y_k.dot(y_k)))
 
-        # an attempt into adding momentum, lerping initial z seems stable compared to other variables
-        if z_beta is not None:
-            assert z_ema is not None
-            if step == 0: z_ema.copy_(z)
-            else: z_ema.lerp(z, 1-z_beta)
-            z = z_ema
+        if z_tfm is not None:
+            z = TensorList(apply(z_tfm, target=z, params=vars.params, grad=vars.grad, vars=vars))
 
         # 2nd loop
         for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
@@ -72,29 +69,6 @@ def lbfgs(
 
         return z
 
-def _lerp_params_update_(
-    self_: Module,
-    params: list[torch.Tensor],
-    update: list[torch.Tensor],
-    params_beta: list[float | None],
-    grads_beta: list[float | None],
-):
-    for i, (p, u, p_beta, u_beta) in enumerate(zip(params.copy(), update.copy(), params_beta, grads_beta)):
-        if p_beta is not None or u_beta is not None:
-            state = self_.state[p]
-
-            if p_beta is not None:
-                if 'param_ema' not in state: state['param_ema'] = p.clone()
-                else: state['param_ema'].lerp_(p, 1-p_beta)
-                params[i] = state['param_ema']
-
-            if u_beta is not None:
-                if 'grad_ema' not in state: state['grad_ema'] = u.clone()
-                else: state['grad_ema'].lerp_(u, 1-u_beta)
-                update[i] = state['grad_ema']
-
-    return TensorList(params), TensorList(update)
-
 def _apply_tfms_into_history(
     self: Module,
     params: list[torch.Tensor],
@@ -102,10 +76,10 @@ def _apply_tfms_into_history(
     update: list[torch.Tensor],
 ):
     if 'params_history_tfm' in self.children:
-        params = apply_transform(self.children['params_history_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+        params = apply(self.children['params_history_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
 
     if 'grad_history_tfm' in self.children:
-        update = apply_transform(self.children['grad_history_tfm'], target=as_tensorlist(update).clone(), params=params, grad=vars.grad, vars=vars)
+        update = apply(self.children['grad_history_tfm'], target=as_tensorlist(update).clone(), params=params, grad=vars.grad, vars=vars)
 
     return params, update
 
@@ -116,10 +90,10 @@ def _apply_tfms_into_precond(
     update: list[torch.Tensor],
 ):
     if 'params_precond_tfm' in self.children:
-        params = apply_transform(self.children['params_precond_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+        params = apply(self.children['params_precond_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
 
     if 'grad_precond_tfm' in self.children:
-        update = apply_transform(self.children['grad_precond_tfm'], target=update, params=params, grad=vars.grad, vars=vars)
+        update = apply(self.children['grad_precond_tfm'], target=update, params=params, grad=vars.grad, vars=vars)
 
     return params, update
 
@@ -160,14 +134,14 @@ class ModularLBFGS(Module):
         init_damping=0.9,
         eigval_bounds=(0.5, 50),
         update_freq = 1,
-        z_beta: float | None = None,
-        params_history_tfm: AnyTransform | None = None,
-        grad_history_tfm: AnyTransform | None = None,
-        params_precond_tfm: AnyTransform | None = None,
-        grad_precond_tfm: AnyTransform | None = None,
+        params_history_tfm: Chainable | None = None,
+        grad_history_tfm: Chainable | None = None,
+        params_precond_tfm: Chainable | None = None,
+        grad_precond_tfm: Chainable | None = None,
         update_precond_tfm: Chainable | None = None,
+        z_tfm: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, update_freq=update_freq, z_beta=z_beta)
+        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, update_freq=update_freq)
         super().__init__(defaults)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -175,8 +149,9 @@ class ModularLBFGS(Module):
         self.global_state['sy_history'] = deque(maxlen=history_size)
         self.global_state['step'] = 0
 
-        for k,v in (('update_precond_tfm', update_precond_tfm), ('params_history_tfm', params_history_tfm), ('grad_history_tfm', grad_history_tfm),
-                    ('params_precond_tfm', params_precond_tfm), ('grad_precond_tfm', grad_precond_tfm)):
+        loc = locals().copy()
+        for k in ('update_precond_tfm', 'params_history_tfm', 'grad_history_tfm', 'params_precond_tfm', 'grad_precond_tfm','z_tfm'):
+            v = loc[k]
             if v is not None:
                 self.set_child(k,v)
 
@@ -193,8 +168,8 @@ class ModularLBFGS(Module):
         y_history: deque[TensorList] = self.global_state['y_history']
         sy_history: deque[torch.Tensor] = self.global_state['sy_history']
 
-        tol, damping, init_damping, eigval_bounds, update_freq, z_beta = itemgetter(
-            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta')(self.settings[params[0]])
+        tol, damping, init_damping, eigval_bounds, update_freq = itemgetter(
+            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq')(self.settings[params[0]])
 
         # params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params, cls=NumberList)
         # l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
@@ -241,11 +216,6 @@ class ModularLBFGS(Module):
         else:
             tensors = update.clone()
 
-        # lerp initial H^-1 @ q guess
-        z_ema = None
-        if z_beta is not None:
-            z_ema = self.get_state('z_ema', params=vars.params, cls=TensorList)
-
         # transforms into preconditioner
         params_p, update_p = _apply_tfms_into_precond(self, params=params, vars=vars, update=update)
         prev_params_p, prev_grad_p = self.get_state('prev_params_p', 'prev_grad_p', params=params, cls=TensorList)
@@ -273,14 +243,13 @@ class ModularLBFGS(Module):
         # precondition
         dir = lbfgs(
             tensors_=as_tensorlist(tensors),
+            vars=vars,
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
             y_k=y_k_p,
             ys_k=ys_k_p,
-            z_beta = z_beta,
-            z_ema = z_ema,
-            step=step
+            z_tfm=self.children.get('z_tfm', None),
         )
 
         self.global_state['step'] += 1

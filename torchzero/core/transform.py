@@ -5,7 +5,7 @@ from typing import Any, Literal
 import torch
 
 from ..utils import set_storage_
-from .module import Module, Vars, Chain
+from .module import Module, Vars, Chain, Chainable
 
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 
@@ -214,15 +214,16 @@ class ParameterwiseTransform(Module, ABC):
         raise ValueError(f'Invalid target: {self._target}')
 
 
-AnyTransform = Transform | ParameterwiseTransform | Sequence[Transform | ParameterwiseTransform] | Chain
 
-def apply_transform(
-    tfm: AnyTransform | Any,
+def apply(
+    tfm: Chainable,
     target: list[torch.Tensor],
     params: list[torch.Tensor],
     grad: list[torch.Tensor] | None,
-    vars: Vars,
+    vars: Vars | None = None,
+    current_step: int = 0,
 ):
+    if vars is None: vars = Vars(params=params, closure=None, model=None, current_step=current_step)
     if isinstance(tfm, Transform):
         if tfm._uses_grad and grad is None: grad = vars.get_grad()
         return list(tfm.transform(target, params, grad, vars))
@@ -237,7 +238,7 @@ def apply_transform(
     if isinstance(tfm, Chain): tfm = tfm.get_children_sequence() # pyright: ignore[reportAssignmentType]
     if isinstance(tfm, Sequence):
         for module in tfm:
-            target = apply_transform(module, target=target, params=params, grad=grad, vars=vars)
+            target = apply(module, target=target, params=params, grad=grad, vars=vars)
         return target
 
     if isinstance(tfm, Module):
