@@ -26,7 +26,7 @@ class ClipValueGrowth(ParameterwiseTransform):
         add: float | None = None,
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
-        max_decay: float | None = 2,
+        max_decay: float | None = None,
         target: Target = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
@@ -70,7 +70,7 @@ class ClipValueGrowth(ParameterwiseTransform):
             target.div_(denom)
             if max_decay is not None: state['prev_denom'] = denom
 
-        state['prev'] = target
+        state['prev'].copy_(target)
         return target
 
 
