@@ -8,12 +8,14 @@ from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 class MatrixMomentum(Module):
     """
-    `u` is supposed to be smaller than the (1/largest eigenvalue), otherwise this will be
-    very unstable.
+    May be useful for ill conditioned stochastic quadratic objectives. Evaluates hessian vector product on each step.
 
+    `u` is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable. `adaptive` is an attempt
+    to remedy that, set `u` to 1 and `adaptive=True` and possibly `decay` to 0.99, graft to adam and you get a 2nd order method which may work well sometimes but still often unstable on non-quadratic functions.
 
-    Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996)."""
-    def __init__(self, u=0.1, decay:float=0.99, adaptive=False, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+    Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
+    """
+    def __init__(self, u=0.1, decay:float=1, adaptive=False, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
         defaults = dict(u=u, decay=decay, hvp_mode=hvp_mode, adaptive=adaptive, h=h)
         super().__init__(defaults)
 

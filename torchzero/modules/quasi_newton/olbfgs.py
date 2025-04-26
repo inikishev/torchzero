@@ -32,6 +32,8 @@ def _store_sk_yk_after_step_hook(optimizer, vars: Vars, prev_params: TensorList,
 class OnlineLBFGS(Module):
     """Online L-BFGS.
     Parameter and gradient differences are sampled from the same mini-batch by performing an extra forward and backward pass.
+    However I did a bunch of experiments and the online part doesn't seem to help. Normal L-BFGS is usually still
+    better because it performs twice as many steps, and it is reasonably stable with normalization or grafting.
 
     Args:
         history_size (int, optional): number of past parameter differences and gradient differences to store. Defaults to 10.

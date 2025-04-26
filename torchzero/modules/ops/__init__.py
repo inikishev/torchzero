@@ -63,6 +63,7 @@ from .unary import (
     Abs,
     CustomUnaryOperation,
     Exp,
+    NanToNum,
     Negate,
     Reciprocal,
     Sign,
