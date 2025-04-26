@@ -126,7 +126,7 @@ class OnlineLBFGS(Module):
 
         # use previous s_k, y_k pair, samples gradient at current batch before and after updating parameters
         elif sample_grads == 'after':
-            if step == 0:
+            if len(s_history) == 0:
                 s_k = None; y_k = None; ys_k = None
             else:
                 s_k = s_history[-1]

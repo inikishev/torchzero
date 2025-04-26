@@ -885,16 +885,16 @@ class TensorList(list[torch.Tensor | Any]):
 
         return self.sub_(self_mean).div_(self_std).mul_(var_sqrt).add_(mean)
 
-    def znormalize(self, dim: _Dim = None, stable=False):
+    def znormalize(self, dim: _Dim = None, eps:float = 0):
         """faster method to normalize to 0 mean and 1 variance"""
         std = self.std(dim = dim, keepdim = True)
-        if stable: std.add_(1e-8)
+        if eps!=0: std.add_(eps)
         return (self - self.mean(dim = dim, keepdim=True)).div_(std)
 
-    def znormalize_(self, dim: _Dim = None, stable = False):
+    def znormalize_(self, dim: _Dim = None, eps:float = 0):
         """faster method to normalize to 0 mean and 1 variance"""
         std = self.std(dim = dim, keepdim = True)
-        if stable: std.add_(1e-8)
+        if eps!=0: std.add_(eps)
         return self.sub_(self.mean(dim = dim, keepdim=True)).div_(std)
 
     def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float = 2):
