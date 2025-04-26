@@ -10,7 +10,7 @@ from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 class MatrixMomentum(Module):
     """
     `u` is the same as 1-momentum, or 1-beta, it is supposed to be smaller than the (1/largest eigenvalue), otherwise this will be
-    very unstable.
+    very unstable. It works well on quadratic function and I need to test it more.
 
     Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996)."""
     def __init__(self, u=0.01, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
