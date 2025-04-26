@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any, Literal
 
 import torch
 
 from ..utils import set_storage_
-from .module import Module, Vars
+from .module import Module, Vars, Chain
 
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 
@@ -212,3 +212,40 @@ class ParameterwiseTransform(Module, ABC):
 
         # ---------------------------------- invalid --------------------------------- #
         raise ValueError(f'Invalid target: {self._target}')
+
+
+AnyTransform = Transform | ParameterwiseTransform | Sequence[Transform | ParameterwiseTransform] | Chain
+
+def apply_transform(
+    tfm: AnyTransform | Any,
+    target: list[torch.Tensor],
+    params: list[torch.Tensor],
+    grad: list[torch.Tensor] | None,
+    vars: Vars,
+):
+    if isinstance(tfm, Transform):
+        if tfm._uses_grad and grad is None: grad = vars.get_grad()
+        return list(tfm.transform(target, params, grad, vars))
+
+    if isinstance(tfm, ParameterwiseTransform):
+        grads_list = grad
+        if grads_list is None:
+            if tfm._uses_grad: grads_list = vars.get_grad()
+            else: grads_list = [None] * len(target)
+        return [tfm.transform(t, p, g, vars) for t,p,g in zip(target,params,grads_list)]
+
+    if isinstance(tfm, Chain): tfm = tfm.get_children_sequence() # pyright: ignore[reportAssignmentType]
+    if isinstance(tfm, Sequence):
+        for module in tfm:
+            target = apply_transform(module, target=target, params=params, grad=grad, vars=vars)
+        return target
+
+    if isinstance(tfm, Module):
+        cvars = vars.clone(clone_update=False)
+        cvars.update = target
+        cvars = tfm.step(cvars)
+        vars.update_attrs_from_clone_(cvars)
+        assert cvars.update is not None
+        return cvars.update
+
+    raise TypeError(type(tfm))

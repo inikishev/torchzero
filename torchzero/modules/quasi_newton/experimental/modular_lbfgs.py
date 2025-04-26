@@ -2,8 +2,8 @@ from collections import deque
 from operator import itemgetter
 import torch
 
-from ...core import Transform, Chainable, maybe_chain, Module, Vars
-from ...utils import TensorList, as_tensorlist, NumberList
+from ....core import Transform, Chainable, maybe_chain, Module, Vars, AnyTransform, apply_transform
+from ....utils import TensorList, as_tensorlist, NumberList
 
 
 def _adaptive_damping(
@@ -95,8 +95,37 @@ def _lerp_params_update_(
 
     return TensorList(params), TensorList(update)
 
-class LBFGS(Module):
-    """L-BFGS
+def _apply_tfms_into_history(
+    self: Module,
+    params: list[torch.Tensor],
+    vars: Vars,
+    update: list[torch.Tensor],
+):
+    if 'params_history_tfm' in self.children:
+        params = apply_transform(self.children['params_history_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+
+    if 'grad_history_tfm' in self.children:
+        update = apply_transform(self.children['grad_history_tfm'], target=as_tensorlist(update).clone(), params=params, grad=vars.grad, vars=vars)
+
+    return params, update
+
+def _apply_tfms_into_precond(
+    self: Module,
+    params: list[torch.Tensor],
+    vars: Vars,
+    update: list[torch.Tensor],
+):
+    if 'params_precond_tfm' in self.children:
+        params = apply_transform(self.children['params_precond_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+
+    if 'grad_precond_tfm' in self.children:
+        update = apply_transform(self.children['grad_precond_tfm'], target=update, params=params, grad=vars.grad, vars=vars)
+
+    return params, update
+
+
+class ModularLBFGS(Module):
+    """L-BFGS with ability to apply transforms to many inner variables.
 
     Args:
         history_size (int, optional): number of past parameter differences and gradient differences to store. Defaults to 10.
@@ -108,16 +137,20 @@ class LBFGS(Module):
             initial damping for adaptive dampening. Defaults to 0.9.
         eigval_bounds (tuple, optional):
             eigenvalue bounds for adaptive dampening. Defaults to (0.5, 50).
-        params_beta (float | None, optional):
-            if not None, EMA of parameters is used for preconditioner update. Defaults to None.
-        grads_beta (float | None, optional):
-            if not None, EMA of gradients is used for preconditioner update. Defaults to None.
         update_freq (int, optional):
             how often to update L-BFGS history. Defaults to 1.
         z_beta (float | None, optional):
             optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
-        inner (Chainable | None, optional):
-            optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
+        params_history_tfm (AnyTransform | None, optional):
+            transform module applied to params before adding s_k to history. Defaults to None.
+        grad_history_tfm (AnyTransform | None, optional):
+            transform module applied to grads before adding y_k to history. Defaults to None.
+        params_precond_tfm (AnyTransform | None, optional):
+            transform module applied to params to calculate s_k before preconditioning. Defaults to None.
+        grad_precond_tfm (AnyTransform | None, optional):
+            transform module applied to grads to calculate y_k before preconditioning. Defaults to None.
+        update_precond_tfm (Chainable | None, optional):
+            transform module applied to grads that are being preconditioned. Defaults to None.
     """
     def __init__(
         self,
@@ -126,13 +159,15 @@ class LBFGS(Module):
         damping: bool = False,
         init_damping=0.9,
         eigval_bounds=(0.5, 50),
-        params_beta: float | None = None,
-        grads_beta: float | None = None,
         update_freq = 1,
         z_beta: float | None = None,
-        inner: Chainable | None = None,
+        params_history_tfm: AnyTransform | None = None,
+        grad_history_tfm: AnyTransform | None = None,
+        params_precond_tfm: AnyTransform | None = None,
+        grad_precond_tfm: AnyTransform | None = None,
+        update_precond_tfm: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta)
+        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, update_freq=update_freq, z_beta=z_beta)
         super().__init__(defaults)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -140,8 +175,12 @@ class LBFGS(Module):
         self.global_state['sy_history'] = deque(maxlen=history_size)
         self.global_state['step'] = 0
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        for k,v in (('update_precond_tfm', update_precond_tfm), ('params_history_tfm', params_history_tfm), ('grad_history_tfm', grad_history_tfm),
+                    ('params_precond_tfm', params_precond_tfm), ('grad_precond_tfm', grad_precond_tfm)):
+            if v is not None:
+                self.set_child(k,v)
+
+
 
     @torch.no_grad
     def step(self, vars):
@@ -156,60 +195,89 @@ class LBFGS(Module):
 
         tol, damping, init_damping, eigval_bounds, update_freq, z_beta = itemgetter(
             'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta')(self.settings[params[0]])
-        params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params, cls=NumberList)
 
-        l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
-        prev_l_params, prev_l_grad = self.get_state('prev_l_params', 'prev_l_grad', params=params, cls=TensorList)
+        # params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params, cls=NumberList)
+        # l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
+
+        # params and update that go into history
+        params_h, update_h = _apply_tfms_into_history(
+            self,
+            params=params,
+            vars=vars,
+            update=update,
+        )
+
+        prev_params_h, prev_grad_h = self.get_state('prev_params_h', 'prev_grad_h', params=params, cls=TensorList)
 
         # 1st step - there are no previous params and grads, `lbfgs` will do normalized SGD step
         if step == 0:
-            s_k = None; y_k = None; ys_k = None
+            s_k_h = None; y_k_h = None; ys_k_h = None
         else:
-            s_k = l_params - prev_l_params
-            y_k = l_update - prev_l_grad
-            ys_k = s_k.dot(y_k)
+            s_k_h = params_h - prev_params_h
+            y_k_h = update_h - prev_grad_h
+            ys_k_h = s_k_h.dot(y_k_h)
 
             if damping:
-                s_k, y_k, ys_k = _adaptive_damping(s_k, y_k, ys_k, init_damping=init_damping, eigval_bounds=eigval_bounds)
+                s_k_h, y_k_h, ys_k_h = _adaptive_damping(s_k_h, y_k_h, ys_k_h, init_damping=init_damping, eigval_bounds=eigval_bounds)
 
-        prev_l_params.copy_(l_params)
-        prev_l_grad.copy_(l_update)
+        prev_params_h.copy_(params_h)
+        prev_grad_h.copy_(update_h)
 
         # update effective preconditioning state
         if step % update_freq == 0:
-            if ys_k is not None and ys_k > 1e-10:
-                assert s_k is not None and y_k is not None
-                s_history.append(s_k)
-                y_history.append(y_k)
-                sy_history.append(ys_k)
+            if ys_k_h is not None and ys_k_h > 1e-10:
+                assert s_k_h is not None and y_k_h is not None
+                s_history.append(s_k_h)
+                y_history.append(y_k_h)
+                sy_history.append(ys_k_h)
 
         # step with inner module before applying preconditioner
-        if self.children:
-            inner_module = self.children['inner']
-            inner_vars = inner_module.step(vars.clone(clone_update=False))
+        if 'update_precond_tfm' in self.children:
+            update_precond_tfm = self.children['update_precond_tfm']
+            inner_vars = update_precond_tfm.step(vars.clone(clone_update=True))
             vars.update_attrs_from_clone_(inner_vars)
-            update = inner_vars.update
-            assert update is not None
-
-        # tolerance on gradient difference to avoid exploding after converging
-        if tol is not None:
-            if y_k is not None and y_k.abs().global_max() <= tol:
-                vars.update = update # may have been updated by inner module, probably makes sense to use it here?
-                return vars
+            tensors = inner_vars.update
+            assert tensors is not None
+        else:
+            tensors = update.clone()
 
         # lerp initial H^-1 @ q guess
         z_ema = None
         if z_beta is not None:
             z_ema = self.get_state('z_ema', params=vars.params, cls=TensorList)
 
+        # transforms into preconditioner
+        params_p, update_p = _apply_tfms_into_precond(self, params=params, vars=vars, update=update)
+        prev_params_p, prev_grad_p = self.get_state('prev_params_p', 'prev_grad_p', params=params, cls=TensorList)
+
+        if step == 0:
+            s_k_p = None; y_k_p = None; ys_k_p = None
+
+        else:
+            s_k_p = params_p - prev_params_p
+            y_k_p = update_p - prev_grad_p
+            ys_k_p = s_k_p.dot(y_k_p)
+
+            if damping:
+                s_k_p, y_k_p, ys_k_p = _adaptive_damping(s_k_p, y_k_p, ys_k_p, init_damping=init_damping, eigval_bounds=eigval_bounds)
+
+        prev_params_p.copy_(params_p)
+        prev_grad_p.copy_(update_p)
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if tol is not None:
+            if y_k_p is not None and y_k_p.abs().global_max() <= tol:
+                vars.update = update # may have been updated by inner module, probably makes sense to use it here?
+                return vars
+
         # precondition
         dir = lbfgs(
-            tensors_=as_tensorlist(update),
+            tensors_=as_tensorlist(tensors),
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
-            y_k=y_k,
-            ys_k=ys_k,
+            y_k=y_k_p,
+            ys_k=ys_k_p,
             z_beta = z_beta,
             z_ema = z_ema,
             step=step

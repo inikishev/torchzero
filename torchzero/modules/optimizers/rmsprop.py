@@ -1,4 +1,7 @@
 from operator import itemgetter
+from typing import Literal
+
+import torch
 
 from ...core import Module, Target, Transform
 from ...utils import NumberList, TensorList
@@ -20,9 +23,10 @@ def rmsprop_(tensors_: TensorList, exp_avg_sq_: TensorList, smoothing: float | N
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
 class RMSprop(Transform):
+    """Set `init` to "zeros" to get an implementation identical to pytorch."""
     def __init__(self, smoothing: float=0.99, eps:float=1e-8, centered:bool=False, debiased:bool=False,
-                 amsgrad:bool=False, pow:float=2,target:Target='update'):
-        defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow)
+                 amsgrad:bool=False, pow:float=2, init: Literal['zeros', 'update'] = 'update', target:Target='update'):
+        defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
         self.current_step = 0
 
@@ -30,11 +34,15 @@ class RMSprop(Transform):
         self.current_step += 1
 
         smoothing,eps = self.get_settings('smoothing', 'eps', params=params, cls=NumberList)
-        centered,debiased,amsgrad,pow = itemgetter('centered','debiased','amsgrad','pow')(self.settings[params[0]])
+        centered,debiased,amsgrad,pow,init = itemgetter('centered','debiased','amsgrad','pow','init')(self.settings[params[0]])
 
         exp_avg_sq = self.get_state('exp_avg_sq', params=params, cls=TensorList)
         exp_avg = self.get_state('exp_avg', params=params, cls=TensorList) if centered else None
         max_exp_avg_sq = self.get_state('max_exp_avg_sq', params=params, cls=TensorList) if amsgrad else None
+
+        if init == 'update' and self.current_step == 1:
+            exp_avg_sq.set_([t**2 for t in target])
+            if exp_avg is not None: exp_avg.set_([t.clone() for t in target])
 
         return rmsprop_(TensorList(target), exp_avg_sq_=exp_avg_sq, smoothing=smoothing, eps=eps, debiased=debiased,
                         step=self.current_step,exp_avg_=exp_avg, max_exp_avg_sq_=max_exp_avg_sq, pow=pow)
