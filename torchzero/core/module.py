@@ -56,10 +56,10 @@ class Vars:
         self.grad: list[torch.Tensor] | None = None
         """gradient with current parameters. If closure is not None, this is set to None and can be calculated if needed."""
 
-        self.loss: torch.Tensor | float | None = None
+        self.loss: torch.Tensor | None = None
         """loss with current parameters."""
 
-        self.loss_approx: torch.Tensor | float | None = None
+        self.loss_approx: torch.Tensor | None = None
         """loss at a point near current point. This can be useful as some modules only calculate loss at perturbed points,
         whereas some other modules require loss strictly at current point."""
 
@@ -167,6 +167,14 @@ class Vars:
         if self.loss is None: self.loss = vars.loss
         if self.loss_approx is None: self.loss_approx = vars.loss_approx
         if self.grad is None: self.grad = vars.grad
+
+    def zero_grad(self, set_to_none=True):
+        if set_to_none:
+            for p in self.params: p.grad = None
+        else:
+            grads = [p.grad for p in self.params if p.grad is not None]
+            if len(grads) != 0: torch._foreach_zero_(grads)
+
 # endregion
 
 # region Module

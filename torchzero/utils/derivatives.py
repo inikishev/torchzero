@@ -141,17 +141,17 @@ def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]):
             swap_tensors_no_use_count_check(p, dual)
 
         loss = fn()
-        tangent = fwAD.unpack_dual(loss).tangent
+        res = fwAD.unpack_dual(loss).tangent
 
     for p, d in zip(params, duals):
         swap_tensors_no_use_count_check(p, d)
 
-    return tangent
+    return res
 
 
 
 @torch.no_grad
-def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3):
+def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3, normalize=False):
     """Jacobian vector product using central finite difference formula.
 
     Example:
@@ -173,6 +173,13 @@ def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     """
     params = list(params)
     tangent = list(tangent)
+
+    tangent_norm = None
+    if normalize:
+        tangent_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in tangent])) # pylint:disable=not-callable
+        if tangent_norm == 0: return torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
+        tangent = torch._foreach_div(tangent, tangent_norm)
+
     tangent_h= torch._foreach_mul(tangent, h)
 
     torch._foreach_add_(params, tangent_h)
@@ -182,10 +189,12 @@ def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     v_minus = fn()
     torch._foreach_add_(params, tangent_h)
 
-    return (v_plus - v_minus) / (2 * h)
+    res = (v_plus - v_minus) / (2 * h)
+    if normalize: res = res * tangent_norm
+    return res
 
 @torch.no_grad
-def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3, v_0 = None):
+def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3, v_0 = None, normalize=False):
     """Jacobian vector product using forward finite difference formula.
     Loss at initial point can be specified in the `v_0` argument.
 
@@ -212,6 +221,13 @@ def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     """
     params = list(params)
     tangent = list(tangent)
+
+    tangent_norm = None
+    if normalize:
+        tangent_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in tangent])) # pylint:disable=not-callable
+        if tangent_norm == 0: return torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
+        tangent = torch._foreach_div(tangent, tangent_norm)
+
     tangent_h= torch._foreach_mul(tangent, h)
 
     if v_0 is None: v_0 = fn()
@@ -220,7 +236,9 @@ def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     v_plus = fn()
     torch._foreach_sub_(params, tangent_h)
 
-    return (v_plus - v_0) / h
+    res = (v_plus - v_0) / h
+    if normalize: res = res * tangent_norm
+    return res
 
 def hvp(
     params: Iterable[torch.Tensor],
@@ -256,7 +274,7 @@ def hvp(
 
 
 @torch.no_grad
-def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3):
+def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3, normalize=False):
     """Hessian-vector product using central finite difference formula.
 
     Please note that this will clear :code:`grad` attributes in params.
@@ -283,6 +301,12 @@ def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     params = list(params)
     vec = list(vec)
 
+    vec_norm = None
+    if normalize:
+        vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
+        if vec_norm == 0: return [torch.zeros_like(p) for p in params]
+        vec = torch._foreach_div(vec, vec_norm)
+
     vec_h = torch._foreach_mul(vec, h)
     torch._foreach_add_(params, vec_h)
     with torch.enable_grad(): closure()
@@ -299,10 +323,12 @@ def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     hvp_ = g_plus
     torch._foreach_sub_(hvp_, g_minus)
     torch._foreach_div_(hvp_, 2*h)
+
+    if normalize: torch._foreach_mul_(hvp_, vec_norm)
     return hvp_
 
 @torch.no_grad
-def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3, g_0 = None):
+def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3, g_0 = None, normalize=False):
     """Hessian-vector product using forward finite difference formula.
 
     Gradient at initial point can be specified in the `g_0` argument.
@@ -335,11 +361,20 @@ def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
 
     params = list(params)
     vec = list(vec)
+
+    vec_norm = None
+    if normalize:
+        vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
+        if vec_norm == 0: return [torch.zeros_like(p) for p in params]
+        vec = torch._foreach_div(vec, vec_norm)
+
     vec_h = torch._foreach_mul(vec, h)
 
     if g_0 is None:
         with torch.enable_grad(): closure()
         g_0 = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+    else:
+        g_0 = list(g_0)
 
     torch._foreach_add_(params, vec_h)
     with torch.enable_grad(): closure()
@@ -351,4 +386,6 @@ def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     hvp_ = g_plus
     torch._foreach_sub_(hvp_, g_0)
     torch._foreach_div_(hvp_, h)
+
+    if normalize: torch._foreach_mul_(hvp_, vec_norm)
     return hvp_

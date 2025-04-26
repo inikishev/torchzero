@@ -3,3 +3,4 @@ from .averaging import Averaging, WeightedAveraging, MedianAveraging
 from .momentum import HeavyBall, NAG
 from .cautious import Cautious, UpdateGradientSignConsistency
 from .experimental import CoordinateMomentum
+from .matrix_momentum import MatrixMomentum
