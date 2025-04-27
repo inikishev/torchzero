@@ -270,6 +270,7 @@ class TensorizeProjection(Projection):
     @torch.no_grad
     def unproject(self, tensors, vars):
         remainder = self.global_state['remainder']
+        # warnings.warn(f'{tensors[0].shape = }')
         vec = tensors[0].view(-1)
         if remainder > 0: vec = vec[:-remainder]
         return vec_to_tensors(vec, vars.params)

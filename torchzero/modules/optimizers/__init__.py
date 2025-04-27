@@ -10,4 +10,5 @@ from .rprop import (
     SignConsistencyLRs,
     SignConsistencyMask,
 )
-# from .shampoo import Shampoo
+from .shampoo import Shampoo
+from .soap import SOAP

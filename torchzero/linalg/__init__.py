@@ -1,3 +1,3 @@
-from .xinv import x_inv
+from .matrix_power import matrix_power_eig, sqrtmh, matrix_power_svd
 from .orthogonalize import gram_schmidt, orthonormal_basis_via_qr
-from .matrix_root import sqrtmh, matrix_inverse_root
+from .xinv import x_inv
