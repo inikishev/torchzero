@@ -1,7 +1,8 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, Literal
-
+import warnings
 import torch
 
 from ...core import Chainable, Module, Vars
@@ -231,3 +232,46 @@ class MultipyProjection(Projection):
     @torch.no_grad
     def unproject(self, tensors, vars):
         return torch._foreach_div(tensors, 2)
+
+
+class TensorizeProjection(Projection):
+    """flattens and concatenates all parameters into a vector and then reshapes it into a tensor"""
+    def __init__(self, modules: Chainable, max_side=100, project_update=True, project_params=False, project_grad=False):
+        defaults = dict(max_side=max_side)
+        super().__init__(modules, defaults=defaults, project_update=project_update, project_params=project_params, project_grad=project_grad)
+
+    @torch.no_grad
+    def project(self, tensors, vars):
+        params = vars.params
+        max_side = self.settings[params[0]]['max_side']
+        num_elems = sum(t.numel() for t in tensors)
+
+        if num_elems < max_side:
+            self.global_state['remainder'] = 0
+            # return 1d
+            return [torch.cat([t.view(-1) for t in tensors])]
+
+
+        # determine appropriate shape to reshape into
+        ndims = math.ceil(math.log(num_elems, max_side)) # determine number of dims
+        dim_size = math.ceil(num_elems ** (1/ndims)) # average size of a dim with ndims
+        dims = [dim_size for _ in range(ndims)]
+        required_elems = math.prod(dims)
+
+        # add few extra zeros to vec to match a reshapable size
+        remainder = required_elems-num_elems
+        if remainder > 0: tensors = tensors + [torch.zeros(remainder, dtype=tensors[0].dtype, device=tensors[0].device)]
+        self.global_state['remainder'] = remainder
+
+        warnings.warn(f'{num_elems = }, {dims = }, {remainder = }')
+
+        # flatten and reshape
+        vec = torch.cat([t.view(-1) for t in tensors])
+        return [vec.view(dims)]
+
+    @torch.no_grad
+    def unproject(self, tensors, vars):
+        remainder = self.global_state['remainder']
+        vec = tensors[0].view(-1)
+        if remainder > 0: vec = vec[:-remainder]
+        return vec_to_tensors(vec, vars.params)

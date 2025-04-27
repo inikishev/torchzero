@@ -26,7 +26,7 @@ class ClipValueGrowth(ParameterwiseTransform):
         add: float | None = None,
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
-        max_decay: float | None = None,
+        max_decay: float | None = 2,
         target: Target = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
@@ -54,6 +54,7 @@ class ClipValueGrowth(ParameterwiseTransform):
             target.sub_(torch.where(growth > add, (growth-add).copysign_(target), 0))
 
         # multiplicative bound
+        growth = None
         if mul is not None:
             prev_magn = prev.abs()
             if min_value is not None: prev_magn.clip_(min=min_value)
@@ -61,23 +62,26 @@ class ClipValueGrowth(ParameterwiseTransform):
 
             denom = torch.where(growth > mul, growth/mul, 1)
 
-            # limit max growth decay
-            if max_decay is not None and 'prev_denom' in state:
-                prev_denom = state['prev_denom']
-                denom_growth = denom / prev_denom
-                denom = torch.where(denom_growth > max_decay, max_decay, denom)
-
             target.div_(denom)
-            if max_decay is not None: state['prev_denom'] = denom
 
-        state['prev'].copy_(target)
+        # limit max growth decay
+        if max_decay is not None:
+            if growth is None:
+                prev_magn = prev.abs()
+                if min_value is not None: prev_magn.clip_(min=min_value)
+                growth = (target.abs() / prev_magn).clamp_(min=1e-8)
+
+            new_prev = torch.where(growth < (1/max_decay), prev/max_decay, target)
+        else:
+            new_prev = target.clone()
+
+        state['prev'].set_(new_prev)
         return target
 
 
 def norm_growth_clip_(
     tensor_: torch.Tensor,
     prev_norm: torch.Tensor,
-    prev_denom: torch.Tensor | None,
     add: float | None,
     mul: float | None,
     min_value: float | None,
@@ -98,15 +102,19 @@ def norm_growth_clip_(
         allowed_norm = prev_norm * mul
         if norm > allowed_norm: denom = max(denom, norm / allowed_norm)
 
-    if max_decay is not None:
-        if prev_denom is not None:
-            denom_growth = denom / prev_denom
-            if denom_growth > max_decay: denom = max_decay
-
+    # minimal norm
     if min_value is not None:
         denom = max(denom, min_value)
 
-    return tensor_.div_(denom), norm/denom, denom
+    # limit max growth decay
+    new_prev_norm = norm/denom
+    if max_decay is not None:
+        decay = norm / prev_norm
+        if decay < (1/max_decay):
+            new_prev_norm = prev_norm / max_decay
+
+    if min_value is not None: new_prev_norm = max(new_prev_norm, min_value) # pyright:ignore[reportArgumentType]
+    return tensor_.div_(denom), new_prev_norm, denom
 
 
 class ClipNormGrowth(Transform):
@@ -132,7 +140,7 @@ class ClipNormGrowth(Transform):
         add: float | None = None,
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
-        max_decay: float | None = None,
+        max_decay: float | None = 2,
         ord: float = 2,
         parameterwise=True,
         target: Target = "update",
@@ -166,7 +174,6 @@ class ClipNormGrowth(Transform):
             _,  state['prev_norm'], state['prev_denom'] = norm_growth_clip_(
                 tensor_ = t,
                 prev_norm = state['prev_norm'],
-                prev_denom = state['prev_denom'],
                 add = settings['add'],
                 mul = settings['mul'],
                 min_value = settings['min_value'],

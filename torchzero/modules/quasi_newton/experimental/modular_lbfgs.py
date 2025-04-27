@@ -113,8 +113,8 @@ class ModularLBFGS(Module):
             eigenvalue bounds for adaptive dampening. Defaults to (0.5, 50).
         update_freq (int, optional):
             how often to update L-BFGS history. Defaults to 1.
-        z_beta (float | None, optional):
-            optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
+        z_tfm (float | None, optional):
+            transform module applied to initial H^-1 @ q guess. Defaults to None.
         params_history_tfm (AnyTransform | None, optional):
             transform module applied to params before adding s_k to history. Defaults to None.
         grad_history_tfm (AnyTransform | None, optional):
