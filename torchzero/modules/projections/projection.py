@@ -263,8 +263,6 @@ class TensorizeProjection(Projection):
         if remainder > 0: tensors = tensors + [torch.zeros(remainder, dtype=tensors[0].dtype, device=tensors[0].device)]
         self.global_state['remainder'] = remainder
 
-        warnings.warn(f'{num_elems = }, {dims = }, {remainder = }')
-
         # flatten and reshape
         vec = torch.cat([t.view(-1) for t in tensors])
         return [vec.view(dims)]
