@@ -8,7 +8,8 @@ from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 class MatrixMomentum(Module):
     """
-    May be useful for ill conditioned stochastic quadratic objectives. Evaluates hessian vector product on each step.
+    May be useful for ill conditioned stochastic quadratic objectives but I need to test this.
+    Evaluates hessian vector product on each step.
 
     `u` is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable. `adaptive` is an attempt
     to remedy that.

@@ -151,11 +151,10 @@ class SOAP(Transform):
         decay (float | None, optional):
             Decays covariance matrix accumulators, this may be useful if `shampoo_beta` is None. Defaults to None.
         unprojected_exp_avg (bool, optional):
-            whether to update first momentum in unprojected space. Both true and false lead to different
-            results and work well, SOAP sets this to True. Defaults to True.
+            whether to update first momentum in unprojected space. Both true and false work and lead to different
+            results but True usually works better. Defaults to True.
         bias_correction (bool, optional):
             enables adam bias correction. Defaults to True.
-
     """
     def __init__(
         self,
@@ -165,7 +164,7 @@ class SOAP(Transform):
         precond_freq: int = 10,
         merge_small: bool = True,
         max_dim: int = 2_000,
-        precondition_1d=True,
+        precondition_1d: bool = True,
         eps: float = 1e-8,
         decay: float | None = None,
         unprojected_exp_avg: bool = True,
@@ -228,7 +227,7 @@ class SOAP(Transform):
                 t_projected = project(t, state['Q'])
 
             # exponential moving averages
-            # this part could be foreached but I will do that at some point
+            # this part could be foreached but I will do that at some point its not a big difference compared to preconditioning
             exp_avg: torch.Tensor = state["exp_avg"]
             exp_avg_sq: torch.Tensor = state["exp_avg_sq"]
 
