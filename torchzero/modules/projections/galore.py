@@ -186,8 +186,8 @@ class GaLore(Projection):
 
                             rank_svd = target_ranks[0]
                             U, S, Vh = torch.linalg.svd(matrix, full_matrices=False) # pylint:disable=not-callable
-                            P = U[:, :rank_svd].to(original_dtype)
-                            Q = Vh[:rank_svd, :].mT.to(original_dtype)
+                            P = U[..., :, :rank_svd].to(original_dtype)
+                            Q = Vh[..., :rank_svd, :].mT.to(original_dtype)
                             if needs_transpose: P, Q = Q, P
                             state['P'] = P.contiguous()
                             state['Q'] = Q.contiguous()
