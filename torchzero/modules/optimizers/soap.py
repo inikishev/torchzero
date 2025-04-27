@@ -6,44 +6,6 @@ from ...core import Chainable, Transform, apply
 from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
 
 
-# function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
-def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
-    """
-    Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
-    """
-    matrix = []
-    float_data = False
-    original_type = original_device = None
-    for m in mat:
-        if m is None: continue
-        if len(m) == 0:
-            matrix.append([])
-            continue
-        if m.dtype != torch.float:
-            original_type = m.dtype
-            original_device = m.device
-            matrix.append(m.float())
-        else:
-            float_data = True
-            matrix.append(m)
-
-    final = []
-    for m in matrix:
-        if len(m) == 0:
-            final.append([])
-            continue
-        try:
-            _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-        except Exception:
-            _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-            Q = Q.to(m.dtype)
-        Q = torch.flip(Q, [1])
-
-        if not float_data:
-            Q = Q.to(original_device).type(original_type)
-        final.append(Q)
-    return final
-
 def update_soap_covariances_(
     grad: torch.Tensor,
     GGs_: list[torch.Tensor | None],
@@ -84,6 +46,44 @@ def project_back(tensors: torch.Tensor, Q: list[torch.Tensor| None]):
             tensors = tensors.permute(permute_order)
 
     return tensors
+
+# function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
+def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
+    """
+    Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
+    """
+    matrix = []
+    float_data = False
+    original_type = original_device = None
+    for m in mat:
+        if m is None: continue
+        if len(m) == 0:
+            matrix.append([])
+            continue
+        if m.dtype != torch.float:
+            original_type = m.dtype
+            original_device = m.device
+            matrix.append(m.float())
+        else:
+            float_data = True
+            matrix.append(m)
+
+    final = []
+    for m in matrix:
+        if len(m) == 0:
+            final.append([])
+            continue
+        try:
+            _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
+        except Exception:
+            _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
+            Q = Q.to(m.dtype)
+        Q = torch.flip(Q, [1])
+
+        if not float_data:
+            Q = Q.to(original_device).type(original_type)
+        final.append(Q)
+    return final
 
 # function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py#L240
 def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | None], Q_list: list[torch.Tensor | None]):

@@ -86,7 +86,7 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
 
 
 class Shampoo(Transform):
-    """A liquid preparation for washing the hair.
+    """Shampoo: Preconditioned Stochastic Tensor Optimization (https://arxiv.org/abs/1802.09568).
 
     Args:
         decay (float | None, optional): slowly decays preconditioners. Defaults to None.
