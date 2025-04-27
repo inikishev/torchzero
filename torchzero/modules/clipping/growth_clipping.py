@@ -75,7 +75,7 @@ class ClipValueGrowth(ParameterwiseTransform):
         else:
             new_prev = target.clone()
 
-        state['prev'].set_(new_prev)
+        state['prev'] = new_prev
         return target
 
 

@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module, Target, Transform, apply, Chainable
 from ...utils import NumberList, TensorList, generic_eq
 
 class ClipNormByEMA(Transform):
@@ -29,7 +29,7 @@ class ClipNormByEMA(Transform):
         beta, eps = self.get_settings('beta', 'eps', params=params, cls=NumberList)
         target = TensorList(target)
 
-        ema = self.get_state('ema', params=params, init = torch.zeros_like if ema_init=='zeros' else target, cls=TensorList)
+        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else target), cls=TensorList)
         ema.lerp_(target, 1-beta)
 
         if tensorwise:
@@ -71,3 +71,35 @@ class ClipNormByEMA(Transform):
 
 class NormalizeByEMA(ClipNormByEMA):
     NORMALIZE = True
+
+
+
+class ClipValueByEMA(Transform):
+    def __init__(
+        self,
+        beta=0.99,
+        ema_init: Literal['zeros', 'update'] = 'zeros',
+        target: Target = "update",
+        ema_tfm:Chainable | None=None,
+    ):
+        defaults = dict(beta=beta, ema_init=ema_init)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+        if ema_tfm is not None:
+            self.set_child('ema_tfm', ema_tfm)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        ema_init = itemgetter('ema_init')(self.settings[params[0]])
+
+        beta = self.get_settings('beta', params=params, cls=NumberList)
+        target = TensorList(target)
+
+        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
+        ema.lerp_(target.abs(), 1-beta)
+
+        if 'ema_tfm' in self.children:
+            ema = TensorList(apply(self.children['ema_tfm'], ema, params, vars.grad, vars))
+
+        target.clip_(-ema, ema)
+        return target
