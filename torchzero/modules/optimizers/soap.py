@@ -217,8 +217,9 @@ class SOAP(Transform):
                     state['Q'] = get_orthogonal_matrix(state['GG'])
 
                 state['step'] = 0
-                updates.append(torch.zeros_like(target[i]))
-                continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py.
+                updates.append(target[i].sign())
+                continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
+                # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
 
             # Projecting gradients to the eigenbases of Shampoo's preconditioner
             # i.e. projecting to the eigenbases of matrices in state['GG']

@@ -20,7 +20,7 @@ def clamp(x, min, max):
 
 class GaLore(Projection):
     """
-    GaLore (Gradient Low-Rank Projection - https://arxiv.org/abs/2403.03507). (NOT IMPLEMENTED FOR TENSORS YET)
+    (WIP) GaLore (Gradient Low-Rank Projection - https://arxiv.org/abs/2403.03507).
 
     Projects gradients of high-dimensional weight matrices onto a low-rank subspace
     defined by matrices P and Q. This assumes 1st and 2nd dims are in-channels and out-channels.
