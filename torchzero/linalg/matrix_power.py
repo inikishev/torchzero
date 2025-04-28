@@ -17,7 +17,7 @@ def matrix_power_eig(matrix: torch.Tensor, power: float, eps: float = 1e-6) -> t
     try:
         matrix = matrix + torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype) * eps
         eigvals, eigvecs = torch.linalg.eigh(matrix) # pylint:disable=not-callable
-        inv_root_eigvals = eigvals.clamp(eigvals, min=eps).pow_(exponent=power)
+        inv_root_eigvals = eigvals.clamp(min=eps).pow_(exponent=power)
         return  eigvecs @ torch.diag_embed(inv_root_eigvals) @ eigvecs.mH
     except torch.linalg.LinAlgError:
         return torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype)
