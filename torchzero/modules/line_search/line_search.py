@@ -161,6 +161,7 @@ class LineSearch(Module, ABC):
 
 
 class GridLineSearch(LineSearch):
+    """Mostly for testing, this is not practical"""
     def __init__(self, start, end, num):
         defaults = dict(start=start,end=end,num=num)
         super().__init__(defaults)

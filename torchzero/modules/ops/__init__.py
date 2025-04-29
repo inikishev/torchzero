@@ -38,6 +38,7 @@ from .misc import (
     Relative,
     Sequential,
     UpdateSign,
+    Accumulate,
 )
 from .multi import (
     ClipModules,

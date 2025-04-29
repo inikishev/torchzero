@@ -283,3 +283,42 @@ class Sequential(Module):
     @torch.no_grad
     def step(self, vars):
         return _sequential_step(self, vars, sequential=True)
+
+
+class Accumulate(Module):
+    """gradient accumulation"""
+    def __init__(self, modules: Chainable, n: int, mean=True, stop=True):
+        defaults = dict(n=n, mean=mean, stop=stop)
+        super().__init__(defaults)
+        self.set_child('modules', modules)
+
+        self.global_state['step'] = 0
+
+    @torch.no_grad
+    def step(self, vars):
+        accumulator = self.get_state('accumulator', params=vars.params)
+        settings = self.settings[vars.params[0]]
+        n = settings['n']; mean = settings['mean']; stop = settings['stop']
+        self.global_state['step'] += 1
+
+        # add update to accumulator
+        torch._foreach_add_(accumulator, vars.get_update())
+
+        # step with accumulated updates
+        if self.global_state['step'] % n == 0:
+            if mean:
+                torch._foreach_div_(accumulator, n)
+
+            vars.update = [a.clone() for a in accumulator]
+            vars = self.children['modules'].step(vars)
+
+            # zero accumulator
+            torch._foreach_zero_(accumulator)
+
+        else:
+            # prevent update
+            if stop:
+                vars.stop=True
+                vars.update=None
+
+        return vars

@@ -36,9 +36,9 @@ def backtracking_line_search(
 
     for iteration in range(max_iter):
         f_alpha = objective(alpha)
-        sufficient_decrease_value = f_x + c * alpha * dir_derivative
+        sufficient_f = f_x + c * alpha * dir_derivative
 
-        if f_alpha <= sufficient_decrease_value:
+        if f_alpha <= sufficient_f:
             # found an acceptable alpha
             return alpha
         else:
@@ -119,8 +119,9 @@ class AdaptiveBacktracking(LineSearch):
 
         objective = self.make_objective(vars=vars)
 
-        # # directional derivative
-        d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), vars.get_update()))
+        # directional derivative (0 if c = 0 because it is not needed)
+        if c == 0: d = 0
+        else: d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), update))
 
         # scale beta
         beta = beta * self.global_state['beta_scale']
