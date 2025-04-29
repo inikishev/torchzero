@@ -19,8 +19,9 @@ from .binary import (
     Sub,
     Threshold,
 )
-from .debug import PrintUpdate, PrintShape
+from .debug import PrintShape, PrintUpdate
 from .misc import (
+    Accumulate,
     DivByLoss,
     FillLoss,
     GradSign,
@@ -38,7 +39,6 @@ from .misc import (
     Relative,
     Sequential,
     UpdateSign,
-    Accumulate,
 )
 from .multi import (
     ClipModules,
@@ -59,6 +59,7 @@ from .reduce import (
     WeightedMean,
     WeightedSum,
 )
+from .split import Split
 from .switch import Alternate, Switch
 from .unary import (
     Abs,

@@ -14,7 +14,7 @@ def inverse_sqrt(M):
     if M.shape[-1] == 2: return inv_sqrt_2x2(M, force_pd=True) # general formula for 2x2 matrices
     return matrix_power_svd(M, -1/2)
 
-def update_projected_preconditioner_(
+def update_subspace_preconditioner_(
     grad: torch.Tensor, # store grads and basis as vectors for matmul
     basis: torch.Tensor, # ndim, k
     accumulator_: torch.Tensor, # k, k
@@ -26,7 +26,7 @@ def update_projected_preconditioner_(
     if beta is None: accumulator_.add_(outer)
     else: accumulator_.lerp_(outer, 1-beta)
 
-def apply_projected_preconditioner(
+def apply_subspace_preconditioner(
     tensor: torch.Tensor,
     basis: torch.Tensor, # ndim, k
     accumulator: torch.Tensor,
@@ -55,8 +55,8 @@ class RandomPreconditioning(Transform):
         basis = self.global_state['basis']
         accumulator = self.global_state['accumulator']
 
-        update_projected_preconditioner_(g, basis, accumulator, beta)
-        preconditioned = apply_projected_preconditioner(g, basis, accumulator)
+        update_subspace_preconditioner_(g, basis, accumulator, beta)
+        preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
         vec_to_tensors_(preconditioned, target)
 
         return target
@@ -97,8 +97,8 @@ class HistoryPreconditioning(Transform):
         basis_t = (basis_t - basis_t.mean()) / basis_t.std()
 
         basis.lerp_(basis_t, weight)
-        update_projected_preconditioner_(g, basis, accumulator, beta)
-        preconditioned = apply_projected_preconditioner(g, basis, accumulator)
+        update_subspace_preconditioner_(g, basis, accumulator, beta)
+        preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
         vec_to_tensors_(preconditioned, target)
 
         return target
