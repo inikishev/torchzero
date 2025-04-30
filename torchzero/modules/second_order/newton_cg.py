@@ -91,13 +91,14 @@ class NewtonCG(GradMaker):
 
 
         # -------------------------------- inner step -------------------------------- #
+        b = grad
         if 'inner' in self.children:
-            grad = apply(self.children['inner'], grad, params=params, grad=grad, vars=vars)
+            b = TensorList(apply(self.children['inner'], grad, params=params, grad=grad, vars=vars))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
         if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
-        x = cg(A_mm=H_mm, b=TensorList(grad), x0=x0, tol=tol, maxiter=maxiter)
+        x = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter)
         if warm_start:
             assert x0 is not None
             x0.set_(x)
