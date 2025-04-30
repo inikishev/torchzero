@@ -1,6 +1,6 @@
 from typing import overload
 import torch
-from ..utils import TensorList
+from ..tensorlist import TensorList
 
 @overload
 def gram_schmidt(x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]: ...

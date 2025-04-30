@@ -98,7 +98,7 @@ class Newton(GradMaker):
         elif hessian_method in ('func', 'autograd.functional'):
             strat = 'forward-mode' if vectorize else 'reverse-mode'
             with torch.enable_grad():
-                vars.zero_grad()
+                for p in params: p.grad = None
                 loss = closure(False)
                 loss.backward(retain_graph=True)
                 g_list = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
