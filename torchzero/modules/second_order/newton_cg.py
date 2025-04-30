@@ -42,7 +42,7 @@ def cg(
 
 
 class NewtonCG(GradMaker):
-    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, warm_start=False, target: GradTarget = 'update', inner: Chainable | None = None):
+    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'autograd', h=1e-3, warm_start=False, target: GradTarget = 'update', inner: Chainable | None = None):
         defaults = dict(tol=tol, maxiter=maxiter, hvp_method=hvp_method, h=h, warm_start=warm_start)
         super().__init__(defaults, target=target)
 
@@ -61,6 +61,7 @@ class NewtonCG(GradMaker):
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
+            for p in params: p.grad = None
             with torch.enable_grad():
                 loss = closure(False)
                 loss.backward(create_graph=True)
@@ -68,7 +69,7 @@ class NewtonCG(GradMaker):
 
             def H_mm(x):
                 with torch.enable_grad():
-                    return TensorList(hvp(params, grad, x, retain_graph=True))
+                    return TensorList(hvp(params, grad.clone(), x, retain_graph=True))
 
         else:
 
@@ -91,7 +92,7 @@ class NewtonCG(GradMaker):
 
         # -------------------------------- inner step -------------------------------- #
         if 'inner' in self.children:
-            grad = apply(self.children['inner'], list(grad), params=params, grad=list(grad), vars=vars)
+            grad = apply(self.children['inner'], grad, params=params, grad=grad, vars=vars)
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None

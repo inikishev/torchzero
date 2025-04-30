@@ -44,7 +44,8 @@ class GradMaker(Module, ABC):
 
             def approx_closure(backward=True):
                 if backward:
-                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=loss, vars=vars)
+                    # set loss to None because closure might be evaluated at different points
+                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None, vars=vars)
                     for p, g in zip(params, grad): p.grad = g
                     return l if l is not None else l_approx
                 return closure(False)
