@@ -129,7 +129,7 @@ class AdaptiveBacktracking(LineSearch):
         # scale step size so that decrease is expected at target_iters
         initial_step_size = initial_step_size * self.global_state['initial_scale']
 
-        step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size,beta=beta,
+        step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size, beta=beta,
                                         c=c,max_iter=max_iter,min_alpha=min_alpha)
 
         # found an alpha that reduces loss

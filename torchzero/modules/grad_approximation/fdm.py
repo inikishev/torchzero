@@ -4,7 +4,7 @@ from typing import Any
 import torch
 
 from ...utils import TensorList
-from .grad_approximator import GradApproximator, GradTarget, _FD_Formula
+from .grad_maker import GradMaker, GradTarget, _FD_Formula
 
 
 def _forward2(closure: Callable[..., float], param:torch.Tensor, idx: int, h, v_0: float | None):
@@ -86,7 +86,7 @@ _FD_FUNCS = {
 }
 
 
-class FDM(GradApproximator):
+class FDM(GradMaker):
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central4', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)
         super().__init__(defaults, target=target)

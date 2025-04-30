@@ -1,17 +1,108 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 import torch
 import torch.autograd.forward_ad as fwAD
 
 from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
 
+def _jacobian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_input = torch.cat([i.reshape(-1) for i in input])
+    grad_ouputs = torch.eye(len(flat_input), device=input[0].device, dtype=input[0].dtype)
+    jac = []
+    for i in range(flat_input.numel()):
+        jac.append(torch.autograd.grad(
+            flat_input,
+            wrt,
+            grad_ouputs[i],
+            retain_graph=True,
+            create_graph=create_graph,
+            allow_unused=True,
+            is_grads_batched=False,
+        ))
+    return [torch.stack(z) for z in zip(*jac)]
 
+
+def _jacobian_batched(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_input = torch.cat([i.reshape(-1) for i in input])
+    return torch.autograd.grad(
+        flat_input,
+        wrt,
+        torch.eye(len(flat_input), device=input[0].device, dtype=input[0].dtype),
+        retain_graph=True,
+        create_graph=create_graph,
+        allow_unused=True,
+        is_grads_batched=True,
+    )
+
+def jacobian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
+    """Calculate jacobian of a sequence of tensors w.r.t another sequence of tensors.
+    Returns a sequence of tensors with the length as `wrt`.
+    Each tensor will have the shape `(*input.shape, *wrt[i].shape)`.
+
+    Args:
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        create_graph (bool, optional):
+            pytorch option, if True, graph of the derivative will be constructed,
+            allowing to compute higher order derivative products. Default: False.
+        batched (bool, optional): use faster but experimental pytorch batched jacobian
+            This only has effect when `input` has more than 1 element. Defaults to True.
+
+    Returns:
+        sequence of tensors with the length as `wrt`.
+    """
+    if batched: return _jacobian_batched(input, wrt, create_graph)
+    return _jacobian(input, wrt, create_graph)
+
+def jacobian_and_hessian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+    """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
+    Calculating hessian requires calculating the jacobian. So this function is more efficient than
+    calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
+
+    Args:
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        create_graph (bool, optional):
+            pytorch option, if True, graph of the derivative will be constructed,
+            allowing to compute higher order derivative products. Default: False.
+        batched (bool, optional): use faster but experimental pytorch batched grad. Defaults to True.
+
+    Returns:
+        tuple with jacobians sequence and hessians sequence.
+    """
+    jac = jacobian_wrt(input, wrt, create_graph=True, batched = batched)
+    return jac, jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
+
+def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
+    """takes output of `hessian` and returns the 2D hessian matrix.
+    Note - I only tested this for cases where input is a scalar."""
+    return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)
+
+def jacobian_and_hessian_mat_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+    """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
+    Calculating hessian requires calculating the jacobian. So this function is more efficient than
+    calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
+
+    Args:
+        input (Sequence[torch.Tensor]): input sequence of tensors.
+        wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
+        create_graph (bool, optional):
+            pytorch option, if True, graph of the derivative will be constructed,
+            allowing to compute higher order derivative products. Default: False.
+        batched (bool, optional): use faster but experimental pytorch batched grad. Defaults to True.
+
+    Returns:
+        tuple with jacobians sequence and hessians sequence.
+    """
+    jac = jacobian_wrt(input, wrt, create_graph=True, batched = batched)
+    H_list = jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
+    return torch.cat([j.view(-1) for j in jac]), hessian_list_to_mat(H_list)
 
 def hessian(
     fn,
     params: Iterable[torch.Tensor],
     create_graph=False,
-    method="torch.func",
+    method="func",
     vectorize=False,
     outer_jacobian_strategy="reverse-mode",
 ):
@@ -45,10 +136,10 @@ def hessian(
         for p, x_i in zip(params, x): swap_tensors_no_use_count_check(p, x_i)
         return loss
 
-    if method == 'torch.func':
+    if method == 'func':
         return torch.func.hessian(func)([p.detach().requires_grad_(create_graph) for p in params])
 
-    if method == 'torch.autograd':
+    if method == 'autograd.functional':
         return torch.autograd.functional.hessian(
             func,
             [p.detach() for p in params],
@@ -62,7 +153,7 @@ def hessian_mat(
     fn,
     params: Iterable[torch.Tensor],
     create_graph=False,
-    method="torch.func",
+    method="func",
     vectorize=False,
     outer_jacobian_strategy="reverse-mode",
 ):
@@ -96,10 +187,10 @@ def hessian_mat(
         for p, x_i in zip(params, x_params): swap_tensors_no_use_count_check(p, x_i)
         return loss
 
-    if method == 'torch.func':
+    if method == 'func':
         return torch.func.hessian(func)(torch.cat([p.view(-1) for p in params]).detach().requires_grad_(create_graph))
 
-    if method == 'torch.autograd':
+    if method == 'autograd.functional':
         return torch.autograd.functional.hessian(
             func,
             torch.cat([p.view(-1) for p in params]).detach(),

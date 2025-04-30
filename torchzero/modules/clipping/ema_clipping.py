@@ -38,7 +38,7 @@ class ClipNormByEMA(Transform):
             # clip ema norm growth
             if max_ema_growth is not None:
                 prev_ema_norm = self.get_state('prev_ema_norm', params=params, init=ema_norm, cls=TensorList)
-                allowed_norm = prev_ema_norm * max_ema_growth
+                allowed_norm = (prev_ema_norm * max_ema_growth).clip(min=1e-6)
                 ema_denom = (ema_norm / allowed_norm).clip(min=1)
                 ema.div_(ema_denom)
                 ema_norm.div_(ema_denom)

@@ -4,7 +4,7 @@ from typing import Any
 import torch
 
 from ...utils import TensorList, Distributions, NumberList, generic_eq
-from .grad_approximator import GradApproximator, GradTarget, _FD_Formula
+from .grad_maker import GradMaker, GradTarget, _FD_Formula
 
 
 def _rforward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
@@ -89,7 +89,7 @@ _RFD_FUNCS = {
 }
 
 
-class RandomizedFDM(GradApproximator):
+class RandomizedFDM(GradMaker):
     def __init__(
         self,
         h: float = 1e-3,
@@ -147,7 +147,7 @@ class RandomizedFDM(GradApproximator):
         return grad, loss, loss_approx
 
 
-class MeZO(GradApproximator):
+class MeZO(GradMaker):
     def __init__(self, h: float=1e-3, n_samples: int = 1, formula: _FD_Formula = 'central2',
                  distribution: Distributions = 'gaussian', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution)

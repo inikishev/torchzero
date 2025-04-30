@@ -10,3 +10,4 @@ from .quasi_newton import *
 from .smoothing import *
 from .weight_decay import *
 from .wrappers import *
+from .second_order import *

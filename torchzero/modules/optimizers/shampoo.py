@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ...core import Chainable, Transform, apply
-from ...linalg import matrix_power_eig, matrix_power_svd
+from ...utils.linalg import matrix_power_eig, matrix_power_svd
 from ...utils import set_storage_
 
 

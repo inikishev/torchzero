@@ -42,7 +42,8 @@ def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> to
     trace = a + d
 
     if force_pd:
-        # add smallest eigenvalue to diagonal to force PD
+        # add smallest eigenvalue magnitude to diagonal to force PD
+        # could also clamp eigenvalues bc there is a formula for eigenvectors
         term1 = trace/2
         term2 = (trace.pow(2).div_(4).sub_(det)).clamp_(min=eps).sqrt_()
         y1 = term1 + term2

@@ -6,7 +6,7 @@ import torch
 # import torchzero as tz
 
 from ...core import Transform
-from ...linalg import inv_sqrt_2x2, matrix_power_svd
+from ...utils.linalg import inv_sqrt_2x2, matrix_power_svd
 from ...utils import TensorList, vec_to_tensors_
 
 
