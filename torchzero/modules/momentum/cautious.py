@@ -93,7 +93,7 @@ class UpdateGradientSignConsistency(Transform):
 
 
 
-class ScaleUpdateByGradCosineSimilarity(Transform):
+class ScaleByGradCosineSimilarity(Transform):
     def __init__(
         self,
         normalize=False,

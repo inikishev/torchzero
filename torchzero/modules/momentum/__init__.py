@@ -1,6 +1,6 @@
 from .ema import EMA, EMASquared, SqrtEMASquared, Debias1, Debias2
 from .averaging import Averaging, WeightedAveraging, MedianAveraging
 from .momentum import HeavyBall, NAG
-from .cautious import Cautious, UpdateGradientSignConsistency, ScaleUpdateByGradCosineSimilarity
+from .cautious import Cautious, UpdateGradientSignConsistency, ScaleByGradCosineSimilarity
 from .experimental import CoordinateMomentum
 from .matrix_momentum import MatrixMomentum
