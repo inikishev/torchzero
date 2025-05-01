@@ -39,6 +39,7 @@ from .misc import (
     Relative,
     Sequential,
     UpdateSign,
+    Dropout,
 )
 from .multi import (
     ClipModules,

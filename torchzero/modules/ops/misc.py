@@ -322,3 +322,21 @@ class Accumulate(Module):
                 vars.update=None
 
         return vars
+
+
+class Dropout(Transform):
+    def __init__(self, p: float = 0.5, graft: bool=False, target: Target = 'update'):
+        defaults = dict(p=p, graft=graft)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    def transform(self, target, params, grad, vars):
+        target = TensorList(target)
+        p = self.get_settings('p', params=params, cls=NumberList)
+        graft = self.settings[params[0]]['graft']
+
+        if graft:
+            target_norm = target.global_vector_norm()
+            target.mul_(target.rademacher_like(1-p).add_(1).div_(2))
+            return target.mul_(target_norm / target.global_vector_norm()) # graft
+
+        return target.mul_(target.rademacher_like(1-p).add_(1).div_(2))
