@@ -76,7 +76,7 @@ class Backtracking(LineSearch):
         max_iter: int = 10,
         min_alpha: float | None = None,
         adaptive=True,
-        try_negative: bool = True,
+        try_negative: bool = False,
     ):
         defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,adaptive=adaptive, try_negative=try_negative)
         super().__init__(defaults=defaults)
