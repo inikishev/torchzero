@@ -90,6 +90,7 @@ _RFD_FUNCS = {
 
 
 class RandomizedFDM(GradApproximator):
+    PRE_MULTIPLY_BY_H = True
     def __init__(
         self,
         h: float = 1e-3,
@@ -110,16 +111,24 @@ class RandomizedFDM(GradApproximator):
 
         if all(i==0 for i in beta):
             # just pre-generate perturbations
-            self.global_state['perturbations'] = [
-                TensorList(vars.params).sample_like(distribution=distribution).mul_(h) for _ in range(n_samples)
-            ]
+            if self.PRE_MULTIPLY_BY_H:
+                self.global_state['perturbations'] = [
+                    TensorList(vars.params).sample_like(distribution=distribution).mul_(h) for _ in range(n_samples)
+                ]
+            else:
+                self.global_state['perturbations'] = [
+                    TensorList(vars.params).sample_like(distribution=distribution) for _ in range(n_samples)
+                ]
 
         else:
             # lerp old and new perturbations. This makes the subspace change gradually
             # which in theory might improve algorithms with history
             perts = self.global_state['perturbations'] = self.global_state.get('perturbations', [])[:n_samples] # trim if n_samples changed
             for i in range(n_samples):
-                new_pert = TensorList(vars.params).sample_like(distribution=distribution).mul_(h)
+                if self.PRE_MULTIPLY_BY_H:
+                    new_pert = TensorList(vars.params).sample_like(distribution=distribution).mul_(h)
+                else:
+                    new_pert = TensorList(vars.params).sample_like(distribution=distribution)
                 if i >= len(perts):
                     perts.append(new_pert)
                 else:

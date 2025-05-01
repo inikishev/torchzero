@@ -3,7 +3,7 @@ from typing import Literal
 import torch
 
 from ...core import Module, apply
-from ...utils import NumberList, TensorList, set_storage_
+from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 class MatrixMomentum(Module):
@@ -45,10 +45,12 @@ class MatrixMomentum(Module):
 
         elif hvp_mode == 'forward':
             vars.get_grad()
-            hvp_ = TensorList(hvp_fd_forward(vars.closure, vars.params, vec=prev_update, g_0=vars.grad, h=h, normalize=True))
+            l, hvp_ = hvp_fd_forward(vars.closure, vars.params, vec=prev_update, g_0=vars.grad, h=h, normalize=True)
+            if vars.loss_approx is None: vars.loss_approx = l
 
         elif hvp_mode == 'central':
-            hvp_ = TensorList(hvp_fd_central(vars.closure, vars.params, vec=prev_update, h=h, normalize=True))
+            l, hvp_ = hvp_fd_central(vars.closure, vars.params, vec=prev_update, h=h, normalize=True)
+            if vars.loss_approx is None: vars.loss_approx = l
 
         else:
             raise ValueError(hvp_mode)
@@ -58,6 +60,7 @@ class MatrixMomentum(Module):
 
         update = TensorList(vars.get_update())
 
+        hvp_ = as_tensorlist(hvp_)
         if adaptive: hvp_.graft_(prev_update)
         update.add_(prev_update - hvp_*u)
         prev_update.set_(update * decay)

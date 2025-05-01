@@ -42,7 +42,7 @@ def cg(
 
 
 class NewtonCG(Module):
-    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'autograd', h=1e-3, warm_start=False, inner: Chainable | None = None):
+    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'forward', h=1e-3, warm_start=False, inner: Chainable | None = None):
         defaults = dict(tol=tol, maxiter=maxiter, hvp_method=hvp_method, h=h, warm_start=warm_start)
         super().__init__(defaults,)
 
@@ -77,11 +77,11 @@ class NewtonCG(Module):
 
             if hvp_method == 'forward':
                 def H_mm(x):
-                    return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True))
+                    return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
 
             elif hvp_method == 'central':
                 def H_mm(x):
-                    return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True))
+                    return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
 
             else:
                 raise ValueError(hvp_method)

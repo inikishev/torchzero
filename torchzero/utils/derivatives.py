@@ -5,9 +5,9 @@ import torch.autograd.forward_ad as fwAD
 
 from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
 
-def _jacobian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_input = torch.cat([i.reshape(-1) for i in input])
-    grad_ouputs = torch.eye(len(flat_input), device=input[0].device, dtype=input[0].dtype)
+def _jacobian(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_input = torch.cat([i.reshape(-1) for i in output])
+    grad_ouputs = torch.eye(len(flat_input), device=output[0].device, dtype=output[0].dtype)
     jac = []
     for i in range(flat_input.numel()):
         jac.append(torch.autograd.grad(
@@ -22,19 +22,19 @@ def _jacobian(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create
     return [torch.stack(z) for z in zip(*jac)]
 
 
-def _jacobian_batched(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_input = torch.cat([i.reshape(-1) for i in input])
+def _jacobian_batched(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_input = torch.cat([i.reshape(-1) for i in output])
     return torch.autograd.grad(
         flat_input,
         wrt,
-        torch.eye(len(flat_input), device=input[0].device, dtype=input[0].dtype),
+        torch.eye(len(flat_input), device=output[0].device, dtype=output[0].dtype),
         retain_graph=True,
         create_graph=create_graph,
         allow_unused=True,
         is_grads_batched=True,
     )
 
-def jacobian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
+def jacobian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
     """Calculate jacobian of a sequence of tensors w.r.t another sequence of tensors.
     Returns a sequence of tensors with the length as `wrt`.
     Each tensor will have the shape `(*input.shape, *wrt[i].shape)`.
@@ -51,10 +51,10 @@ def jacobian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], cre
     Returns:
         sequence of tensors with the length as `wrt`.
     """
-    if batched: return _jacobian_batched(input, wrt, create_graph)
-    return _jacobian(input, wrt, create_graph)
+    if batched: return _jacobian_batched(output, wrt, create_graph)
+    return _jacobian(output, wrt, create_graph)
 
-def jacobian_and_hessian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
     Calculating hessian requires calculating the jacobian. So this function is more efficient than
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
@@ -70,7 +70,7 @@ def jacobian_and_hessian_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.
     Returns:
         tuple with jacobians sequence and hessians sequence.
     """
-    jac = jacobian_wrt(input, wrt, create_graph=True, batched = batched)
+    jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
     return jac, jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
 
 def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
@@ -78,7 +78,7 @@ def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
     Note - I only tested this for cases where input is a scalar."""
     return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)
 
-def jacobian_and_hessian_mat_wrt(input: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+def jacobian_and_hessian_mat_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
     Calculating hessian requires calculating the jacobian. So this function is more efficient than
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
@@ -94,7 +94,7 @@ def jacobian_and_hessian_mat_wrt(input: Sequence[torch.Tensor], wrt: Sequence[to
     Returns:
         tuple with jacobians sequence and hessians sequence.
     """
-    jac = jacobian_wrt(input, wrt, create_graph=True, batched = batched)
+    jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
     H_list = jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
     return torch.cat([j.view(-1) for j in jac]), hessian_list_to_mat(H_list)
 
@@ -200,7 +200,7 @@ def hessian_mat(
         )
     raise ValueError(method)
 
-def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]):
+def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
     """Jacobian vector product.
 
     Example:
@@ -237,12 +237,18 @@ def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]):
     for p, d in zip(params, duals):
         swap_tensors_no_use_count_check(p, d)
 
-    return res
+    return loss, res
 
 
 
 @torch.no_grad
-def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3, normalize=False):
+def jvp_fd_central(
+    fn,
+    params: Iterable[torch.Tensor],
+    tangent: Iterable[torch.Tensor],
+    h=1e-3,
+    normalize=False,
+) -> tuple[torch.Tensor | None, torch.Tensor]:
     """Jacobian vector product using central finite difference formula.
 
     Example:
@@ -268,7 +274,7 @@ def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     tangent_norm = None
     if normalize:
         tangent_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in tangent])) # pylint:disable=not-callable
-        if tangent_norm == 0: return torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
+        if tangent_norm == 0: return None, torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
         tangent = torch._foreach_div(tangent, tangent_norm)
 
     tangent_h= torch._foreach_mul(tangent, h)
@@ -282,10 +288,17 @@ def jvp_fd_central(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
 
     res = (v_plus - v_minus) / (2 * h)
     if normalize: res = res * tangent_norm
-    return res
+    return v_plus, res
 
 @torch.no_grad
-def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor], h=1e-3, v_0 = None, normalize=False):
+def jvp_fd_forward(
+    fn,
+    params: Iterable[torch.Tensor],
+    tangent: Iterable[torch.Tensor],
+    h=1e-3,
+    v_0=None,
+    normalize=False,
+) -> tuple[torch.Tensor | None, torch.Tensor]:
     """Jacobian vector product using forward finite difference formula.
     Loss at initial point can be specified in the `v_0` argument.
 
@@ -316,7 +329,7 @@ def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
     tangent_norm = None
     if normalize:
         tangent_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in tangent])) # pylint:disable=not-callable
-        if tangent_norm == 0: return torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
+        if tangent_norm == 0: return None, torch.tensor(0., device=tangent[0].device, dtype=tangent[0].dtype)
         tangent = torch._foreach_div(tangent, tangent_norm)
 
     tangent_h= torch._foreach_mul(tangent, h)
@@ -329,7 +342,7 @@ def jvp_fd_forward(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.T
 
     res = (v_plus - v_0) / h
     if normalize: res = res * tangent_norm
-    return res
+    return v_0, res
 
 def hvp(
     params: Iterable[torch.Tensor],
@@ -365,7 +378,13 @@ def hvp(
 
 
 @torch.no_grad
-def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3, normalize=False):
+def hvp_fd_central(
+    closure,
+    params: Iterable[torch.Tensor],
+    vec: Iterable[torch.Tensor],
+    h=1e-3,
+    normalize=False,
+) -> tuple[torch.Tensor | None, list[torch.Tensor]]:
     """Hessian-vector product using central finite difference formula.
 
     Please note that this will clear :code:`grad` attributes in params.
@@ -395,17 +414,17 @@ def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     vec_norm = None
     if normalize:
         vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
-        if vec_norm == 0: return [torch.zeros_like(p) for p in params]
+        if vec_norm == 0: return None, [torch.zeros_like(p) for p in params]
         vec = torch._foreach_div(vec, vec_norm)
 
     vec_h = torch._foreach_mul(vec, h)
     torch._foreach_add_(params, vec_h)
-    with torch.enable_grad(): closure()
+    with torch.enable_grad(): loss = closure()
     g_plus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
     torch._foreach_sub_(params, vec_h)
     torch._foreach_sub_(params, vec_h)
-    with torch.enable_grad(): closure()
+    with torch.enable_grad(): loss = closure()
     g_minus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
     torch._foreach_add_(params, vec_h)
@@ -416,10 +435,17 @@ def hvp_fd_central(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     torch._foreach_div_(hvp_, 2*h)
 
     if normalize: torch._foreach_mul_(hvp_, vec_norm)
-    return hvp_
+    return loss, hvp_
 
 @torch.no_grad
-def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.Tensor], h=1e-3, g_0 = None, normalize=False):
+def hvp_fd_forward(
+    closure,
+    params: Iterable[torch.Tensor],
+    vec: Iterable[torch.Tensor],
+    h=1e-3,
+    g_0=None,
+    normalize=False,
+) -> tuple[torch.Tensor | None, list[torch.Tensor]]:
     """Hessian-vector product using forward finite difference formula.
 
     Gradient at initial point can be specified in the `g_0` argument.
@@ -452,23 +478,26 @@ def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
 
     params = list(params)
     vec = list(vec)
+    loss = None
 
     vec_norm = None
     if normalize:
         vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
-        if vec_norm == 0: return [torch.zeros_like(p) for p in params]
+        if vec_norm == 0: return None, [torch.zeros_like(p) for p in params]
         vec = torch._foreach_div(vec, vec_norm)
 
     vec_h = torch._foreach_mul(vec, h)
 
     if g_0 is None:
-        with torch.enable_grad(): closure()
+        with torch.enable_grad(): loss = closure()
         g_0 = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
     else:
         g_0 = list(g_0)
 
     torch._foreach_add_(params, vec_h)
-    with torch.enable_grad(): closure()
+    with torch.enable_grad():
+        l = closure()
+        if loss is None: loss = l
     g_plus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
     torch._foreach_sub_(params, vec_h)
@@ -479,4 +508,4 @@ def hvp_fd_forward(closure, params: Iterable[torch.Tensor], vec: Iterable[torch.
     torch._foreach_div_(hvp_, h)
 
     if normalize: torch._foreach_mul_(hvp_, vec_norm)
-    return hvp_
+    return loss, hvp_
