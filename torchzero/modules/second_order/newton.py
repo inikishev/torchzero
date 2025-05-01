@@ -1,17 +1,16 @@
 import warnings
 from functools import partial
 from typing import Literal
-
+from collections.abc import Callable
 import torch
 
-from ...core import Chainable, apply
-from ...utils import vec_to_tensors
+from ...core import Chainable, apply, Module
+from ...utils import vec_to_tensors, TensorList
 from ...utils.derivatives import (
     hessian_list_to_mat,
     hessian_mat,
     jacobian_and_hessian_wrt,
 )
-from ..grad_approximation import GradMaker, GradTarget
 
 
 def lu_solve(H: torch.Tensor, g: torch.Tensor):
@@ -46,7 +45,7 @@ def inv_matrix_clamp(H: torch.Tensor, reg: float):
         return None
 
 
-class Newton(GradMaker):
+class Newton(Module):
     """Exact newton via autograd.
 
     Args:
@@ -59,8 +58,12 @@ class Newton(GradMaker):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
             whether to enable vectorized hessian. Defaults to True.
-        target (GradTarget, optional): target. Defaults to "closure".
         inner (Chainable | None, optional): inner modules. Defaults to None.
+        H_tfm (Chainable | None, optional):
+            optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
+
+            must return a tuple: `(hessian, is_inverted)` with transformed hessian and a boolean value
+            which must be True if transform inverted the hessian and False otherwise. Defaults to None.
     """
     def __init__(
         self,
@@ -69,39 +72,42 @@ class Newton(GradMaker):
         eig_reg: bool = False,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
-        target: GradTarget = "update",
         inner: Chainable | None = None,
+        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | None = None,
     ):
-        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_clamp=hessian_clamp, hessian_method=hessian_method, vectorize=vectorize)
-        super().__init__(defaults, target=target)
+        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_clamp=hessian_clamp, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm)
+        super().__init__(defaults)
 
         if inner is not None:
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
+    def step(self, vars):
+        params = TensorList(vars.params)
+        closure = vars.closure
+        if closure is None: raise RuntimeError('NewtonCG requires closure')
+
         settings = self.settings[params[0]]
         reg = settings['reg']
         eig_reg = settings['eig_reg']
         hessian_clamp = settings['hessian_clamp']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
+        H_tfm = settings['H_tfm']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         if hessian_method == 'autograd':
             with torch.enable_grad():
-                loss = closure(False)
+                loss = vars.loss = vars.loss_approx = closure(False)
                 g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                 g_list = [t[0] for t in g_list] # remove leading dim from loss
+                vars.grad = g_list
                 H = hessian_list_to_mat(H_list)
 
         elif hessian_method in ('func', 'autograd.functional'):
             strat = 'forward-mode' if vectorize else 'reverse-mode'
             with torch.enable_grad():
-                for p in params: p.grad = None
-                loss = closure(False)
-                loss.backward(retain_graph=True)
-                g_list = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+                g_list = vars.get_grad(retain_graph=True)
                 H: torch.Tensor = hessian_mat(partial(closure, backward=False), params,
                                 method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
 
@@ -119,11 +125,17 @@ class Newton(GradMaker):
 
         # ----------------------------------- solve ---------------------------------- #
         update = None
+        if H_tfm is not None:
+            H, is_inv = H_tfm(H, g)
+            if is_inv: update = H
+
         if hessian_clamp is not None:
+            if update is not None: raise RuntimeError('Hessian clamp and H_tfm that inverts the hessian are incompatible')
             update = inv_matrix_clamp(H, hessian_clamp) @ g
 
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)
         if update is None: update = least_squares_solve(H, g)
 
-        return vec_to_tensors(update, params), loss, loss
+        vars.update = vec_to_tensors(update, params)
+        return vars

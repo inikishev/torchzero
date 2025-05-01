@@ -10,8 +10,8 @@ from ...core import Module, Vars
 GradTarget = Literal['update', 'grad', 'closure']
 _Scalar = torch.Tensor | float
 
-class GradMaker(Module, ABC):
-    """Base class for gradient approximations and other modules that produce a direction such as Newton.
+class GradApproximator(Module, ABC):
+    """Base class for gradient approximations.
     This is an abstract class, to use it, subclass it and override `approximate`.
 
     Args:

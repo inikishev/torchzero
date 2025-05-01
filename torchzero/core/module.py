@@ -16,6 +16,15 @@ from ..utils import (
 )
 from ..utils.python_tools import flatten
 
+def _closure_backward(closure, params, retain_graph, create_graph):
+    with torch.enable_grad():
+        if not (retain_graph or create_graph):
+            return closure()
+
+        for p in params: p.grad = None
+        loss = closure(False)
+        loss.backward(retain_graph=retain_graph, create_graph=create_graph)
+        return loss
 
 # region Vars
 # ----------------------------------- vars ----------------------------------- #
@@ -95,14 +104,16 @@ class Vars:
         self.stop: bool = False
         """if True, all following modules will be skipped."""
 
-    def get_loss(self, backward: bool) -> torch.Tensor | float:
+    def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
         Do not call this at perturbed parameters."""
         if self.loss is None:
             if self.closure is None: raise RuntimeError("closure is None")
             if backward:
                 with torch.enable_grad():
-                    self.loss = self.loss_approx = self.closure()
+                    self.loss = self.loss_approx = _closure_backward(
+                        closure=self.closure, params=self.params, retain_graph=retain_graph, create_graph=create_graph
+                    )
 
                 # initializing to zeros_like is equivalent to using zero_grad with set_to_none = False.
                 # it is technically a more correct approach for when some parameters conditionally receive gradients
@@ -118,17 +129,18 @@ class Vars:
             if self.closure is None: raise RuntimeError("closure is None")
 
             with torch.enable_grad():
-                self.loss = self.loss_approx = self.closure()
-
+                self.loss = self.loss_approx = _closure_backward(
+                    closure=self.closure, params=self.params, retain_graph=retain_graph, create_graph=create_graph
+                )
             self.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
         return self.loss # type:ignore
 
-    def get_grad(self) -> list[torch.Tensor]:
+    def get_grad(self, retain_graph = None, create_graph: bool = False) -> list[torch.Tensor]:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
         :code:`vars.grad` and potentially :code:`vars.loss`. Do not call this at perturbed parameters."""
         if self.grad is None:
             if self.closure is None: raise RuntimeError("closure is None")
-            self.get_loss(backward=True) # evaluate and set self.loss and self.grad
+            self.get_loss(backward=True, retain_graph=retain_graph, create_graph=create_graph) # evaluate and set self.loss and self.grad
 
         assert self.grad is not None
         return self.grad

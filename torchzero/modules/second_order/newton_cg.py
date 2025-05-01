@@ -1,24 +1,24 @@
 from collections.abc import Callable
 from typing import Literal
-
+import warnings
 import torch
 
-from ...utils import TensorList
+from ...utils import TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
-from ..grad_approximation import GradMaker, GradTarget
-from ...core import Chainable, apply
+
+from ...core import Chainable, apply, Module
 
 def cg(
     A_mm: Callable[[TensorList], TensorList],
     b: TensorList,
-    x0: TensorList | None,
+    x0_: TensorList | None,
     tol: float | None,
     maxiter: int | None,
 ):
     if maxiter is None: maxiter = b.global_numel()
-    if x0 is None: x0 = b.zeros_like()
+    if x0_ is None: x0_ = b.zeros_like()
 
-    x = x0
+    x = x0_
     residual = b - A_mm(x)
     p = residual.clone() # search direction
     r_norm = residual.global_vector_norm()
@@ -41,17 +41,20 @@ def cg(
         r_norm = new_r_norm
 
 
-class NewtonCG(GradMaker):
-    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'autograd', h=1e-3, warm_start=False, target: GradTarget = 'update', inner: Chainable | None = None):
+class NewtonCG(Module):
+    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'autograd', h=1e-3, warm_start=False, inner: Chainable | None = None):
         defaults = dict(tol=tol, maxiter=maxiter, hvp_method=hvp_method, h=h, warm_start=warm_start)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults,)
 
         if inner is not None:
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
-        params = TensorList(params)
+    def step(self, vars):
+        params = TensorList(vars.params)
+        closure = vars.closure
+        if closure is None: raise RuntimeError('NewtonCG requires closure')
+
         settings = self.settings[params[0]]
         tol = settings['tol']
         maxiter = settings['maxiter']
@@ -61,22 +64,16 @@ class NewtonCG(GradMaker):
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
-            for p in params: p.grad = None
-            with torch.enable_grad():
-                loss = closure(False)
-                loss.backward(create_graph=True)
-            grad = params.grad
+            grad = vars.get_grad(create_graph=True)
 
             def H_mm(x):
                 with torch.enable_grad():
-                    return TensorList(hvp(params, grad.clone(), x, retain_graph=True))
+                    return TensorList(hvp(params, grad, x, retain_graph=True))
 
         else:
 
             with torch.enable_grad():
-                loss = closure(False)
-                loss.backward(retain_graph=True)
-                grad = params.grad
+                grad = vars.get_grad()
 
             if hvp_method == 'forward':
                 def H_mm(x):
@@ -93,14 +90,15 @@ class NewtonCG(GradMaker):
         # -------------------------------- inner step -------------------------------- #
         b = grad
         if 'inner' in self.children:
-            b = TensorList(apply(self.children['inner'], grad, params=params, grad=grad, vars=vars))
+            b = as_tensorlist(apply(self.children['inner'], [g.clone() for g in grad], params=params, grad=grad, vars=vars))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
         if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
-        x = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter)
+        x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter)
         if warm_start:
             assert x0 is not None
             x0.set_(x)
 
-        return x, loss, loss
+        vars.update = x
+        return vars
