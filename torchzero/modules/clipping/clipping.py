@@ -26,7 +26,7 @@ def _clip_norm_(
     norm_value: float | NumberList | None,
     ord: float,
     dim: int | Sequence[int] | Literal["global"] | None,
-    inverse_dim: bool,
+    inverse_dims: bool,
     min_size: int,
 ) -> TensorList:
     """generic function that can clip norm or normalize"""
@@ -48,7 +48,7 @@ def _clip_norm_(
         # remove dimensions that overflow tensor.ndim or are too small
         if dim is None: dim = list(range(tensor.ndim))
         real_dim = [d for d in dim if d < tensor.ndim]
-        if inverse_dim: real_dim = [d for d in range(tensor.ndim) if d not in real_dim]
+        if inverse_dims: real_dim = [d for d in range(tensor.ndim) if d not in real_dim]
         if len(real_dim) == 0: continue
         size = math.prod(tensor.size(d) for d in real_dim)
         if size < min_size: continue
@@ -91,7 +91,7 @@ def clip_grad_norm_(
     max_norm: float | None,
     ord: float = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
-    inverse_dim: bool = False,
+    inverse_dims: bool = False,
     min_size: int = 2,
     min_norm: float | None = None,
 ):
@@ -111,7 +111,7 @@ def clip_grad_norm_(
             minimal size of a dimension to normalize along it. Defaults to 1.
     """
     grads = TensorList(p.grad for p in params if p.grad is not None)
-    _clip_norm_(grads, min=min_norm, max=max_norm, norm_value=None, ord=ord, dim=dim, inverse_dim=inverse_dim, min_size=min_size)
+    _clip_norm_(grads, min=min_norm, max=max_norm, norm_value=None, ord=ord, dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 
 
 def normalize_grads_(
@@ -119,7 +119,7 @@ def normalize_grads_(
     norm_value: float,
     ord: float = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
-    inverse_dim: bool = False,
+    inverse_dims: bool = False,
     min_size: int = 1,
 ):
     """Normalizes gradient of an iterable of parameters to specified norm value.
@@ -138,7 +138,7 @@ def normalize_grads_(
             minimal size of a dimension to normalize along it. Defaults to 1.
     """
     grads = TensorList(p.grad for p in params if p.grad is not None)
-    _clip_norm_(grads, min=None, max=None, norm_value=norm_value, ord=ord, dim=dim, inverse_dim=inverse_dim, min_size=min_size)
+    _clip_norm_(grads, min=None, max=None, norm_value=norm_value, ord=ord, dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 
 
 class ClipValue(Transform):
@@ -170,18 +170,18 @@ class ClipNorm(Transform):
         max_norm: float,
         ord: float = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
-        inverse_dim: bool = False,
+        inverse_dims: bool = False,
         min_size: int = 2,
         target: Target = "update",
         min_norm: float | None = None,
     ):
-        defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,min_norm=min_norm,inverse_dim=inverse_dim)
+        defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,min_norm=min_norm,inverse_dims=inverse_dims)
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=params, cls=NumberList)
-        ord, dim, min_size, inverse_dim = itemgetter('ord', 'dim', 'min_size', 'inverse_dim')(self.settings[params[0]])
+        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
         _clip_norm_(
             tensors_ = TensorList(target),
             min = min_norm if min_norm[0] is not None else None,
@@ -189,7 +189,7 @@ class ClipNorm(Transform):
             norm_value = None,
             ord = ord,
             dim = dim,
-            inverse_dim=inverse_dim,
+            inverse_dims=inverse_dims,
             min_size = min_size,
         )
         return target
@@ -213,17 +213,17 @@ class Normalize(Transform):
         norm_value: float = 1,
         ord: float = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
-        inverse_dim: bool = False,
+        inverse_dims: bool = False,
         min_size: int = 1,
         target: Target = "update",
     ):
-        defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size, inverse_dim=inverse_dim)
+        defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size, inverse_dims=inverse_dims)
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
         norm_value = self.get_settings('norm_value', params=params, cls=NumberList)
-        ord, dim, min_size, inverse_dim = itemgetter('ord', 'dim', 'min_size', 'inverse_dim')(self.settings[params[0]])
+        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
 
         _clip_norm_(
             tensors_ = TensorList(target),
@@ -232,7 +232,7 @@ class Normalize(Transform):
             norm_value = norm_value,
             ord = ord,
             dim = dim,
-            inverse_dim=inverse_dim,
+            inverse_dims=inverse_dims,
             min_size = min_size,
         )
 
@@ -243,7 +243,7 @@ def _centralize_(
     tensors_: TensorList,
     dim: int | Sequence[int] | Literal["global"] | None,
     min_size: int,
-    inverse_dim: bool,
+    inverse_dims: bool,
 ) -> TensorList:
     """generic function that can clip norm or normalize"""
     if dim == 'global': return tensors_.sub_(tensors_.global_mean().item())
@@ -256,7 +256,7 @@ def _centralize_(
         # remove dimensions that overflow tensor.ndim or are too small
         if dim is None: dim = list(range(tensor.ndim))
         real_dim = [d for d in dim if d < tensor.ndim]
-        if inverse_dim: real_dim = [d for d in range(tensor.ndim) if d not in real_dim]
+        if inverse_dims: real_dim = [d for d in range(tensor.ndim) if d not in real_dim]
         if len(real_dim) == 0: continue
         size = math.prod(tensor.size(d) for d in real_dim)
         if size < min_size: continue
@@ -290,18 +290,18 @@ class Centralize(Transform):
     def __init__(
         self,
         dim: int | Sequence[int] | Literal["global"] | None = None,
-        inverse_dim: bool = False,
+        inverse_dims: bool = False,
         min_size: int = 3,
         target: Target = "update",
     ):
-        defaults = dict(dim=dim,min_size=min_size,inverse_dim=inverse_dim)
+        defaults = dict(dim=dim,min_size=min_size,inverse_dims=inverse_dims)
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        dim, min_size, inverse_dim = itemgetter('dim', 'min_size', 'inverse_dim')(self.settings[params[0]])
+        dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
 
-        _centralize_(tensors_ = TensorList(target), dim=dim, inverse_dim=inverse_dim, min_size=min_size)
+        _centralize_(tensors_ = TensorList(target), dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 
         return target
 
