@@ -962,6 +962,9 @@ class TensorList(list[torch.Tensor | Any]):
     def dot(self, other: _TensorSeq):
         return (self * other).global_sum()
 
+    def tensorwise_dot(self, other: _TensorSeq):
+        return (self * other).sum()
+
     def swap_tensors(self, other: _TensorSeq):
         for s, o in zip(self, other):
             torch.utils.swap_tensors(s, o)
