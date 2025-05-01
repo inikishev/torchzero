@@ -177,6 +177,7 @@ class FillLoss(Module):
         defaults = dict(alpha=alpha, backward=backward)
         super().__init__(defaults)
 
+    @torch.no_grad
     def step(self, vars):
         alpha = self.get_settings('alpha', params=vars.params)
         loss = vars.get_loss(backward=self.settings[vars.params[0]]['backward'])
@@ -330,6 +331,7 @@ class Dropout(Transform):
         defaults = dict(p=p, graft=graft)
         super().__init__(defaults, uses_grad=False, target=target)
 
+    @torch.no_grad
     def transform(self, target, params, grad, vars):
         target = TensorList(target)
         p = self.get_settings('p', params=params, cls=NumberList)
@@ -349,8 +351,42 @@ class NoiseSign(Transform):
         defaults = dict(distribution=distribution, alpha=alpha)
         super().__init__(defaults, uses_grad=False)
 
-
+    @torch.no_grad
     def transform(self, target, params, grad, vars):
         alpha = self.get_settings('alpha', params=params)
         distribution = self.settings[params[0]]['distribution']
         return TensorList(target).sample_like(alpha, distribution).copysign_(target)
+
+
+class NegateOnLossIncrease(Module):
+    def __init__(self, backtrack=True):
+        defaults = dict(backtrack=backtrack)
+        super().__init__(defaults=defaults)
+
+    @torch.no_grad
+    def step(self, vars):
+        closure = vars.closure
+        if closure is None: raise RuntimeError('NegateOnLossIncrease requires closure')
+        backtrack = self.settings[vars.params[0]]['backtrack']
+
+        update = vars.get_update()
+        f_0 = vars.get_loss(backward=False)
+
+        torch._foreach_sub_(vars.params, update)
+        f_1 = closure(False)
+
+        if f_1 <= f_0:
+            if vars.is_last and vars.last_module_lrs is None:
+                vars.stop = True
+                vars.update = None
+                return vars
+
+            torch._foreach_add_(vars.params, update)
+            return vars
+
+        torch._foreach_add_(vars.params, update)
+        if backtrack:
+            torch._foreach_neg_(vars.update)
+        else:
+            torch._foreach_zero_(vars.update)
+        return vars

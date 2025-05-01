@@ -36,11 +36,12 @@ from .misc import (
     LastRatio,
     MulByLoss,
     Multistep,
+    NegateOnLossIncrease,
+    NoiseSign,
     Previous,
     Relative,
     Sequential,
     UpdateSign,
-    NoiseSign,
 )
 from .multi import (
     ClipModules,

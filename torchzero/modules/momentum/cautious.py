@@ -106,6 +106,7 @@ class IntermoduleCautious(Module):
         self.set_child('main', main)
         self.set_child('compare', compare)
 
+    @torch.no_grad
     def step(self, vars):
         main = self.children['main']
         compare = self.children['compare']
