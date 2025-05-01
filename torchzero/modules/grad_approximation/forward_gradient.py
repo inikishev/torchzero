@@ -17,11 +17,12 @@ class ForwardGradient(RandomizedFDM):
         n_samples: int = 1,
         distribution: Distributions = "gaussian",
         beta: float = 0,
+        pre_generate = True,
         jvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
         h: float = 1e-3,
         target: GradTarget = "closure",
     ):
-        super().__init__(h=h, n_samples=n_samples, distribution=distribution, beta=beta, target=target)
+        super().__init__(h=h, n_samples=n_samples, distribution=distribution, beta=beta, target=target, pre_generate=pre_generate)
         self.defaults['jvp_method'] = jvp_method
 
     @torch.no_grad
@@ -33,11 +34,14 @@ class ForwardGradient(RandomizedFDM):
         n_samples = settings['n_samples']
         jvp_method = settings['jvp_method']
         h = settings['h']
-        perturbations = self.global_state['perturbations']
+        distribution = settings['distribution']
+        perturbations = self.global_state.get('perturbations', None)
 
         grad = None
         for i in range(n_samples):
-            prt = perturbations[i]
+            if perturbations is None: prt = params.sample_like(distribution=distribution)
+            else: prt = perturbations[i]
+
             if jvp_method == 'autograd':
                 with torch.enable_grad():
                     loss, d = jvp(partial(closure, False), params=params, tangent=prt)

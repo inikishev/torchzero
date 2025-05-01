@@ -98,9 +98,10 @@ class RandomizedFDM(GradApproximator):
         formula: _FD_Formula = "central2",
         distribution: Distributions = "gaussian",
         beta: float = 0,
+        pre_generate = True,
         target: GradTarget = "closure",
     ):
-        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta)
+        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta, pre_generate=pre_generate)
         super().__init__(defaults, target=target)
 
     def pre_step(self, vars):
@@ -108,31 +109,30 @@ class RandomizedFDM(GradApproximator):
         settings = self.settings[vars.params[0]]
         n_samples = settings['n_samples']
         distribution = settings['distribution']
+        pre_generate = settings['pre_generate']
 
-        if all(i==0 for i in beta):
-            # just pre-generate perturbations
-            if self.PRE_MULTIPLY_BY_H:
-                self.global_state['perturbations'] = [
-                    TensorList(vars.params).sample_like(distribution=distribution).mul_(h) for _ in range(n_samples)
-                ]
-            else:
-                self.global_state['perturbations'] = [
-                    TensorList(vars.params).sample_like(distribution=distribution) for _ in range(n_samples)
-                ]
-
-        else:
-            # lerp old and new perturbations. This makes the subspace change gradually
-            # which in theory might improve algorithms with history
-            perts = self.global_state['perturbations'] = self.global_state.get('perturbations', [])[:n_samples] # trim if n_samples changed
-            for i in range(n_samples):
+        if pre_generate:
+            params = TensorList(vars.params)
+            if all(i==0 for i in beta):
+                # just pre-generate perturbations
                 if self.PRE_MULTIPLY_BY_H:
-                    new_pert = TensorList(vars.params).sample_like(distribution=distribution).mul_(h)
+                    self.global_state['perturbations'] = [params.sample_like(distribution=distribution).mul_(h) for _ in range(n_samples)]
                 else:
-                    new_pert = TensorList(vars.params).sample_like(distribution=distribution)
-                if i >= len(perts):
-                    perts.append(new_pert)
-                else:
-                    perts[i].lerp_(new_pert, [1-b for b in beta])
+                    self.global_state['perturbations'] = [params.sample_like(distribution=distribution) for _ in range(n_samples)]
+
+            else:
+                # lerp old and new perturbations. This makes the subspace change gradually
+                # which in theory might improve algorithms with history
+                perts = self.global_state['perturbations'] = self.global_state.get('perturbations', [])[:n_samples] # trim if n_samples changed
+                for i in range(n_samples):
+                    if self.PRE_MULTIPLY_BY_H:
+                        new_pert = params.sample_like(distribution=distribution).mul_(h)
+                    else:
+                        new_pert = params.sample_like(distribution=distribution)
+                    if i >= len(perts):
+                        perts.append(new_pert)
+                    else:
+                        perts[i].lerp_(new_pert, [1-b for b in beta])
 
     @torch.no_grad
     def approximate(self, closure, params, loss, vars):
@@ -143,11 +143,14 @@ class RandomizedFDM(GradApproximator):
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         fd_fn = _RFD_FUNCS[settings['formula']]
-        perturbations = self.global_state['perturbations']
+        perturbations = self.global_state.get('perturbations', None)
+        distribution = settings['distribution']
 
         grad = None
         for i in range(n_samples):
-            prt = perturbations[i]
+            if perturbations is None: prt = params.sample_like(distribution=distribution).mul_(h)
+            else: prt = perturbations[i]
+
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, v_0=loss)
             if grad is None: grad = prt * d
             else: grad += prt * d
