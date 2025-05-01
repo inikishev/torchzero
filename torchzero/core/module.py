@@ -107,6 +107,7 @@ class Vars:
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
         Do not call this at perturbed parameters."""
+
         if self.loss is None:
             if self.closure is None: raise RuntimeError("closure is None")
             if backward:
@@ -135,7 +136,7 @@ class Vars:
             self.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
         return self.loss # type:ignore
 
-    def get_grad(self, retain_graph = None, create_graph: bool = False) -> list[torch.Tensor]:
+    def get_grad(self, retain_graph: bool | None = None, create_graph: bool = False) -> list[torch.Tensor]:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
         :code:`vars.grad` and potentially :code:`vars.loss`. Do not call this at perturbed parameters."""
         if self.grad is None:

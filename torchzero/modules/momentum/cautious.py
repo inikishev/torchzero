@@ -90,3 +90,26 @@ class UpdateGradientSignConsistency(Transform):
         if normalize: mask = mask / mask.global_mean().clip(min = eps) # pyright: ignore[reportOperatorIssue]
 
         return mask
+
+
+
+class ScaleUpdateByGradCosineSimilarity(Transform):
+    def __init__(
+        self,
+        normalize=False,
+        eps=1e-6,
+        mode: Literal["zero", "grad", "backtrack"] = "zero",
+        target: Target = "update",
+    ):
+        defaults = dict(normalize=normalize, eps=eps, mode=mode)
+        super().__init__(defaults, uses_grad=True, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        assert grad is not None
+        eps = self.settings[params[0]]['eps']
+        target = TensorList(target)
+        grad = TensorList(grad)
+        cos_sim = (target.dot(grad)) / (target.global_vector_norm() * grad.global_vector_norm()).clip(min=eps)
+
+        return target.mul_(cos_sim)

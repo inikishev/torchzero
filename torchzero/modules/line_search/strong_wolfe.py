@@ -82,14 +82,32 @@ def strong_wolfe(
     c2: float = 0.9,
     max_ls_iter: int = 25,
     alpha_max: float = 1e10,
-    increase_factor: float = 2.0 # Factor to increase alpha in bracketing
-    ) -> float | None:
+    increase_factor: float = 2.0,  # Factor to increase alpha in bracketing
+    plus_minus: bool = True,
+) -> float | None:
     alpha_prev = 0.0
     phi_0, phi_prime_0 = objective(alpha_prev)
 
-    # can also check >= 0 but idk
-    if phi_prime_0 == 0:
-        return 0
+    if phi_prime_0 == 0: return 0
+    if phi_prime_0 > 0:
+        # if direction is not a descent direction, perform line search in opposite direction
+        if plus_minus:
+            def inverted_objective(alpha):
+                l, g = objective(-alpha)
+                return l, -g
+            v = strong_wolfe(
+                inverted_objective,
+                initial_step_size=initial_step_size,
+                c1=c1,
+                c2=c2,
+                max_ls_iter=max_ls_iter,
+                alpha_max=alpha_max,
+                increase_factor=increase_factor,
+                plus_minus=plus_minus,
+            )
+            if v is not None: v = -v
+            return v
+        else: return 0
 
     phi_prev = phi_0
     phi_prime_prev = phi_prime_0
@@ -179,9 +197,10 @@ class StrongWolfe(LineSearch):
         increase_factor: float = 2.0,
         adaptive = True,
         fallback = True,
+        plus_minus = True,
     ):
         defaults=dict(initial_step_size=initial_step_size,c1=c1,c2=c2,max_ls_iter=max_ls_iter,
-                      alpha_max=alpha_max,increase_factor=increase_factor, adaptive=adaptive, fallback=fallback)
+                      alpha_max=alpha_max,increase_factor=increase_factor, adaptive=adaptive, fallback=fallback, plus_minus=plus_minus)
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
@@ -191,9 +210,9 @@ class StrongWolfe(LineSearch):
     def search(self, update, vars):
         objective = self.make_objective_with_derivative(vars=vars)
 
-        initial_step_size, c1, c2, max_ls_iter, alpha_max, increase_factor, adaptive, fallback = itemgetter(
+        initial_step_size, c1, c2, max_ls_iter, alpha_max, increase_factor, adaptive, fallback, plus_minus = itemgetter(
             'initial_step_size', 'c1', 'c2', 'max_ls_iter', 'alpha_max',
-            'increase_factor', 'adaptive', 'fallback')(self.settings[vars.params[0]])
+            'increase_factor', 'adaptive', 'fallback', 'plus_minus')(self.settings[vars.params[0]])
 
         step_size = strong_wolfe(
             objective,
@@ -203,6 +222,7 @@ class StrongWolfe(LineSearch):
             max_ls_iter=max_ls_iter,
             alpha_max=alpha_max,
             increase_factor=increase_factor,
+            plus_minus=plus_minus,
         )
 
         if step_size is not None and step_size != 0:

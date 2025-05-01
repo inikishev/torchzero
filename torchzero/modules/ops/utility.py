@@ -69,7 +69,7 @@ class RandomSample(Module):
     @torch.no_grad
     def step(self, vars):
         vars.update = TensorList(vars.params).sample_like(
-            eps=self.get_settings('value',params=vars.params), distribution=self.settings[vars.params[0]]['distribution']
+            eps=self.get_settings('eps',params=vars.params), distribution=self.settings[vars.params[0]]['distribution']
         )
         return vars
 

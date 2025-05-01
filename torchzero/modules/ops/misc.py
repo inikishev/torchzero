@@ -1,12 +1,13 @@
-from collections.abc import Iterable
 from collections import deque
-from typing import Literal
+from collections.abc import Iterable
 from operator import itemgetter
+from typing import Literal
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform, Module, Chainable, Vars
-from ...utils import TensorList, NumberList
+from ...core import Chainable, Module, ParameterwiseTransform, Target, Transform, Vars
+from ...utils import Distributions, NumberList, TensorList
+
 
 class Previous(ParameterwiseTransform):
     """Maintains an update from n steps back, for example if n=1, returns previous update"""
@@ -340,3 +341,16 @@ class Dropout(Transform):
             return target.mul_(target_norm / target.global_vector_norm()) # graft
 
         return target.mul_(target.rademacher_like(1-p).add_(1).div_(2))
+
+
+class NoiseSign(Transform):
+    """uses random vector with update sign"""
+    def __init__(self, distribution:Distributions = 'normal', alpha = 1):
+        defaults = dict(distribution=distribution, alpha=alpha)
+        super().__init__(defaults, uses_grad=False)
+
+
+    def transform(self, target, params, grad, vars):
+        alpha = self.get_settings('alpha', params=params)
+        distribution = self.settings[params[0]]['distribution']
+        return TensorList(target).sample_like(alpha, distribution).copysign_(target)

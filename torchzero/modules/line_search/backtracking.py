@@ -14,7 +14,8 @@ def backtracking_line_search(
     beta: float = 0.5,
     c: float = 1e-4,
     max_iter: int = 10,
-    min_alpha: float | None = None
+    min_alpha: float | None = None,
+    try_negative: bool = True,
 ) -> float | None:
     """
 
@@ -50,6 +51,20 @@ def backtracking_line_search(
             return min_alpha
 
     # fail
+    if try_negative:
+        def inv_objective(alpha): return objective(-alpha)
+
+        v = backtracking_line_search(
+            inv_objective,
+            dir_derivative=-dir_derivative,
+            beta=beta,
+            c=c,
+            max_iter=max_iter,
+            min_alpha=min_alpha,
+            try_negative=False,
+        )
+        if v is not None: return -v
+
     return None
 
 class Backtracking(LineSearch):
@@ -61,15 +76,16 @@ class Backtracking(LineSearch):
         max_iter: int = 10,
         min_alpha: float | None = None,
         adaptive=True,
+        try_negative: bool = True,
     ):
-        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,adaptive=adaptive)
+        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,adaptive=adaptive, try_negative=try_negative)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
     def search(self, update, vars):
-        initial_step_size, beta, c, max_iter, min_alpha, adaptive = itemgetter(
-            'initial_step_size', 'beta', 'c', 'max_iter', 'min_alpha', 'adaptive')(self.settings[vars.params[0]])
+        initial_step_size, beta, c, max_iter, min_alpha, adaptive, try_negative = itemgetter(
+            'initial_step_size', 'beta', 'c', 'max_iter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[vars.params[0]])
 
         objective = self.make_objective(vars=vars)
 
@@ -80,7 +96,7 @@ class Backtracking(LineSearch):
         if adaptive: beta = beta * self.global_state['beta_scale']
 
         step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size,beta=beta,
-                                        c=c,max_iter=max_iter,min_alpha=min_alpha)
+                                        c=c,max_iter=max_iter,min_alpha=min_alpha, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:
@@ -105,8 +121,9 @@ class AdaptiveBacktracking(LineSearch):
         target_iters = 1,
         nplus = 2.0,
         scale_beta = 0.9,
+        try_negative: bool = True,
     ):
-        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta)
+        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
         super().__init__(defaults=defaults)
 
         self.global_state['beta_scale'] = 1.0
@@ -114,8 +131,8 @@ class AdaptiveBacktracking(LineSearch):
 
     @torch.no_grad
     def search(self, update, vars):
-        initial_step_size, beta, c, max_iter, min_alpha, target_iters, nplus, scale_beta=itemgetter(
-            'initial_step_size','beta','c','max_iter','min_alpha','target_iters','nplus','scale_beta')(self.settings[vars.params[0]])
+        initial_step_size, beta, c, max_iter, min_alpha, target_iters, nplus, scale_beta, try_negative=itemgetter(
+            'initial_step_size','beta','c','max_iter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[vars.params[0]])
 
         objective = self.make_objective(vars=vars)
 
@@ -130,7 +147,7 @@ class AdaptiveBacktracking(LineSearch):
         initial_step_size = initial_step_size * self.global_state['initial_scale']
 
         step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size, beta=beta,
-                                        c=c,max_iter=max_iter,min_alpha=min_alpha)
+                                        c=c,max_iter=max_iter,min_alpha=min_alpha, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:

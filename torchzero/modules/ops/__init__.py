@@ -23,6 +23,7 @@ from .debug import PrintShape, PrintUpdate
 from .misc import (
     Accumulate,
     DivByLoss,
+    Dropout,
     FillLoss,
     GradSign,
     GraftGradToUpdate,
@@ -39,7 +40,7 @@ from .misc import (
     Relative,
     Sequential,
     UpdateSign,
-    Dropout,
+    NoiseSign,
 )
 from .multi import (
     ClipModules,

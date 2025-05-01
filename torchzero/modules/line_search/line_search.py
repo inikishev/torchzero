@@ -42,7 +42,7 @@ class LineSearch(Module, ABC):
         params: list[torch.Tensor],
         update: list[torch.Tensor],
     ):
-        step_size = tofloat(step_size)
+        step_size = max(min(tofloat(step_size), 1e36), -1e36) # fixes overflow when backtracking keeps increasing alpha after converging
         alpha = self._current_step_size - step_size
         if alpha != 0:
             torch._foreach_add_(params, update, alpha=alpha)
@@ -84,6 +84,7 @@ class LineSearch(Module, ABC):
         # if evaluated loss at step size 0, set it to vars.loss
         if step_size == 0:
             vars.loss = loss
+            if backward: vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
         return tofloat(loss)
 
