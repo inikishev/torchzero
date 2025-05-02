@@ -27,6 +27,7 @@ class PolyakStepSize(Transform):
         defaults = dict(alpha=alpha, max=max, min_obj_value=min_obj_value, use_grad=use_grad, parameterwise=parameterwise)
         super().__init__(defaults, uses_grad=use_grad)
 
+    @torch.no_grad
     def transform(self, target, params, grad, vars):
         loss = vars.get_loss(False)
         assert grad is not None
@@ -74,6 +75,7 @@ class RandomStepSize(Transform):
         defaults = dict(low=low, high=high, parameterwise=parameterwise)
         super().__init__(defaults, uses_grad=False)
 
+    @torch.no_grad
     def transform(self, target, params, grad, vars):
         settings = self.settings[params[0]]
         parameterwise = settings['parameterwise']

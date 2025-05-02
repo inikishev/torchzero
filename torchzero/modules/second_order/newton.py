@@ -50,8 +50,8 @@ class Newton(Module):
 
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
-        hessian_clamp (float | None, optional):
-            if not None, clamp eigenvalues to be larger than this value. This is usually better
+        min_eigval (float | None, optional):
+            if not None, clips eigenvalues to be larger than this value. This is usually better
             than eig_reg, plus eigenvectors will be reused to invert the hessian. Defaults to None.
         eig_reg (bool, optional): whether to use largest negative eigenvalue as regularizer. Defaults to False.
         hessian_method (str):
@@ -68,14 +68,14 @@ class Newton(Module):
     def __init__(
         self,
         reg: float = 1e-6,
-        hessian_clamp: float | None = None,
+        min_eigval: float | None = None,
         eig_reg: bool = False,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
         inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | None = None,
     ):
-        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_clamp=hessian_clamp, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm)
+        defaults = dict(reg=reg, eig_reg=eig_reg, min_eigval=min_eigval, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm)
         super().__init__(defaults)
 
         if inner is not None:
@@ -90,7 +90,7 @@ class Newton(Module):
         settings = self.settings[params[0]]
         reg = settings['reg']
         eig_reg = settings['eig_reg']
-        hessian_clamp = settings['hessian_clamp']
+        min_eigval = settings['min_eigval']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
         H_tfm = settings['H_tfm']
@@ -129,9 +129,9 @@ class Newton(Module):
             H, is_inv = H_tfm(H, g)
             if is_inv: update = H
 
-        if hessian_clamp is not None:
-            if update is not None: raise RuntimeError('Hessian clamp and H_tfm that inverts the hessian are incompatible')
-            update = inv_matrix_clamp(H, hessian_clamp) @ g
+        if min_eigval is not None:
+            if update is not None: raise RuntimeError('min_eigval and H_tfm that inverts the hessian are incompatible')
+            update = inv_matrix_clamp(H, min_eigval) @ g
 
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)

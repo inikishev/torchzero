@@ -42,7 +42,7 @@ def cg(
 
 
 class NewtonCG(Module):
-    def __init__(self, tol=1e-3, maxiter=None, hvp_method: Literal['forward', 'central','autograd'] = 'forward', h=1e-3, warm_start=False, inner: Chainable | None = None):
+    def __init__(self, maxiter=None, tol=1e-3, hvp_method: Literal['forward', 'central','autograd'] = 'forward', h=1e-3, warm_start=False, inner: Chainable | None = None):
         defaults = dict(tol=tol, maxiter=maxiter, hvp_method=hvp_method, h=h, warm_start=warm_start)
         super().__init__(defaults,)
 

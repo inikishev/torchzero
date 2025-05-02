@@ -155,8 +155,8 @@ class Rprop(Transform):
         self,
         nplus: float = 1.2,
         nminus: float = 0.5,
-        lb: float | None = 1e-6,
-        ub: float | None = 50,
+        lb: float = 1e-6,
+        ub: float = 50,
         backtrack=True,
         alpha: float = 1,
         target: Target = 'update'

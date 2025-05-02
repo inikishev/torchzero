@@ -73,6 +73,7 @@ def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch
     jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
     return jac, jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
 
+
 def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
     """takes output of `hessian` and returns the 2D hessian matrix.
     Note - I only tested this for cases where input is a scalar."""

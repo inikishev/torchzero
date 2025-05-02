@@ -70,4 +70,4 @@ class FFTProjection(Projection):
             unprojected_vec = torch.fft.irfft(vec, n=self.global_state['length'], norm=norm) # pylint:disable=not-callable
             return vec_to_tensors(unprojected_vec, reference=vars.params)
 
-        return [torch.fft.irfftn(torch.view_as_complex(t), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(tensors, vars.params)] # pylint:disable=not-callable
+        return [torch.fft.irfftn(torch.view_as_complex(t.contiguous()), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(tensors, vars.params)] # pylint:disable=not-callable

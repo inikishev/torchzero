@@ -167,6 +167,7 @@ class SOAP(Transform):
         precondition_1d: bool = True,
         eps: float = 1e-8,
         decay: float | None = None,
+        alpha: float = 1,
         unprojected_exp_avg: bool = True,
         bias_correction: bool = True,
     ):
@@ -182,6 +183,7 @@ class SOAP(Transform):
             decay=decay,
             unprojected_exp_avg=unprojected_exp_avg,
             bias_correction=bias_correction,
+            alpha=alpha,
         )
         super().__init__(defaults, uses_grad=False)
 
@@ -191,8 +193,8 @@ class SOAP(Transform):
         for i,(p,t) in enumerate(zip(params, target)):
             state = self.state[p]
             settings = self.settings[p]
-            beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg = itemgetter(
-                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg')(settings)
+            beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg,alpha = itemgetter(
+                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg','alpha')(settings)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -261,7 +263,9 @@ class SOAP(Transform):
             if settings['bias_correction']:
                 bias_correction1 = 1.0 - beta1 ** (state["step"]+1)
                 bias_correction2 = 1.0 - beta2 ** (state["step"]+1)
-                update *= (bias_correction2 ** .5) / bias_correction1
+                update *= ((bias_correction2 ** .5) / bias_correction1) * alpha
+            elif alpha is not None:
+                update *= alpha
 
             if merge_small:
                 update = _unmerge_small_dims(update, state['flat_sizes'], state['sort_idxs'])
