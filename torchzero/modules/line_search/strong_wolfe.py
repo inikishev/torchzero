@@ -195,9 +195,9 @@ class StrongWolfe(LineSearch):
         max_ls_iter: int = 25,
         alpha_max: float = 1e10,
         increase_factor: float = 2.0,
-        adaptive = True,
-        fallback = True,
-        plus_minus = True,
+        adaptive = False,
+        fallback = False,
+        plus_minus = False,
     ):
         defaults=dict(initial_step_size=initial_step_size,c1=c1,c2=c2,max_ls_iter=max_ls_iter,
                       alpha_max=alpha_max,increase_factor=increase_factor, adaptive=adaptive, fallback=fallback, plus_minus=plus_minus)
