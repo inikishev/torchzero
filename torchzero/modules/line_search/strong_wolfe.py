@@ -14,54 +14,59 @@ def _zoom(f,
           a_l, a_h,
           f_l, g_l,
           f_h, g_h,
-          f_0, g_0, c1, c2,
-          maxiter):
+          f_0, g_0,
+          c1, c2,
+          maxzoom):
 
-    # f_h, g_h = f(a_h)
-
-    for _ in range(maxiter):
+    for i in range(maxzoom):
         a_j = _cubic_interpolate(
             *(totensor(i) for i in (a_l, f_l, g_l, a_h, f_h, g_h))
+
         )
 
         # if interpolation fails or produces endpoint, bisect
         delta = abs(a_h - a_l)
-
         if a_j is None or a_j == a_l or a_j == a_h:
             a_j = a_l + 0.5 * delta
+
 
         f_j, g_j = f(a_j)
 
         # check armijo
-        armijo_satisfied = f_j <= f_0 + c1 * a_j * g_0
+        armijo = f_j <= f_0 + c1 * a_j * g_0
 
         # check strong wolfe
-        strong_wolfe_satisfied = abs(g_j) <= c2 * abs(g_0)
+        wolfe = abs(g_j) <= c2 * abs(g_0)
 
 
         # minimum between alpha_low and alpha_j
-        if not armijo_satisfied or f_j >= f_l:
+        if not armijo or f_j >= f_l:
             a_h = a_j
             f_h = f_j
             g_h = g_j
         else:
             # alpha_j satisfies armijo
-            if strong_wolfe_satisfied:
-                return a_j
+            if wolfe:
+                return a_j, f_j
 
             # minimum between alpha_j and alpha_high
             if g_j * (a_h - a_l) >= 0:
                 # between alpha_low and alpha_j
                 # a_h = a_l
                 # f_h = f_l
-                # g_h = g_k
+                # g_h = g_l
                 a_h = a_j
                 f_h = f_j
                 g_h = g_j
+
+            # is this messing it up?
             else:
                 a_l = a_j
                 f_l = f_j
                 g_l = g_j
+
+
+
 
         # check if interval too small
         delta = abs(a_h - a_l)
@@ -69,52 +74,55 @@ def _zoom(f,
             l_satisfies_wolfe = (f_l <= f_0 + c1 * a_l * g_0) and (abs(g_l) <= c2 * abs(g_0))
             h_satisfies_wolfe = (f_h <= f_0 + c1 * a_h * g_0) and (abs(g_h) <= c2 * abs(g_0))
 
-            if l_satisfies_wolfe and h_satisfies_wolfe: return a_l if f_l <= f_h else a_h
-            elif l_satisfies_wolfe: return a_l
-            elif h_satisfies_wolfe: return a_h
-            else:
-                if f_l <= f_0 + c1 * a_l * g_0: return a_l
-                else: return None
+            if l_satisfies_wolfe and h_satisfies_wolfe: return a_l if f_l <= f_h else a_h, f_h
+            if l_satisfies_wolfe: return a_l, f_l
+            if h_satisfies_wolfe: return a_h, f_h
+            if f_l <= f_0 + c1 * a_l * g_0: return a_l, f_l
+            return None,None
 
         if a_j is None or a_j == a_l or a_j == a_h:
             a_j = a_l + 0.5 * delta
 
-    return None
+
+    return None,None
 
 
 def strong_wolfe(
     f,
+    f_0,
+    g_0,
     init: float = 1.0,
     c1: float = 1e-4,
     c2: float = 0.9,
     maxiter: int = 25,
-    maxzoom: int = 10,
+    maxzoom: int = 15,
+    # a_max: float = 1e30,
     expand: float = 2.0,  # Factor to increase alpha in bracketing
     plus_minus: bool = False,
-) -> float | None:
+) -> tuple[float,float] | tuple[None,None]:
     a_prev = 0.0
-    f_0, g_0 = f(a_prev)
 
-    if g_0 == 0: return None
+    if g_0 == 0: return None,None
     if g_0 > 0:
         # if direction is not a descent direction, perform line search in opposite direction
         if plus_minus:
             def inverted_objective(alpha):
                 l, g = f(-alpha)
                 return l, -g
-            v = strong_wolfe(
+            a, v = strong_wolfe(
                 inverted_objective,
                 init=init,
+                f_0=f_0,
+                g_0=g_0,
                 c1=c1,
                 c2=c2,
                 maxiter=maxiter,
-                maxzoom=maxzoom,
+                # a_max=a_max,
                 expand=expand,
                 plus_minus=plus_minus,
             )
-            if v is not None: v = -v
-            return v
-        else: return None
+            if a is not None and v is not None: return -a, v
+        return None, None
 
     f_prev = f_0
     g_prev = g_0
@@ -134,20 +142,28 @@ def strong_wolfe(
                          a_prev, a_cur,
                          f_prev, g_prev,
                          f_cur, g_cur,
-                         f_0, g_0, c1, c2, maxiter=maxzoom)
+                         f_0, g_0,
+                         c1, c2,
+                         maxzoom=maxzoom,
+                         )
+
 
 
         # check strong wolfe
         if abs(g_cur) <= c2 * abs(g_0):
-            return a_cur
+            return a_cur, f_cur
 
         # minimum is bracketed
         if g_cur >= 0:
             return _zoom(f,
+                        #alpha_curr, alpha_prev,
                         a_prev, a_cur,
+                        #phi_curr, phi_prime_curr,
                         f_prev, g_prev,
                         f_cur, g_cur,
-                        f_0, g_0, c1, c2, maxzoom)
+                        f_0, g_0,
+                        c1, c2,
+                        maxzoom=maxzoom,)
 
         # otherwise continue bracketing
         a_next = a_cur * expand
@@ -160,7 +176,11 @@ def strong_wolfe(
 
 
     # max iters reached
-    return None
+    return None, None
+
+def _notfinite(x):
+    if isinstance(x, torch.Tensor): return not torch.isfinite(x).all()
+    return not math.isfinite(x)
 
 class StrongWolfe(LineSearch):
     def __init__(
@@ -170,14 +190,14 @@ class StrongWolfe(LineSearch):
         c2: float = 0.9,
         maxiter: int = 25,
         maxzoom: int = 10,
-        a_max: float = 1e10,
+        # a_max: float = 1e10,
         expand: float = 2.0,
-        adaptive = False,
+        adaptive = True,
         fallback = False,
         plus_minus = False,
     ):
         defaults=dict(init=init,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom,
-                      a_max=a_max,expand=expand, adaptive=adaptive, fallback=fallback, plus_minus=plus_minus)
+                      expand=expand, adaptive=adaptive, fallback=fallback, plus_minus=plus_minus)
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
@@ -187,12 +207,14 @@ class StrongWolfe(LineSearch):
     def search(self, update, vars):
         objective = self.make_objective_with_derivative(vars=vars)
 
-        init, c1, c2, a_max, maxiter, maxzoom, expand, adaptive, fallback, plus_minus = itemgetter(
-            'init', 'c1', 'c2', 'a_max', 'maxiter', 'maxzoom',
+        init, c1, c2, maxiter, maxzoom, expand, adaptive, fallback, plus_minus = itemgetter(
+            'init', 'c1', 'c2', 'maxiter', 'maxzoom',
             'expand', 'adaptive', 'fallback', 'plus_minus')(self.settings[vars.params[0]])
 
-        step_size = strong_wolfe(
+        f_0, g_0 = objective(0)
+        step_size,f_a = strong_wolfe(
             objective,
+            f_0=f_0, g_0=g_0,
             init=init * self.global_state["initial_scale"],
             c1=c1,
             c2=c2,
@@ -201,8 +223,8 @@ class StrongWolfe(LineSearch):
             expand=expand,
             plus_minus=plus_minus,
         )
-
-        if step_size is not None and step_size != 0:
+        if f_a is not None and (f_a > f_0 or _notfinite(f_a)): step_size = None
+        if step_size is not None and step_size != 0 and not _notfinite(step_size):
             self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))
             return step_size
 
@@ -213,16 +235,17 @@ class StrongWolfe(LineSearch):
         objective = self.make_objective(vars=vars)
 
         # # directional derivative
-        d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), vars.get_update()))
+        g_0 = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), vars.get_update()))
 
         step_size = backtracking_line_search(
             objective,
-            d,
-            initial_step_size=init * self.global_state["initial_scale"],
+            g_0,
+            init=init * self.global_state["initial_scale"],
             beta=0.5 * self.global_state["beta_scale"],
-            c=1e-8,
-            max_iter=a_max * 2,
-            min_alpha=None,
+            c=c1,
+            maxiter=maxiter * 2,
+            a_min=None,
+            try_negative=plus_minus,
         )
 
         # found an alpha that reduces loss

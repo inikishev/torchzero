@@ -215,6 +215,9 @@ class GaLore(Projection):
                     galore_map[i] = {'is_galore': True, 'is_tucker': True, 'indices': flat_idx_counter, 'original_shape': param.shape}
                     flat_idx_counter += 1
                 else:
+                    if state['needs_permute']:
+                        dims = list(range(grad.ndim))
+                        grad = grad.permute(*dims[2:], dims[0], dims[1])
                     P, Q = state['P'], state['Q']
                     gP = P.mT @ grad # (r, m) @ (m, n) -> (r, n)
                     gQ = grad @ Q # (m, n) @ (n, r) -> (m, r)

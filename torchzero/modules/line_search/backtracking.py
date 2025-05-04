@@ -8,14 +8,14 @@ from .line_search import LineSearch
 
 
 def backtracking_line_search(
-    objective: Callable[[float], float],
-    dir_derivative: float | torch.Tensor,
-    initial_step_size: float = 1.0,
+    f: Callable[[float], float],
+    g_0: float | torch.Tensor,
+    init: float = 1.0,
     beta: float = 0.5,
     c: float = 1e-4,
-    max_iter: int = 10,
-    min_alpha: float | None = None,
-    try_negative: bool = True,
+    maxiter: int = 10,
+    a_min: float | None = None,
+    try_negative: bool = False,
 ) -> float | None:
     """
 
@@ -32,35 +32,34 @@ def backtracking_line_search(
         step size
     """
 
-    alpha = initial_step_size
-    f_x = objective(0)
+    a = init
+    f_x = f(0)
 
-    for iteration in range(max_iter):
-        f_alpha = objective(alpha)
-        sufficient_f = f_x + c * alpha * dir_derivative
+    for iteration in range(maxiter):
+        f_a = f(a)
 
-        if f_alpha <= sufficient_f:
+        if f_a <= f_x + c * a * g_0:
             # found an acceptable alpha
-            return alpha
-        else:
-            # decrease alpha
-            alpha *= beta
+            return a
+
+        # decrease alpha
+        a *= beta
 
         # alpha too small
-        if min_alpha is not None and alpha < min_alpha:
-            return min_alpha
+        if a_min is not None and a < a_min:
+            return a_min
 
     # fail
     if try_negative:
-        def inv_objective(alpha): return objective(-alpha)
+        def inv_objective(alpha): return f(-alpha)
 
         v = backtracking_line_search(
             inv_objective,
-            dir_derivative=-dir_derivative,
+            g_0=-g_0,
             beta=beta,
             c=c,
-            max_iter=max_iter,
-            min_alpha=min_alpha,
+            maxiter=maxiter,
+            a_min=a_min,
             try_negative=False,
         )
         if v is not None: return -v
@@ -70,22 +69,22 @@ def backtracking_line_search(
 class Backtracking(LineSearch):
     def __init__(
         self,
-        initial_step_size: float = 1.0,
+        init: float = 1.0,
         beta: float = 0.5,
         c: float = 1e-4,
-        max_iter: int = 10,
+        maxiter: int = 10,
         min_alpha: float | None = None,
         adaptive=True,
         try_negative: bool = False,
     ):
-        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,adaptive=adaptive, try_negative=try_negative)
+        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,adaptive=adaptive, try_negative=try_negative)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
     def search(self, update, vars):
-        initial_step_size, beta, c, max_iter, min_alpha, adaptive, try_negative = itemgetter(
-            'initial_step_size', 'beta', 'c', 'max_iter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[vars.params[0]])
+        init, beta, c, maxiter, min_alpha, adaptive, try_negative = itemgetter(
+            'init', 'beta', 'c', 'maxiter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[vars.params[0]])
 
         objective = self.make_objective(vars=vars)
 
@@ -95,8 +94,8 @@ class Backtracking(LineSearch):
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
         if adaptive: beta = beta * self.global_state['beta_scale']
 
-        step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size,beta=beta,
-                                        c=c,max_iter=max_iter,min_alpha=min_alpha, try_negative=try_negative)
+        step_size = backtracking_line_search(objective, d, init=init,beta=beta,
+                                        c=c,maxiter=maxiter,a_min=min_alpha, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:
@@ -113,17 +112,17 @@ def _lerp(start,end,weight):
 class AdaptiveBacktracking(LineSearch):
     def __init__(
         self,
-        initial_step_size: float = 1.0,
+        init: float = 1.0,
         beta: float = 0.5,
         c: float = 1e-4,
-        max_iter: int = 20,
+        maxiter: int = 20,
         min_alpha: float | None = None,
         target_iters = 1,
         nplus = 2.0,
         scale_beta = 0.9,
         try_negative: bool = True,
     ):
-        defaults=dict(initial_step_size=initial_step_size,beta=beta,c=c,max_iter=max_iter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
+        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
         super().__init__(defaults=defaults)
 
         self.global_state['beta_scale'] = 1.0
@@ -131,8 +130,8 @@ class AdaptiveBacktracking(LineSearch):
 
     @torch.no_grad
     def search(self, update, vars):
-        initial_step_size, beta, c, max_iter, min_alpha, target_iters, nplus, scale_beta, try_negative=itemgetter(
-            'initial_step_size','beta','c','max_iter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[vars.params[0]])
+        init, beta, c, maxiter, min_alpha, target_iters, nplus, scale_beta, try_negative=itemgetter(
+            'init','beta','c','maxiter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[vars.params[0]])
 
         objective = self.make_objective(vars=vars)
 
@@ -144,28 +143,28 @@ class AdaptiveBacktracking(LineSearch):
         beta = beta * self.global_state['beta_scale']
 
         # scale step size so that decrease is expected at target_iters
-        initial_step_size = initial_step_size * self.global_state['initial_scale']
+        init = init * self.global_state['initial_scale']
 
-        step_size = backtracking_line_search(objective, d, initial_step_size=initial_step_size, beta=beta,
-                                        c=c,max_iter=max_iter,min_alpha=min_alpha, try_negative=try_negative)
+        step_size = backtracking_line_search(objective, d, init=init, beta=beta,
+                                        c=c,maxiter=maxiter,a_min=min_alpha, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:
 
             # update initial_scale
             # initial step size satisfied conditions, increase initial_scale by nplus
-            if step_size == initial_step_size and target_iters > 0:
+            if step_size == init and target_iters > 0:
                 self.global_state['initial_scale'] *= nplus ** target_iters
                 self.global_state['initial_scale'] = min(self.global_state['initial_scale'], 1e32) # avoid overflow error
 
             else:
                 # otherwise make initial_scale such that target_iters iterations will satisfy armijo
-                target_intial_step_size = step_size
+                init_target = step_size
                 for _ in range(target_iters):
-                    target_intial_step_size = step_size / beta
+                    init_target = step_size / beta
 
                 self.global_state['initial_scale'] = _lerp(
-                    self.global_state['initial_scale'], target_intial_step_size / initial_step_size, 1-scale_beta
+                    self.global_state['initial_scale'], init_target / init, 1-scale_beta
                 )
 
             # revert beta_scale
