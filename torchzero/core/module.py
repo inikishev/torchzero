@@ -104,6 +104,9 @@ class Vars:
         self.stop: bool = False
         """if True, all following modules will be skipped."""
 
+        self.skip_update: bool = False
+        """if True, the parameters will not be updated"""
+
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
         Do not call this at perturbed parameters."""
@@ -167,6 +170,7 @@ class Vars:
         copy.loss_approx = self.loss_approx
         copy.post_step_hooks = self.post_step_hooks
         copy.stop = self.stop
+        copy.skip_update = self.skip_update
 
         return copy
 
@@ -474,9 +478,9 @@ class Modular(torch.optim.Optimizer):
             if vars.stop: break
 
         # apply update
-        if vars.update is not None:
+        if not vars.skip_update:
             with torch.no_grad():
-                torch._foreach_sub_(params, vars.update)
+                torch._foreach_sub_(params, vars.get_update())
 
         for hook in vars.post_step_hooks:
             hook(self, vars)

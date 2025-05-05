@@ -235,11 +235,11 @@ def _sequential_step(self: Module, vars: Vars, sequential: bool):
         for m in modules[1:]:
 
             # update params
-            if (not new_vars.stop) and (new_vars.update is not None):
+            if (not new_vars.skip_update):
                 if new_vars.last_module_lrs is not None:
-                    torch._foreach_mul_(new_vars.update, new_vars.last_module_lrs)
+                    torch._foreach_mul_(new_vars.get_update(), new_vars.last_module_lrs)
 
-                torch._foreach_sub_(params, new_vars.update)
+                torch._foreach_sub_(params, new_vars.get_update())
 
             # create new vars since we are at a new point, that means grad, update and loss will be None
             new_vars = Vars(params=new_vars.params, closure=new_vars.closure,
@@ -249,15 +249,16 @@ def _sequential_step(self: Module, vars: Vars, sequential: bool):
             new_vars = m.step(new_vars)
 
         # final parameter update
-        if (not new_vars.stop) and (new_vars.update is not None):
+        if (not new_vars.skip_update):
             if new_vars.last_module_lrs is not None:
-                torch._foreach_mul_(new_vars.update, new_vars.last_module_lrs)
+                torch._foreach_mul_(new_vars.get_update(), new_vars.last_module_lrs)
 
-            torch._foreach_sub_(params, new_vars.update)
+            torch._foreach_sub_(params, new_vars.get_update())
 
     # if last module, update is applied so return new vars
     if params_before_steps is None:
         new_vars.stop = True
+        new_vars.skip_update = True
         return new_vars
 
     # otherwise use parameter difference as update
@@ -321,7 +322,7 @@ class Accumulate(Module):
             # prevent update
             if stop:
                 vars.stop=True
-                vars.update=None
+                vars.skip_update=True
 
         return vars
 
@@ -378,7 +379,7 @@ class NegateOnLossIncrease(Module):
         if f_1 <= f_0:
             if vars.is_last and vars.last_module_lrs is None:
                 vars.stop = True
-                vars.update = None
+                vars.skip_update = True
                 return vars
 
             torch._foreach_add_(vars.params, update)

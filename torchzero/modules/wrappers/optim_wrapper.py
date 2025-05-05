@@ -68,7 +68,7 @@ class Wrap(Module):
             for p, g in zip(params, orig_grad):
                 p.grad = g
 
-            vars.stop = True; vars.update = None
+            vars.stop = True; vars.skip_update = True
             return vars
 
         # this is not the last module, meaning update is difference in parameters

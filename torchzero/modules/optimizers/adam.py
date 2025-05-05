@@ -88,6 +88,7 @@ class Adam(Module):
             if vars.last_module_lrs is not None: alpha = alpha * vars.last_module_lrs
             passed_params = TensorList(vars.params)
             vars.stop = True
+            vars.skip_update = True
 
         else:
             passed_params = None

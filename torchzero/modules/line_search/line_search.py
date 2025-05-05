@@ -152,7 +152,7 @@ class LineSearch(Module, ABC):
             else:
                 self._set_per_parameter_step_size_([step_size*lr for lr in vars.last_module_lrs], params=params, update=update)
 
-            vars.update = None; vars.stop = True
+            vars.stop = True; vars.skip_update = True
             return vars
 
         # revert parameters and multiply update by step size

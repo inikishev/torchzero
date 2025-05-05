@@ -8,5 +8,6 @@ from .cautious import (
 )
 from .ema import EMA, Debias1, Debias2, EMASquared, SqrtEMASquared
 from .experimental import CoordinateMomentum
-from .matrix_momentum import MatrixMomentum
+# from .matrix_momentum import MatrixMomentum
+
 from .momentum import NAG, HeavyBall
