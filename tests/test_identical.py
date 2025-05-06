@@ -61,12 +61,19 @@ def _assert_identical_opts(opt_fns: Sequence[Callable], merge: bool, use_closure
             base_opt = opt
         else: _compare_trajectories(base_opt, base_trajectory, opt, t)
 
-def _assert_identical_merge(opt_fn: Callable, device, steps: int):
+def _assert_identical_merge(opt_fn: Callable, use_closure, device, steps: int):
     """checks that trajectories match with x and y parameters split and merged"""
     x0 = _BOOTH_X0.clone().to(device=device)
-    merged, merged_opt = _get_trajectory(opt_fn, x0, merge=True, use_closure=True, steps=steps)
-    unmerged, unmerged_opt = _get_trajectory(opt_fn, x0, merge=False, use_closure=True, steps=steps)
+    merged, merged_opt = _get_trajectory(opt_fn, x0, merge=True, use_closure=use_closure, steps=steps)
+    unmerged, unmerged_opt = _get_trajectory(opt_fn, x0, merge=False, use_closure=use_closure, steps=steps)
     _compare_trajectories(merged_opt, merged, unmerged_opt, unmerged)
+
+def _assert_identical_closure(opt_fn: Callable, merge, device, steps: int):
+    """checks that trajectories match  with and without closure"""
+    x0 = _BOOTH_X0.clone().to(device=device)
+    closure, closure_opt = _get_trajectory(opt_fn, x0, merge=merge, use_closure=True, steps=steps)
+    no_closure, no_closure_opt = _get_trajectory(opt_fn, x0, merge=merge, use_closure=False, steps=steps)
+    _compare_trajectories(closure_opt, closure, no_closure_opt, no_closure)
 
 def _assert_identical_merge_closure(opt_fn: Callable, device, steps: int):
     """checks that trajectories match with x and y parameters split and merged and with and without closure"""
@@ -202,4 +209,15 @@ def test_adagrad_hyperparams(initial_accumulator_value, eps, lr):
     tz_fn1 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps), tz.m.LR(lr))
     tz_fn2 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps, alpha=lr))
     _assert_identical_opts([torch_fn, tz_fn1, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
+
+
+@pytest.mark.parametrize('tensorwise', [True, False])
+def test_graft(tensorwise):
+    graft1 = lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.LBFGS(), tz.m.RMSprop(), tensorwise=tensorwise), tz.m.LR(1e-1))
+    graft2 = lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.Graft([tz.m.Grad(), tz.m.RMSprop()], tensorwise=tensorwise), tz.m.LR(1e-1))
+    _assert_identical_opts([graft1, graft2], merge=True, use_closure=True, device='cpu', steps=10)
+    for fn in [graft1, graft2]:
+        if tensorwise: _assert_identical_closure(fn, merge=True, device='cpu', steps=10)
+        else: _assert_identical_merge_closure(fn, device='cpu', steps=10)
+        _assert_identical_device(fn, merge=True, use_closure=True, steps=10)
 
