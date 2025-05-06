@@ -9,6 +9,7 @@ def _booth(x, y):
 _BOOTH_X0 = torch.tensor([0., -8.])
 
 def _get_trajectory(opt_fn: Callable, x0: torch.Tensor, merge: bool, use_closure: bool, steps: int):
+    """Returns a Tensor - trajectory of `opt_fn` on the booth function."""
     trajectory = []
     if merge:
         params = x0.clone().requires_grad_()
@@ -49,6 +50,7 @@ def _compare_trajectories(opt1, t1:torch.Tensor, opt2, t2:torch.Tensor):
     assert torch.allclose(t1, t2, rtol=1e-4, atol=1e-6), f'trajectories dont match. opts:\n{opt1}\n{opt2}\ntrajectories:\n{t1}\n{t2}'
 
 def _assert_identical_opts(opt_fns: Sequence[Callable], merge: bool, use_closure: bool, device, steps: int):
+    """checks that all `opt_fns` have identical trajectories on booth"""
     x0 = _BOOTH_X0.clone().to(device=device)
     base_opt = None
     base_trajectory = None
@@ -60,12 +62,14 @@ def _assert_identical_opts(opt_fns: Sequence[Callable], merge: bool, use_closure
         else: _compare_trajectories(base_opt, base_trajectory, opt, t)
 
 def _assert_identical_merge(opt_fn: Callable, device, steps: int):
+    """checks that trajectories match with x and y parameters split and merged"""
     x0 = _BOOTH_X0.clone().to(device=device)
     merged, merged_opt = _get_trajectory(opt_fn, x0, merge=True, use_closure=True, steps=steps)
     unmerged, unmerged_opt = _get_trajectory(opt_fn, x0, merge=False, use_closure=True, steps=steps)
     _compare_trajectories(merged_opt, merged, unmerged_opt, unmerged)
 
 def _assert_identical_merge_closure(opt_fn: Callable, device, steps: int):
+    """checks that trajectories match with x and y parameters split and merged and with and without closure"""
     x0 = _BOOTH_X0.clone().to(device=device)
     merge_closure, opt_merge_closure = _get_trajectory(opt_fn, x0, merge=True, use_closure=True, steps=steps)
     merge_no_closure, opt_merge_no_closure = _get_trajectory(opt_fn, x0, merge=True, use_closure=False, steps=steps)
@@ -77,6 +81,7 @@ def _assert_identical_merge_closure(opt_fn: Callable, device, steps: int):
     _compare_trajectories(opt_merge_closure, merge_closure, opt_no_merge_no_closure, no_merge_no_closure)
 
 def _assert_identical_device(opt_fn: Callable, merge: bool, use_closure: bool, steps: int):
+    """checks that trajectories match on cpu and cuda."""
     cpu, cpu_opt = _get_trajectory(opt_fn, _BOOTH_X0.clone().cpu(), merge=merge, use_closure=use_closure, steps=steps)
     cuda, cuda_opt = _get_trajectory(opt_fn, _BOOTH_X0.clone().cuda(), merge=merge, use_closure=use_closure, steps=steps)
     _compare_trajectories(cpu_opt, cpu, cuda_opt, cuda.to(cpu))
