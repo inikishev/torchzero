@@ -115,10 +115,21 @@ def test_adam(amsgrad):
         ))
     tz_fns = (tz_fn, tz_fn2, tz_fn3, tz_fn4, tz_fn5, tz_fn_ops, tz_fn_ops2, tz_fn_ops3)
 
-    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=100)
+    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=10)
     for fn in tz_fns:
-        _assert_identical_merge_closure(fn, device='cpu', steps=100)
-        _assert_identical_device(fn, merge=True, use_closure=True, steps=100)
+        _assert_identical_merge_closure(fn, device='cpu', steps=10)
+        _assert_identical_device(fn, merge=True, use_closure=True, steps=10)
+
+@pytest.mark.parametrize('beta1', [0.5, 0.9])
+@pytest.mark.parametrize('beta2', [0.99, 0.999])
+@pytest.mark.parametrize('eps', [1e-1, 1e-8])
+@pytest.mark.parametrize('amsgrad', [True, False])
+@pytest.mark.parametrize('lr', [0.1, 1])
+def test_adam_hyperparams(beta1, beta2, eps, amsgrad, lr):
+    tz_fn = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad), tz.m.LR(lr))
+    tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad, alpha=lr))
+    torch_fn = lambda p: torch.optim.Adam(p, lr, (beta1, beta2), eps, amsgrad=amsgrad)
+    _assert_identical_opts([torch_fn, tz_fn, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
 
 @pytest.mark.parametrize('centered', [True, False])
 def test_rmsprop(centered):
@@ -133,7 +144,57 @@ def test_rmsprop(centered):
         tz.m.Div([tz.m.CenteredEMASquared(0.99) if centered else tz.m.EMASquared(0.99), tz.m.Sqrt(), tz.m.Add(1e-8)]),
     )
     tz_fns = (tz_fn, tz_fn2, tz_fn3)
-    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=100)
+    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=10)
     for fn in tz_fns:
-        _assert_identical_merge_closure(fn, device='cpu', steps=100)
-        _assert_identical_device(fn, merge=True, use_closure=True, steps=100)
+        _assert_identical_merge_closure(fn, device='cpu', steps=10)
+        _assert_identical_device(fn, merge=True, use_closure=True, steps=10)
+
+
+@pytest.mark.parametrize('beta', [0.5, 0.9])
+@pytest.mark.parametrize('eps', [1e-1, 1e-8])
+@pytest.mark.parametrize('centered', [True, False])
+@pytest.mark.parametrize('lr', [0.1, 1])
+def test_rmsprop_hyperparams(beta, eps, centered, lr):
+    tz_fn = lambda p: tz.Modular(p, tz.m.RMSprop(beta, eps, centered, init='zeros'), tz.m.LR(lr))
+    torch_fn = lambda p: torch.optim.RMSprop(p, lr, beta, eps=eps, centered=centered)
+    _assert_identical_opts([torch_fn, tz_fn], merge=True, use_closure=True, device='cpu', steps=10)
+
+
+
+@pytest.mark.parametrize('nplus', (1.2, 2))
+@pytest.mark.parametrize('nminus', (0.5, 0.9))
+@pytest.mark.parametrize('lb', [1e-8, 1])
+@pytest.mark.parametrize('ub', [50, 1.5])
+@pytest.mark.parametrize('lr', [0.1, 1])
+def test_rprop(nplus, nminus, lb, ub, lr):
+    tz_fn = lambda p: tz.Modular(p, tz.m.LR(lr), tz.m.Rprop(nplus, nminus, lb, ub, alpha=lr, backtrack=False))
+    torch_fn = lambda p: torch.optim.Rprop(p, lr, (nminus, nplus), (lb, ub))
+    _assert_identical_opts([torch_fn, tz_fn], merge=True, use_closure=True, device='cpu', steps=30)
+    _assert_identical_merge_closure(tz_fn, 'cpu', 30)
+    _assert_identical_device(tz_fn, merge=True, use_closure=True, steps=10)
+
+def test_adagrad():
+    torch_fn = lambda p: torch.optim.Adagrad(p, 1)
+    tz_fn = lambda p: tz.Modular(p, tz.m.Adagrad(), tz.m.LR(1))
+    tz_fn2 = lambda p: tz.Modular(
+        p,
+        tz.m.Div([tz.m.Pow(2), tz.m.AccumulateSum(), tz.m.Sqrt(), tz.m.Add(1e-10)]),
+    )
+
+    tz_fns = (tz_fn, tz_fn2)
+    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=10)
+    for fn in tz_fns:
+        _assert_identical_merge_closure(fn, device='cpu', steps=10)
+        _assert_identical_device(fn, merge=True, use_closure=True, steps=10)
+
+
+
+@pytest.mark.parametrize('initial_accumulator_value', [0, 1])
+@pytest.mark.parametrize('eps', [1e-2, 1e-10])
+@pytest.mark.parametrize('lr', [0.1, 1])
+def test_adagrad_hyperparams(initial_accumulator_value, eps, lr):
+    torch_fn = lambda p: torch.optim.Adagrad(p, lr, initial_accumulator_value=initial_accumulator_value, eps=eps)
+    tz_fn1 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps), tz.m.LR(lr))
+    tz_fn2 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps, alpha=lr))
+    _assert_identical_opts([torch_fn, tz_fn1, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
+

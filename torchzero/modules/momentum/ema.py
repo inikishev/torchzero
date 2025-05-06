@@ -110,29 +110,6 @@ class Debias2(Transform):
         return debias2(TensorList(target), step=self.global_state['step'], beta=beta, pow=pow, inplace=True)
 
 
-class AccumulateMaximum(Transform):
-    def __init__(self, decay: float = 0, target: Target = 'update',):
-        defaults = dict(decay=decay)
-        super().__init__(defaults, uses_grad=False, target=target)
-
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        maximum = self.get_state('maximum', params=params, cls=TensorList)
-        decay = self.get_settings('decay', params=params, cls=NumberList)
-        return maximum.maximum_(target).lazy_mul(1-decay, clone=True)
-
-class AccumulateMinimum(Transform):
-    def __init__(self, decay: float = 0, target: Target = 'update',):
-        defaults = dict(decay=decay)
-        super().__init__(defaults, uses_grad=False, target=target)
-
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        minimum = self.get_state('minimum', params=params, cls=TensorList)
-        decay = self.get_settings('decay', params=params, cls=NumberList)
-        return minimum.minimum_(target).lazy_mul(1-decay, clone=True)
-
-
 class CenteredEMASquared(Transform):
     def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2, target: Target = 'update'):
         defaults = dict(beta=beta, amsgrad=amsgrad, pow=pow)

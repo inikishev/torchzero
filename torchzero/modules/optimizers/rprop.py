@@ -145,7 +145,7 @@ class Rprop(Transform):
         backtrack (float):
             if True, when ascent sign changes, undoes last weight update, otherwise sets update to 0.
             When this is False, this exactly matches pytorch Rprop. (default: True)
-        alpha (float): learning rate (default: 1).
+        alpha (float): initial per-parameter learning rate (default: 1).
 
     reference
         *Riedmiller, M., & Braun, H. (1993, March). A direct adaptive method for faster backpropagation learning:

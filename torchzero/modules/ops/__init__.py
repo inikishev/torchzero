@@ -1,3 +1,10 @@
+from .accumulate import (
+    AccumulateMaximum,
+    AccumulateMean,
+    AccumulateMinimum,
+    AccumulateProduct,
+    AccumulateSum,
+)
 from .binary import (
     Add,
     BinaryOperation,
@@ -22,10 +29,10 @@ from .binary import (
 )
 from .debug import PrintShape, PrintUpdate
 from .misc import (
-    Accumulate,
     DivByLoss,
     Dropout,
     FillLoss,
+    GradAccumulation,
     GradSign,
     GraftGradToUpdate,
     GraftToGrad,
