@@ -2,6 +2,7 @@ from .binary import (
     Add,
     BinaryOperation,
     Clip,
+    CopyMagnitude,
     CopySign,
     Div,
     Graft,

@@ -473,8 +473,10 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     # TODO: benchmark
-    def lazy_mul(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 1): return self
+    def lazy_mul(self, other: int | float | list[int | float] | tuple[int | float], clone=False):
+        if generic_eq(other, 1):
+            if clone: return self.clone()
+            return self
         return self * other
     def lazy_mul_(self, other: int | float | list[int | float] | tuple[int | float]):
         if generic_eq(other, 1): return self

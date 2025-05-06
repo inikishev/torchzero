@@ -6,7 +6,7 @@ import torch
 
 from ...core import Target, Transform
 from ...utils import TensorList, NumberList
-from ..functional import debias1, debias2, ema_, ema_sq_, sqrt_ema_sq_
+from ..functional import debias1, debias2, ema_, ema_sq_, sqrt_ema_sq_, centered_ema_sq_, sqrt_centered_ema_sq_
 
 
 class EMA(Transform):
@@ -85,26 +85,104 @@ class Debias1(Transform):
     def __init__(self, beta: float = 0.9, alpha: float = 1, target: Target = 'update',):
         defaults = dict(beta=beta, alpha=alpha)
         super().__init__(defaults, uses_grad=False, target=target)
-        self.global_state['current_step'] = 0
+        self.global_state['step'] = 0
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['current_step'] += 1
+        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
 
         alpha = self.settings[params[0]]['alpha']
         beta = self.get_settings('beta', params=params, cls=NumberList)
-        return debias1(TensorList(target), step=self.global_state['current_step'], beta=beta, alpha=alpha, inplace=True)
+        return debias1(TensorList(target), step=self.global_state['step'], beta=beta, alpha=alpha, inplace=True)
 
 class Debias2(Transform):
     def __init__(self, beta: float = 0.999, pow: float = 2, target: Target = 'update',):
         defaults = dict(beta=beta, pow=pow)
         super().__init__(defaults, uses_grad=False, target=target)
-        self.global_state['current_step'] = 0
+        self.global_state['step'] = 0
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['current_step'] += 1
+        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
 
         pow = self.settings[params[0]]['pow']
         beta = self.get_settings('beta', params=params, cls=NumberList)
-        return debias2(TensorList(target), step=self.global_state['current_step'], beta=beta, pow=pow, inplace=True)
+        return debias2(TensorList(target), step=self.global_state['step'], beta=beta, pow=pow, inplace=True)
+
+
+class AccumulateMaximum(Transform):
+    def __init__(self, decay: float = 0, target: Target = 'update',):
+        defaults = dict(decay=decay)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        maximum = self.get_state('maximum', params=params, cls=TensorList)
+        decay = self.get_settings('decay', params=params, cls=NumberList)
+        return maximum.maximum_(target).lazy_mul(1-decay, clone=True)
+
+class AccumulateMinimum(Transform):
+    def __init__(self, decay: float = 0, target: Target = 'update',):
+        defaults = dict(decay=decay)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        minimum = self.get_state('minimum', params=params, cls=TensorList)
+        decay = self.get_settings('decay', params=params, cls=NumberList)
+        return minimum.minimum_(target).lazy_mul(1-decay, clone=True)
+
+
+class CenteredEMASquared(Transform):
+    def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2, target: Target = 'update'):
+        defaults = dict(beta=beta, amsgrad=amsgrad, pow=pow)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        amsgrad, pow = itemgetter('amsgrad', 'pow')(self.settings[params[0]])
+        beta = self.get_settings('beta', params=params, cls=NumberList)
+
+        if amsgrad:
+            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', params=params, cls=TensorList)
+        else:
+            exp_avg, exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', params=params, cls=TensorList)
+            max_exp_avg_sq = None
+
+        return centered_ema_sq_(
+            TensorList(target),
+            exp_avg_=exp_avg,
+            exp_avg_sq_=exp_avg_sq,
+            beta=beta,
+            max_exp_avg_sq_=max_exp_avg_sq,
+            pow=pow,
+        ).clone()
+
+class CenteredSqrtEMASquared(Transform):
+    def __init__(self, beta: float = 0.99, amsgrad=False, debiased: bool = False, pow:float=2, target: Target = 'update'):
+        defaults = dict(beta=beta, amsgrad=amsgrad, debiased=debiased, pow=pow)
+        super().__init__(defaults, uses_grad=False, target=target)
+        self.global_state['step'] = 0
+
+    @torch.no_grad
+    def transform(self, target, params, grad, vars):
+        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])
+        beta = self.get_settings('beta', params=params, cls=NumberList)
+
+        if amsgrad:
+            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', params=params, cls=TensorList)
+        else:
+            exp_avg, exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', params=params, cls=TensorList)
+            max_exp_avg_sq = None
+
+        return sqrt_centered_ema_sq_(
+            TensorList(target),
+            exp_avg_=exp_avg,
+            exp_avg_sq_=exp_avg_sq,
+            beta=beta,
+            debiased=debiased,
+            step=self.global_state['step'],
+            max_exp_avg_sq_=max_exp_avg_sq,
+            pow=pow,
+        )

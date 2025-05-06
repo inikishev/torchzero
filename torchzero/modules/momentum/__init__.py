@@ -6,7 +6,7 @@ from .cautious import (
     ScaleModulesByCosineSimilarity,
     UpdateGradientSignConsistency,
 )
-from .ema import EMA, Debias1, Debias2, EMASquared, SqrtEMASquared
+from .ema import EMA, Debias1, Debias2, EMASquared, SqrtEMASquared, AccumulateMinimum, AccumulateMaximum, CenteredEMASquared, CenteredSqrtEMASquared
 from .experimental import CoordinateMomentum
 # from .matrix_momentum import MatrixMomentum
 

@@ -257,6 +257,14 @@ class Module(ABC):
     def get_children_sequence(self, prefix = 'module_'):
         return [self.children[f'{prefix}{i}'] for i in range(len(self.children)) if f'{prefix}{i}' in self.children]
 
+    def __repr__(self):
+        s = self.__class__.__name__
+        if self.children:
+            s = f'{s}('
+            for k,v in self.children.items():
+                s = f'{s}{k}={v}, '
+            s = f'{s[:-2]})'
+        return s
 
     @overload
     def get_settings(self, key: str, *,
@@ -350,7 +358,48 @@ class Module(ABC):
 
     def state_dict(self):
         """state dict"""
-        # TODO
+        packed_state = {id(k):v for k,v in self.state.items()}
+        packed_settings = {id(k):v for k,v in self.settings.items()}
+
+        state_dict = {
+            "state": packed_state,
+            "settings":
+                {
+                    "local": {k:v.maps[0] for k,v in packed_settings.items()},
+                    "global": {k:v.maps[1] for k,v in packed_settings.items()},
+                    "defaults": {k:v.maps[2] for k,v in packed_settings.items()},
+                },
+            "global_state": self.global_state,
+            "extra": self._extra_pack(),
+            "children": {k: v.state_dict() for k, v in self.children.items()}
+        }
+        return state_dict
+
+    def load_state_dict(self, state_dict: dict[str, Any], id_to_tensor: dict[int, torch.Tensor]):
+        # load state
+        state = state_dict['state']
+        self.state.clear()
+        self.state.update({id_to_tensor[k]:v for k,v in state.items()})
+
+        # load settings
+        settings = state_dict['settings']
+        self.settings.clear()
+        for k, v in settings['local'].items(): self.settings[id_to_tensor[k]].maps[0].update(v)
+        for k, v in settings['global'].items(): self.settings[id_to_tensor[k]].maps[1].update(v)
+        for k, v in settings['defaults'].items(): self.settings[id_to_tensor[k]].maps[2].update(v)
+
+        # load global state
+        self.global_state.clear()
+        self.global_state.update(state_dict['global_state'])
+
+        # children
+        for k, v in state_dict['children']:
+            if k in self.children: self.children[k].load_state_dict(v, id_to_tensor)
+            else: warnings.warn(f'State dict for {self} has child {k}, which is missing in {self}')
+
+        # extra info
+        self._extra_unpack(state_dict['extra'])
+
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     @abstractmethod
     def step(self, vars: Vars) -> Vars:
@@ -362,6 +411,12 @@ class Module(ABC):
         self.state.clear()
         self.global_state.clear()
         if has_step: self.global_state['step'] = 0
+
+    def _extra_pack(self):
+        return {}
+
+    def _extra_unpack(self, x):
+        pass
 
 # endregion
 
@@ -383,6 +438,8 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
 
 # region Modular
 # ---------------------------------- Modular --------------------------------- #
+# have to inherit from Modular to support lr schedulers
+# although Accelerate doesn't work due to converting param_groups to a dict
 class Modular(torch.optim.Optimizer):
     """Chains multiple modules into an optimizer.
 
@@ -430,6 +487,12 @@ class Modular(torch.optim.Optimizer):
         for m in self.unrolled_modules: defaults.update(m.defaults)
         super().__init__(param_groups, defaults=defaults)
 
+        # note - this is what super init does:
+
+        # self.defaults = defaults
+        # for param_group in param_groups:
+        #     self.add_param_group(param_group)
+
         self.current_step = 0
         """The global step counter for the optimizer."""
 
@@ -440,6 +503,44 @@ class Modular(torch.optim.Optimizer):
         for p in proc_param_group['params']:
             # updates global per-parameter setting overrides (medium priority)
             self._per_parameter_global_settings[p] = [m.settings[p].maps[1] for m in self.unrolled_modules]
+
+    def state_dict(self):
+        all_params = [p for g in self.param_groups for p in g['params']]
+        id_to_idx = {id(p): i for i,p in enumerate(all_params)}
+
+        groups = []
+        for g in self.param_groups:
+            g = g.copy()
+            g['params'] = [id_to_idx[id(p)] for p in g['params']]
+            groups.append(g)
+
+        state_dict = {
+            "idx_to_id": {v:k for k,v in id_to_idx.items()},
+            "params": all_params,
+            "groups": groups,
+            "defaults": self.defaults,
+            "modules": {i: m.state_dict() for i, m in enumerate(self.unrolled_modules)}
+        }
+        return state_dict
+
+    def load_state_dict(self, state_dict: dict):
+        self.defaults.clear()
+        self.defaults.update(state_dict['defaults'])
+
+        idx_to_param = {i:p for i,p in enumerate(state_dict['params'])}
+        groups = []
+        for g in state_dict['groups']:
+            g = g.copy()
+            g['params'] = [idx_to_param[p] for p in g['params']]
+            groups.append(g)
+
+        self.param_groups.clear()
+        for group in groups:
+            self.add_param_group(group)
+
+        id_to_tensor = {state_dict['idx_to_id'][i]: p for i,p in enumerate(state_dict['params'])}
+        for m, sd in zip(self.unrolled_modules, state_dict['modules']):
+            m.load_state_dict(sd, id_to_tensor)
 
 
     def step(self, closure=None): # pyright: ignore[reportIncompatibleMethodOverride]
@@ -487,6 +588,9 @@ class Modular(torch.optim.Optimizer):
 
         self.current_step += 1
         return vars.loss if vars.loss is not None else vars.loss_approx
+
+    def __repr__(self):
+        return f'Modular({", ".join(str(m) for m in self.modules)})'
 # endregion
 
 # region Chain
@@ -504,6 +608,13 @@ class Chain(Module):
             vars = self.children[f'module_{i}'].step(vars)
             if vars.stop: break
         return vars
+
+    def __repr__(self):
+        s = self.__class__.__name__
+        if self.children:
+            if s == 'Chain': s = 'C' # to shorten it
+            s = f'{s}({", ".join(str(m) for m in self.children.values())}'
+        return s
 
 def maybe_chain(*modules: Chainable) -> Module:
     """Returns a single module directly if only one is provided, otherwise wraps them in a :code:`Chain`."""

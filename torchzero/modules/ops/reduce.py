@@ -17,10 +17,10 @@ class ReduceOperation(Module, ABC):
         for i, v in enumerate(operands):
 
             if isinstance(v, (Module, Sequence)):
-                v = maybe_chain(v)
                 self.set_child(f'operand_{i}', v)
-
-            self.operands.append(v)
+                self.operands.append(self.children[f'operand_{i}'])
+            else:
+                self.operands.append(v)
 
         if not self.children:
             raise ValueError('At least one operand must be a module')

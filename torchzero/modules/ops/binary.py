@@ -21,8 +21,9 @@ class BinaryOperation(Module, ABC):
 
             if isinstance(v, (Module, Sequence)):
                 self.set_child(k, v)
-
-            self.operands[k] = v
+                self.operands[k] = self.children[k]
+            else:
+                self.operands[k] = v
 
     @abstractmethod
     def transform(self, vars: Vars, update: list[torch.Tensor], **operands: Any | list[torch.Tensor]) -> Iterable[torch.Tensor]:
@@ -146,6 +147,7 @@ class RCopySign(BinaryOperation):
     @torch.no_grad
     def transform(self, vars, update: list[torch.Tensor], other: list[torch.Tensor]):
         return [o.copysign_(u) for u, o in zip(update, other)]
+CopyMagnitude = RCopySign
 
 class Clip(BinaryOperation):
     def __init__(self, min: float | Chainable | None = None, max: float | Chainable | None = None):

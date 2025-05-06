@@ -1480,7 +1480,7 @@ def test_normalize(big_tl: TensorList, dim):
         assert_tl_allclose(normalized_list_var, TensorList([torch.full_like(t, v) for t, v in zip(normalized_list_var, var_list)]), atol=1e-4)
 
     # Z-normalize helper
-    znorm = simple_tl.znormalize(dim=dim, stable=True)
+    znorm = simple_tl.znormalize(dim=dim, eps=1e-10)
     znorm_mean = znorm.mean(dim=dim if dim != 'global' else None)
     znorm_var = znorm.var(dim=dim if dim != 'global' else None)
     if dim == 'global':
@@ -1497,7 +1497,7 @@ def test_normalize(big_tl: TensorList, dim):
     assert_tl_allclose(tl_copy, normalized_scalar)
 
     tl_copy_z = simple_tl.clone()
-    tl_copy_z.znormalize_(dim=dim, stable=True)
+    tl_copy_z.znormalize_(dim=dim, eps=1e-10)
     assert_tl_allclose(tl_copy_z, znorm)
 
 

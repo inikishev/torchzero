@@ -20,10 +20,10 @@ class MultiOperation(Module, ABC):
         for k,v in operands.items():
 
             if isinstance(v, (Module, Sequence)):
-                v = maybe_chain(v)
                 self.set_child(k, v)
-
-            self.operands[k] = v
+                self.operands[k] = self.children[k]
+            else:
+                self.operands[k] = v
 
         if not self.children:
             raise ValueError('At least one operand must be a module')
