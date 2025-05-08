@@ -26,7 +26,7 @@ class AccumulateMean(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        self.global_state['step'] = self.global_state.get('step', 0) + 1
         mean = self.get_state('mean', params=params, cls=TensorList)
         decay = self.get_settings('decay', params=params, cls=NumberList)
         return mean.add_(target).lazy_mul(1-decay, clone=True).div_(self.global_state['step'])

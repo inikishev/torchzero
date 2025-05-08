@@ -3,14 +3,28 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module, Target, Transform, Chainable, Vars, apply
 from ...utils import NumberList, TensorList
 from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 
 
-def rmsprop_(tensors_: TensorList, exp_avg_sq_: TensorList, smoothing: float | NumberList,
-             eps: float | NumberList, debiased: bool, step: int, exp_avg_: TensorList | None = None,
-             max_exp_avg_sq_: TensorList | None = None, pow:float=2):
+def rmsprop_(
+    tensors_: TensorList,
+    exp_avg_sq_: TensorList,
+    smoothing: float | NumberList,
+    eps: float | NumberList,
+    debiased: bool,
+    step: int,
+    exp_avg_: TensorList | None = None,
+    max_exp_avg_sq_: TensorList | None = None,
+    pow: float = 2,
+
+    # inner args
+    inner: Module | None = None,
+    params: list[torch.Tensor] | None = None,
+    grad: list[torch.Tensor] | None = None,
+    vars: Vars | None = None,
+):
     """returns `tensors_`"""
     if exp_avg_ is not None:
         sqrt_exp_avg_sq = sqrt_centered_ema_sq_(tensors=tensors_, exp_avg_=exp_avg_,
@@ -19,6 +33,10 @@ def rmsprop_(tensors_: TensorList, exp_avg_sq_: TensorList, smoothing: float | N
     else:
         sqrt_exp_avg_sq = sqrt_ema_sq_(tensors=tensors_,exp_avg_sq_=exp_avg_sq_,max_exp_avg_sq_=max_exp_avg_sq_,
                                        beta=smoothing,debiased=debiased,step=step,pow=pow)
+
+    if inner is not None:
+        assert params is not None
+        tensors_ = TensorList(apply(inner, tensors_, params=params, grad=grad, vars=vars))
 
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
@@ -44,5 +62,20 @@ class RMSprop(Transform):
             exp_avg_sq.set_([t**2 for t in target])
             if exp_avg is not None: exp_avg.set_([t.clone() for t in target])
 
-        return rmsprop_(TensorList(target), exp_avg_sq_=exp_avg_sq, smoothing=smoothing, eps=eps, debiased=debiased,
-                        step=self.current_step,exp_avg_=exp_avg, max_exp_avg_sq_=max_exp_avg_sq, pow=pow)
+        return rmsprop_(
+            TensorList(target),
+            exp_avg_sq_=exp_avg_sq,
+            smoothing=smoothing,
+            eps=eps,
+            debiased=debiased,
+            step=self.current_step,
+            exp_avg_=exp_avg,
+            max_exp_avg_sq_=max_exp_avg_sq,
+            pow=pow,
+
+            # inner args
+            inner=self.children.get("inner", None),
+            params=params,
+            grad=grad,
+            vars=vars,
+        )

@@ -89,7 +89,7 @@ class Debias1(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         alpha = self.settings[params[0]]['alpha']
         beta = self.get_settings('beta', params=params, cls=NumberList)
@@ -103,7 +103,7 @@ class Debias2(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         pow = self.settings[params[0]]['pow']
         beta = self.get_settings('beta', params=params, cls=NumberList)
@@ -143,7 +143,7 @@ class CenteredSqrtEMASquared(Transform):
 
     @torch.no_grad
     def transform(self, target, params, grad, vars):
-        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        self.global_state['step'] = self.global_state.get('step', 0) + 1
         amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])
         beta = self.get_settings('beta', params=params, cls=NumberList)
 

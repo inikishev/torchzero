@@ -63,7 +63,7 @@ class QuasiNewton(Module):
         g = update.to_vec()
         p = params.to_vec()
         self.strategy.update(p, g)
-        self.global_state['step'] = self.global_state.setdefault('step', 0) + 1
+        self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         if 'inner' in self.children:
             update = TensorList(apply(self.children['inner'], target=update, params=params, grad=vars.grad, vars=vars))
