@@ -79,8 +79,8 @@ class QuasiNewton(Module):
         return vars
 
 class BFGS(QuasiNewton):
-    def __init__(self):
-        super().__init__(BFGSInverseUpdateStrategy())
+    def __init__(self, inner: Chainable | None = None):
+        super().__init__(BFGSInverseUpdateStrategy(), inner=inner)
 
 
 class SR1InverseUpdateStrategy(HessianUpdateStrategy):
@@ -114,5 +114,5 @@ class SR1InverseUpdateStrategy(HessianUpdateStrategy):
         return self.B_inv @ g
 
 class SR1(QuasiNewton):
-    def __init__(self):
-        super().__init__(SR1InverseUpdateStrategy())
+    def __init__(self, inner: Chainable | None = None):
+        super().__init__(SR1InverseUpdateStrategy(), inner=inner)
