@@ -143,6 +143,15 @@ class LBFGS(Module):
         if inner is not None:
             self.set_child('inner', inner)
 
+    def reset_stats(self):
+        """Resets the internal state of the L-SR1 module."""
+        super().reset_stats() # Clears self.state (per-parameter) if any, and self.global_state['step']
+        # Re-initialize L-SR1 specific global state
+        self.global_state['s_history'].clear()
+        self.global_state['y_history'].clear()
+        self.global_state['sy_history'].clear()
+        self.global_state['step'] = 0
+
     @torch.no_grad
     def step(self, vars):
         params = as_tensorlist(vars.params)
@@ -156,7 +165,7 @@ class LBFGS(Module):
 
         tol, damping, init_damping, eigval_bounds, update_freq, z_beta = itemgetter(
             'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta')(self.settings[params[0]])
-        params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params, cls=NumberList)
+        params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params)
 
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
         prev_l_params, prev_l_grad = self.get_state('prev_l_params', 'prev_l_grad', params=params, cls=TensorList)

@@ -4,3 +4,4 @@ from .olbfgs import OnlineLBFGS
 # from .experimental import ModularLBFGS
 
 from .quasi_newton import BFGS, SR1
+from .lsr1 import LSR1

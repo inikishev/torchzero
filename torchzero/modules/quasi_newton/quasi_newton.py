@@ -1,7 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import Literal
+
 import torch
-from ...core import Module, Chainable, apply
+
+from ...core import Chainable, Module, apply
 from ...utils import TensorList
+
+
 class HessianUpdateStrategy(ABC):
 
     @abstractmethod
@@ -17,37 +22,6 @@ class HessianUpdateStrategy(ABC):
     def clear(self):
         """clear state"""
 
-class BFGSInverseUpdateStrategy(HessianUpdateStrategy):
-    def __init__(self): self.clear()
-
-    def clear(self):
-        self.B_inv = None
-        self.p_prev = None
-        self.g_prev = None
-
-    def update(self, p, g):
-        if self.B_inv is None:
-            self.B_inv = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
-            self.p_prev = p.clone()
-            self.g_prev = g.clone()
-            return
-
-        assert self.p_prev is not None and self.g_prev is not None
-        s_k = p - self.p_prev
-        y_k = g - self.g_prev
-        H = self.B_inv # for some reason hessian is B and inverse of hessian is H in all references
-
-        skyk = torch.dot(s_k, y_k)
-        if skyk > 1e-10:
-            H += ((skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))) / (skyk**2) - \
-                ((torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H) / skyk)
-
-        self.p_prev = p.clone()
-        self.g_prev = g.clone()
-
-    def apply(self, g: torch.Tensor) -> torch.Tensor:
-        return self.B_inv @ g
-
 
 class QuasiNewton(Module):
     def __init__(self, strategy: HessianUpdateStrategy, scale_first=True, inner: Chainable | None = None):
@@ -57,6 +31,7 @@ class QuasiNewton(Module):
 
         if inner is not None: self.set_child('inner', inner)
 
+    @torch.no_grad
     def step(self, vars):
         params = TensorList(vars.params)
         update = TensorList(vars.get_update())
@@ -78,22 +53,22 @@ class QuasiNewton(Module):
         vars.update = update.from_vec(p)
         return vars
 
-class BFGS(QuasiNewton):
-    def __init__(self, inner: Chainable | None = None):
-        super().__init__(BFGSInverseUpdateStrategy(), inner=inner)
-
-
-class SR1InverseUpdateStrategy(HessianUpdateStrategy):
-    def __init__(self): self.clear()
+class BFGSInverseUpdateStrategy(HessianUpdateStrategy):
+    def __init__(self, tol=1e-10, init_scale: float | Literal['auto'] = 'auto'):
+        self.init_scale: float | Literal['auto'] = init_scale
+        self.step = 0
+        self.tol = tol
+        self.clear()
 
     def clear(self):
-        self.B_inv = None
+        self.H = None
         self.p_prev = None
         self.g_prev = None
 
     def update(self, p, g):
-        if self.B_inv is None:
-            self.B_inv = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+        if self.H is None:
+            self.H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: self.H *= self.init_scale
             self.p_prev = p.clone()
             self.g_prev = g.clone()
             return
@@ -101,18 +76,91 @@ class SR1InverseUpdateStrategy(HessianUpdateStrategy):
         assert self.p_prev is not None and self.g_prev is not None
         s_k = p - self.p_prev
         y_k = g - self.g_prev
-        H = self.B_inv # for some reason hessian is B and inverse of hessian is H in all references
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y_k.abs().max() <= self.tol:
+            return
+
+        if self.step == 1 and self.init_scale == 'auto':
+            ys = y_k.dot(s_k)
+            yy = y_k.dot(y_k)
+            if ys != 0 and yy != 0: self.H *= ys/yy
+
+        H = self.H
+
+        skyk = torch.dot(s_k, y_k)
+        if skyk > 1e-10:
+            H += ((skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))) / (skyk**2) - \
+                ((torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H) / skyk)
+
+        self.p_prev = p.clone()
+        self.g_prev = g.clone()
+
+    def apply(self, g: torch.Tensor) -> torch.Tensor:
+        self.step += 1
+        return self.H @ g
+
+
+
+class BFGS(QuasiNewton):
+    def __init__(self, init_scale: float | Literal['auto'] = 'auto', inner: Chainable | None = None):
+        super().__init__(BFGSInverseUpdateStrategy(init_scale=init_scale), inner=inner)
+
+
+class SR1InverseUpdateStrategy(HessianUpdateStrategy):
+    def __init__(self, eps=1e-8, tol: float = 1e-10, init_scale: float | Literal['auto'] = 1, scale_second:bool=True):
+        self.eps = eps
+        self.init_scale: float | Literal['auto'] = init_scale
+        self.step = 0
+        self.tol = tol
+        self.scale_second = scale_second
+        self.clear()
+
+    def clear(self):
+        self.H = None
+        self.p_prev = None
+        self.g_prev = None
+
+    def update(self, p, g):
+        if self.H is None:
+            self.H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: self.H *= self.init_scale
+            self.p_prev = p.clone()
+            self.g_prev = g.clone()
+            return
+
+        assert self.p_prev is not None and self.g_prev is not None
+        s_k = p - self.p_prev
+        y_k = g - self.g_prev
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y_k.abs().max() <= self.tol:
+            return
+
+        if self.step == 1 and self.init_scale == 'auto':
+            ys = y_k.dot(s_k)
+            yy = y_k.dot(y_k)
+            if ys != 0 and yy != 0: self.H *= ys/yy
+
+        H = self.H
 
         z = s_k - H@y_k
-        H += torch.outer(z, z) / (torch.dot(z, y_k))
+        denom = torch.dot(z, y_k)
+
+        # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
+        if denom.abs() >= self.eps * torch.linalg.norm(y_k) * torch.linalg.norm(z): # pylint:disable=not-callable
+            H += torch.outer(z, z) / denom
 
         self.p_prev = p.clone()
         self.g_prev = g.clone()
 
     def apply(self, g: torch.Tensor) -> torch.Tensor:
         """precondition"""
-        return self.B_inv @ g
+        self.step += 1
+        if self.scale_second and self.step == 2:
+            g = g/max(1, g.abs().sum()) # pyright:ignore[reportArgumentType]
+        return self.H @ g
 
 class SR1(QuasiNewton):
-    def __init__(self, inner: Chainable | None = None):
-        super().__init__(SR1InverseUpdateStrategy(), inner=inner)
+    def __init__(self, eps=1e-8, init_scale: float | Literal['auto'] = 1, scale_second=True, inner: Chainable | None = None):
+        super().__init__(SR1InverseUpdateStrategy(eps=eps, init_scale=init_scale, scale_second=scale_second), inner=inner,)
