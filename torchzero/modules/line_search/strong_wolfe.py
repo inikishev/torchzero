@@ -113,13 +113,13 @@ def strong_wolfe(
                 inverted_objective,
                 init=init,
                 f_0=f_0,
-                g_0=g_0,
+                g_0=-g_0,
                 c1=c1,
                 c2=c2,
                 maxiter=maxiter,
                 # a_max=a_max,
                 expand=expand,
-                plus_minus=plus_minus,
+                plus_minus=False,
             )
             if a is not None and v is not None: return -a, v
         return None, None
