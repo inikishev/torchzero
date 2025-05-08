@@ -42,11 +42,24 @@ def rmsprop_(
 
 class RMSprop(Transform):
     """Set `init` to "zeros" to get an implementation identical to pytorch."""
-    def __init__(self, smoothing: float=0.99, eps:float=1e-8, centered:bool=False, debiased:bool=False,
-                 amsgrad:bool=False, pow:float=2, init: Literal['zeros', 'update'] = 'update', target:Target='update'):
+
+    def __init__(
+        self,
+        smoothing: float = 0.99,
+        eps: float = 1e-8,
+        centered: bool = False,
+        debiased: bool = False,
+        amsgrad: bool = False,
+        pow: float = 2,
+        init: Literal["zeros", "update"] = "update",
+        target: Target = "update",
+        inner: Chainable | None = None,
+    ):
         defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
         self.current_step = 0
+        if inner is not None:
+            self.set_child('inner', inner)
 
     def transform(self, target, params, grad, vars):
         self.current_step += 1
