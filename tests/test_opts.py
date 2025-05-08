@@ -32,6 +32,7 @@ class _TestModel(torch.nn.Module):
         return torch.sum(torch.stack([p.sum() for p in self.params]))
 
 def _run_objective(opt, objective: Callable, use_closure: bool, steps: int):
+    """generic function to run opt on objective and return lowest recorded loss"""
     losses = []
     for _ in range(steps):
         if use_closure:
@@ -43,6 +44,7 @@ def _run_objective(opt, objective: Callable, use_closure: bool, steps: int):
                 return loss
             loss = opt.step(closure)
             assert loss is not None
+            assert torch.isfinite(loss)
             losses.append(loss)
 
         else:
@@ -50,11 +52,13 @@ def _run_objective(opt, objective: Callable, use_closure: bool, steps: int):
             opt.zero_grad()
             loss.backward()
             opt.step()
+            assert torch.isfinite(loss)
             losses.append(loss)
 
     return torch.stack(losses).nan_to_num(0,10000,10000).min()
 
 def _run_func(opt_fn: Callable, func:str, merge: bool, use_closure: bool, steps: int):
+    """run optimizer on a test function and return lowest loss"""
     fn, x0 = funcs[func]
     X = torch.tensor(x0, dtype=torch.float32, requires_grad=True)
     if merge:
@@ -70,11 +74,13 @@ def _run_func(opt_fn: Callable, func:str, merge: bool, use_closure: bool, steps:
     return _run_objective(opt, objective, use_closure, steps)
 
 def _run_sphere(opt_fn: Callable, use_closure:bool, steps:int):
+    """run optimizer on sphere test module to test different parameter shapes (common cause of mistakes)"""
     sphere = _TestModel()
     opt = opt_fn(sphere.parameters())
     return _run_objective(opt, sphere, use_closure, steps)
 
 def _run(opt_fn: Callable, needs_closure: bool, func:str, steps: int, loss: float, sphere_steps: int, sphere_loss: float):
+    """Run optimizer on both function and sphere test module and check that loss is low enough"""
     for merge in [True, False]:
         for use_closure in [True] if needs_closure else [True, False]:
             v = _run_func(opt_fn, func, merge, use_closure, steps)
@@ -85,6 +91,7 @@ def _run(opt_fn: Callable, needs_closure: bool, func:str, steps: int, loss: floa
 
 
 class Run:
+    """read name"""
     def __init__(self, opt_fn: Callable, needs_closure: bool, func: str, steps: int, loss:float, sphere_steps:int, sphere_loss:float):
         self.kwargs = locals().copy()
         del self.kwargs['self']

@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Transform, Vars, maybe_chain
+from ...core import Chainable, Module, Transform, Vars, apply
 from ...utils import NumberList, TensorList, as_tensorlist
 from .lbfgs import _adaptive_damping, lbfgs
 
@@ -154,11 +154,7 @@ class OnlineLBFGS(Module):
 
         # step with inner module before applying preconditioner
         if self.children:
-            inner_module = self.children['inner']
-            inner_vars = inner_module.step(vars.clone(clone_update=False))
-            vars.update_attrs_from_clone_(inner_vars)
-            update = inner_vars.update
-            assert update is not None
+            update = TensorList(apply(self.children['inner'], target=update, params=params, grad=vars.grad, vars=vars))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:

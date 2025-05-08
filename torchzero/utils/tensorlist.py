@@ -304,7 +304,7 @@ class TensorList(list[torch.Tensor | Any]):
         cur = 0
         for el in self:
             numel = el.numel()
-            el.set_(vec[cur:cur + numel].view_as(el)) # pyright:ignore[reportArgumentType]
+            el.set_(vec[cur:cur + numel].type_as(el).view_as(el)) # pyright:ignore[reportArgumentType]
             cur += numel
         return self
 
@@ -315,7 +315,7 @@ class TensorList(list[torch.Tensor | Any]):
         cur = 0
         for el in self:
             numel = el.numel()
-            res.append(vec[cur:cur + numel].view_as(el))
+            res.append(vec[cur:cur + numel].type_as(el).view_as(el))
             cur += numel
         return TensorList(res)
 
@@ -993,6 +993,7 @@ class TensorList(list[torch.Tensor | Any]):
                 tensor.view(-1)[cur-idx] = value
                 return self
             cur += numel
+        raise IndexError(idx)
 
     def flat_set_lambda_(self, idx, fn):
         """sets index in flattened view to return of fn(current_value)"""
@@ -1004,6 +1005,7 @@ class TensorList(list[torch.Tensor | Any]):
                 flat_view[cur-idx] = fn(flat_view[cur-idx])
                 return self
             cur += numel
+        raise IndexError(idx)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({super().__repr__()})"

@@ -2,3 +2,5 @@ from .cg import PolakRibiere, FletcherReeves, HestenesStiefel, DaiYuan, LiuStore
 from .lbfgs import LBFGS
 from .olbfgs import OnlineLBFGS
 # from .experimental import ModularLBFGS
+
+from .quasi_newton import BFGS, SR1

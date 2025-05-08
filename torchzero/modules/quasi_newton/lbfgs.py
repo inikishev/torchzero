@@ -2,7 +2,7 @@ from collections import deque
 from operator import itemgetter
 import torch
 
-from ...core import Transform, Chainable, maybe_chain, Module, Vars
+from ...core import Transform, Chainable, Module, Vars, apply
 from ...utils import TensorList, as_tensorlist, NumberList
 
 
@@ -185,11 +185,7 @@ class LBFGS(Module):
 
         # step with inner module before applying preconditioner
         if self.children:
-            inner_module = self.children['inner']
-            inner_vars = inner_module.step(vars.clone(clone_update=False))
-            vars.update_attrs_from_clone_(inner_vars)
-            update = inner_vars.update
-            assert update is not None
+            update = TensorList(apply(self.children['inner'], target=update, params=params, grad=vars.grad, vars=vars))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
