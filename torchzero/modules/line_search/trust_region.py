@@ -50,11 +50,13 @@ class TrustRegion(LineSearch):
         # bad step
         if f_1 > f_0:
             self.global_state['step_size'] *= nminus * nminus_mul
-            if backtrack: proposed = 0
 
             # two bad steps in a row - decrease nminus_mul
             if adaptive:
                 if previous_success: self.global_state['nminus_mul'] *= nminus
                 else: self.global_state['nminus_mul'] = 1
+
+            if backtrack: proposed = 0
+            else: proposed *= nminus * nminus_mul
 
         return proposed
