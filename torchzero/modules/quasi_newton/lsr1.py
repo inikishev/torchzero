@@ -112,22 +112,10 @@ class LSR1(Module):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def reset_stats(self):
-        super().reset_stats()
-
-        history_size = self.defaults.get('history_size', 10)
-
-        current_s_hist = self.global_state.get('s_history')
-        if current_s_hist is not None and current_s_hist.maxlen == history_size:
-            current_s_hist.clear()
-        else:
-            self.global_state['s_history'] = deque(maxlen=history_size)
-
-        current_y_hist = self.global_state.get('y_history')
-        if current_y_hist is not None and current_y_hist.maxlen == history_size:
-            current_y_hist.clear()
-        else:
-            self.global_state['y_history'] = deque(maxlen=history_size)
+    def reset(self):
+        self.global_state['s_history'].clear()
+        self.global_state['y_history'].clear()
+        self.global_state['step'] = 0
 
 
     @torch.no_grad

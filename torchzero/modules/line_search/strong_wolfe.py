@@ -215,7 +215,7 @@ class StrongWolfe(LineSearch):
         step_size,f_a = strong_wolfe(
             objective,
             f_0=f_0, g_0=g_0,
-            init=init * self.global_state["initial_scale"],
+            init=init * self.global_state.setdefault("initial_scale", 1),
             c1=c1,
             c2=c2,
             maxiter=maxiter,
@@ -250,7 +250,7 @@ class StrongWolfe(LineSearch):
 
         # found an alpha that reduces loss
         if step_size is not None:
-            self.global_state['beta_scale'] = min(1.0, self.global_state['beta_scale'] * math.sqrt(1.5))
+            self.global_state['beta_scale'] = min(1.0, self.global_state.get('beta_scale', 1) * math.sqrt(1.5))
             return step_size
 
         # on fail reduce beta scale value

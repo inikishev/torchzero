@@ -155,9 +155,9 @@ class ModularLBFGS(Module):
             if v is not None:
                 self.set_child(k,v)
 
-    def reset_stats(self):
+    def reset(self):
         """Resets the internal state of the L-SR1 module."""
-        super().reset_stats() # Clears self.state (per-parameter) if any, and self.global_state['step']
+        super().reset() # Clears self.state (per-parameter) if any, and self.global_state['step']
         # Re-initialize L-SR1 specific global state
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()

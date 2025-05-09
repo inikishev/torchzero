@@ -405,7 +405,7 @@ class Module(ABC):
     def step(self, vars: Vars) -> Vars:
         """performs a step, returns new vars but may update them in-place."""
 
-    def reset_stats(self):
+    def reset(self):
         """Resets the internal state of the module (e.g. momentum)."""
         has_step = 'step' in self.global_state
         self.state.clear()

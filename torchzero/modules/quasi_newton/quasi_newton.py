@@ -53,10 +53,13 @@ class QuasiNewton(Module):
         vars.update = update.from_vec(p)
         return vars
 
+    def reset(self):
+        self.strategy.clear()
+        super().reset()
+
 class BFGSInverseUpdateStrategy(HessianUpdateStrategy):
     def __init__(self, tol=1e-10, init_scale: float | Literal['auto'] = 'auto'):
         self.init_scale: float | Literal['auto'] = init_scale
-        self.step = 0
         self.tol = tol
         self.clear()
 
@@ -64,6 +67,7 @@ class BFGSInverseUpdateStrategy(HessianUpdateStrategy):
         self.H = None
         self.p_prev = None
         self.g_prev = None
+        self.step = 0
 
     def update(self, p, g):
         if self.H is None:
@@ -115,7 +119,6 @@ class SR1InverseUpdateStrategy(HessianUpdateStrategy):
     def __init__(self, eps=1e-8, tol: float = 1e-10, init_scale: float | Literal['auto'] = 1, scale_second:bool=True):
         self.eps = eps
         self.init_scale: float | Literal['auto'] = init_scale
-        self.step = 0
         self.tol = tol
         self.scale_second = scale_second
         self.clear()
@@ -124,6 +127,7 @@ class SR1InverseUpdateStrategy(HessianUpdateStrategy):
         self.H = None
         self.p_prev = None
         self.g_prev = None
+        self.step = 0
 
     def update(self, p, g):
         if self.H is None:
@@ -175,19 +179,19 @@ class SR1(QuasiNewton):
 class DiagonalBFGSInverseUpdateStrategy(HessianUpdateStrategy):
     def __init__(self, tol=1e-10, res_beta: float | None = None, H_beta: float | None = None, growth_clip: float | None = None, init_scale: float | Literal['auto'] = 'auto'):
         self.init_scale: float | Literal['auto'] = init_scale
-        self.step = 0
         self.res_beta = res_beta
         self.H_beta = H_beta
         self.growth_clip = growth_clip
         self.tol = tol
-        self.res = None
-        self.prev_res = None
         self.clear()
 
     def clear(self):
         self.H = None
         self.p_prev = None
         self.g_prev = None
+        self.res = None
+        self.prev_res = None
+        self.step = 0
 
     def update(self, p, g):
         if self.H is None:

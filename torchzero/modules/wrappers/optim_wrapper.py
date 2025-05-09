@@ -82,8 +82,8 @@ class Wrap(Module):
 
         return vars
 
-    def reset_stats(self):
-        super().reset_stats()
+    def reset(self):
+        super().reset()
         assert self.optimizer is not None
         for g in self.optimizer.param_groups:
             for p in g['params']:

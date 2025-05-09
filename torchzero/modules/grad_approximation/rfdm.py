@@ -145,13 +145,14 @@ class RandomizedFDM(GradApproximator):
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         fd_fn = _RFD_FUNCS[settings['formula']]
-        perturbations = list(zip(*(self.state[p].get('perturbations', None) for p in params)))
+        default = [None]*n_samples
+        perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
         distribution = settings['distribution']
 
         grad = None
         for i in range(n_samples):
             prt = perturbations[i]
-            if prt is None: prt = params.sample_like(distribution=distribution).mul_(h)
+            if prt[0] is None: prt = params.sample_like(distribution=distribution).mul_(h)
             else: prt = TensorList(prt)
 
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, v_0=loss)

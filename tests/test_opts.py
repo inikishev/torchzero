@@ -31,10 +31,13 @@ class _TestModel(torch.nn.Module):
     def forward(self):
         return torch.sum(torch.stack([p.sum() for p in self.params]))
 
-def _run_objective(opt, objective: Callable, use_closure: bool, steps: int):
+def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, steps: int, clear: bool):
     """generic function to run opt on objective and return lowest recorded loss"""
     losses = []
-    for _ in range(steps):
+    for i in range(steps):
+        if clear and i == steps//2:
+            for m in opt.unrolled_modules: m.reset() # clear on middle step to see if there are any issues with it
+
         if use_closure:
             def closure(backward=True):
                 loss = objective()
@@ -71,13 +74,13 @@ def _run_func(opt_fn: Callable, func:str, merge: bool, use_closure: bool, steps:
     def objective():
         return fn(*X)
 
-    return _run_objective(opt, objective, use_closure, steps)
+    return _run_objective(opt, objective, use_closure, steps, clear=False)
 
 def _run_sphere(opt_fn: Callable, use_closure:bool, steps:int):
     """run optimizer on sphere test module to test different parameter shapes (common cause of mistakes)"""
     sphere = _TestModel()
     opt = opt_fn(sphere.parameters())
-    return _run_objective(opt, sphere, use_closure, steps)
+    return _run_objective(opt, sphere, use_closure, steps, clear=True)
 
 def _run(opt_fn: Callable, needs_closure: bool, func:str, steps: int, loss: float, sphere_steps: int, sphere_loss: float):
     """Run optimizer on both function and sphere test module and check that loss is low enough"""
