@@ -1,14 +1,19 @@
 import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence
 from typing import Literal
+
 import torch
 
-from ...core import Module
+from ...core import Module, Vars
 from ...utils import NumberList, TensorList
 from ...utils.derivatives import jacobian_wrt
 from ..grad_approximation import GradApproximator, GradTarget
+from ..smoothing.gaussian import Reformulation
 
 
-class GradMin(GradApproximator):
+
+class GradMin(Reformulation):
     """Reformulates the objective to minimize sum of gradient magnitudes via autograd.
 
     Args:
@@ -31,13 +36,13 @@ class GradMin(GradApproximator):
         maximize_grad=False,
         create_graph=False,
         modify_loss: bool = True,
-        target: GradTarget = "update",
     ):
         if (relative is not None) and (graft is not None): warnings.warn('both relative and graft loss are True, they will clash with each other')
         defaults = dict(loss_term=loss_term, relative=relative, graft=graft, square=square, mean=mean, maximize_grad=maximize_grad, create_graph=create_graph, modify_loss=modify_loss)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
-    def approximate(self, closure, params, loss, vars):
+    @torch.no_grad
+    def closure(self, backward, closure, params, vars):
         settings = self.settings[params[0]]
         loss_term = settings['loss_term']
         relative = settings['relative']
@@ -73,9 +78,11 @@ class GradMin(GradApproximator):
             if maximize_grad: f = -f
             if modify_loss: loss = f
 
-            for p in params: p.grad = None
-            f.backward(create_graph=create_graph)
-            grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+            grad = None
+            if backward:
+                for p in params: p.grad = None
+                f.backward(create_graph=create_graph)
+                grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
 
-        return grad, loss, loss
+        return loss, grad

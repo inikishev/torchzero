@@ -35,12 +35,13 @@ class ForwardGradient(RandomizedFDM):
         jvp_method = settings['jvp_method']
         h = settings['h']
         distribution = settings['distribution']
-        perturbations = self.global_state.get('perturbations', None)
+        perturbations = list(zip(*(self.state[p].get('perturbations', None) for p in params)))
 
         grad = None
         for i in range(n_samples):
-            if perturbations is None: prt = params.sample_like(distribution=distribution)
-            else: prt = perturbations[i]
+            prt = perturbations[i]
+            if prt is None: prt = params.sample_like(distribution=distribution).mul_(h)
+            else: prt = TensorList(prt)
 
             if jvp_method == 'autograd':
                 with torch.enable_grad():
@@ -58,5 +59,6 @@ class ForwardGradient(RandomizedFDM):
             else: grad += prt * d
 
         assert grad is not None
+        if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
 

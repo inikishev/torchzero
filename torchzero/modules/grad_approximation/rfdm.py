@@ -96,7 +96,7 @@ class RandomizedFDM(GradApproximator):
         h: float = 1e-3,
         n_samples: int = 1,
         formula: _FD_Formula = "central2",
-        distribution: Distributions = "gaussian",
+        distribution: Distributions = "rademacher",
         beta: float = 0,
         pre_generate = True,
         target: GradTarget = "closure",
@@ -113,26 +113,28 @@ class RandomizedFDM(GradApproximator):
 
         if pre_generate:
             params = TensorList(vars.params)
+            perturbations = [params.sample_like(distribution=distribution) for _ in range(n_samples)]
+
+            if self.PRE_MULTIPLY_BY_H:
+                torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])
+
             if all(i==0 for i in beta):
-                # just pre-generate perturbations
-                if self.PRE_MULTIPLY_BY_H:
-                    self.global_state['perturbations'] = [params.sample_like(distribution=distribution).mul_(h) for _ in range(n_samples)]
-                else:
-                    self.global_state['perturbations'] = [params.sample_like(distribution=distribution) for _ in range(n_samples)]
+                # just use pre-generated perturbations
+                for param, prt in zip(params, zip(*perturbations)):
+                    self.state[param]['perturbations'] = prt
 
             else:
                 # lerp old and new perturbations. This makes the subspace change gradually
                 # which in theory might improve algorithms with history
-                perts = self.global_state['perturbations'] = self.global_state.get('perturbations', [])[:n_samples] # trim if n_samples changed
-                for i in range(n_samples):
-                    if self.PRE_MULTIPLY_BY_H:
-                        new_pert = params.sample_like(distribution=distribution).mul_(h)
-                    else:
-                        new_pert = params.sample_like(distribution=distribution)
-                    if i >= len(perts):
-                        perts.append(new_pert)
-                    else:
-                        perts[i].lerp_(new_pert, [1-b for b in beta])
+                for i,p in enumerate(params):
+                    state = self.state[p]
+                    if 'perturbations' not in state: state['perturbations'] = [p[i] for p in perturbations]
+
+                cur = [self.state[p]['perturbations'][:n_samples] for p in params]
+                cur_flat = [p for l in cur for p in l]
+                new_flat = [p for l in perturbations for p in l]
+                betas = [1-v for b in beta for v in [b]*n_samples]
+                torch._foreach_lerp_(cur_flat, new_flat, betas)
 
     @torch.no_grad
     def approximate(self, closure, params, loss, vars):
@@ -143,19 +145,21 @@ class RandomizedFDM(GradApproximator):
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         fd_fn = _RFD_FUNCS[settings['formula']]
-        perturbations = self.global_state.get('perturbations', None)
+        perturbations = list(zip(*(self.state[p].get('perturbations', None) for p in params)))
         distribution = settings['distribution']
 
         grad = None
         for i in range(n_samples):
-            if perturbations is None: prt = params.sample_like(distribution=distribution).mul_(h)
-            else: prt = perturbations[i]
+            prt = perturbations[i]
+            if prt is None: prt = params.sample_like(distribution=distribution).mul_(h)
+            else: prt = TensorList(prt)
 
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, v_0=loss)
             if grad is None: grad = prt * d
             else: grad += prt * d
 
         assert grad is not None
+        if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
 
 
@@ -203,4 +207,5 @@ class MeZO(GradApproximator):
             else: grad += prt_fns[i]().mul_(d)
 
         assert grad is not None
+        if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
