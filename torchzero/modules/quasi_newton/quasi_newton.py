@@ -173,10 +173,15 @@ class SR1(QuasiNewton):
 
 
 class DiagonalBFGSInverseUpdateStrategy(HessianUpdateStrategy):
-    def __init__(self, tol=1e-10, init_scale: float | Literal['auto'] = 'auto'):
+    def __init__(self, tol=1e-10, res_beta: float | None = None, H_beta: float | None = None, growth_clip: float | None = None, init_scale: float | Literal['auto'] = 'auto'):
         self.init_scale: float | Literal['auto'] = init_scale
         self.step = 0
+        self.res_beta = res_beta
+        self.H_beta = H_beta
+        self.growth_clip = growth_clip
         self.tol = tol
+        self.res = None
+        self.prev_res = None
         self.clear()
 
     def clear(self):
@@ -223,7 +228,25 @@ class DiagonalBFGSInverseUpdateStrategy(HessianUpdateStrategy):
             z = H * y_k * s_k
             num2 = z + z
             term2 = num2 / skyk
-            H += term1 - term2
+            res = term1 - term2
+
+            if self.res_beta is not None:
+                if self.res is None: self.res = torch.zeros_like(res)
+                self.res.lerp_(res, 1-self.res_beta)
+                res = self.res
+
+            if self.growth_clip is not None:
+                if self.prev_res is not None:
+                    prev_norm = torch.linalg.norm(self.prev_res) # pylint:disable=not-callable
+                    allowed_norm = prev_norm * self.growth_clip
+                    norm = torch.linalg.norm(res) # pylint:disable=not-callable
+                    if norm > allowed_norm:
+                        res.mul_((allowed_norm/norm).clip(min=1e-5))
+                self.prev_res = res.clone()
+
+
+            if self.H_beta is None: H += res
+            else: H.lerp_(H + res, weight=1-self.H_beta)
 
         self.p_prev = p.clone()
         self.g_prev = g.clone()
@@ -236,5 +259,20 @@ class DiagonalBFGSInverseUpdateStrategy(HessianUpdateStrategy):
 
 
 class DiagonalBFGS(QuasiNewton):
-    def __init__(self, init_scale: float | Literal['auto'] = 'auto', inner: Chainable | None = None):
-        super().__init__(DiagonalBFGSInverseUpdateStrategy(init_scale=init_scale), inner=inner)
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        res_beta: float | None = None,
+        H_beta: float | None = None,
+        growth_clip: float | None = None,
+        inner: Chainable | None = None,
+    ):
+        super().__init__(
+            DiagonalBFGSInverseUpdateStrategy(
+                res_beta=res_beta,
+                H_beta=H_beta,
+                init_scale=init_scale,
+                growth_clip=growth_clip,
+            ),
+            inner=inner,
+        )
