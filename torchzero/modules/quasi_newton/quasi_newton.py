@@ -90,8 +90,12 @@ class BFGSInverseUpdateStrategy(HessianUpdateStrategy):
 
         skyk = torch.dot(s_k, y_k)
         if skyk > 1e-10:
-            H += ((skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))) / (skyk**2) - \
-                ((torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H) / skyk)
+            num1 = (skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))
+            denom1 = skyk**2
+            term1 = num1 / denom1
+            num2 = (torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H)
+            term2 = num2 / skyk
+            H += term1 - term2
 
         self.p_prev = p.clone()
         self.g_prev = g.clone()
@@ -164,3 +168,73 @@ class SR1InverseUpdateStrategy(HessianUpdateStrategy):
 class SR1(QuasiNewton):
     def __init__(self, eps=1e-8, init_scale: float | Literal['auto'] = 1, scale_second=True, inner: Chainable | None = None):
         super().__init__(SR1InverseUpdateStrategy(eps=eps, init_scale=init_scale, scale_second=scale_second), inner=inner,)
+
+
+
+
+class DiagonalBFGSInverseUpdateStrategy(HessianUpdateStrategy):
+    def __init__(self, tol=1e-10, init_scale: float | Literal['auto'] = 'auto'):
+        self.init_scale: float | Literal['auto'] = init_scale
+        self.step = 0
+        self.tol = tol
+        self.clear()
+
+    def clear(self):
+        self.H = None
+        self.p_prev = None
+        self.g_prev = None
+
+    def update(self, p, g):
+        if self.H is None:
+            self.H = torch.ones_like(p)
+            if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: self.H *= self.init_scale
+            self.p_prev = p.clone()
+            self.g_prev = g.clone()
+            return
+
+        assert self.p_prev is not None and self.g_prev is not None
+        s_k = p - self.p_prev
+        y_k = g - self.g_prev
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y_k.abs().max() <= self.tol:
+            return
+
+        if self.step == 1 and self.init_scale == 'auto':
+            ys = y_k.dot(s_k)
+            yy = y_k.dot(y_k)
+            if ys != 0 and yy != 0: self.H *= ys/yy
+
+        H = self.H
+
+        skyk = torch.dot(s_k, y_k)
+
+        # num1 = (skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))
+        # denom1 = skyk**2
+        # term1 = num1 / denom1
+        # num2 = (torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H)
+        # term2 = num2 / skyk
+        # H += term1 - term2
+
+        if skyk > 1e-10:
+            num1 = (skyk + torch.dot(y_k * H, y_k)) * s_k * s_k
+            denom1 = skyk**2
+            term1 = num1 / denom1
+            z = H * y_k * s_k
+            num2 = z + z
+            term2 = num2 / skyk
+            H += term1 - term2
+
+        self.p_prev = p.clone()
+        self.g_prev = g.clone()
+
+    def apply(self, g: torch.Tensor) -> torch.Tensor:
+        self.step += 1
+        assert self.H is not None
+        return self.H * g
+
+
+
+class DiagonalBFGS(QuasiNewton):
+    def __init__(self, init_scale: float | Literal['auto'] = 'auto', inner: Chainable | None = None):
+        super().__init__(DiagonalBFGSInverseUpdateStrategy(init_scale=init_scale), inner=inner)
