@@ -2,8 +2,19 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Module, Target, Transform, Vars, apply
+from ...core import (
+    Chainable,
+    Module,
+    Precondition,
+    Preconditioner,
+    Target,
+    TensorwisePreconditioner,
+    Transform,
+    Vars,
+    apply,
+)
 from ...utils import NumberList, TensorList
+from ...utils.linalg import matrix_power_svd
 from ..functional import add_power_, lerp_power_, root
 
 
@@ -98,3 +109,70 @@ class Adagrad(Transform):
             grads=grads,
             vars=vars,
         )
+
+
+
+class FullMatrixWhiten(TensorwisePreconditioner):
+    def __init__(self, beta: float | None = None, decay: float | None = None):
+        super().__init__()
+        self.beta = beta
+        self.decay = decay
+
+    def update_tensor(self, tensor, param, grad, state):
+        G = tensor.ravel()
+        GG = torch.outer(G, G)
+
+        if 'GG' not in state: state['GG'] = torch.eye(GG.size(-1), device=GG.device, dtype=GG.dtype)
+        if self.decay is not None: state['GG'].mul_(self.decay)
+
+        if self.beta is not None: state['GG'].lerp_(GG, 1-self.beta)
+        else: state['GG'].add_(GG)
+
+    def apply_tensor(self, tensor, param, grad, state):
+        GG = state['GG']
+
+        if tensor.numel() == 1:
+            return tensor / (GG**(1/2)).squeeze()
+
+        B = matrix_power_svd(GG, -1/2)
+        return (B @ tensor.ravel()).view_as(tensor)
+
+class BatchedFullMatrixWhiten(TensorwisePreconditioner):
+    def __init__(self, beta: float | None = None, decay: float | None = None):
+        super().__init__()
+        self.beta = beta
+        self.decay = decay
+
+    def update_tensor(self, tensor, param, grad, state):
+        if tensor.ndim < 2:
+            G = tensor.ravel()
+            GG = torch.outer(G, G)
+
+        else:
+            G = tensor.view(tensor.shape[0], -1) # batch, dim
+            GG = G.unsqueeze(-1) @ G.unsqueeze(1) # batch, dim, dim
+
+        if 'GG' not in state: state['GG'] = torch.eye(GG.size(-1), device=GG.device, dtype=GG.dtype).expand_as(GG).clone()
+        if self.decay is not None: state['GG'].mul_(self.decay)
+
+        if self.beta is not None: state['GG'].lerp_(GG, 1-self.beta)
+        else: state['GG'].add_(GG)
+
+    def apply_tensor(self, tensor, param, grad, state):
+        GG = state['GG']
+
+        if tensor.numel() == 1:
+            return tensor / (GG**(1/2)).squeeze()
+
+        B = matrix_power_svd(GG, -1/2)
+
+        if tensor.ndim < 2:
+            return (B @ tensor.ravel()).view_as(tensor)
+
+        return (B @ tensor.view(tensor.shape[0], -1)).view_as(tensor)
+
+class FullMatrixAdagrad(Precondition):
+    def __init__(self, beta: float | None = None, decay: float | None = None, tensorwise=True, update_freq=1, inner: Chainable | None = None):
+        super().__init__(FullMatrixWhiten(beta=beta, decay=decay), uses_grad=False, tensorwise=tensorwise, update_freq=update_freq, inner=inner)
+
+Whiten = FullMatrixAdagrad

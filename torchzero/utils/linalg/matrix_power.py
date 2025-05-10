@@ -20,15 +20,19 @@ def matrix_power_eig(matrix: torch.Tensor, power: float, eps: float = 1e-6) -> t
         inv_root_eigvals = eigvals.clamp(min=eps).pow_(exponent=power)
         return  eigvecs @ torch.diag_embed(inv_root_eigvals) @ eigvecs.mH
     except torch.linalg.LinAlgError:
-        return torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype)
+        I = torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype)
+        if matrix.ndim > 2: I = I.expand_as(matrix)
+        return I
 
 def matrix_power_svd(matrix: torch.Tensor, power: float) -> torch.Tensor:
     """svd"""
     try:
         u, s, v = torch.svd(matrix)
-        return (u @ s.pow_(power).diag() @ v.t())
+        return (u @ s.pow_(power).diag() @ v.mT)
     except torch.linalg.LinAlgError:
-        return torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype)
+        I = torch.eye(matrix.shape[-1], device=matrix.device, dtype=matrix.dtype)
+        if matrix.ndim > 2: I = I.expand_as(matrix)
+        return I
 
 
 def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> torch.Tensor:

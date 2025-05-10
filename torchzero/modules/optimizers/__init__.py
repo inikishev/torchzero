@@ -1,4 +1,4 @@
-from .adagrad import Adagrad
+from .adagrad import Adagrad, FullMatrixAdagrad, Whiten
 from .adam import Adam
 from .lion import Lion
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
