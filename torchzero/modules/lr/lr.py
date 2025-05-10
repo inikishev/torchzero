@@ -16,8 +16,8 @@ class LR(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        return lazy_lr(TensorList(target), lr=self.get_settings('lr', params=params), inplace=True)
+    def transform(self, tensors, params, grads, vars):
+        return lazy_lr(TensorList(tensors), lr=self.get_settings('lr', params=params), inplace=True)
 
 class StepSize(Transform):
     """this is exactly the same as LR, except the `lr` parameter can be renamed to any other name"""
@@ -26,12 +26,12 @@ class StepSize(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         lrs = []
         for p in params:
             settings = self.settings[p]
             lrs.append(settings[settings['key']])
-        return lazy_lr(TensorList(target), lr=lrs, inplace=True)
+        return lazy_lr(TensorList(tensors), lr=lrs, inplace=True)
 
 
 def warmup(step: int, start_lr: float | NumberList, end_lr: float | NumberList, steps: float):
@@ -46,11 +46,11 @@ class Warmup(Transform):
         self.global_state['current_step'] = 0
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         start_lr, end_lr = self.get_settings('start_lr', 'end_lr', params=params, cls = NumberList)
         steps = self.settings[params[0]]['steps']
         target = lazy_lr(
-            TensorList(target),
+            TensorList(tensors),
             lr=warmup(step=self.global_state['current_step'], start_lr=start_lr, end_lr=end_lr, steps=steps),
             inplace=True
         )

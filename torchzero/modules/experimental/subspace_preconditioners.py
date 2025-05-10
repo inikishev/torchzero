@@ -42,9 +42,9 @@ class RandomPreconditioning(Transform):
         defaults = dict(k=k, beta=beta)
         super().__init__(defaults, uses_grad=False)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         settings = self.settings[params[0]]
-        g = torch.cat([t.view(-1) for t in target])
+        g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
         beta = settings['beta']
 
@@ -57,9 +57,9 @@ class RandomPreconditioning(Transform):
 
         update_subspace_preconditioner_(g, basis, accumulator, beta)
         preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
-        vec_to_tensors_(preconditioned, target)
+        vec_to_tensors_(preconditioned, tensors)
 
-        return target
+        return tensors
 
 
 class HistoryPreconditioning(Transform):
@@ -67,9 +67,10 @@ class HistoryPreconditioning(Transform):
         defaults = dict(k=k, beta=beta, weight=weight)
         super().__init__(defaults, uses_grad=False)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         settings = self.settings[params[0]]
-        g = torch.cat([t.view(-1) for t in target])
+
+        g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
         beta = settings['beta']
         weight = settings['weight']
@@ -99,6 +100,6 @@ class HistoryPreconditioning(Transform):
         basis.lerp_(basis_t, weight)
         update_subspace_preconditioner_(g, basis, accumulator, beta)
         preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
-        vec_to_tensors_(preconditioned, target)
+        vec_to_tensors_(preconditioned, tensors)
 
-        return target
+        return tensors

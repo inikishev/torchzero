@@ -59,7 +59,7 @@ def lbfgs(
         z = q * (ys_k / (y_k.dot(y_k)))
 
         if z_tfm is not None:
-            z = TensorList(apply(z_tfm, target=z, params=vars.params, grad=vars.grad, vars=vars))
+            z = TensorList(apply(z_tfm, tensors=z, params=vars.params, grads=vars.grad, vars=vars))
 
         # 2nd loop
         for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
@@ -76,10 +76,10 @@ def _apply_tfms_into_history(
     update: list[torch.Tensor],
 ):
     if 'params_history_tfm' in self.children:
-        params = apply(self.children['params_history_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+        params = apply(self.children['params_history_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=vars.grad, vars=vars)
 
     if 'grad_history_tfm' in self.children:
-        update = apply(self.children['grad_history_tfm'], target=as_tensorlist(update).clone(), params=params, grad=vars.grad, vars=vars)
+        update = apply(self.children['grad_history_tfm'], tensors=as_tensorlist(update).clone(), params=params, grads=vars.grad, vars=vars)
 
     return params, update
 
@@ -90,10 +90,10 @@ def _apply_tfms_into_precond(
     update: list[torch.Tensor],
 ):
     if 'params_precond_tfm' in self.children:
-        params = apply(self.children['params_precond_tfm'], target=as_tensorlist(params).clone(), params=params, grad=vars.grad, vars=vars)
+        params = apply(self.children['params_precond_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=vars.grad, vars=vars)
 
     if 'grad_precond_tfm' in self.children:
-        update = apply(self.children['grad_precond_tfm'], target=update, params=params, grad=vars.grad, vars=vars)
+        update = apply(self.children['grad_precond_tfm'], tensors=update, params=params, grads=vars.grad, vars=vars)
 
     return params, update
 

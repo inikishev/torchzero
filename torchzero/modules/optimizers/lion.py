@@ -28,8 +28,8 @@ class Lion(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         beta1, beta2 = self.get_settings('beta1', 'beta2', params = params, cls=NumberList)
         exp_avg = self.get_state('ema', params=params, cls=TensorList)
-        return lion_(TensorList(target),exp_avg,beta1,beta2)
+        return lion_(TensorList(tensors),exp_avg,beta1,beta2)
 

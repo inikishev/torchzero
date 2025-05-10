@@ -2,8 +2,8 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, MutableMapping, Sequence
-from typing import Any, overload
 from operator import itemgetter
+from typing import Any, final, overload
 
 import torch
 
@@ -11,10 +11,12 @@ from ..utils import (
     Init,
     ListLike,
     Params,
+    StepCounter,
     _make_param_groups,
     get_state_vals,
 )
 from ..utils.python_tools import flatten
+
 
 def _closure_backward(closure, params, retain_graph, create_graph):
     with torch.enable_grad():
@@ -232,6 +234,9 @@ class Module(ABC):
         self._overridden_keys = set()
         """tracks keys overridden with `set_param_groups`, only used to not give a warning"""
 
+        self.counter = StepCounter()
+        """can be used to count steps, steps must be incremented manually"""
+
 
     def set_param_groups(self, param_groups: Params):
         """Set custom parameter groups with per-parameter settings that this module will use."""
@@ -407,10 +412,9 @@ class Module(ABC):
 
     def reset(self):
         """Resets the internal state of the module (e.g. momentum)."""
-        has_step = 'step' in self.global_state
         self.state.clear()
         self.global_state.clear()
-        if has_step: self.global_state['step'] = 0
+        self.counter.reset()
 
     def _extra_pack(self):
         return {}
@@ -624,3 +628,4 @@ def maybe_chain(*modules: Chainable) -> Module:
     else:
         return Chain(*flat_modules)
 # endregion
+

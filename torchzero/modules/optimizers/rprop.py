@@ -166,7 +166,7 @@ class Rprop(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         nplus, nminus, lb, ub, alpha = self.get_settings('nplus', 'nminus', 'lb', 'ub', 'alpha', params=params, cls=NumberList)
         prev, allowed, magnitudes = self.get_state(
             'prev','allowed','magnitudes',
@@ -176,7 +176,7 @@ class Rprop(Transform):
         )
 
         target = rprop_(
-            tensors_ = as_tensorlist(target),
+            tensors_ = as_tensorlist(tensors),
             prev_ = prev,
             allowed_ = allowed,
             magnitudes_ = magnitudes,
@@ -224,10 +224,10 @@ class ScaleLRBySignChange(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        target = as_tensorlist(target)
+    def transform(self, tensors, params, grads, vars):
+        target = as_tensorlist(tensors)
         use_grad = self.settings[params[0]]['use_grad']
-        if use_grad: cur = as_tensorlist(grad)
+        if use_grad: cur = as_tensorlist(grads)
         else: cur = target
 
         nplus, nminus, lb, ub = self.get_settings('nplus', 'nminus', 'lb', 'ub', params=params, cls=NumberList)
@@ -272,13 +272,13 @@ class BacktrackOnSignChange(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        target = as_tensorlist(target)
+    def transform(self, tensors, params, grads, vars):
+        target = as_tensorlist(tensors)
         settings = self.settings[params[0]]
         use_grad = settings['use_grad']
         backtrack = settings['backtrack']
 
-        if use_grad: cur = as_tensorlist(grad)
+        if use_grad: cur = as_tensorlist(grads)
         else: cur = target
 
         target = backtrack_on_sign_change_(
@@ -298,10 +298,10 @@ class SignConsistencyMask(Transform):
         super().__init__({}, uses_grad=False, target = target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         prev = self.get_state('prev', params=params, cls=TensorList)
-        mask = prev.mul_(target).gt_(0)
-        prev.set_(target)
+        mask = prev.mul_(tensors).gt_(0)
+        prev.set_(tensors)
         return mask
 
 
@@ -321,8 +321,8 @@ class SignConsistencyLRs(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        target = as_tensorlist(target)
+    def transform(self, tensors, params, grads, vars):
+        target = as_tensorlist(tensors)
         nplus, nminus, lb, ub = self.get_settings('nplus', 'nminus', 'lb', 'ub', params=params, cls=NumberList)
         prev, lrs = self.get_state('prev', 'lrs', params=params, cls=TensorList)
 

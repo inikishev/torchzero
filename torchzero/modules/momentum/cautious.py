@@ -10,13 +10,13 @@ from ...utils import NumberList, TensorList
 
 def cautious_(
     tensors_: TensorList,
-    grad: TensorList,
+    grads: TensorList,
     normalize: bool,
     eps: float,
     mode: Literal['zero', 'grad', 'backtrack']
 ):
     # mask will be > 0 for parameters where both signs are the same
-    mask = (tensors_ * grad) > 0
+    mask = (tensors_ * grads) > 0
     if mode in ('zero', 'grad'):
         if normalize and mode == 'zero':
             fmask = mask.to(tensors_[0].dtype)
@@ -27,7 +27,7 @@ def cautious_(
         tensors_ *= fmask
 
         if mode == 'grad':
-            tensors_ += grad * mask.logical_not_()
+            tensors_ += grads * mask.logical_not_()
 
         return tensors_
 
@@ -70,10 +70,10 @@ class Cautious(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[params[0]])
-        return cautious_(TensorList(target), TensorList(grad), normalize=normalize, eps=eps, mode=mode)
+        return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
 
 class UpdateGradientSignConsistency(Transform):
     """1 where signs match 0 otherwise"""
@@ -82,11 +82,11 @@ class UpdateGradientSignConsistency(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
         normalize, eps = itemgetter('normalize', 'eps')(self.settings[params[0]])
 
-        mask = (TensorList(target).mul_(grad)).gt_(0)
+        mask = (TensorList(tensors).mul_(grads)).gt_(0)
         if normalize: mask = mask / mask.global_mean().clip(min = eps) # pyright: ignore[reportOperatorIssue]
 
         return mask
@@ -138,14 +138,14 @@ class ScaleByGradCosineSimilarity(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
         eps = self.settings[params[0]]['eps']
-        target = TensorList(target)
-        grad = TensorList(grad)
-        cos_sim = (target.dot(grad)) / (target.global_vector_norm() * grad.global_vector_norm()).clip(min=eps)
+        tensors = TensorList(tensors)
+        grads = TensorList(grads)
+        cos_sim = (tensors.dot(grads)) / (tensors.global_vector_norm() * grads.global_vector_norm()).clip(min=eps)
 
-        return target.mul_(cos_sim)
+        return tensors.mul_(cos_sim)
 
 class ScaleModulesByCosineSimilarity(Module):
     def __init__(

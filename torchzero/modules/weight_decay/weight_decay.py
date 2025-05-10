@@ -25,11 +25,11 @@ class WeightDecay(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         weight_decay = self.get_settings('weight_decay', params=params, cls=NumberList)
         ord = self.settings[params[0]]['ord']
 
-        return weight_decay_(as_tensorlist(target), as_tensorlist(params), weight_decay, ord)
+        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
 
 @torch.no_grad
 def decay_weights_(params: Iterable[torch.Tensor], weight_decay: float | NumberList, ord:int=2):

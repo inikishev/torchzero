@@ -11,8 +11,8 @@ class UnaryLambda(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        return self.settings[params[0]]['fn'](target)
+    def transform(self, tensors, params, grads, vars):
+        return self.settings[params[0]]['fn'](tensors)
 
 class UnaryParameterwiseLambda(ParameterwiseTransform):
     def __init__(self, fn, target: "Target" = 'update'):
@@ -20,8 +20,8 @@ class UnaryParameterwiseLambda(ParameterwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
-        return self.settings[param]['fn'](target)
+    def transform(self, tensor, param, grad, vars):
+        return self.settings[param]['fn'](tensor)
 
 class CustomUnaryOperation(Transform):
     def __init__(self, name: str, target: "Target" = 'update'):
@@ -29,55 +29,55 @@ class CustomUnaryOperation(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        return getattr(target, self.settings[params[0]]['name'])()
+    def transform(self, tensors, params, grads, vars):
+        return getattr(tensors, self.settings[params[0]]['name'])()
 
 
 class Abs(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        torch._foreach_abs_(target)
-        return target
+    def transform(self, tensors, params, grads, vars):
+        torch._foreach_abs_(tensors)
+        return tensors
 
 class Sign(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        torch._foreach_sign_(target)
-        return target
+    def transform(self, tensors, params, grads, vars):
+        torch._foreach_sign_(tensors)
+        return tensors
 
 class Exp(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        torch._foreach_exp_(target)
-        return target
+    def transform(self, tensors, params, grads, vars):
+        torch._foreach_exp_(tensors)
+        return tensors
 
 class Sqrt(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        torch._foreach_sqrt_(target)
-        return target
+    def transform(self, tensors, params, grads, vars):
+        torch._foreach_sqrt_(tensors)
+        return tensors
 
 class Reciprocal(Transform):
     def __init__(self, eps = 0, target: "Target" = 'update'):
         defaults = dict(eps = eps)
         super().__init__(defaults, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         eps = self.get_settings('eps', params=params)
-        if any(e != 0 for e in eps): torch._foreach_add_(target, eps)
-        torch._foreach_reciprocal_(target)
-        return target
+        if any(e != 0 for e in eps): torch._foreach_add_(tensors, eps)
+        torch._foreach_reciprocal_(tensors)
+        return tensors
 
 class Negate(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        torch._foreach_neg_(target)
-        return target
+    def transform(self, tensors, params, grads, vars):
+        torch._foreach_neg_(tensors)
+        return tensors
 
 
 class NanToNum(Transform):
@@ -97,9 +97,9 @@ class NanToNum(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         nan, posinf, neginf = self.get_settings('nan', 'posinf', 'neginf', params=params)
-        return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(target, nan, posinf, neginf)]
+        return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
 class Rescale(Transform):
     """rescale update to (min, max) range"""
@@ -108,8 +108,8 @@ class Rescale(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         min,max = self.get_settings('min','max', params=params)
         tensorwise = self.settings[params[0]]['tensorwise']
         dim = None if tensorwise else 'global'
-        return TensorList(target).rescale(min=min, max=max, eps=self.settings[params[0]]['eps'], dim=dim)
+        return TensorList(tensors).rescale(min=min, max=max, eps=self.settings[params[0]]['eps'], dim=dim)

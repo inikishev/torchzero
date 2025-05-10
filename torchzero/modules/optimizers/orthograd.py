@@ -29,13 +29,13 @@ class OrthoGrad(Transform):
         defaults = dict(eps=eps, renormalize=renormalize)
         super().__init__(defaults, uses_grad=False, target=target)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         settings = self.settings[params[0]]
         eps = settings['eps']
         renormalize = settings['renormalize']
 
         params = as_tensorlist(params)
-        target = as_tensorlist(target)
+        target = as_tensorlist(tensors)
 
         scale = params.dot(target)/(params.dot(params) + eps)
         if renormalize:

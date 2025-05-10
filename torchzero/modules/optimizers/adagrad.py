@@ -22,7 +22,7 @@ def adagrad_(
     # inner args
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
-    grad: list[torch.Tensor] | None = None,
+    grads: list[torch.Tensor] | None = None,
     vars: Vars | None = None,
 ):
     """returns `tensors_`"""
@@ -35,7 +35,7 @@ def adagrad_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply(inner, tensors_, params=params, grad=grad, vars=vars))
+        tensors_ = TensorList(apply(inner, tensors_, params=params, grads=grads, vars=vars))
 
     if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
     else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
@@ -67,8 +67,8 @@ class Adagrad(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def transform(self, target, params, grad, vars):
-        target = TensorList(target)
+    def transform(self, tensors, params, grads, vars):
+        tensors = TensorList(tensors)
         self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=params, cls=NumberList)
@@ -79,10 +79,10 @@ class Adagrad(Transform):
 
         # initialize accumulator on 1st step
         if self.global_state['step'] == 1:
-            sq_sum.set_(target.full_like(self.get_settings('initial_accumulator_value', params=params)))
+            sq_sum.set_(tensors.full_like(self.get_settings('initial_accumulator_value', params=params)))
 
         return adagrad_(
-            target,
+            tensors,
             sq_sum_=sq_sum,
             alpha=alpha,
             lr_decay=lr_decay,
@@ -96,6 +96,6 @@ class Adagrad(Transform):
             # inner args
             inner=self.children.get("inner", None),
             params=params,
-            grad=grad,
+            grads=grads,
             vars=vars,
         )

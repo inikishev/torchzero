@@ -174,25 +174,25 @@ class Orthogonalize(ParameterwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         orthogonalize, ns_steps, dual_norm_correction, adjust_lr, method = itemgetter(
             'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(self.settings[param])
 
-        if not orthogonalize: return target
+        if not orthogonalize: return tensor
 
-        if _is_at_least_2d(target):
+        if _is_at_least_2d(tensor):
 
-            X = _orthogonalize_tensor(target, ns_steps, method)
+            X = _orthogonalize_tensor(tensor, ns_steps, method)
 
             if dual_norm_correction:
-                X = _dual_norm_correction(X, target, batch_first=False)
+                X = _dual_norm_correction(X, tensor, batch_first=False)
 
             if adjust_lr:
                 X.mul_(adjust_lr_for_muon(1, param.shape))
 
             return X.view_as(param)
 
-        return target
+        return tensor
 
 
 class DualNormCorrection(ParameterwiseTransform):
@@ -201,11 +201,11 @@ class DualNormCorrection(ParameterwiseTransform):
     def __init__(self, target: Target='update'):
         super().__init__({}, uses_grad=True, target=target)
 
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         assert grad is not None
-        if (target.ndim >= 2) and (target.size(0) > 1) and (target.size(1) > 1):
-            return _dual_norm_correction(target, grad, batch_first=False)
-        return target
+        if (tensor.ndim >= 2) and (tensor.size(0) > 1) and (tensor.size(1) > 1):
+            return _dual_norm_correction(tensor, grad, batch_first=False)
+        return tensor
 
 
 class MuonAdjustLR(Transform):
@@ -215,10 +215,10 @@ class MuonAdjustLR(Transform):
         defaults = dict(alpha=alpha)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         alphas = self.get_settings('alpha', params=params)
-        tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(target, alphas) if _is_at_least_2d(t)]
+        tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(tensors, alphas) if _is_at_least_2d(t)]
         tensors = [i[0] for i in tensors_alphas]
         a = [i[1] for i in alphas]
         torch._foreach_mul_(tensors, a)
-        return target
+        return tensors

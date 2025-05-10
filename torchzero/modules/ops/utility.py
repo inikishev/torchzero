@@ -9,7 +9,7 @@ from ...utils.tensorlist import Distributions, TensorList
 class Clone(Transform):
     def __init__(self): super().__init__({}, uses_grad=False)
     @torch.no_grad
-    def transform(self, target, params, grad, vars): return [t.clone() for t in target]
+    def transform(self, tensors, params, grads, vars): return [t.clone() for t in tensors]
 
 class Grad(Module):
     def __init__(self):

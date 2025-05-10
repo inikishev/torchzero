@@ -116,7 +116,7 @@ class Newton(Module):
 
         # -------------------------------- inner step -------------------------------- #
         if 'inner' in self.children:
-            g_list = apply(self.children['inner'], list(g_list), params=params, grad=list(g_list), vars=vars)
+            g_list = apply(self.children['inner'], list(g_list), params=params, grads=list(g_list), vars=vars)
         g = torch.cat([t.view(-1) for t in g_list])
 
         # ------------------------------- regulazition ------------------------------- #

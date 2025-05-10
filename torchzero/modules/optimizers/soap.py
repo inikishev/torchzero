@@ -187,10 +187,10 @@ class SOAP(Transform):
         )
         super().__init__(defaults, uses_grad=False)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         updates = []
         # update preconditioners
-        for i,(p,t) in enumerate(zip(params, target)):
+        for i,(p,t) in enumerate(zip(params, tensors)):
             state = self.state[p]
             settings = self.settings[p]
             beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg,alpha = itemgetter(
@@ -219,7 +219,7 @@ class SOAP(Transform):
                     state['Q'] = get_orthogonal_matrix(state['GG'])
 
                 state['step'] = 0
-                updates.append(target[i].sign())
+                updates.append(tensors[i].sign())
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
                 # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
 

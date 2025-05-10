@@ -35,7 +35,7 @@ class NAG(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         velocity = self.get_state('velocity', params=params, cls=TensorList)
         lerp = self.settings[params[0]]['lerp']
 

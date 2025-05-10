@@ -56,7 +56,7 @@ class MatrixMomentum(Module):
             raise ValueError(hvp_mode)
 
         if 'hvp_tfm' in self.children:
-            hvp_ = TensorList(apply(self.children['hvp_tfm'], hvp_, params=vars.params, grad=vars.grad, vars=vars))
+            hvp_ = TensorList(apply(self.children['hvp_tfm'], hvp_, params=vars.params, grads=vars.grad, vars=vars))
 
         update = TensorList(vars.get_update())
 

@@ -90,7 +90,7 @@ class NewtonCG(Module):
         # -------------------------------- inner step -------------------------------- #
         b = grad
         if 'inner' in self.children:
-            b = as_tensorlist(apply(self.children['inner'], [g.clone() for g in grad], params=params, grad=grad, vars=vars))
+            b = as_tensorlist(apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None

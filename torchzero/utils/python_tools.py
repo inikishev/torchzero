@@ -69,3 +69,11 @@ class FallbackDict(UserDict[K, V]):
 
     def __repr__(self):
         return dict.__repr__(self.fallback | self.data)
+
+
+class StepCounter:
+    def __init__(self): self.step = 0
+    def increment(self): self.step += 1
+    def __call__(self): return self.step
+    def reset(self): self.step = 0
+

@@ -22,7 +22,7 @@ def rmsprop_(
     # inner args
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
-    grad: list[torch.Tensor] | None = None,
+    grads: list[torch.Tensor] | None = None,
     vars: Vars | None = None,
 ):
     """returns `tensors_`"""
@@ -36,7 +36,7 @@ def rmsprop_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply(inner, tensors_, params=params, grad=grad, vars=vars))
+        tensors_ = TensorList(apply(inner, tensors_, params=params, grads=grads, vars=vars))
 
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
@@ -61,7 +61,7 @@ class RMSprop(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         self.current_step += 1
 
         smoothing,eps = self.get_settings('smoothing', 'eps', params=params, cls=NumberList)
@@ -72,11 +72,11 @@ class RMSprop(Transform):
         max_exp_avg_sq = self.get_state('max_exp_avg_sq', params=params, cls=TensorList) if amsgrad else None
 
         if init == 'update' and self.current_step == 1:
-            exp_avg_sq.set_([t**2 for t in target])
-            if exp_avg is not None: exp_avg.set_([t.clone() for t in target])
+            exp_avg_sq.set_([t**2 for t in tensors])
+            if exp_avg is not None: exp_avg.set_([t.clone() for t in tensors])
 
         return rmsprop_(
-            TensorList(target),
+            TensorList(tensors),
             exp_avg_sq_=exp_avg_sq,
             smoothing=smoothing,
             eps=eps,
@@ -89,6 +89,6 @@ class RMSprop(Transform):
             # inner args
             inner=self.children.get("inner", None),
             params=params,
-            grad=grad,
+            grads=grads,
             vars=vars,
         )

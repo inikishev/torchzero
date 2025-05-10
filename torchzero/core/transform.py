@@ -28,7 +28,7 @@ class Transform(Module, ABC):
         self._uses_grad = uses_grad
 
     @abstractmethod
-    def transform(self, target: list[torch.Tensor], params: list[torch.Tensor], grad: list[torch.Tensor] | None, vars: Vars) -> Iterable[torch.Tensor]:
+    def transform(self, tensors: list[torch.Tensor], params: list[torch.Tensor], grads: list[torch.Tensor] | None, vars: Vars) -> Iterable[torch.Tensor]:
         """applies the update rule to `target`."""
 
     def step(self, vars: Vars) -> Vars:
@@ -112,7 +112,7 @@ class ParameterwiseTransform(Module, ABC):
     @abstractmethod
     def transform(
         self,
-        target: torch.Tensor,
+        tensor: torch.Tensor,
         param: torch.Tensor,
         grad: torch.Tensor | None,
         vars: Vars,
@@ -132,7 +132,7 @@ class ParameterwiseTransform(Module, ABC):
             for p, g, u in zip(params, grad, update):
                 # settings = self.settings[p] # couldn't make typing work with this
                 #, self.transform(target=u, param=p, grad=g, vars=vars, **{k:settings[k] for k in self.defaults})
-                transformed_update.append(self.transform(target=u, param=p, grad=g, vars=vars))
+                transformed_update.append(self.transform(tensor=u, param=p, grad=g, vars=vars))
 
             vars.update = transformed_update
             return vars
@@ -143,7 +143,7 @@ class ParameterwiseTransform(Module, ABC):
             transformed_grad = []
 
             for p, g in zip(params, grad):
-                transformed_grad.append(self.transform(target=g, param=p, grad=g, vars=vars))
+                transformed_grad.append(self.transform(tensor=g, param=p, grad=g, vars=vars))
 
             vars.grad = transformed_grad
             return vars
@@ -153,7 +153,7 @@ class ParameterwiseTransform(Module, ABC):
             grad = vars.grad if vars.grad is not None else [None] * len(params)
 
             for p, g in zip(params, grad):
-                set_storage_(p, self.transform(target=p, param=p, grad=g, vars=vars))
+                set_storage_(p, self.transform(tensor=p, param=p, grad=g, vars=vars))
 
             return vars
 
@@ -164,7 +164,7 @@ class ParameterwiseTransform(Module, ABC):
 
             for p, g in zip(params, grad):
                 transformed_params.append(
-                    self.transform(target=p.clone(), param=p, grad=g, vars=vars)
+                    self.transform(tensor=p.clone(), param=p, grad=g, vars=vars)
                 )
 
             vars.update = list(torch._foreach_sub(params, transformed_params))
@@ -178,7 +178,7 @@ class ParameterwiseTransform(Module, ABC):
 
             for p, g, u in zip(params, grad, update):
                 transformed_update.append(
-                    self.transform(target=u.clone(), param=p, grad=g, vars=vars)
+                    self.transform(tensor=u.clone(), param=p, grad=g, vars=vars)
                 )
 
             vars.update = list(torch._foreach_sub(update, transformed_update))
@@ -197,7 +197,7 @@ class ParameterwiseTransform(Module, ABC):
                     transformed_grad = []
 
                     for p, g in zip(params, grad):
-                        transformed_grad.append(self.transform(target=g, param=p, grad=g, vars=vars))
+                        transformed_grad.append(self.transform(tensor=g, param=p, grad=g, vars=vars))
 
                     for p, g in zip(params, transformed_grad):
                         p.grad = g
@@ -217,33 +217,33 @@ class ParameterwiseTransform(Module, ABC):
 
 def apply(
     tfm: Chainable,
-    target: list[torch.Tensor],
+    tensors: list[torch.Tensor],
     params: list[torch.Tensor],
-    grad: list[torch.Tensor] | None,
+    grads: list[torch.Tensor] | None,
     vars: Vars | None = None,
     current_step: int = 0,
 ):
     if vars is None: vars = Vars(params=params, closure=None, model=None, current_step=current_step)
     if isinstance(tfm, Transform):
-        if tfm._uses_grad and grad is None: grad = vars.get_grad()
-        return list(tfm.transform(target, params, grad, vars))
+        if tfm._uses_grad and grads is None: grads = vars.get_grad()
+        return list(tfm.transform(tensors, params, grads, vars))
 
     if isinstance(tfm, ParameterwiseTransform):
-        grads_list = grad
+        grads_list = grads
         if grads_list is None:
             if tfm._uses_grad: grads_list = vars.get_grad()
-            else: grads_list = [None] * len(target)
-        return [tfm.transform(t, p, g, vars) for t,p,g in zip(target,params,grads_list)]
+            else: grads_list = [None] * len(tensors)
+        return [tfm.transform(t, p, g, vars) for t,p,g in zip(tensors,params,grads_list)]
 
     if isinstance(tfm, Chain): tfm = tfm.get_children_sequence() # pyright: ignore[reportAssignmentType]
     if isinstance(tfm, Sequence):
         for module in tfm:
-            target = apply(module, target=target, params=params, grad=grad, vars=vars)
-        return target
+            tensors = apply(module, tensors=tensors, params=params, grads=grads, vars=vars)
+        return tensors
 
     if isinstance(tfm, Module):
         cvars = vars.clone(clone_update=False)
-        cvars.update = target
+        cvars.update = tensors
         cvars = tfm.step(cvars)
         vars.update_attrs_from_clone_(cvars)
         assert cvars.update is not None

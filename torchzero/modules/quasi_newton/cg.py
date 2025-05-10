@@ -1,211 +1,218 @@
+from abc import ABC, abstractmethod
+
 import torch
 
-from ...core import Transform
+from ...core import Chainable, Transform, apply
 from ...utils import TensorList, as_tensorlist
 
-# ------------------------------- Polak-Ribière ------------------------------ #
-class PolakRibiere(Transform):
-    """Polak-Ribière-Polyak nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+
+class ConguateGradientBase(Transform, ABC):
+    """all CGs are the same except beta calculation"""
+    def __init__(self, defaults = None, clip_beta: bool = False, reset_interval: int | None = None, inner: Chainable | None = None):
+        if defaults is None: defaults = {}
+        defaults['reset_interval'] = reset_interval
+        defaults['clip_beta'] = clip_beta
+        super().__init__(defaults, uses_grad=False)
+
+        if inner is not None:
+            self.set_child('inner', inner)
+
+    def initialize(self, p: TensorList, g: TensorList):
+        """runs on first step when prev_grads and prev_dir are not available"""
+
+    @abstractmethod
+    def get_beta(self, p: TensorList, g: TensorList, prev_g: TensorList, prev_d: TensorList) -> float | torch.Tensor:
+        """returns beta"""
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        grad = as_tensorlist(target) # for brevity
+    def transform(self, tensors, params, grads, vars):
+        tensors = as_tensorlist(tensors)
+        params = as_tensorlist(params)
 
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
+        step = self.counter()
+        prev_dir, prev_grads = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList)
 
-        denom = prev_grad.dot(prev_grad)
-        if denom == 0: beta = 0
-        else: beta = (grad.dot(grad - prev_grad) / denom).clamp(min=0)
+        # initialize on first step
+        if step == 0:
+            self.initialize(params, tensors)
+            prev_dir.copy_(tensors)
+            prev_grads.copy_(tensors)
+            self.counter.increment()
+            return tensors
 
-        dir = grad.add_(prev_dir.mul_(beta))
+        # get beta
+        beta = self.get_beta(params, tensors, prev_grads, prev_dir)
+        if self.settings[params[0]]['clip_beta']: beta = max(0, beta) # pyright:ignore[reportArgumentType]
+        prev_grads.copy_(tensors)
+
+        # inner step
+        if 'inner' in self.children:
+            tensors = as_tensorlist(apply(self.children['inner'], tensors, params, grads, vars))
+
+        # calculate new direction with beta
+        dir = tensors.add_(prev_dir.mul_(beta))
         prev_dir.copy_(dir)
-        prev_grad.set_(grad)
+
+        # resetting
+        self.counter.increment()
+        reset_interval = self.settings[params[0]]['reset_interval']
+        if reset_interval is not None and self.counter() % reset_interval == 0:
+            self.reset()
+
         return dir
+
+# ------------------------------- Polak-Ribière ------------------------------ #
+def polak_ribiere_beta(g: TensorList, prev_g: TensorList):
+    denom = prev_g.dot(prev_g)
+    if denom == 0: return 0
+    return g.dot(g - prev_g) / denom
+
+class PolakRibiere(ConguateGradientBase):
+    """Polak-Ribière-Polyak nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this."""
+    def __init__(self, clip_beta=True, reset_interval: int | None = None, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+
+    def get_beta(self, p, g, prev_g, prev_d):
+        return polak_ribiere_beta(g, prev_g)
 
 # ------------------------------ Fletcher–Reeves ----------------------------- #
-class FletcherReeves(Transform):
+def fletcher_reeves_beta(gg, prev_gg):
+    if prev_gg == 0: return 0
+    return gg / prev_gg
+
+class FletcherReeves(ConguateGradientBase):
     """Fletcher–Reeves nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        grad = as_tensorlist(target) # for brevity
+    def initialize(self, p, g):
+        self.global_state['prev_gg'] = g.dot(g)
 
-        if 'prev_dot' not in self.global_state:
-            self.global_state['prev_dot'] = grad.dot(grad)
-
-        prev_dir = self.get_state('prev_dir', params=params, cls=TensorList)
-        prev_dot = self.global_state['prev_dot']
-
-        cur_dot = grad.dot(grad)
-        if prev_dot == 0: beta = 0
-        else: beta = cur_dot / prev_dot
-
-        dir = grad.add_(prev_dir.mul_(beta))
-        prev_dir.copy_(dir)
-        self.global_state['prev_dot'] = cur_dot
-        return dir
-
+    def get_beta(self, p, g, prev_g, prev_d):
+        gg = g.dot(g)
+        beta = fletcher_reeves_beta(gg, self.global_state['prev_gg'])
+        self.global_state['prev_gg'] = gg
+        return beta
 
 # ----------------------------- Hestenes–Stiefel ----------------------------- #
-def hestenes_stiefel_beta(grad: TensorList, prev_dir: TensorList,prev_grad: TensorList):
-    grad_diff = grad - prev_grad
-    denom = prev_dir.dot(grad_diff)
+def hestenes_stiefel_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
+    grad_diff = g - prev_g
+    denom = prev_d.dot(grad_diff)
     if denom == 0: return 0
-    return (grad.dot(grad_diff) / denom).neg()
+    return (g.dot(grad_diff) / denom).neg()
 
-def hestenes_stiefel_(grad: TensorList, prev_dir_: TensorList,prev_grad_: TensorList):
-    beta = hestenes_stiefel_beta(grad, prev_dir=prev_dir_, prev_grad=prev_grad_)
 
-    dir = grad.add_(prev_dir_.mul_(beta))
-    prev_dir_.copy_(dir)
-    prev_grad_.set_(grad)
-    return dir
-
-class HestenesStiefel(Transform):
+class HestenesStiefel(ConguateGradientBase):
     """Hestenes–Stiefel nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
-        return hestenes_stiefel_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)
+    def get_beta(self, p, g, prev_g, prev_d):
+        return hestenes_stiefel_beta(g, prev_d, prev_g)
 
 
 # --------------------------------- Dai–Yuan --------------------------------- #
-def dai_yuan_beta(grad: TensorList, prev_dir: TensorList,prev_grad: TensorList):
-    denom = prev_dir.dot(grad - prev_grad)
+def dai_yuan_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
+    denom = prev_d.dot(g - prev_g)
     if denom == 0: return 0
-    return (grad.dot(grad) / denom).neg()
+    return (g.dot(g) / denom).neg()
 
-def dai_yuan_(grad: TensorList, prev_dir_: TensorList,prev_grad_: TensorList):
-    beta = dai_yuan_beta(grad, prev_dir=prev_dir_, prev_grad=prev_grad_)
-
-    dir = grad.add_(prev_dir_.mul_(beta))
-    prev_dir_.copy_(dir)
-    prev_grad_.set_(grad)
-    return dir
-
-class DaiYuan(Transform):
+class DaiYuan(ConguateGradientBase):
     """Dai–Yuan nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
-        return dai_yuan_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)
+    def get_beta(self, p, g, prev_g, prev_d):
+        return dai_yuan_beta(g, prev_d, prev_g)
 
 
 # -------------------------------- Liu-Storey -------------------------------- #
-class LiuStorey(Transform):
+def liu_storey_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList, ):
+    denom = prev_g.dot(prev_d)
+    if denom == 0: return 0
+    return g.dot(g - prev_g) / denom
+
+class LiuStorey(ConguateGradientBase):
     """Liu-Storey nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        grad = as_tensorlist(target) # for brevity
-
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
-
-        denom = prev_grad.dot(prev_dir)
-        if denom == 0: beta = 0
-        else: beta = grad.dot(grad - prev_grad) / denom
-
-        dir = grad.add_(prev_dir.mul_(beta))
-        prev_dir.copy_(dir)
-        prev_grad.set_(grad)
-        return dir
+    def get_beta(self, p, g, prev_g, prev_d):
+        return liu_storey_beta(g, prev_d, prev_g)
 
 # ----------------------------- Conjugate Descent ---------------------------- #
 class ConjugateDescent(Transform):
     """Conjugate Descent (CD). This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
+    def __init__(self, inner: Chainable | None = None):
         super().__init__(defaults={}, uses_grad=False)
 
+        if inner is not None:
+            self.set_child('inner', inner)
+
+
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        grad = as_tensorlist(target) # for brevity
+    def transform(self, tensors, params, grads, vars):
+        g = as_tensorlist(tensors)
 
-        prev_dir = self.get_state('prev_dir', params=params, cls=TensorList, init = [torch.zeros_like, grad])
+        prev_d = self.get_state('prev_dir', params=params, cls=TensorList, init = [torch.zeros_like, g])
         if 'denom' not in self.global_state:
-            self.global_state['denom'] = torch.tensor(0.).to(grad[0])
+            self.global_state['denom'] = torch.tensor(0.).to(g[0])
 
-        denom = self.global_state['denom'] # prev_grad.T @ prev_dir
-        if denom == 0: beta = 0
-        else: beta = grad.dot(grad) / denom
+        prev_gd = self.global_state.get('prev_gd', 0)
+        if prev_gd == 0: beta = 0
+        else: beta = g.dot(g) / prev_gd
 
-        dir = grad.add_(prev_dir.mul_(beta))
-        prev_dir.copy_(dir)
-        self.global_state['denom'] = grad.dot(dir)
+        # inner step
+        if 'inner' in self.children:
+            g = as_tensorlist(apply(self.children['inner'], g, params, grads, vars))
+
+        dir = g.add_(prev_d.mul_(beta))
+        prev_d.copy_(dir)
+        self.global_state['prev_gd'] = g.dot(dir)
         return dir
 
 
 # -------------------------------- Hager-Zhang ------------------------------- #
-class HagerZhang(Transform):
+def hager_zhang_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList,):
+    g_diff = g - prev_g
+    denom = prev_d.dot(g_diff)
+    if denom == 0: return 0
+
+    term1 = 1/denom
+    # term2
+    term2 = (g_diff - (2 * prev_d * (g_diff.pow(2).global_sum()/denom))).dot(g)
+    return (term1 * term2).neg()
+
+
+class HagerZhang(ConguateGradientBase):
     """Hager-Zhang nonlinear conjugate gradient method,
-    it's the most complicated one so surely it must be better that the other ones.
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        grad = as_tensorlist(target) # for brevity
+    def get_beta(self, p, g, prev_g, prev_d):
+        return hager_zhang_beta(g, prev_d, prev_g)
 
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, grad])
-        grad_diff = grad - prev_grad
-
-        # term 1
-        denom = prev_dir.dot(grad_diff)
-        if denom == 0: beta = 0
-        else:
-            term1 = 1/denom
-
-            # term2
-            term2 = (grad_diff - (2 * prev_dir * (grad_diff.pow(2).global_sum()/denom))).dot(grad)
-
-            beta = (term1 * term2).neg()
-
-        dir = grad.add_(prev_dir.mul_(beta))
-        prev_dir.copy_(dir)
-        prev_grad.set_(grad)
-        return dir
 
 # ----------------------------------- HS-DY ---------------------------------- #
-def hs_dy_beta(grad: TensorList, prev_dir: TensorList,prev_grad: TensorList):
-    grad_diff = grad - prev_grad
-    denom = prev_dir.dot(grad_diff)
+def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
+    grad_diff = g - prev_g
+    denom = prev_d.dot(grad_diff)
     if denom == 0: return 0
 
     # Dai-Yuan
-    dy_beta = (grad.dot(grad) / denom).neg().clamp(min=0)
+    dy_beta = (g.dot(g) / denom).neg().clamp(min=0)
 
     # Hestenes–Stiefel
-    hs_beta = (grad.dot(grad_diff) / denom).neg().clamp(min=0)
+    hs_beta = (g.dot(grad_diff) / denom).neg().clamp(min=0)
 
     return max(0, min(dy_beta, hs_beta)) # type:ignore
 
-def hd_dy_(grad: TensorList, prev_dir_: TensorList,prev_grad_: TensorList):
-    beta = hs_dy_beta(grad, prev_dir=prev_dir_, prev_grad=prev_grad_)
-
-    dir = grad.add_(prev_dir_.mul_(beta))
-    prev_dir_.copy_(dir)
-    prev_grad_.set_(grad)
-    return dir
-
-class HybridHS_DY(Transform):
+class HybridHS_DY(ConguateGradientBase):
     """HS-DY hybrid conjugate gradient method.
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-    @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        prev_dir, prev_grad = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList, init=[torch.zeros_like, target])
-        return hd_dy_(as_tensorlist(target), prev_dir_=prev_dir, prev_grad_=prev_grad)
+    def get_beta(self, p, g, prev_g, prev_d):
+        return hs_dy_beta(g, prev_d, prev_g)

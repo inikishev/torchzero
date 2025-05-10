@@ -23,14 +23,14 @@ class ClipNormByEMA(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(self.settings[params[0]])
 
         beta, eps = self.get_settings('beta', 'eps', params=params, cls=NumberList)
-        target = TensorList(target)
+        tensors = TensorList(tensors)
 
-        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else target), cls=TensorList)
-        ema.lerp_(target, 1-beta)
+        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
+        ema.lerp_(tensors, 1-beta)
 
         if tensorwise:
             ema_norm = ema.norm(ord)
@@ -44,8 +44,8 @@ class ClipNormByEMA(Transform):
                 ema_norm.div_(ema_denom)
                 prev_ema_norm.set_(ema_norm)
 
-            target_norm = target.norm(ord)
-            denom = target_norm / ema_norm.clip(min=eps)
+            tensors_norm = tensors.norm(ord)
+            denom = tensors_norm / ema_norm.clip(min=eps)
             if self.NORMALIZE: denom.clip_(min=eps)
             else: denom.clip_(min=1)
 
@@ -61,13 +61,13 @@ class ClipNormByEMA(Transform):
                     ema_norm = allowed_norm
                 prev_ema_norm.set_(ema_norm)
 
-            target_norm = target.global_vector_norm(ord)
-            denom = target_norm / ema_norm.clip(min=eps[0])
+            tensors_norm = tensors.global_vector_norm(ord)
+            denom = tensors_norm / ema_norm.clip(min=eps[0])
             if self.NORMALIZE: denom.clip_(min=eps[0])
             else: denom.clip_(min=1)
 
-        target.div_(denom)
-        return target
+        tensors.div_(denom)
+        return tensors
 
 class NormalizeByEMA(ClipNormByEMA):
     NORMALIZE = True
@@ -89,17 +89,17 @@ class ClipValueByEMA(Transform):
             self.set_child('ema_tfm', ema_tfm)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         ema_init = itemgetter('ema_init')(self.settings[params[0]])
 
         beta = self.get_settings('beta', params=params, cls=NumberList)
-        target = TensorList(target)
+        tensors = TensorList(tensors)
 
         ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
-        ema.lerp_(target.abs(), 1-beta)
+        ema.lerp_(tensors.abs(), 1-beta)
 
         if 'ema_tfm' in self.children:
             ema = TensorList(apply(self.children['ema_tfm'], ema, params, vars.grad, vars))
 
-        target.clip_(-ema, ema)
-        return target
+        tensors.clip_(-ema, ema)
+        return tensors

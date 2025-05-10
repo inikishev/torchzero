@@ -14,17 +14,17 @@ class Averaging(ParameterwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         history_size = self.settings[param]['history_size']
         state = self.state[param]
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)
-            state['average'] = torch.zeros_like(target)
+            state['average'] = torch.zeros_like(tensor)
 
         history = state['history']; average = state['average']
         if len(history) == history_size: average -= history[0]
-        history.append(target)
-        average += target
+        history.append(tensor)
+        average += tensor
 
         return average / len(history)
 
@@ -34,7 +34,7 @@ class WeightedAveraging(ParameterwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         weights = self.settings[param]['weights']
         state = self.state[param]
 
@@ -42,7 +42,7 @@ class WeightedAveraging(ParameterwiseTransform):
             state['history'] = deque(maxlen=len(weights))
 
         history = state['history']
-        history.append(target)
+        history.append(tensor)
 
         average = cast(torch.Tensor, None)
         for i, (h, w) in enumerate(zip(history, weights)):
@@ -58,7 +58,7 @@ class MedianAveraging(ParameterwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         history_size = self.settings[param]['history_size']
         state = self.state[param]
 
@@ -66,7 +66,7 @@ class MedianAveraging(ParameterwiseTransform):
             state['history'] = deque(maxlen=history_size)
 
         history = state['history']
-        history.append(target)
+        history.append(tensor)
 
         stacked = torch.stack(tuple(history), 0)
         return torch.quantile(stacked, 0.5, dim = 0)

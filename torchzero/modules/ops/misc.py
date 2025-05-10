@@ -17,14 +17,14 @@ class Previous(ParameterwiseTransform):
 
 
     @torch.no_grad
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         n = self.settings[param]['n']
         state = self.state[param]
 
         if 'history' not in state:
             state['history'] = deque(maxlen=n+1)
 
-        state['history'].append(target)
+        state['history'].append(tensor)
 
         return state['history'][0]
 
@@ -35,10 +35,10 @@ class LastDifference(Transform):
         super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         prev_target = self.get_state('prev_target', params=params) # initialized to 0
-        difference = torch._foreach_sub(target, prev_target)
-        for p, c in zip(prev_target, target): p.set_(c)
+        difference = torch._foreach_sub(tensors, prev_target)
+        for p, c in zip(prev_target, tensors): p.set_(c)
         return difference
 
 class LastGradDifference(Module):
@@ -62,10 +62,10 @@ class LastProduct(Transform):
         super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         prev_target = self.get_state('prev_target', params=params, init=torch.ones_like) # initialized to 1 for prod
-        prod = torch._foreach_mul(target, prev_target)
-        for p, c in zip(prev_target, target): p.set_(c)
+        prod = torch._foreach_mul(tensors, prev_target)
+        for p, c in zip(prev_target, tensors): p.set_(c)
         return prod
 
 class LastRatio(Transform):
@@ -75,12 +75,12 @@ class LastRatio(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to ones
         numerator = self.settings[params[0]]['numerator']
-        if numerator == 'cur': ratio = torch._foreach_div(target, prev_target)
-        else: ratio = torch._foreach_div(prev_target, target)
-        for p, c in zip(prev_target, target): p.set_(c)
+        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev_target)
+        else: ratio = torch._foreach_div(prev_target, tensors)
+        for p, c in zip(prev_target, tensors): p.set_(c)
         return ratio
 
 class LastAbsoluteRatio(Transform):
@@ -90,17 +90,17 @@ class LastAbsoluteRatio(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to 0
         numerator = self.settings[params[0]]['numerator']
         eps = self.get_settings('eps', params=params, cls = NumberList)
 
-        torch._foreach_abs_(target)
+        torch._foreach_abs_(tensors)
         torch._foreach_clamp_min_(prev_target, eps)
 
-        if numerator == 'cur': ratio = torch._foreach_div(target, prev_target)
-        else: ratio = torch._foreach_div(prev_target, target)
-        for p, c in zip(prev_target, target): p.set_(c)
+        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev_target)
+        else: ratio = torch._foreach_div(prev_target, tensors)
+        for p, c in zip(prev_target, tensors): p.set_(c)
         return ratio
 
 class GradSign(Transform):
@@ -109,9 +109,9 @@ class GradSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
-        return [t.copysign_(g) for t,g in zip(target, grad)]
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
+        return [t.copysign_(g) for t,g in zip(tensors, grads)]
 
 class UpdateSign(Transform):
     """use per-weight magnitudes from grad while using sign from update."""
@@ -119,9 +119,9 @@ class UpdateSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
-        return [g.copysign(t) for t,g in zip(target, grad)] # no in-place
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
+        return [g.copysign(t) for t,g in zip(tensors, grads)] # no in-place
 
 class GraftToGrad(Transform):
     """use gradient norm and update direction."""
@@ -130,10 +130,10 @@ class GraftToGrad(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
-        return TensorList(target).graft_(grad, tensorwise=tensorwise, ord=ord, eps=eps)
+        return TensorList(tensors).graft_(grads, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class GraftGradToUpdate(Transform):
     """use update norm and gradient direction."""
@@ -142,10 +142,10 @@ class GraftGradToUpdate(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        assert grad is not None
+    def transform(self, tensors, params, grads, vars):
+        assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
-        return TensorList(grad).graft(target, tensorwise=tensorwise, ord=ord, eps=eps)
+        return TensorList(grads).graft(tensors, tensorwise=tensorwise, ord=ord, eps=eps)
 
 
 class GraftToParams(Transform):
@@ -155,9 +155,9 @@ class GraftToParams(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
-        return TensorList(target).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
+        return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(Transform):
     """multiplies update by absolute parameter values to make it relative to their magnitude, min_value is minimum value to avoid getting stuck at 0"""
@@ -166,10 +166,10 @@ class Relative(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         mul = TensorList(params).abs().clamp_(self.get_settings('min_value', params=params))
-        torch._foreach_mul_(target, mul)
-        return target
+        torch._foreach_mul_(tensors, mul)
+        return tensors
 
 class FillLoss(Module):
     """makes tensors filled with loss value times alpha"""
@@ -191,12 +191,12 @@ class MulByLoss(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars): #vars used for loss
+    def transform(self, tensors, params, grads, vars): #vars used for loss
         alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
         loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_mul_(target, mul)
-        return target
+        torch._foreach_mul_(tensors, mul)
+        return tensors
 
 class DivByLoss(Transform):
     """divides update by loss times alpha"""
@@ -205,12 +205,12 @@ class DivByLoss(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars): #vars used for loss
+    def transform(self, tensors, params, grads, vars): #vars used for loss
         alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
         loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_div_(target, mul)
-        return target
+        torch._foreach_div_(tensors, mul)
+        return tensors
 
 
 
@@ -333,17 +333,17 @@ class Dropout(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
-        target = TensorList(target)
+    def transform(self, tensors, params, grads, vars):
+        tensors = TensorList(tensors)
         p = self.get_settings('p', params=params, cls=NumberList)
         graft = self.settings[params[0]]['graft']
 
         if graft:
-            target_norm = target.global_vector_norm()
-            target.mul_(target.rademacher_like(1-p).add_(1).div_(2))
-            return target.mul_(target_norm / target.global_vector_norm()) # graft
+            target_norm = tensors.global_vector_norm()
+            tensors.mul_(tensors.rademacher_like(1-p).add_(1).div_(2))
+            return tensors.mul_(target_norm / tensors.global_vector_norm()) # graft
 
-        return target.mul_(target.rademacher_like(1-p).add_(1).div_(2))
+        return tensors.mul_(tensors.rademacher_like(1-p).add_(1).div_(2))
 
 
 class NoiseSign(Transform):
@@ -353,10 +353,10 @@ class NoiseSign(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         alpha = self.get_settings('alpha', params=params)
         distribution = self.settings[params[0]]['distribution']
-        return TensorList(target).sample_like(alpha, distribution).copysign_(target)
+        return TensorList(tensors).sample_like(alpha, distribution).copysign_(tensors)
 
 
 class NegateOnLossIncrease(Module):

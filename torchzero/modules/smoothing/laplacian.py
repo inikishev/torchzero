@@ -82,7 +82,7 @@ class LaplacianSmoothing(Transform):
 
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         layerwise = self.settings[params[0]]['layerwise']
 
         # layerwise laplacian smoothing
@@ -90,7 +90,7 @@ class LaplacianSmoothing(Transform):
 
             # precompute the denominator for each layer and store it in each parameters state
             smoothed_target = TensorList()
-            for p, t in zip(params, target):
+            for p, t in zip(params, tensors):
                 settings = self.settings[p]
                 if p.numel() > settings['min_numel']:
                     state = self.state[p]
@@ -104,12 +104,12 @@ class LaplacianSmoothing(Transform):
         # else
         # full laplacian smoothing
         # precompute full denominator
-        target = TensorList(target)
+        tensors = TensorList(tensors)
         if self.global_state['full_denominator'] is None:
-            self.global_state['full_denominator'] = _precompute_denominator(target.to_vec(), self.settings[params[0]]['sigma'])
+            self.global_state['full_denominator'] = _precompute_denominator(tensors.to_vec(), self.settings[params[0]]['sigma'])
 
         # apply the smoothing
-        vec = target.to_vec()
-        return target.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.global_state['full_denominator']).real)#pylint:disable=not-callable
+        vec = tensors.to_vec()
+        return tensors.from_vec(torch.fft.ifft(torch.fft.fft(vec) / self.global_state['full_denominator']).real)#pylint:disable=not-callable
 
 

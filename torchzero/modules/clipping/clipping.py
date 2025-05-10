@@ -147,9 +147,9 @@ class ClipValue(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         value = self.get_settings('value', params=params)
-        return TensorList(target).clip_([-v for v in value], value)
+        return TensorList(tensors).clip_([-v for v in value], value)
 
 class ClipNorm(Transform):
     """Clips update norm to a value.
@@ -179,11 +179,11 @@ class ClipNorm(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=params, cls=NumberList)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
         _clip_norm_(
-            tensors_ = TensorList(target),
+            tensors_ = TensorList(tensors),
             min = min_norm if min_norm[0] is not None else None,
             max = max_norm if max_norm[0] is not None else None,
             norm_value = None,
@@ -192,7 +192,7 @@ class ClipNorm(Transform):
             inverse_dims=inverse_dims,
             min_size = min_size,
         )
-        return target
+        return tensors
 
 class Normalize(Transform):
     """Normalizes the update.
@@ -221,12 +221,12 @@ class Normalize(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         norm_value = self.get_settings('norm_value', params=params, cls=NumberList)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
 
         _clip_norm_(
-            tensors_ = TensorList(target),
+            tensors_ = TensorList(tensors),
             min = None,
             max = None,
             norm_value = norm_value,
@@ -236,7 +236,7 @@ class Normalize(Transform):
             min_size = min_size,
         )
 
-        return target
+        return tensors
 
 
 def _centralize_(
@@ -298,10 +298,10 @@ class Centralize(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
 
-        _centralize_(tensors_ = TensorList(target), dim=dim, inverse_dims=inverse_dims, min_size=min_size)
+        _centralize_(tensors_ = TensorList(tensors), dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 
-        return target
+        return tensors
 

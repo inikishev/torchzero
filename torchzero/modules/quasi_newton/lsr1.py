@@ -148,7 +148,7 @@ class LSR1(Module):
         prev_l_grad.copy_(l_update)
 
         if 'inner' in self.children:
-            update = TensorList(apply(self.children['inner'], target=update, params=params, grad=vars.grad, vars=vars))
+            update = TensorList(apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:

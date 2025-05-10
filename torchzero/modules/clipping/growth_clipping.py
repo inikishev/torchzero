@@ -33,50 +33,50 @@ class ClipValueGrowth(ParameterwiseTransform):
         super().__init__(defaults, uses_grad=False, target=target)
 
 
-    def transform(self, target, param, grad, vars):
+    def transform(self, tensor, param, grad, vars):
         add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(self.settings[param])
         add: float | None
 
         state = self.state[param]
 
         if add is None and mul is None:
-            return target
+            return tensor
 
         if 'prev' not in state:
-            state['prev'] = target
-            return target
+            state['prev'] = tensor
+            return tensor
 
         prev: torch.Tensor = state['prev']
 
         # additive bound
         if add is not None:
-            growth = (target - prev).abs()
-            target.sub_(torch.where(growth > add, (growth-add).copysign_(target), 0))
+            growth = (tensor - prev).abs()
+            tensor.sub_(torch.where(growth > add, (growth-add).copysign_(tensor), 0))
 
         # multiplicative bound
         growth = None
         if mul is not None:
             prev_magn = prev.abs()
             if min_value is not None: prev_magn.clip_(min=min_value)
-            growth = (target.abs() / prev_magn).clamp_(min=1e-8)
+            growth = (tensor.abs() / prev_magn).clamp_(min=1e-8)
 
             denom = torch.where(growth > mul, growth/mul, 1)
 
-            target.div_(denom)
+            tensor.div_(denom)
 
         # limit max growth decay
         if max_decay is not None:
             if growth is None:
                 prev_magn = prev.abs()
                 if min_value is not None: prev_magn.clip_(min=min_value)
-                growth = (target.abs() / prev_magn).clamp_(min=1e-8)
+                growth = (tensor.abs() / prev_magn).clamp_(min=1e-8)
 
-            new_prev = torch.where(growth < (1/max_decay), prev/max_decay, target)
+            new_prev = torch.where(growth < (1/max_decay), prev/max_decay, tensor)
         else:
-            new_prev = target.clone()
+            new_prev = tensor.clone()
 
         state['prev'] = new_prev
-        return target
+        return tensor
 
 
 def norm_growth_clip_(
@@ -150,17 +150,17 @@ class ClipNormGrowth(Transform):
 
 
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         parameterwise = self.settings[params[0]]['parameterwise']
-        target = TensorList(target)
+        tensors = TensorList(tensors)
 
         if parameterwise:
-            ts = target
+            ts = tensors
             stts = [self.state[p] for p in params]
             stns = [self.settings[p] for p in params]
 
         else:
-            ts = [target.to_vec()]
+            ts = [tensors.to_vec()]
             stts = [self.global_state]
             stns = [self.settings[params[0]]]
 
@@ -182,6 +182,6 @@ class ClipNormGrowth(Transform):
             )
 
         if not parameterwise:
-            target.from_vec_(ts[0])
+            tensors.from_vec_(ts[0])
 
-        return target
+        return tensors

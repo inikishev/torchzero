@@ -14,9 +14,9 @@ class ReduceOutwardLR(Transform):
         super().__init__(defaults, uses_grad=use_grad, target=target)
 
     @torch.no_grad
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         params = TensorList(params)
-        target = TensorList(target)
+        tensors = TensorList(tensors)
 
         mul = self.get_settings('mul', params=params)
         s = self.settings[params[0]]
@@ -24,12 +24,12 @@ class ReduceOutwardLR(Transform):
         invert = s['invert']
 
         if use_grad: cur = vars.get_grad()
-        else: cur = target
+        else: cur = tensors
 
         # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
         if invert: mask = (params * cur) > 0
         else: mask = (params * cur) < 0
 
-        target.masked_set_(mask, target*mul)
+        tensors.masked_set_(mask, tensors*mul)
 
-        return target
+        return tensors

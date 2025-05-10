@@ -118,11 +118,11 @@ class Shampoo(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def transform(self, target, params, grad, vars):
+    def transform(self, tensors, params, grads, vars):
         merged_target = [] # target with merged dims
 
         # update preconditioners
-        for i,(p,t) in enumerate(zip(params, target)):
+        for i,(p,t) in enumerate(zip(params, tensors)):
             state = self.state[p]
             settings = self.settings[p]
             beta, matrix_eps, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
@@ -165,11 +165,11 @@ class Shampoo(Transform):
 
         # inner step
         if 'inner' in self.children:
-            target = apply(self.children['inner'], target, params=params, grad=grad, vars=vars)
+            tensors = apply(self.children['inner'], tensors, params=params, grads=grads, vars=vars)
 
             # have to merge small dims again
             merged_target = [] # target with merged dims
-            for i,(p,t) in enumerate(zip(params, target)):
+            for i,(p,t) in enumerate(zip(params, tensors)):
                 state = self.state[p]
                 settings = self.settings[p]
                 if settings['merge_small']:
@@ -183,13 +183,13 @@ class Shampoo(Transform):
             decay, merge_small, adagrad_eps= itemgetter('decay', 'merge_small', 'adagrad_eps')(settings)
 
             if 'diagonal_accumulator' in state:
-                target[i] = apply_diagonal_(t, state['diagonal_accumulator'], decay=decay, eps=adagrad_eps)
+                tensors[i] = apply_diagonal_(t, state['diagonal_accumulator'], decay=decay, eps=adagrad_eps)
             else:
-                target[i] = apply_shampoo_preconditioner(t, preconditioners_=state['preconditioners'], decay=decay)
+                tensors[i] = apply_shampoo_preconditioner(t, preconditioners_=state['preconditioners'], decay=decay)
 
             if merge_small:
-                target[i] = _unmerge_small_dims(target[i], state['flat_sizes'], state['sort_idxs'])
+                tensors[i] = _unmerge_small_dims(tensors[i], state['flat_sizes'], state['sort_idxs'])
 
             state['step'] += 1
 
-        return target
+        return tensors

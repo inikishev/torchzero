@@ -163,7 +163,7 @@ class OnlineLBFGS(Module):
 
         # step with inner module before applying preconditioner
         if self.children:
-            update = TensorList(apply(self.children['inner'], target=update, params=params, grad=vars.grad, vars=vars))
+            update = TensorList(apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
