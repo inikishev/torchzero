@@ -7,7 +7,7 @@ import torch
 
 from ...core import Target, Transform
 from ...utils import NumberList, TensorList
-from ..functional import debias2, ema_, ema_sq_, sqrt_ema_sq_
+from ..functional import ema_, ema_sq_, sqrt_ema_sq_
 from .ema import EMASquared, SqrtEMASquared
 from .momentum import nag_
 
@@ -62,7 +62,7 @@ class PrecenteredEMASquared(Transform):
             max_exp_avg_sq = None
 
         return precentered_ema_sq_(
-            TensorList(target),
+            TensorList(tensors),
             exp_avg_ = exp_avg,
             exp_avg_sq_=exp_avg_sq,
             beta1=beta1,
@@ -149,7 +149,7 @@ class CoordinateMomentum(Transform):
     def transform(self, tensors, params, grads, vars):
         p = self.get_settings('p', params=params, cls=NumberList)
         velocity = self.get_state('velocity', params=params, cls=TensorList)
-        return coordinate_momentum_(TensorList(target), velocity_=velocity, p=p).clone()
+        return coordinate_momentum_(TensorList(tensors), velocity_=velocity, p=p).clone()
 
 
 # def multiplicative_momentum_(

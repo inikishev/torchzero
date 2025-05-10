@@ -10,7 +10,7 @@ from ..modules import (
     ClipNormGrowth,
     ClipValue,
     ClipValueGrowth,
-    Debias1,
+    Debias,
     Normalize,
 )
 
@@ -25,7 +25,7 @@ def get_momentum(trial: optuna.Trial, prefix: str, conditional: bool=True) -> li
         debiased = trial.suggest_categorical(f'{prefix}_debiased', [True, False])
         if nag:
             m = NAG(beta, dampening, lerp)
-            if debiased: m = Chain(m, Debias1(beta))
+            if debiased: m = Chain(m, Debias(beta1=beta))
         else:
             m = EMA(beta, dampening, debiased=debiased, lerp=lerp)
         return [m]

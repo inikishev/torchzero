@@ -6,7 +6,7 @@ import torch
 from ...core import Module, Target, Transform
 from ...utils import NumberList, TensorList
 from ..functional import (
-    debias1,
+    debias, debiased_step_size,
     ema_,
     sqrt_ema_sq_,
 )
@@ -32,16 +32,16 @@ def adam_(
     """Returns new tensors or updates params in-place."""
     exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
 
-    if debiased: exp_avg_ = debias1(exp_avg_, step=step, beta=beta1, alpha=alpha, inplace=False)
-    else: exp_avg_ = lazy_lr(exp_avg_, lr=alpha, inplace=False)
-
     sqrt_exp_avg_sq = sqrt_ema_sq_(tensors, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
-                                   debiased=debiased,step=step,pow=pow).add_(eps)
+                                   debiased=False,step=step,pow=pow)
+
+    if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
+
     # params is None, return update
-    if params_ is None: return exp_avg_ / sqrt_exp_avg_sq
+    if params_ is None: return (exp_avg_ / sqrt_exp_avg_sq.add_(eps)).lazy_mul(alpha)
 
     # update params in-place
-    params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq, -1)
+    params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq.add_(eps), -alpha)
 
 class Adam(Module):
     def __init__(
@@ -54,7 +54,7 @@ class Adam(Module):
         pow: float = 2,
         debiased: bool = True,
     ):
-        """Adam. This matches pytorch Adam implementation.
+        """Adam.
 
         Args:
             beta1 (float, optional): momentum. Defaults to 0.9.

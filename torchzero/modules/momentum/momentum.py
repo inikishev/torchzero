@@ -40,4 +40,4 @@ class NAG(Transform):
         lerp = self.settings[params[0]]['lerp']
 
         momentum,dampening = self.get_settings('momentum','dampening', params=params, cls=NumberList)
-        return nag_(TensorList(target), velocity_=velocity,momentum=momentum,dampening=dampening,lerp=lerp)
+        return nag_(TensorList(tensors), velocity_=velocity,momentum=momentum,dampening=dampening,lerp=lerp)

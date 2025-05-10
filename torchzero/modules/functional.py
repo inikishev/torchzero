@@ -13,24 +13,45 @@ from collections.abc import Callable, Sequence
 from ..utils import NumberList, TensorList
 
 inf = float('inf')
-def bias_correction1_step_size(step, beta: float | NumberList, alpha: float | NumberList):
-    """returns step size"""
-    return alpha / (1 - beta**step)
 
-def bias_correction2_value(step, beta: float | NumberList, pow: float):
-    """square root of second momentum should be divided by this"""
-    return (1 - beta**step) ** (1 / pow)
+def debiased_step_size(
+    step,
+    beta1: float | NumberList | None = None,
+    beta2: float | NumberList | None = None,
+    pow: float = 2,
+    alpha: float | NumberList = 1,
+):
+    """returns multiplier to step size"""
+    if isinstance(beta1, NumberList): beta1 = beta1.fill_none(0)
+    if isinstance(beta2, NumberList): beta2 = beta2.fill_none(0)
 
-def debias1(tensors_:TensorList, step: int, beta: float | NumberList, alpha:float | NumberList, inplace:bool):
-    """debias 1st momentum, optionally in-place"""
-    if inplace: return tensors_.mul_(bias_correction1_step_size(step, beta=beta, alpha=alpha))
-    return tensors_ * bias_correction1_step_size(step, beta=beta, alpha=alpha)
+    step_size = alpha
+    if beta1 is not None:
+        bias_correction1 = 1.0 - (beta1 ** step)
+        step_size /= bias_correction1
+    if beta2 is not None:
+        bias_correction2 = 1.0 - (beta2 ** step)
+        step_size *= bias_correction2 ** (1/pow)
+    return step_size
 
-def debias2(tensors_:TensorList, step: int, beta: float | NumberList, pow: float, inplace:bool):
+def debias(
+    tensors_: TensorList,
+    step: int,
+    inplace: bool,
+    beta1: float | NumberList | None = None,
+    beta2: float | NumberList | None = None,
+    alpha: float | NumberList = 1,
+    pow: float = 2,
+):
+    step_size = debiased_step_size(step=step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
+    if inplace: return tensors_.mul_(step_size)
+    return tensors_ * step_size
+
+def debias_second_momentum(tensors_:TensorList, step: int, beta: float | NumberList, pow: float, inplace:bool):
     """debias 2nd momentum, optionally in-place"""
-    if inplace: return tensors_.div_(bias_correction2_value(step, beta=beta, pow=pow))
-    return tensors_ / bias_correction2_value(step, beta=beta, pow=pow)
-
+    bias_correction2 = (1.0 - (beta ** step)) ** (1/pow)
+    if inplace: return tensors_.div_(bias_correction2)
+    return tensors_ / bias_correction2
 
 def lerp_power_(tensors:TensorList, exp_avg_pow_:TensorList, beta:float|NumberList, pow:float) -> TensorList:
     """
@@ -134,7 +155,7 @@ def sqrt_ema_sq_(
 
     sqrt_exp_avg_sq = root(exp_avg_sq_, pow, inplace=False)
 
-    if debiased: sqrt_exp_avg_sq = debias2(sqrt_exp_avg_sq, step=step, beta=beta, pow=pow, inplace=True)
+    if debiased: sqrt_exp_avg_sq = debias_second_momentum(sqrt_exp_avg_sq, step=step, beta=beta, pow=pow, inplace=True)
     return sqrt_exp_avg_sq
 
 

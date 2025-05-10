@@ -95,7 +95,8 @@ def _assert_identical_device(opt_fn: Callable, merge: bool, use_closure: bool, s
 
 @pytest.mark.parametrize('amsgrad', [True, False])
 def test_adam(amsgrad):
-    torch_fn = lambda p: torch.optim.Adam(p, lr=1, amsgrad=amsgrad)
+    # torch_fn = lambda p: torch.optim.Adam(p, lr=1, amsgrad=amsgrad)
+    # pytorch applies debiasing separately so it is applied before epsilo
     tz_fn = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad))
     tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1)) # test LR fusing
     tz_fn3 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1), tz.m.Add(1), tz.m.Sub(1))
@@ -110,24 +111,30 @@ def test_adam(amsgrad):
     tz_fn_ops2 = lambda p: tz.Modular(
         p,
         tz.m.DivModules(
-            [tz.m.EMA(0.9), tz.m.Debias1(0.9)],
-            [tz.m.EMASquared(0.999, amsgrad=amsgrad), tz.m.Sqrt(), tz.m.Debias2(0.999), tz.m.Add(1e-8)]
+            [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9)],
+            [tz.m.EMASquared(0.999, amsgrad=amsgrad), tz.m.Sqrt(), tz.m.Debias2(beta=0.999), tz.m.Add(1e-8)]
         ))
     tz_fn_ops3 = lambda p: tz.Modular(
         p,
         tz.m.DivModules(
-            [tz.m.EMA(0.9), tz.m.Debias1(0.9)],
+            [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9, beta2=0.999)],
+            [tz.m.EMASquared(0.999, amsgrad=amsgrad), tz.m.Sqrt(), tz.m.Add(1e-8)]
+        ))
+    tz_fn_ops4 = lambda p: tz.Modular(
+        p,
+        tz.m.DivModules(
+            [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9)],
             [
                 tz.m.Pow(2),
                 tz.m.EMA(0.999),
                 tz.m.AccumulateMaximum() if amsgrad else tz.m.Identity(),
                 tz.m.Sqrt(),
-                tz.m.Debias2(0.999),
+                tz.m.Debias2(beta=0.999),
                 tz.m.Add(1e-8)]
         ))
-    tz_fns = (tz_fn, tz_fn2, tz_fn3, tz_fn4, tz_fn5, tz_fn_ops, tz_fn_ops2, tz_fn_ops3)
+    tz_fns = (tz_fn, tz_fn2, tz_fn3, tz_fn4, tz_fn5, tz_fn_ops, tz_fn_ops2, tz_fn_ops3, tz_fn_ops4)
 
-    _assert_identical_opts([torch_fn, *tz_fns], merge=True, use_closure=True, device='cpu', steps=10)
+    _assert_identical_opts(tz_fns, merge=True, use_closure=True, device='cpu', steps=10)
     for fn in tz_fns:
         _assert_identical_merge_closure(fn, device='cpu', steps=10)
         _assert_identical_device(fn, merge=True, use_closure=True, steps=10)
@@ -140,8 +147,7 @@ def test_adam(amsgrad):
 def test_adam_hyperparams(beta1, beta2, eps, amsgrad, lr):
     tz_fn = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad), tz.m.LR(lr))
     tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad, alpha=lr))
-    torch_fn = lambda p: torch.optim.Adam(p, lr, (beta1, beta2), eps, amsgrad=amsgrad)
-    _assert_identical_opts([torch_fn, tz_fn, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
+    _assert_identical_opts([tz_fn, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
 
 @pytest.mark.parametrize('centered', [True, False])
 def test_rmsprop(centered):

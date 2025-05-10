@@ -114,6 +114,10 @@ class NumberList(list[int | float | Any]):
     def remainder(self, other: Any): return self.zipmap(operator.mod, other=other)
     def rpow(self, other: Any): return self.zipmap(lambda x,y: y**x, other=other)
 
+    def fill_none(self, value):
+        if isinstance(value, (list,tuple)): return self.__class__(v if s is None else s for s, v in zip(self, value))
+        return self.__class__(value if s is None else s for s in self)
+
     def logical_not(self): return self.__class__(not i for i in self)
     def logical_and(self, other: Any): return self.zipmap(operator.and_, other=other)
     def logical_or(self, other: Any): return self.zipmap(operator.or_, other=other)
