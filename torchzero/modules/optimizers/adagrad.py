@@ -122,7 +122,7 @@ class FullMatrixWhiten(TensorwisePreconditioner):
         G = tensor.ravel()
         GG = torch.outer(G, G)
 
-        if 'GG' not in state: state['GG'] = torch.eye(GG.size(-1), device=GG.device, dtype=GG.dtype)
+        if 'GG' not in state: state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
         if self.decay is not None: state['GG'].mul_(self.decay)
 
         if self.beta is not None: state['GG'].lerp_(GG, 1-self.beta)
@@ -152,7 +152,8 @@ class BatchedFullMatrixWhiten(TensorwisePreconditioner):
             G = tensor.view(tensor.shape[0], -1) # batch, dim
             GG = G.unsqueeze(-1) @ G.unsqueeze(1) # batch, dim, dim
 
-        if 'GG' not in state: state['GG'] = torch.eye(GG.size(-1), device=GG.device, dtype=GG.dtype).expand_as(GG).clone()
+        if 'GG' not in state: state['GG'] = torch.eye(GG.size(-1), device=GG.device, dtype=GG.dtype).expand_as(GG)
+
         if self.decay is not None: state['GG'].mul_(self.decay)
 
         if self.beta is not None: state['GG'].lerp_(GG, 1-self.beta)
