@@ -12,6 +12,7 @@ class BFGSInverseUpdateStrategy(TensorwisePreconditioner):
         self.init_scale: float | Literal['auto'] = init_scale
         self.tol = tol
 
+    @torch.no_grad
     def update_tensor(self, tensor, param, grad, state):
         p = param; g = tensor
         H = state.get('H', None)
@@ -51,6 +52,7 @@ class BFGSInverseUpdateStrategy(TensorwisePreconditioner):
         state['p_prev'] = p.clone()
         state['g_prev'] = g.clone()
 
+    @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state):
         state['step'] += 1
         H = state['H']
@@ -86,6 +88,7 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
         self.tol = tol
         self.scale_second = scale_second
 
+    @torch.no_grad
     def update_tensor(self, tensor, param, grad, state):
         p = param; g = tensor
         H = state.get('H', None)
@@ -124,6 +127,7 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
         self.p_prev = p.clone()
         self.g_prev = g.clone()
 
+    @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state):
         """precondition"""
         self.counter.increment()
@@ -164,7 +168,7 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
         self.growth_clip = growth_clip
         self.tol = tol
 
-
+    @torch.no_grad
     def update(self, tensors, params, grads, keys):
         p = TensorList(params); g = TensorList(tensors)
         states = [self.state[k] for k in keys]
@@ -239,6 +243,7 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
         p_prev.copy_(p)
         g_prev.copy_(g)
 
+    @torch.no_grad
     def apply(self, tensors, params, grads, keys):
         self.counter.increment()
         return TensorList(tensors).mul_([self.state[k]['H'] for k in keys])

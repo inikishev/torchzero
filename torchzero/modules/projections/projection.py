@@ -13,7 +13,7 @@ def _make_projected_closure(closure, vars: Vars, projection: "Projection",
                            params: list[torch.Tensor], projected_params: list[torch.Tensor]):
 
     def projected_closure(backward=True):
-        unprojected_params = projection.unproject(projected_params, vars)
+        unprojected_params = projection.unproject(projected_params, vars, current='params')
 
         with torch.no_grad():
             for p, new_p in zip(params, unprojected_params):
@@ -22,7 +22,7 @@ def _make_projected_closure(closure, vars: Vars, projection: "Projection",
         if backward:
             loss = closure()
             grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-            projected_grads = projection.project(grads, vars)
+            projected_grads = projection.project(grads, vars, current='grads')
             for p, g in zip(projected_params, projected_grads):
                 p.grad = g
 
@@ -65,21 +65,24 @@ class Projection(Module, ABC):
         self._projected_params = None
 
     @abstractmethod
-    def project(self, tensors: list[torch.Tensor], vars: Vars) -> Iterable[torch.Tensor]:
-        """projects `tensors`."""
+    def project(self, tensors: list[torch.Tensor], vars: Vars, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
+        """projects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
 
     @abstractmethod
-    def unproject(self, tensors: list[torch.Tensor], vars: Vars) -> Iterable[torch.Tensor]:
-        """unprojects `tensors` after projecting and updating them"""
+    def unproject(self, tensors: list[torch.Tensor], vars: Vars, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
+        """unprojects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
 
     @torch.no_grad
     def step(self, vars: Vars):
         projected_vars = vars.clone(clone_update=False)
+        update_is_grad = False
 
         # closure will calculate projected update and grad if needed
         if self._project_params and vars.closure is not None:
-            if self._project_update and vars.update is not None: projected_vars.update = list(self.project(vars.update, vars=vars))
-            if self._project_grad and vars.grad is not None: projected_vars.grad = list(self.project(vars.grad, vars=vars))
+            if self._project_update and vars.update is not None: projected_vars.update = list(self.project(vars.update, vars=vars, current='update'))
+            else:
+                update_is_grad = True
+            if self._project_grad and vars.grad is not None: projected_vars.grad = list(self.project(vars.grad, vars=vars, current='grads'))
 
         # project update and grad, unprojected attributes are deleted
         else:
@@ -88,24 +91,25 @@ class Projection(Module, ABC):
                     # update is None, meaning it will be set to `grad`.
                     # we can project grad and use it for update
                     grad = vars.get_grad()
-                    projected_vars.grad = list(self.project(grad, vars=vars))
+                    projected_vars.grad = list(self.project(grad, vars=vars, current='grads'))
                     if self._project_grad: projected_vars.update = [g.clone() for g in projected_vars.grad]
                     else: projected_vars.update = projected_vars.grad.copy() # don't clone because grad shouldn't be used
                     del vars.update
+                    update_is_grad = True
 
                 else:
                     update = vars.get_update()
-                    projected_vars.update = list(self.project(update, vars=vars))
+                    projected_vars.update = list(self.project(update, vars=vars, current='update'))
                     del update, vars.update
 
             if self._project_grad and projected_vars.grad is None:
                 grad = vars.get_grad()
-                projected_vars.grad = list(self.project(grad, vars=vars))
+                projected_vars.grad = list(self.project(grad, vars=vars, current='grads'))
 
         original_params = None
         if self._project_params:
             original_params = [p.clone() for p in vars.params]
-            projected_params = self.project(vars.params, vars=vars)
+            projected_params = self.project(vars.params, vars=vars, current='params')
 
         else:
             # make fake params for correct shapes and state storage
@@ -149,7 +153,7 @@ class Projection(Module, ABC):
 
         if self._project_update:
             assert projected_vars.update is not None
-            unprojected_vars.update = list(self.unproject(projected_vars.update, vars=vars))
+            unprojected_vars.update = list(self.unproject(projected_vars.update, vars=vars, current='grads' if update_is_grad else 'update'))
             del projected_vars.update
 
         # unprojecting grad doesn't make sense?
@@ -167,27 +171,6 @@ class Projection(Module, ABC):
 
 
 
-class ConcatProjection(Projection):
-    """
-    an example projection, where all parameters are concatenated into a single vector which is optimized as single parameter.
-
-    This is used for tests and it should not change the optimizer behavior in most cases (unless norm/sum/mean is used).
-
-    This can also make some modules faster, for example LBFGS, due to operating on single vectors.
-    """
-
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
-        super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
-
-    @torch.no_grad
-    def project(self, tensors, vars):
-        return [torch.cat([u.view(-1) for u in tensors], dim=-1)]
-
-    @torch.no_grad
-    def unproject(self, tensors, vars):
-        return vec_to_tensors(vec=tensors[0], reference=vars.params)
-
-
 class FlipConcatProjection(Projection):
     """
     for testing
@@ -197,11 +180,11 @@ class FlipConcatProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars):
+    def project(self, tensors, vars, current):
         return [torch.cat([u.view(-1) for u in tensors], dim=-1).flip(0)]
 
     @torch.no_grad
-    def unproject(self, tensors, vars):
+    def unproject(self, tensors, vars, current):
         return vec_to_tensors(vec=tensors[0].flip(0), reference=vars.params)
 
 
@@ -212,11 +195,11 @@ class NoopProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars):
+    def project(self, tensors, vars, current):
         return tensors
 
     @torch.no_grad
-    def unproject(self, tensors, vars):
+    def unproject(self, tensors, vars, current):
         return tensors
 
 class MultipyProjection(Projection):
@@ -226,51 +209,10 @@ class MultipyProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars):
+    def project(self, tensors, vars, current):
         return torch._foreach_mul(tensors, 2)
 
     @torch.no_grad
-    def unproject(self, tensors, vars):
+    def unproject(self, tensors, vars, current):
         return torch._foreach_div(tensors, 2)
 
-
-class TensorizeProjection(Projection):
-    """flattens and concatenates all parameters into a vector and then reshapes it into a tensor"""
-    def __init__(self, modules: Chainable, max_side=100, project_update=True, project_params=False, project_grad=False):
-        defaults = dict(max_side=max_side)
-        super().__init__(modules, defaults=defaults, project_update=project_update, project_params=project_params, project_grad=project_grad)
-
-    @torch.no_grad
-    def project(self, tensors, vars):
-        params = vars.params
-        max_side = self.settings[params[0]]['max_side']
-        num_elems = sum(t.numel() for t in tensors)
-
-        if num_elems < max_side:
-            self.global_state['remainder'] = 0
-            # return 1d
-            return [torch.cat([t.view(-1) for t in tensors])]
-
-
-        # determine appropriate shape to reshape into
-        ndims = math.ceil(math.log(num_elems, max_side)) # determine number of dims
-        dim_size = math.ceil(num_elems ** (1/ndims)) # average size of a dim with ndims
-        dims = [dim_size for _ in range(ndims)]
-        required_elems = math.prod(dims)
-
-        # add few extra zeros to vec to match a reshapable size
-        remainder = required_elems-num_elems
-        if remainder > 0: tensors = tensors + [torch.zeros(remainder, dtype=tensors[0].dtype, device=tensors[0].device)]
-        self.global_state['remainder'] = remainder
-
-        # flatten and reshape
-        vec = torch.cat([t.view(-1) for t in tensors])
-        return [vec.view(dims)]
-
-    @torch.no_grad
-    def unproject(self, tensors, vars):
-        remainder = self.global_state['remainder']
-        # warnings.warn(f'{tensors[0].shape = }')
-        vec = tensors[0].view(-1)
-        if remainder > 0: vec = vec[:-remainder]
-        return vec_to_tensors(vec, vars.params)

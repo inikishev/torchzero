@@ -135,6 +135,7 @@ class Precondition(Transform):
         self.counter.increment()
         return tensors
 
+    @torch.no_grad
     def transform(self, tensors, params, grads, vars):
         tensorwise = self.settings[params[0]]['tensorwise']
         if tensorwise: return self._tensor_wise_transform(tensors, params, grads, vars)

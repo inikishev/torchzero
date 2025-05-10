@@ -45,7 +45,7 @@ class FFTProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, vars):
+    def project(self, tensors, vars, current):
         settings = self.settings[vars.params[0]]
         one_d = settings['one_d']
         norm = settings['norm']
@@ -60,7 +60,7 @@ class FFTProjection(Projection):
         return [torch.view_as_real(torch.fft.rfftn(t, norm=norm)) if t.numel() > 1 else t for t in tensors] # pylint:disable=not-callable
 
     @torch.no_grad
-    def unproject(self, tensors, vars):
+    def unproject(self, tensors, vars, current):
         settings = self.settings[vars.params[0]]
         one_d = settings['one_d']
         norm = settings['norm']
