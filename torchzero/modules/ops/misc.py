@@ -295,20 +295,19 @@ class GradAccumulation(Module):
         super().__init__(defaults)
         self.set_child('modules', modules)
 
-        self.global_state['step'] = 0
 
     @torch.no_grad
     def step(self, vars):
         accumulator = self.get_state('accumulator', params=vars.params)
         settings = self.settings[vars.params[0]]
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
-        self.global_state['step'] += 1
+        self.counter.increment()
 
         # add update to accumulator
         torch._foreach_add_(accumulator, vars.get_update())
 
         # step with accumulated updates
-        if self.global_state['step'] % n == 0:
+        if self.counter() % n == 0:
             if mean:
                 torch._foreach_div_(accumulator, n)
 

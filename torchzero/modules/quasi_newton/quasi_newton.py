@@ -89,7 +89,8 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
     def update_tensor(self, tensor, param, grad, state):
         p = param; g = tensor
         H = state.get('H', None)
-        step = state.setdefault('step', 0)
+        step = self.counter()
+
         if H is None:
             H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
             if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: H *= self.init_scale
@@ -125,9 +126,9 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
 
     def apply_tensor(self, tensor, param, grad, state):
         """precondition"""
-        state['step'] += 1
+        self.counter.increment()
         H = state['H']
-        if self.scale_second and state['step'] == 2:
+        if self.scale_second and self.counter() == 2:
             tensor = tensor/max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
         return H @ tensor
 
@@ -167,7 +168,7 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
     def update(self, tensors, params, grads, keys):
         p = TensorList(params); g = TensorList(tensors)
         states = [self.state[k] for k in keys]
-        step = self.global_state.setdefault('step', 0)
+        step = self.counter()
 
         if any('H' not in s for s in states):
             for param, grad, state in zip(params, tensors, states):
@@ -239,7 +240,7 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
         g_prev.copy_(g)
 
     def apply(self, tensors, params, grads, keys):
-        self.global_state['step'] += 1
+        self.counter.increment()
         return TensorList(tensors).mul_([self.state[k]['H'] for k in keys])
 
 

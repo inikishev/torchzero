@@ -62,14 +62,13 @@ class Adagrad(Transform):
         defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
                         eps = eps, beta=beta, decay = decay, pow=pow, use_sqrt = use_sqrt)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
-        self.global_state['step'] = 0
 
         if inner is not None:
             self.set_child('inner', inner)
 
     def transform(self, tensors, params, grads, vars):
         tensors = TensorList(tensors)
-        self.global_state['step'] = self.global_state.get('step', 0) + 1
+        self.counter.increment()
 
         lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=params, cls=NumberList)
 
@@ -78,7 +77,7 @@ class Adagrad(Transform):
         sq_sum = self.get_state('sq_sum', params=params, cls=TensorList)
 
         # initialize accumulator on 1st step
-        if self.global_state['step'] == 1:
+        if self.counter() == 1:
             sq_sum.set_(tensors.full_like(self.get_settings('initial_accumulator_value', params=params)))
 
         return adagrad_(

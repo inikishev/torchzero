@@ -138,7 +138,6 @@ class LBFGS(Module):
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
         self.global_state['sy_history'] = deque(maxlen=history_size)
-        self.global_state['step'] = 0
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -147,13 +146,12 @@ class LBFGS(Module):
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
-        self.global_state['step'] = 0
 
     @torch.no_grad
     def step(self, vars):
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.global_state['step']
+        step = self.counter()
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
@@ -217,7 +215,7 @@ class LBFGS(Module):
             step=step
         )
 
-        self.global_state['step'] += 1
+        self.counter.increment()
         vars.update = dir
 
         return vars

@@ -80,19 +80,17 @@ class OnlineLBFGS(Module):
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
         self.global_state['sy_history'] = deque(maxlen=history_size)
-        self.global_state['step'] = 0
 
         if inner is not None:
             self.set_child('inner', inner)
 
     def reset(self):
         """Resets the internal state of the L-SR1 module."""
-        super().reset() # Clears self.state (per-parameter) if any, and self.global_state['step']
+        super().reset() # Clears self.state (per-parameter) if any, and self.counter()
         # Re-initialize L-SR1 specific global state
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
-        self.global_state['step'] = 0
 
     @torch.no_grad
     def step(self, vars):
@@ -100,7 +98,7 @@ class OnlineLBFGS(Module):
 
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.global_state['step']
+        step = self.counter()
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
@@ -189,7 +187,7 @@ class OnlineLBFGS(Module):
             step=step
         )
 
-        self.global_state['step'] += 1
+        self.counter.increment()
         vars.update = dir
 
         return vars

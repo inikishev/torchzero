@@ -6,12 +6,13 @@ import torch
 
 from .module import Module, Chainable, Vars
 from .transform import apply, Transform, Target
-from ..utils import TensorList, vec_to_tensors
+from ..utils import TensorList, vec_to_tensors, StepCounter
 
 class Preconditioner(ABC):
     def __init__(self):
         self.state: dict[Any, dict[str, Any]] = defaultdict(dict)
         self.global_state: dict[Any,Any] = {}
+        self.counter = StepCounter()
 
     @abstractmethod
     def update(self, tensors: list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, keys: list[Any]):
@@ -23,10 +24,9 @@ class Preconditioner(ABC):
 
     def reset(self):
         """reset the internal state"""
-        has_step = 'step' in self.global_state
         self.state.clear()
         self.global_state.clear()
-        if has_step: self.global_state['step'] = 0
+        self.counter.reset()
 
 
 class TensorwisePreconditioner(Preconditioner, ABC):

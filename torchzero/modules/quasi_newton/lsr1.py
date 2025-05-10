@@ -107,7 +107,6 @@ class LSR1(Module):
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
-        self.global_state['step'] = 0
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -115,14 +114,13 @@ class LSR1(Module):
     def reset(self):
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
-        self.global_state['step'] = 0
 
 
     @torch.no_grad
     def step(self, vars: Vars):
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.global_state.setdefault('step', 0)
+        step = self.counter()
 
         s_history: deque[TensorList] = self.global_state['s_history']
         y_history: deque[TensorList] = self.global_state['y_history']
@@ -164,7 +162,7 @@ class LSR1(Module):
             scale_second=scale_second,
         )
 
-        self.global_state['step'] += 1
+        self.counter.increment()
         vars.update = dir
 
         return vars
