@@ -5,7 +5,7 @@ import torch
 from ...core import TensorwisePreconditioner, Precondition, Chainable
 
 
-def get_U_Sv(history: deque, damping: float, svd_eps: float):
+def get_U_Sv(history: deque, damping: float, eps: float):
     M_hist = torch.stack(tuple(history), dim=1)
     try:
         # U - (d, history_size)
@@ -13,7 +13,7 @@ def get_U_Sv(history: deque, damping: float, svd_eps: float):
         U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
 
         Sv = (S**2 / len(history)) + damping
-        Sv = torch.max(Sv, torch.full_like(Sv, svd_eps))
+        Sv = torch.max(Sv, torch.full_like(Sv, eps))
 
         Sv = 1.0 / torch.sqrt(Sv)
         return U, Sv
@@ -33,12 +33,20 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
         else: state_[key].lerp_(value, 1-beta)
 
 class SVDHistoryPreconditioner(TensorwisePreconditioner):
-    def __init__(self, history_size: int = 10, update_freq: int = 1, damping: float = 1e-5, svd_eps: float = 1e-7, U_beta: float | None = None, Sv_beta: float | None = None):
+    def __init__(
+        self,
+        history_size: int = 10,
+        update_freq: int = 1,
+        damping: float = 1e-5,
+        eps: float = 1e-7,
+        U_beta: float | None = None,
+        Sv_beta: float | None = None,
+    ):
         super().__init__()
         self.history_size = history_size
         self.update_freq = update_freq # history is still updated each step so Precondition's update_freq has different meaning
         self.damping = damping
-        self.svd_eps = svd_eps
+        self.eps = eps
         self.U_beta = U_beta
         self.Sv_beta = Sv_beta
 
@@ -48,7 +56,7 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         state['history'].append(tensor.clone().view(-1))
         step = state.get('step', 0)
         if step % self.update_freq == 0:
-            U, Sv = get_U_Sv(state['history'], self.damping, self.svd_eps)
+            U, Sv = get_U_Sv(state['history'], self.damping, self.eps)
             if U is not None and Sv is not None:
                 maybe_lerp_(state, self.U_beta, 'U', U)
                 maybe_lerp_(state, self.Sv_beta, 'Sv', Sv)
@@ -59,6 +67,7 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
 
         U = state.get('U', None)
         if U is None:
+            # make a conservative step to avoid issues due to different GD scaling
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
         Sv = state['Sv']
@@ -66,12 +75,25 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
 
 
 class SVDHistoryWhiten(Precondition):
+    """Precondition using history of past gradients.
+
+    Args:
+        history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
+        update_freq (int, optional): how often to re-compute the preconditioner. Defaults to 1.
+        damping (float, optional): makes it closer to GD. Defaults to 1e-5.
+        eps (float, optional): epsilon for division. Defaults to 1e-7.
+        U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
+        Sv_beta (float | None, optional): beta for Sv (probably a bad idea). Defaults to None.
+        tensorwise (bool, optional): whether to apply preconditioning to each tensor or to all tensors concatenated into a vector. Latter will be slower but captures interactions between layers. Defaults to True.
+        scale_first (bool, optional): makes first step small, usually not needed. Defaults to False.
+        inner (Chainable | None, optional): Inner modules applied after updating preconditioner and before applying it. Defaults to None.
+    """
     def __init__(
         self,
         history_size: int = 10,
         update_freq: int = 1,
         damping: float = 1e-5,
-        svd_eps: float = 1e-7,
+        eps: float = 1e-7,
         U_beta: float | None = None,
         Sv_beta: float | None = None,
         tensorwise: bool = True,
@@ -79,7 +101,7 @@ class SVDHistoryWhiten(Precondition):
         inner: Chainable | None = None,
     ):
         super().__init__(
-            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, svd_eps=svd_eps, U_beta=U_beta, Sv_beta=Sv_beta),
+            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, eps=eps, U_beta=U_beta, Sv_beta=Sv_beta),
             uses_grad=False,
             tensorwise=tensorwise,
             scale_first=scale_first,

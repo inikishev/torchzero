@@ -24,8 +24,6 @@ def adagrad_(
     alpha: float | NumberList,
     lr_decay: float | NumberList,
     eps: float | NumberList,
-    beta: float | NumberList | None,
-    decay: float | NumberList,
     step: int,
     pow: float = 2,
     use_sqrt: bool = True,
@@ -39,10 +37,7 @@ def adagrad_(
     """returns `tensors_`"""
     clr = alpha / (1 + step * lr_decay)
 
-    if beta is None or (isinstance(beta, NumberList) and beta[0] is None):
-        sq_sum_ = add_power_(tensors_, sum_=sq_sum_, pow=pow)
-    else:
-        sq_sum_ = lerp_power_(tensors_, exp_avg_pow_=sq_sum_, beta=beta, pow=pow)
+    sq_sum_ = add_power_(tensors_, sum_=sq_sum_, pow=pow)
 
     if inner is not None:
         assert params is not None
@@ -51,28 +46,35 @@ def adagrad_(
     if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
     else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
 
-    sq_sum_.lazy_mul_(decay)
     return tensors_
 
 
 
 class Adagrad(Transform):
+    """Adagrad, divides by sum of past squares of gradients, matches pytorch Adagrad.
+
+    Args:
+        lr_decay (float, optional): learning rate decay. Defaults to 0.
+        initial_accumulator_value (float, optional): initial value of the sum of squares of gradients. Defaults to 0.
+        eps (float, optional): division epsilon. Defaults to 1e-10.
+        alpha (float, optional): step size. Defaults to 1.
+        pow (float, optional): power for gradients and accumulator root. Defaults to 2.
+        use_sqrt (bool, optional): whether to take the root of the accumulator. Defaults to True.
+        inner (Chainable | None, optional): Inner modules that are applied after updating accumulator and before preconditioning. Defaults to None.
+    """
     def __init__(
         self,
         lr_decay: float = 0,
         initial_accumulator_value: float = 0,
         eps: float = 1e-10,
         alpha: float = 1,
-        beta: float | None = None,
-        decay: float = 1,
         pow: float = 2,
         use_sqrt: bool = True,
-        target: Target = 'update',
         inner: Chainable | None = None,
     ):
         defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
-                        eps = eps, beta=beta, decay = decay, pow=pow, use_sqrt = use_sqrt)
-        super().__init__(defaults=defaults, uses_grad=False, target=target)
+                        eps = eps, pow=pow, use_sqrt = use_sqrt)
+        super().__init__(defaults=defaults, uses_grad=False)
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -82,7 +84,7 @@ class Adagrad(Transform):
         tensors = TensorList(tensors)
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=params, cls=NumberList)
+        lr_decay,alpha,eps = self.get_settings('lr_decay', 'alpha', 'eps', params=params, cls=NumberList)
 
         pow, use_sqrt = itemgetter('pow', 'use_sqrt')(self.settings[params[0]])
 
@@ -98,8 +100,6 @@ class Adagrad(Transform):
             alpha=alpha,
             lr_decay=lr_decay,
             eps=eps,
-            beta=beta,
-            decay=decay,
             step=self.global_state["step"],
             pow=pow,
             use_sqrt=use_sqrt,
