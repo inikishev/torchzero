@@ -19,7 +19,7 @@ def get_US(history: deque, damping: float):
         return None, None
 
 
-def whiten(tensor: torch.Tensor, U: torch.Tensor, S: torch.Tensor, ):
+def spectral_precondition(tensor: torch.Tensor, U: torch.Tensor, S: torch.Tensor, ):
     Utg = (U.T @ tensor).div_(S)
     return U @ Utg
 
@@ -29,7 +29,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
         if beta is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class HistoryPreconditioner(TensorwisePreconditioner):
+class SpectralPreconditioner(TensorwisePreconditioner):
     def __init__(
         self,
         history_size: int = 10,
@@ -96,14 +96,14 @@ class HistoryPreconditioner(TensorwisePreconditioner):
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
         S = state['S']
-        update = whiten(tensor.view(-1), U, S).view_as(tensor)
+        update = spectral_precondition(tensor.view(-1), U, S).view_as(tensor)
 
         if n != self.history_size: update.mul_(n/self.history_size)
         return update
 
 
 
-class WhitenViaSVD(Precondition):
+class SpectralPreconditioning(Precondition):
     """Precondition using history of past gradients. Apparently chaining multiple of those might improve preconditioning accuracy.
 
     Args:
@@ -135,7 +135,7 @@ class WhitenViaSVD(Precondition):
         inner: Chainable | None = None,
     ):
         super().__init__(
-            HistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, U_beta=U_beta, S_beta=S_beta, order=order),
+            SpectralPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, U_beta=U_beta, S_beta=S_beta, order=order),
             uses_grad=False,
             tensorwise=tensorwise,
             scale_first=scale_first,
