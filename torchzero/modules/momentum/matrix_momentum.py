@@ -69,8 +69,8 @@ class AdaptiveMatrixMomentum(Module):
     """
     Mu here is estimated as ||s_k||/||y_k||.
     """
-    def __init__(self, mu_mul:float=1, decay:float=1, true_s_k=True, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
-        defaults = dict(mu_mul=mu_mul, decay=decay, hvp_mode=hvp_mode, h=h, eps=eps, true_s_k=true_s_k)
+    def __init__(self, mu_mul:float=1, decay:float=1, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+        defaults = dict(mu_mul=mu_mul, decay=decay, hvp_mode=hvp_mode, h=h, eps=eps)
         super().__init__(defaults)
 
         if hvp_tfm is not None:
@@ -79,7 +79,7 @@ class AdaptiveMatrixMomentum(Module):
     @torch.no_grad
     def step(self, vars):
         assert vars.closure is not None
-        prev_update, prev_grad = self.get_state('prev_update', 'prev_grad', params=vars.params, cls=TensorList)
+        prev_update, prev_params, prev_grad = self.get_state('prev_update', 'prev_params', 'prev_grad', params=vars.params, cls=TensorList)
 
         settings = self.settings[vars.params[0]]
         hvp_mode = settings['hvp_mode']
@@ -115,14 +115,9 @@ class AdaptiveMatrixMomentum(Module):
 
         # adaptive part
         update = TensorList(vars.get_update())
-        true_s_k = settings['true_s_k']
 
-        if true_s_k:
-            prev_params = self.get_state('prev_params', params=vars.params, cls=TensorList)
-            s_k = vars.params - prev_params
-            prev_params.copy_(vars.params)
-        else:
-            s_k = prev_update
+        s_k = vars.params - prev_params
+        prev_params.copy_(vars.params)
 
         assert vars.grad is not None
         y_k = vars.grad - prev_grad
