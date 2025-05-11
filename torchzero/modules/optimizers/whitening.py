@@ -5,25 +5,20 @@ import torch
 from ...core import TensorwisePreconditioner, Precondition, Chainable
 
 
-def get_U_Sv(history: deque, damping: float, eps: float):
+def get_U_Sv(history: deque, eps: float):
     M_hist = torch.stack(tuple(history), dim=1)
     try:
         # U - (d, history_size)
         # S - (history_size, history_size)
         U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
-
-        Sv = (S**2 / len(history)) + damping
-        Sv = torch.max(Sv, torch.full_like(Sv, eps))
-
-        Sv = 1.0 / torch.sqrt(Sv)
-        return U, Sv
+        return U, S.add_(eps)
 
     except torch.linalg.LinAlgError:
         return None, None
 
 
-def apply_svd_preconditioner(tensor: torch.Tensor, U: torch.Tensor, Sv: torch.Tensor, ):
-    Utg = (U.T @ tensor) * Sv
+def whiten(tensor: torch.Tensor, U: torch.Tensor, Sv: torch.Tensor, ):
+    Utg = (U.T @ tensor).div_(Sv)
     return U @ Utg
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
@@ -37,7 +32,6 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         self,
         history_size: int = 10,
         update_freq: int = 1,
-        damping: float = 1e-5,
         eps: float = 1e-7,
         U_beta: float | None = None,
         Sv_beta: float | None = None,
@@ -46,7 +40,6 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         super().__init__()
         self.history_size = history_size
         self.update_freq = update_freq # history is still updated each step so Precondition's update_freq has different meaning
-        self.damping = damping
         self.eps = eps
         self.U_beta = U_beta
         self.Sv_beta = Sv_beta
@@ -58,7 +51,7 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         if (not self.update_into_precond) or len(state['history']) == 0: state['history'].append(tensor.clone().view(-1))
         step = state.get('step', 0)
         if step % self.update_freq == 0:
-            U, Sv = get_U_Sv(state['history'], self.damping, self.eps)
+            U, Sv = get_U_Sv(state['history'], self.eps)
             if U is not None and Sv is not None:
                 maybe_lerp_(state, self.U_beta, 'U', U)
                 maybe_lerp_(state, self.Sv_beta, 'Sv', Sv)
@@ -73,7 +66,7 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
         Sv = state['Sv']
-        update = apply_svd_preconditioner(tensor.view(-1), U, Sv).view_as(tensor)
+        update = whiten(tensor.view(-1), U, Sv).view_as(tensor)
 
         if self.update_into_precond:
             if state['step'] == 1: del state['history'][0] # clear grad one
@@ -103,7 +96,6 @@ class SVDHistoryWhiten(Precondition):
         self,
         history_size: int = 10,
         update_freq: int = 1,
-        damping: float = 1e-5,
         eps: float = 1e-7,
         U_beta: float | None = None,
         Sv_beta: float | None = None,
@@ -113,7 +105,7 @@ class SVDHistoryWhiten(Precondition):
         inner: Chainable | None = None,
     ):
         super().__init__(
-            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, eps=eps, U_beta=U_beta, Sv_beta=Sv_beta, update_into_precond=update_into_precond),
+            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, eps=eps, U_beta=U_beta, Sv_beta=Sv_beta, update_into_precond=update_into_precond),
             uses_grad=False,
             tensorwise=tensorwise,
             scale_first=scale_first,
