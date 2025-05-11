@@ -15,8 +15,8 @@ class MatrixMomentum(Module):
 
     Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
     """
-    def __init__(self, mu=0.1, decay:float=1, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
-        defaults = dict(mu=mu, decay=decay, hvp_mode=hvp_mode, h=h)
+    def __init__(self, mu=0.1, beta:float=1, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+        defaults = dict(mu=mu, beta=beta, hvp_mode=hvp_mode, h=h)
         super().__init__(defaults)
 
         if hvp_tfm is not None:
@@ -29,7 +29,7 @@ class MatrixMomentum(Module):
         hvp_mode = self.settings[vars.params[0]]['hvp_mode']
         h = self.settings[vars.params[0]]['h']
 
-        mu,decay = self.get_settings('mu','decay', params=vars.params, cls=NumberList)
+        mu,beta = self.get_settings('mu','beta', params=vars.params, cls=NumberList)
 
         if hvp_mode == 'autograd':
             with torch.enable_grad():
@@ -60,7 +60,7 @@ class MatrixMomentum(Module):
 
         hvp_ = as_tensorlist(hvp_)
         update.add_(prev_update - hvp_*mu)
-        prev_update.set_(update * decay)
+        prev_update.set_(update * beta)
         vars.update = update
         return vars
 
@@ -69,8 +69,8 @@ class AdaptiveMatrixMomentum(Module):
     """
     Mu here is estimated as ||s_k||/||y_k||.
     """
-    def __init__(self, mu_mul:float=1, decay:float=1, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
-        defaults = dict(mu_mul=mu_mul, decay=decay, hvp_mode=hvp_mode, h=h, eps=eps)
+    def __init__(self, mu_mul:float=1, beta:float=0.9, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+        defaults = dict(mu_mul=mu_mul, beta=beta, hvp_mode=hvp_mode, h=h, eps=eps)
         super().__init__(defaults)
 
         if hvp_tfm is not None:
@@ -86,7 +86,7 @@ class AdaptiveMatrixMomentum(Module):
         h = settings['h']
         eps = settings['eps']
 
-        mu_mul, decay = self.get_settings('mu_mul','decay', params=vars.params, cls=NumberList)
+        mu_mul, beta = self.get_settings('mu_mul','beta', params=vars.params, cls=NumberList)
 
         if hvp_mode == 'autograd':
             with torch.enable_grad():
@@ -128,7 +128,7 @@ class AdaptiveMatrixMomentum(Module):
         # matrix momentum uppdate
         hvp_ = as_tensorlist(hvp_)
         update.add_(prev_update - hvp_*ada_mu)
-        prev_update.set_(update * decay)
+        prev_update.set_(update * beta)
         vars.update = update
         return vars
 
