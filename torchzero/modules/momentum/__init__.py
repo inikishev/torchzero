@@ -11,3 +11,4 @@ from .experimental import CoordinateMomentum
 # from .matrix_momentum import MatrixMomentum
 
 from .momentum import NAG, HeavyBall
+from .matrix_momentum import MatrixMomentum, AdaptiveMatrixMomentum

@@ -8,6 +8,18 @@ from ...core import Module, Target, Transform, apply, Chainable
 from ...utils import NumberList, TensorList, generic_eq
 
 class ClipNormByEMA(Transform):
+    """Clips norm to be no larger than the norm of an exponential moving average of past updates.
+
+    Args:
+        beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
+        ord (float, optional): order of the norm. Defaults to 2.
+        eps (float, optional): epsilon for division. Defaults to 1e-6.
+        tensorwise (bool, optional): whether to calculate norm separately for each layer, or global norm for all layers. Defaults to True.
+        max_ema_growth (float | None, optional):
+            if specified, exponential moving average norm can grow but at most this value per step. Defaults to 1.5.
+        ema_init (str, optional):
+            How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
+    """
     NORMALIZE = False
     def __init__(
         self,
@@ -17,10 +29,9 @@ class ClipNormByEMA(Transform):
         tensorwise:bool=True,
         max_ema_growth: float | None = 1.5,
         ema_init: Literal['zeros', 'update'] = 'zeros',
-        target: Target = "update",
     ):
         defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, ema_init=ema_init, eps=eps, max_ema_growth=max_ema_growth)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
@@ -70,20 +81,39 @@ class ClipNormByEMA(Transform):
         return tensors
 
 class NormalizeByEMA(ClipNormByEMA):
+    """Sets norm of the update to be the same as the norm of an exponential moving average of past updates.
+
+    Args:
+        beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
+        ord (float, optional): order of the norm. Defaults to 2.
+        eps (float, optional): epsilon for division. Defaults to 1e-6.
+        tensorwise (bool, optional): whether to calculate norm separately for each layer, or global norm for all layers. Defaults to True.
+        max_ema_growth (float | None, optional):
+            if specified, exponential moving average norm can grow but at most this value per step. Defaults to 1.5.
+        ema_init (str, optional):
+            How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
+    """
     NORMALIZE = True
 
-
+# TODO Centralize by EMA?
 
 class ClipValueByEMA(Transform):
+    """Clips magnitude of update to be no larger than magnitude of an exponential moving average of past (unclipped) updates.
+
+    Args:
+        beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
+        ema_init (str, optional):
+            How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
+        ema_tfm (Chainable | None, optional): optional modules applied to exponential moving average before clipping by it. Defaults to None.
+    """
     def __init__(
         self,
         beta=0.99,
         ema_init: Literal['zeros', 'update'] = 'zeros',
-        target: Target = "update",
         ema_tfm:Chainable | None=None,
     ):
         defaults = dict(beta=beta, ema_init=ema_init)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
         if ema_tfm is not None:
             self.set_child('ema_tfm', ema_tfm)

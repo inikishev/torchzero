@@ -159,11 +159,10 @@ class Rprop(Transform):
         ub: float = 50,
         backtrack=True,
         alpha: float = 1,
-        target: Target = 'update'
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, backtrack=backtrack)
         self.current_step = 0
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):

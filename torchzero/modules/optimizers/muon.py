@@ -136,8 +136,6 @@ def orthogonalize_grads_(
             enables dual norm correction from https://github.com/leloykun/adaptive-muon. Defaults to False.
         method (str, optional):
             Newton-Schulz is very fast, SVD is extremely slow but can be slighly more precise.
-        target (str, optional):
-            what to set on vars.
     """
     for p in params:
         if (p.grad is not None) and _is_at_least_2d(p.grad):

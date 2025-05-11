@@ -44,6 +44,18 @@ def adam_(
     params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq.add_(eps), -alpha)
 
 class Adam(Module):
+    """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size. This implementation is slightly different from
+    pytorch in that debiasing is applied after adding epsilon.
+
+    Args:
+        beta1 (float, optional): momentum. Defaults to 0.9.
+        beta2 (float, optional): second momentum. Defaults to 0.999.
+        eps (float, optional): epsilon. Defaults to 1e-8.
+        alpha (float, optional): learning rate. Defaults to 1.
+        amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
+        pow (float, optional): power used in second momentum power and root. Defaults to 2.
+        debiased (bool, optional): whether to apply debiasing to momentums based on current step. Defaults to True.
+    """
     def __init__(
         self,
         beta1: float = 0.9,
@@ -54,17 +66,6 @@ class Adam(Module):
         pow: float = 2,
         debiased: bool = True,
     ):
-        """Adam.
-
-        Args:
-            beta1 (float, optional): momentum. Defaults to 0.9.
-            beta2 (float, optional): second momentum (empirical fisher diagonal). Defaults to 0.999.
-            eps (float, optional): epsilon. Defaults to 1e-8.
-            alpha (float, optional): learning rate. Defaults to 1.
-            amsgrad (bool, optional): Whether to use AMSGrad. Defaults to False.
-            pow (float, optional): power used in second momentum power and root. Defaults to 2.
-            debiased (bool, optional): whether to apply debiasing to momentums based on current step. Defaults to True.
-        """
         defaults=dict(beta1=beta1,beta2=beta2,eps=eps,alpha=alpha,amsgrad=amsgrad,pow=pow,debiased=debiased)
         super().__init__(defaults)
         self.getter = itemgetter('amsgrad','pow','debiased')

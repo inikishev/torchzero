@@ -41,6 +41,7 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         eps: float = 1e-7,
         U_beta: float | None = None,
         Sv_beta: float | None = None,
+        update_into_precond: bool = False,
     ):
         super().__init__()
         self.history_size = history_size
@@ -49,11 +50,12 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
         self.eps = eps
         self.U_beta = U_beta
         self.Sv_beta = Sv_beta
+        self.update_into_precond = update_into_precond
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, state):
         if 'history' not in state: state['history'] = deque(maxlen=self.history_size)
-        state['history'].append(tensor.clone().view(-1))
+        if (not self.update_into_precond) or len(state['history']) == 0: state['history'].append(tensor.clone().view(-1))
         step = state.get('step', 0)
         if step % self.update_freq == 0:
             U, Sv = get_U_Sv(state['history'], self.damping, self.eps)
@@ -71,11 +73,17 @@ class SVDHistoryPreconditioner(TensorwisePreconditioner):
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
         Sv = state['Sv']
-        return apply_svd_preconditioner(tensor.view(-1), U, Sv).view_as(tensor)
+        update = apply_svd_preconditioner(tensor.view(-1), U, Sv).view_as(tensor)
+
+        if self.update_into_precond:
+            if state['step'] == 1: del state['history'][0] # clear grad one
+            state['history'].append(update.view(-1).clone())
+
+        return update
 
 
 class SVDHistoryWhiten(Precondition):
-    """Precondition using history of past gradients.
+    """Precondition using history of past gradients. You can chain multiple of those to improve preconditioning accuracy.
 
     Args:
         history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
@@ -84,7 +92,10 @@ class SVDHistoryWhiten(Precondition):
         eps (float, optional): epsilon for division. Defaults to 1e-7.
         U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
         Sv_beta (float | None, optional): beta for Sv (probably a bad idea). Defaults to None.
-        tensorwise (bool, optional): whether to apply preconditioning to each tensor or to all tensors concatenated into a vector. Latter will be slower but captures interactions between layers. Defaults to True.
+        update_into_precond (float | None, optional):
+            whether to use history of previopus updates for whitening (probably a bad idea). Defaults to None.
+        tensorwise (bool, optional):
+            whether to apply preconditioning to each tensor or to all tensors concatenated into a vector. Latter will be slower but captures interactions between layers. Defaults to True.
         scale_first (bool, optional): makes first step small, usually not needed. Defaults to False.
         inner (Chainable | None, optional): Inner modules applied after updating preconditioner and before applying it. Defaults to None.
     """
@@ -96,12 +107,13 @@ class SVDHistoryWhiten(Precondition):
         eps: float = 1e-7,
         U_beta: float | None = None,
         Sv_beta: float | None = None,
+        update_into_precond: bool = False,
         tensorwise: bool = True,
         scale_first: bool = False,
         inner: Chainable | None = None,
     ):
         super().__init__(
-            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, eps=eps, U_beta=U_beta, Sv_beta=Sv_beta),
+            SVDHistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, eps=eps, U_beta=U_beta, Sv_beta=Sv_beta, update_into_precond=update_into_precond),
             uses_grad=False,
             tensorwise=tensorwise,
             scale_first=scale_first,

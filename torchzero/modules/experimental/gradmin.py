@@ -19,12 +19,12 @@ class GradMin(Reformulation):
     Args:
         loss_term (float, optional): adds loss value times this to sum of gradient magnitudes. Defaults to 1.
         relative (bool, optional): whether to make loss_term relative to gradient magnitude. Defaults to False.
+        graft (bool, optional): whether to make loss term same as gradient magnitude. Defaults to False.
         square (bool, optional): whether to use sum of squared gradient magnitudes, if False uses absolute values. Defaults to False.
         mean (bool, optional): whether to use mean, if False uses sum. Defaults to True.
         maximize_grad (bool, optional): whether to maximize gradient magnitudes instead of minimizing. Defaults to False.
         create_graph (bool, optional): whether to create graph. Defaults to False.
         modify_loss (bool, optional): whether to modify the loss value to make line searches minimize new objective. Defaults to True.
-        target (GradTarget, optional): target. Defaults to "update".
     """
     def __init__(
         self,

@@ -41,8 +41,18 @@ def rmsprop_(
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
 class RMSprop(Transform):
-    """Set `init` to "zeros" to get an implementation identical to pytorch."""
+    """Divides graient by EMA of gradient squares. Matches pytorch RMSprop if "init" is set to "zeros".
 
+    Args:
+        smoothing (float, optional): beta for exponential moving average of gradient squares. Defaults to 0.99.
+        eps (float, optional): epsilon for division. Defaults to 1e-8.
+        centered (bool, optional): whether to center EMA of gradient squares using an additional EMA. Defaults to False.
+        debiased (bool, optional): applies Adam debiasing. Defaults to False.
+        amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
+        pow (float, optional): power used in second momentum power and root. Defaults to 2.
+        init (str, optional): how to initialize EMA, either "update" to use first update or "zeros". Defaults to "update".
+        inner (Chainable | None, optional): Inner modules that are applied after updating EMA and before preconditioning. Defaults to None.
+    """
     def __init__(
         self,
         smoothing: float = 0.99,
@@ -52,11 +62,10 @@ class RMSprop(Transform):
         amsgrad: bool = False,
         pow: float = 2,
         init: Literal["zeros", "update"] = "update",
-        target: Target = "update",
         inner: Chainable | None = None,
     ):
         defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
-        super().__init__(defaults=defaults, uses_grad=False, target=target)
+        super().__init__(defaults=defaults, uses_grad=False)
         self.current_step = 0
         if inner is not None:
             self.set_child('inner', inner)

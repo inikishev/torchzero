@@ -109,7 +109,7 @@ def get_state_vals(state: Mapping[torch.Tensor, MutableMapping[str, Any]], param
         for i, param in enumerate(params):
             s = state[param]
             if key not in s:
-                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(state.keys())}")
+                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(s.keys())}")
                 s[key] = _make_initial_state_value(param, init, i)
             values.append(s[key])
         return values
@@ -124,7 +124,7 @@ def get_state_vals(state: Mapping[torch.Tensor, MutableMapping[str, Any]], param
         s = state[param]
         for k_i, key in enumerate(keys):
             if key not in s:
-                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(state.keys())}")
+                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(s.keys())}")
                 k_init = init[k_i] if isinstance(init, (list,tuple)) else init
                 s[key] = _make_initial_state_value(param, k_init, i)
             values[k_i].append(s[key])

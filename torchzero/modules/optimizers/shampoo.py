@@ -86,14 +86,19 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
 
 
 class Shampoo(Transform):
-    """Shampoo: Preconditioned Stochastic Tensor Optimization (https://arxiv.org/abs/1802.09568).
+    """Shampoo from Preconditioned Stochastic Tensor Optimization (https://arxiv.org/abs/1802.09568).
 
     Args:
         decay (float | None, optional): slowly decays preconditioners. Defaults to None.
-        beta (float | None, optional): lerps preconditioners, if None calculates sum as in standard shampoo. Defaults to None.
+        beta (float | None, optional):
+            if None calculates sum as in standard shampoo, otherwise uses EMA of preconditioners. Defaults to None.
         matrix_eps (float, optional): epsilon for matrix operations. Defaults to 1e-10.
-        update_freq (int, optional): preconditioner update frequence. Defaults to 10.
-        exp (int | None, optional): matrix exponent. Defaults to None.
+        update_freq (int, optional): preconditioner update frequency. Defaults to 10.
+        exp_override (int | None, optional): matrix exponent override, if not set, uses 2*ndim. Defaults to None.
+        merge_small (bool, optional): whether to merge small dims on tensors. Defaults to True.
+        max_dim (int, optional): maximum dimension size for preconditioning. Defaults to 2_000.
+        precondition_1d (bool, optional): whether to precondition 1d tensors. Defaults to True.
+        adagrad_eps (float, optional): epsilon for adagrad division for tensors where shampoo can't be applied. Defaults to 1e-8.
         inner (Chainable | None, optional):
             module applied after updating preconditioners and before applying preconditioning.
             For example if beta≈0.999 and `inner=tz.m.EMA(0.9)`, this becomes Adam with shampoo preconditioner (ignoring debiasing).
@@ -108,8 +113,8 @@ class Shampoo(Transform):
         exp_override: int | None = None,
         merge_small: bool = True,
         max_dim: int = 2_000,
-        precondition_1d=True,
-        adagrad_eps=1e-8,
+        precondition_1d: bool = True,
+        adagrad_eps: float = 1e-8,
         inner: Chainable | None = None,
     ):
         defaults = dict(decay=decay, beta=beta, matrix_eps=matrix_eps, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps)

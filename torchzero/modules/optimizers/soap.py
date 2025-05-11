@@ -132,15 +132,13 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     return final, exp_avg_sq
 
 class SOAP(Transform):
-    """SOAP (ShampoO with Adam in the Preconditioner's eigenbasis - https://arxiv.org/abs/2409.11321).
-
-    Could this be made into a projection? I am not sure how yet.
+    """SOAP (ShampoO with Adam in the Preconditioner's eigenbasis from https://arxiv.org/abs/2409.11321).
 
     Args:
         beta1 (float, optional): beta for first momentum. Defaults to 0.95.
         beta2 (float, optional): beta for second momentum. Defaults to 0.95.
         shampoo_beta (float | None, optional):
-            beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad. Defaults to 0.95.
+            beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad (which works worse). Defaults to 0.95.
         precond_freq (int, optional): How often to update the preconditioner. Defaults to 10.
         merge_small (bool, optional): Whether to merge small dims. Defaults to True.
         max_dim (int, optional): Won't precondition dims larger than this. Defaults to 2_000.

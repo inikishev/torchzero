@@ -127,13 +127,15 @@ def normalize_grads_(
 
     Args:
         params (Iterable[torch.Tensor]): parameters with gradients to clip.
-        value (float): value to clip norm to.
+        norm_value (float): value to clip norm to.
         ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
             If list/tuple, tensors are normalized along all dimensios in `dim` that they have.
             Can be set to "global" to normalize by global norm of all gradients concatenated to a vector.
             Defaults to None.
+        inverse_dims (bool, optional):
+            if True, the `dims` argument is inverted, and all other dimensions are normalized.
         min_size (int, optional):
             minimal size of a dimension to normalize along it. Defaults to 1.
     """
@@ -142,6 +144,7 @@ def normalize_grads_(
 
 
 class ClipValue(Transform):
+    """Clips update magnitude to be within `(-value, value)` range."""
     def __init__(self, value: float, target: Target = 'update'):
         defaults = dict(value=value)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -152,7 +155,7 @@ class ClipValue(Transform):
         return TensorList(tensors).clip_([-v for v in value], value)
 
 class ClipNorm(Transform):
-    """Clips update norm to a value.
+    """Clips update norm to be no larger than `value`.
 
     Args:
         value (float): value to clip norm to.
@@ -162,8 +165,12 @@ class ClipNorm(Transform):
             If list/tuple, tensors are normalized along all dimensios in `dim` that they have.
             Can be set to "global" to normalize by global norm of all gradients concatenated to a vector.
             Defaults to None.
+        inverse_dims (bool, optional):
+            if True, the `dims` argument is inverted, and all other dimensions are normalized.
         min_size (int, optional):
-            minimal size of a dimension to normalize along it. Defaults to 1.
+            minimal numer of elements in a parameter or slice to clip norm. Defaults to 1.
+        target (str, optional):
+            what this affects.
     """
     def __init__(
         self,
@@ -171,11 +178,10 @@ class ClipNorm(Transform):
         ord: float = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
-        min_size: int = 2,
+        min_size: int = 1,
         target: Target = "update",
-        min_norm: float | None = None,
     ):
-        defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,min_norm=min_norm,inverse_dims=inverse_dims)
+        defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,inverse_dims=inverse_dims)
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
@@ -205,8 +211,12 @@ class Normalize(Transform):
             If list/tuple, tensors are normalized along all dimensios in `dim` that they have.
             Can be set to "global" to normalize by global norm of all gradients concatenated to a vector.
             Defaults to None.
+        inverse_dims (bool, optional):
+            if True, the `dims` argument is inverted, and all other dimensions are normalized.
         min_size (int, optional):
             minimal size of a dimension to normalize along it. Defaults to 1.
+        target (str, optional):
+            what this affects.
     """
     def __init__(
         self,
@@ -281,9 +291,11 @@ class Centralize(Transform):
         ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
-            If list/tuple, tensors are normalized along all dimensios in `dim` that they have.
-            Can be set to "global" to normalize by global norm of all gradients concatenated to a vector.
+            If list/tuple, tensors are centralized along all dimensios in `dim` that they have.
+            Can be set to "global" to centralize by global mean of all gradients concatenated to a vector.
             Defaults to None.
+        inverse_dims (bool, optional):
+            if True, the `dims` argument is inverted, and all other dimensions are centralized.
         min_size (int, optional):
             minimal size of a dimension to normalize along it. Defaults to 1.
     """
