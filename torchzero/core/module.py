@@ -11,7 +11,6 @@ from ..utils import (
     Init,
     ListLike,
     Params,
-    StepCounter,
     _make_param_groups,
     get_state_vals,
 )
@@ -234,9 +233,6 @@ class Module(ABC):
         self._overridden_keys = set()
         """tracks keys overridden with `set_param_groups`, only used to not give a warning"""
 
-        self.counter = StepCounter()
-        """can be used to count steps, steps must be incremented manually"""
-
 
     def set_param_groups(self, param_groups: Params):
         """Set custom parameter groups with per-parameter settings that this module will use."""
@@ -414,7 +410,6 @@ class Module(ABC):
         """Resets the internal state of the module (e.g. momentum)."""
         self.state.clear()
         self.global_state.clear()
-        self.counter.reset()
 
     def _extra_pack(self):
         return {}

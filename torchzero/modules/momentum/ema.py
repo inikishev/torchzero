@@ -25,7 +25,7 @@ class EMA(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         debiased, lerp, ema_init = itemgetter('debiased','lerp','ema_init')(self.settings[params[0]])
 
@@ -34,7 +34,7 @@ class EMA(Transform):
 
         exp_avg = ema_(TensorList(tensors), exp_avg_=exp_avg,beta=momentum,dampening=dampening,lerp=lerp)
 
-        if debiased: return debias(exp_avg, step=self.counter(), beta1=momentum, alpha=1, inplace=False)
+        if debiased: return debias(exp_avg, step=step, beta1=momentum, alpha=1, inplace=False)
         else: return exp_avg.clone() # this has exp_avg storage so needs to be cloned
 
 
@@ -68,7 +68,8 @@ class SqrtEMASquared(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+
         amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])
         beta = self.get_settings('beta', params=params, cls=NumberList)
 
@@ -84,7 +85,7 @@ class SqrtEMASquared(Transform):
             beta=beta,
             max_exp_avg_sq_=max_exp_avg_sq,
             debiased=debiased,
-            step=self.counter(),
+            step=step,
             pow=pow,
         )
 
@@ -96,13 +97,13 @@ class Debias(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         settings = self.settings[params[0]]
         pow = settings['pow']
         alpha, beta1, beta2 = self.get_settings('alpha', 'beta1', 'beta2', params=params, cls=NumberList)
 
-        return debias(TensorList(tensors), step=self.counter(), beta1=beta1, beta2=beta2, alpha=alpha, pow=pow, inplace=True)
+        return debias(TensorList(tensors), step=step, beta1=beta1, beta2=beta2, alpha=alpha, pow=pow, inplace=True)
 
 class Debias2(Transform):
     def __init__(self, beta: float = 0.999, pow: float = 2, target: Target = 'update',):
@@ -111,11 +112,11 @@ class Debias2(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         pow = self.settings[params[0]]['pow']
         beta = self.get_settings('beta', params=params, cls=NumberList)
-        return debias_second_momentum(TensorList(tensors), step=self.counter(), beta=beta, pow=pow, inplace=True)
+        return debias_second_momentum(TensorList(tensors), step=step, beta=beta, pow=pow, inplace=True)
 
 class CenteredEMASquared(Transform):
     def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2, target: Target = 'update'):
@@ -149,7 +150,8 @@ class CenteredSqrtEMASquared(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+
         amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])
         beta = self.get_settings('beta', params=params, cls=NumberList)
 
@@ -165,7 +167,7 @@ class CenteredSqrtEMASquared(Transform):
             exp_avg_sq_=exp_avg_sq,
             beta=beta,
             debiased=debiased,
-            step=self.counter(),
+            step=step,
             max_exp_avg_sq_=max_exp_avg_sq,
             pow=pow,
         )

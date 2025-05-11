@@ -143,6 +143,8 @@ class LBFGS(Module):
             self.set_child('inner', inner)
 
     def reset(self):
+        self.state.clear()
+        self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
@@ -151,7 +153,8 @@ class LBFGS(Module):
     def step(self, vars):
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.counter()
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
@@ -215,7 +218,6 @@ class LBFGS(Module):
             step=step
         )
 
-        self.counter.increment()
         vars.update = dir
 
         return vars

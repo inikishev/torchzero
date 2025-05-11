@@ -5,11 +5,11 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, ParameterwiseTransform, Target, Transform, Vars
+from ...core import Chainable, Module, TensorwiseTransform, Target, Transform, Vars
 from ...utils import Distributions, NumberList, TensorList
 
 
-class Previous(ParameterwiseTransform):
+class Previous(TensorwiseTransform):
     """Maintains an update from n steps back, for example if n=1, returns previous update"""
     def __init__(self, n=1, target: Target = 'update'):
         defaults = dict(n=n)
@@ -301,13 +301,13 @@ class GradAccumulation(Module):
         accumulator = self.get_state('accumulator', params=vars.params)
         settings = self.settings[vars.params[0]]
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         # add update to accumulator
         torch._foreach_add_(accumulator, vars.get_update())
 
         # step with accumulated updates
-        if self.counter() % n == 0:
+        if step % n == 0:
             if mean:
                 torch._foreach_div_(accumulator, n)
 

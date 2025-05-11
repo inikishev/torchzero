@@ -22,7 +22,7 @@ from .params import (
     _copy_param_groups,
     _make_param_groups,
 )
-from .python_tools import FallbackDict, flatten, generic_eq, reduce_dim, StepCounter
+from .python_tools import FallbackDict, flatten, generic_eq, reduce_dim
 from .tensorlist import TensorList, as_tensorlist, Distributions
 from .torch_tools import tofloat, tolist, tonumpy, totensor, vec_to_tensors, vec_to_tensors_, set_storage_
 

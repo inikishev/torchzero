@@ -112,6 +112,8 @@ class LSR1(Module):
             self.set_child('inner', inner)
 
     def reset(self):
+        self.state.clear()
+        self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
 
@@ -120,7 +122,8 @@ class LSR1(Module):
     def step(self, vars: Vars):
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.counter()
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
         s_history: deque[TensorList] = self.global_state['s_history']
         y_history: deque[TensorList] = self.global_state['y_history']
@@ -162,7 +165,6 @@ class LSR1(Module):
             scale_second=scale_second,
         )
 
-        self.counter.increment()
         vars.update = dir
 
         return vars

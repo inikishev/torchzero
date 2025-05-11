@@ -4,11 +4,11 @@ from typing import Any, Literal, cast
 
 import torch
 
-from ...core import ParameterwiseTransform, Target
+from ...core import TensorwiseTransform, Target
 from ...utils import tolist
 
 
-class Averaging(ParameterwiseTransform):
+class Averaging(TensorwiseTransform):
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size=history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -28,7 +28,7 @@ class Averaging(ParameterwiseTransform):
 
         return average / len(history)
 
-class WeightedAveraging(ParameterwiseTransform):
+class WeightedAveraging(TensorwiseTransform):
     def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: Target = 'update'):
         defaults = dict(weights = tolist(weights))
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -52,7 +52,7 @@ class WeightedAveraging(ParameterwiseTransform):
         return average
 
 
-class MedianAveraging(ParameterwiseTransform):
+class MedianAveraging(TensorwiseTransform):
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size = history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)

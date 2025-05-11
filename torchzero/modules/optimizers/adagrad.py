@@ -80,7 +80,7 @@ class Adagrad(Transform):
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
         tensors = TensorList(tensors)
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         lr_decay,alpha,eps,beta,decay  = self.get_settings('lr_decay', 'alpha', 'eps', 'beta', 'decay', params=params, cls=NumberList)
 
@@ -89,7 +89,7 @@ class Adagrad(Transform):
         sq_sum = self.get_state('sq_sum', params=params, cls=TensorList)
 
         # initialize accumulator on 1st step
-        if self.counter() == 1:
+        if step == 1:
             sq_sum.set_(tensors.full_like(self.get_settings('initial_accumulator_value', params=params)))
 
         return adagrad_(

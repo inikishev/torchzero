@@ -25,10 +25,10 @@ class AccumulateMean(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
         mean = self.get_state('mean', params=params, cls=TensorList)
         decay = self.get_settings('decay', params=params, cls=NumberList)
-        return mean.add_(tensors).lazy_mul(1-decay, clone=True).div_(self.counter())
+        return mean.add_(tensors).lazy_mul(1-decay, clone=True).div_(step)
 
 class AccumulateProduct(Transform):
     def __init__(self, decay: float = 0, target: Target = 'update',):

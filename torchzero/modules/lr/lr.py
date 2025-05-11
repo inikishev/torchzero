@@ -43,16 +43,17 @@ class Warmup(Transform):
     def __init__(self, start_lr = 1e-5, end_lr = 1, steps = 100):
         defaults = dict(start_lr=start_lr,end_lr=end_lr, steps=steps)
         super().__init__(defaults, uses_grad=False)
-        self.global_state['current_step'] = 0
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
         start_lr, end_lr = self.get_settings('start_lr', 'end_lr', params=params, cls = NumberList)
-        steps = self.settings[params[0]]['steps']
+        num_steps = self.settings[params[0]]['steps']
+        step = self.global_state.get('step', 0)
+
         target = lazy_lr(
             TensorList(tensors),
-            lr=warmup(step=self.global_state['current_step'], start_lr=start_lr, end_lr=end_lr, steps=steps),
+            lr=warmup(step=step, start_lr=start_lr, end_lr=end_lr, steps=num_steps),
             inplace=True
         )
-        self.global_state['current_step'] += 1
+        self.global_state['step'] = step + 1
         return target

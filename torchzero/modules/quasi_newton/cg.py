@@ -29,7 +29,7 @@ class ConguateGradientBase(Transform, ABC):
         tensors = as_tensorlist(tensors)
         params = as_tensorlist(params)
 
-        step = self.counter()
+        step = self.global_state.get('step', 0)
         prev_dir, prev_grads = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList)
 
         # initialize on first step
@@ -37,7 +37,7 @@ class ConguateGradientBase(Transform, ABC):
             self.initialize(params, tensors)
             prev_dir.copy_(tensors)
             prev_grads.copy_(tensors)
-            self.counter.increment()
+            self.global_state['step'] = step + 1
             return tensors
 
         # get beta
@@ -54,9 +54,9 @@ class ConguateGradientBase(Transform, ABC):
         prev_dir.copy_(dir)
 
         # resetting
-        self.counter.increment()
+        self.global_state['step'] = step + 1
         reset_interval = self.settings[params[0]]['reset_interval']
-        if reset_interval is not None and self.counter() % reset_interval == 0:
+        if reset_interval is not None and (step+1) % reset_interval == 0:
             self.reset()
 
         return dir

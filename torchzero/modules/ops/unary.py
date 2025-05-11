@@ -2,7 +2,7 @@ from collections import deque
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform
+from ...core import TensorwiseTransform, Target, Transform
 from ...utils import TensorList
 
 class UnaryLambda(Transform):
@@ -14,7 +14,7 @@ class UnaryLambda(Transform):
     def transform(self, tensors, params, grads, vars):
         return self.settings[params[0]]['fn'](tensors)
 
-class UnaryParameterwiseLambda(ParameterwiseTransform):
+class UnaryParameterwiseLambda(TensorwiseTransform):
     def __init__(self, fn, target: "Target" = 'update'):
         defaults = dict(fn=fn)
         super().__init__(uses_grad=False, defaults=defaults, target=target)

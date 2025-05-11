@@ -86,8 +86,10 @@ class OnlineLBFGS(Module):
 
     def reset(self):
         """Resets the internal state of the L-SR1 module."""
-        super().reset() # Clears self.state (per-parameter) if any, and self.counter()
+        # super().reset() # Clears self.state (per-parameter) if any, and "step"
         # Re-initialize L-SR1 specific global state
+        self.state.clear()
+        self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
@@ -98,7 +100,8 @@ class OnlineLBFGS(Module):
 
         params = as_tensorlist(vars.params)
         update = as_tensorlist(vars.get_update())
-        step = self.counter()
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
         # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
@@ -187,7 +190,6 @@ class OnlineLBFGS(Module):
             step=step
         )
 
-        self.counter.increment()
         vars.update = dir
 
         return vars

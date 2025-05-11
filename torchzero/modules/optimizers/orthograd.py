@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Modular, ParameterwiseTransform, Target, Transform
+from ...core import Target, Transform
 from ...utils import as_tensorlist
 
 def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):

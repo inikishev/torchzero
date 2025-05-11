@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Modular, ParameterwiseTransform, Target, Transform
+from ...core import Modular, TensorwiseTransform, Target, Transform
 from ...utils import _maybe_compile
 
 
@@ -147,7 +147,7 @@ def orthogonalize_grads_(
 
 
 
-class Orthogonalize(ParameterwiseTransform):
+class Orthogonalize(TensorwiseTransform):
     """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of update along first 2 dims.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "orthogonalize" = False.
@@ -195,7 +195,7 @@ class Orthogonalize(ParameterwiseTransform):
         return tensor
 
 
-class DualNormCorrection(ParameterwiseTransform):
+class DualNormCorrection(TensorwiseTransform):
     """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon).
     Orthogonalize already has this built in with the `dual_norm_correction` setting."""
     def __init__(self, target: Target='update'):

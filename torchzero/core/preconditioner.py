@@ -6,13 +6,12 @@ import torch
 
 from .module import Module, Chainable, Vars
 from .transform import apply, Transform, Target
-from ..utils import TensorList, vec_to_tensors, StepCounter
+from ..utils import TensorList, vec_to_tensors
 
 class Preconditioner(ABC):
     def __init__(self):
         self.state: dict[Any, dict[str, Any]] = defaultdict(dict)
         self.global_state: dict[Any,Any] = {}
-        self.counter = StepCounter()
 
     @abstractmethod
     def update(self, tensors: list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, keys: list[Any]):
@@ -26,7 +25,6 @@ class Preconditioner(ABC):
         """reset the internal state"""
         self.state.clear()
         self.global_state.clear()
-        self.counter.reset()
 
 
 class TensorwisePreconditioner(Preconditioner, ABC):
@@ -72,7 +70,7 @@ class Precondition(Transform):
             self.set_child('inner', inner)
 
     def _tensor_wise_transform(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, vars:Vars) -> list[torch.Tensor]:
-        step = self.counter()
+        step = self.global_state.get('step', 0)
         settings = self.settings[params[0]]
         update_freq = settings['update_freq']
 
@@ -97,11 +95,11 @@ class Precondition(Transform):
         if scale_first and step == 0:
             torch._foreach_div_(tensors, scale_factor)
 
-        self.counter.increment()
+        self.global_state['step'] = step + 1
         return tensors
 
     def _vec_transform(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, vars:Vars) -> list[torch.Tensor]:
-        step = self.counter()
+        step = self.global_state.get('step', 0)
         tensors_vec = torch.cat([t.ravel() for t in tensors])
         params_vec = torch.cat([p.ravel() for p in params])
         grads_vec = [torch.cat([g.ravel() for g in grads])] if grads is not None else None
@@ -132,7 +130,7 @@ class Precondition(Transform):
             tensors_vec /= scale_factor
 
         tensors = vec_to_tensors(vec=tensors_vec, reference=tensors)
-        self.counter.increment()
+        self.global_state['step'] = step + 1
         return tensors
 
     @torch.no_grad

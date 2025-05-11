@@ -2,11 +2,11 @@ from operator import itemgetter
 
 import torch
 
-from ...core import ParameterwiseTransform, Target, Transform
+from ...core import TensorwiseTransform, Target, Transform
 from ...utils import TensorList, as_tensorlist
 
 
-class ClipValueGrowth(ParameterwiseTransform):
+class ClipValueGrowth(TensorwiseTransform):
     """Clips update value magnitude growth.
 
     Args:

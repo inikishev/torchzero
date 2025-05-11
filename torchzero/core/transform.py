@@ -91,7 +91,7 @@ class Transform(Module, ABC):
         raise ValueError(f'Invalid target: {self._target}')
 
 
-class ParameterwiseTransform(Module, ABC):
+class TensorwiseTransform(Module, ABC):
     """Base class for a parameter-wise transform.
 
     This is an abstract class, to use it, subclass it and override `transform`.
@@ -228,7 +228,7 @@ def apply(
         if tfm._uses_grad and grads is None: grads = vars.get_grad()
         return list(tfm.transform(tensors, params, grads, vars))
 
-    if isinstance(tfm, ParameterwiseTransform):
+    if isinstance(tfm, TensorwiseTransform):
         grads_list = grads
         if grads_list is None:
             if tfm._uses_grad: grads_list = vars.get_grad()

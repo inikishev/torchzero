@@ -71,7 +71,7 @@ class Adam(Module):
 
     @torch.no_grad
     def step(self, vars):
-        self.counter.increment()
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         beta1,beta2,eps,alpha=self.get_settings('beta1','beta2','eps','alpha', params=vars.params, cls=NumberList)
         amsgrad,pow,debiased = self.getter(self.settings[vars.params[0]])
@@ -100,7 +100,7 @@ class Adam(Module):
             beta1=beta1,
             beta2=beta2,
             eps=eps,
-            step=self.counter(),
+            step=step,
             pow=pow,
             debiased=debiased,
             max_exp_avg_sq_=max_exp_avg_sq,
