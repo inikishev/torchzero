@@ -29,7 +29,7 @@ def apply_svd_preconditioner(tensor: torch.Tensor, U: torch.Tensor, Sv: torch.Te
 def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
     if key not in state_: state_[key] = value
     else:
-        if beta is None: state_[key] = value
+        if beta is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
 class SVDHistoryPreconditioner(TensorwisePreconditioner):
