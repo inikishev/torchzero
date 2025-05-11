@@ -7,13 +7,13 @@ import torch
 from ...core import Chainable, Precondition, TensorwisePreconditioner
 
 
-def get_US(history: deque, damping: float, eps: float):
+def get_US(history: deque, damping: float):
     M_hist = torch.stack(tuple(history), dim=1)
     try:
         # U - (d, history_size)
         # S - (history_size, history_size)
         U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
-        return U, S.pow_(2).add_(damping).clamp_(min=eps**2).sqrt_() # this is a more "correct" way to do damping
+        return U, S.pow_(2).add_(damping).sqrt_() # this is a more "correct" way to do damping
 
     except torch.linalg.LinAlgError:
         return None, None
@@ -34,8 +34,7 @@ class HistoryPreconditioner(TensorwisePreconditioner):
         self,
         history_size: int = 10,
         update_freq: int = 1,
-        damping: float = 1e-5,
-        eps: float = 1e-8,
+        damping: float = 1e-10,
         U_beta: float | None = None,
         S_beta: float | None = None,
         order: int = 1,
@@ -44,7 +43,6 @@ class HistoryPreconditioner(TensorwisePreconditioner):
         self.history_size = history_size
         self.update_freq = update_freq # history is still updated each step so Precondition's update_freq has different meaning
         self.damping = damping
-        self.eps = eps
         self.U_beta = U_beta
         self.S_beta = S_beta
         self.order = order
@@ -56,6 +54,7 @@ class HistoryPreconditioner(TensorwisePreconditioner):
 
         if self.order == 1: history.append(tensor.clone().view(-1))
         else:
+            # if order=2, history is of gradient differences, order 3 is differences between differences, etc
             cur = tensor.clone()
             for i in range(self.order):
                 if f'prev_{i}' not in state:
@@ -63,13 +62,13 @@ class HistoryPreconditioner(TensorwisePreconditioner):
                     break
                 else:
                     y_k = cur - state[f'prev_{i}']
-                    state[f'prev_{i}'].copy_(cur)
+                    state[f'prev_{i}'] = cur
                     cur = y_k
                 if i == self.order - 1: history.append(cur.view(-1))
 
         step = state.get('step', 0)
         if step % self.update_freq == 0 and len(history) != 0:
-            U, S = get_US(history, damping=self.damping, eps=self.eps)
+            U, S = get_US(history, damping=self.damping)
             if U is not None and S is not None:
                 maybe_lerp_(state, self.U_beta, 'U', U)
                 maybe_lerp_(state, self.S_beta, 'S', S)
@@ -116,8 +115,7 @@ class WhitenViaSVD(Precondition):
         self,
         history_size: int = 10,
         update_freq: int = 1,
-        damping: float = 1e-4,
-        eps: float = 1e-8,
+        damping: float = 1e-10,
         order: int = 1,
         U_beta: float | None = None,
         S_beta: float | None = None,
@@ -126,7 +124,7 @@ class WhitenViaSVD(Precondition):
         inner: Chainable | None = None,
     ):
         super().__init__(
-            HistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, eps=eps, U_beta=U_beta, S_beta=S_beta, order=order),
+            HistoryPreconditioner(history_size=history_size, update_freq=update_freq, damping=damping, U_beta=U_beta, S_beta=S_beta, order=order),
             uses_grad=False,
             tensorwise=tensorwise,
             scale_first=scale_first,
