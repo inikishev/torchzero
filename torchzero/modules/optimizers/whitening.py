@@ -1,8 +1,10 @@
+import math
 from collections import deque
 from typing import Literal
+
 import torch
 
-from ...core import TensorwisePreconditioner, Precondition, Chainable
+from ...core import Chainable, Precondition, TensorwisePreconditioner
 
 
 def get_US(history: deque, damping: float, eps: float):
@@ -11,7 +13,7 @@ def get_US(history: deque, damping: float, eps: float):
         # U - (d, history_size)
         # S - (history_size, history_size)
         U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
-        return U, S.pow_(2).add_(damping).clamp_(min=eps).sqrt_() # this is a more "correct" way to do damping
+        return U, S.pow_(2).add_(damping).clamp_(min=eps**2).sqrt_() # this is a more "correct" way to do damping
 
     except torch.linalg.LinAlgError:
         return None, None
@@ -97,7 +99,10 @@ class WhitenViaSVD(Precondition):
     Args:
         history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
         update_freq (int, optional): how often to re-compute the preconditioner. Defaults to 1.
-        eps (float, optional): epsilon for division, can also act as damping term. Defaults to 1e-7.
+        damping (float, optional): damping term, makes it closer to GD. Defaults to 1e-7.
+        eps (float, optional): minimal value for S. Defaults to 1e-8.
+        order (int, optional): 
+            whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
         U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
         Sv_beta (float | None, optional): beta for Sv (probably a bad idea). Defaults to None.
         update_into_precond (float | None, optional):
@@ -113,9 +118,9 @@ class WhitenViaSVD(Precondition):
         update_freq: int = 1,
         damping: float = 1e-4,
         eps: float = 1e-8,
+        order: int = 1,
         U_beta: float | None = None,
         S_beta: float | None = None,
-        order: int = 1,
         tensorwise: bool = True,
         scale_first: bool = False,
         inner: Chainable | None = None,
