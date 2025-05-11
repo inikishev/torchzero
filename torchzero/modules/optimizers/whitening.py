@@ -54,17 +54,28 @@ class HistoryPreconditioner(TensorwisePreconditioner):
 
         if self.order == 1: history.append(tensor.clone().view(-1))
         else:
+
             # if order=2, history is of gradient differences, order 3 is differences between differences, etc
-            cur = tensor.clone()
-            for i in range(self.order):
-                if f'prev_{i}' not in state:
-                    state[f'prev_{i}'] = cur
+            # normalized by parameter differences
+            cur_p = param.clone()
+            cur_g = tensor.clone()
+            for i in range(1, self.order):
+                if f'prev_g_{i}' not in state:
+                    state[f'prev_p_{i}'] = cur_p
+                    state[f'prev_g_{i}'] = cur_g
                     break
                 else:
-                    y_k = cur - state[f'prev_{i}']
-                    state[f'prev_{i}'] = cur
-                    cur = y_k
-                if i == self.order - 1: history.append(cur.view(-1))
+                    s_k = cur_p - state[f'prev_p_{i}']
+                    y_k = cur_g - state[f'prev_g_{i}']
+                    state[f'prev_p_{i}'] = cur_p
+                    state[f'prev_g_{i}'] = cur_g
+                    cur_p = s_k
+                    cur_g = y_k
+
+                if i == self.order - 1:
+                    cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
+                    history.append(cur_g.view(-1))
+
 
         step = state.get('step', 0)
         if step % self.update_freq == 0 and len(history) != 0:
@@ -100,7 +111,7 @@ class WhitenViaSVD(Precondition):
         update_freq (int, optional): how often to re-compute the preconditioner. Defaults to 1.
         damping (float, optional): damping term, makes it closer to GD. Defaults to 1e-7.
         eps (float, optional): minimal value for S. Defaults to 1e-8.
-        order (int, optional): 
+        order (int, optional):
             whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
         U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
         Sv_beta (float | None, optional): beta for Sv (probably a bad idea). Defaults to None.
