@@ -9,6 +9,7 @@ from .transform import apply, Transform, Target
 from ..utils import TensorList, vec_to_tensors
 
 class Preconditioner(ABC):
+    """Abstract class for a preconditioner."""
     def __init__(self):
         self.state: dict[Any, dict[str, Any]] = defaultdict(dict)
         self.global_state: dict[Any,Any] = {}

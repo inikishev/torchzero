@@ -38,6 +38,7 @@ def apply_subspace_preconditioner(
     return basis @ update_projected # d
 
 class RandomPreconditioning(Transform):
+    """full matrix rmsprop in random subspace"""
     def __init__(self, k: int, beta: float | None = 0.99):
         defaults = dict(k=k, beta=beta)
         super().__init__(defaults, uses_grad=False)
@@ -63,6 +64,7 @@ class RandomPreconditioning(Transform):
 
 
 class HistoryPreconditioning(Transform):
+    """full matrix rmsprop in subspace spanned by gradient differences"""
     def __init__(self, k: int, beta: float | None = 0.99, weight=1e-2):
         defaults = dict(k=k, beta=beta, weight=weight)
         super().__init__(defaults, uses_grad=False)

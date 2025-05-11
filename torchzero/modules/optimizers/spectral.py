@@ -104,21 +104,18 @@ class SpectralPreconditioner(TensorwisePreconditioner):
 
 
 class SpectralPreconditioning(Precondition):
-    """Precondition using history of past gradients. Apparently chaining multiple of those might improve preconditioning accuracy.
+    """Precondition using history of past gradients. Apparently chaining multiple of those might improve it.
 
     Args:
         history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
         update_freq (int, optional): how often to re-compute the preconditioner. Defaults to 1.
         damping (float, optional): damping term, makes it closer to GD. Defaults to 1e-7.
-        eps (float, optional): minimal value for S. Defaults to 1e-8.
         order (int, optional):
             whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
         U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
-        Sv_beta (float | None, optional): beta for Sv (probably a bad idea). Defaults to None.
-        update_into_precond (float | None, optional):
-            whether to use history of previopus updates for whitening (probably a bad idea). Defaults to None.
+        S_beta (float | None, optional): beta for S (probably a bad idea). Defaults to None.
         tensorwise (bool, optional):
-            whether to apply preconditioning to each tensor or to all tensors concatenated into a vector. Latter will be slower but captures interactions between layers. Defaults to True.
+            whether to apply preconditioning to each tensor (True, default) or to all tensors concatenated into a vector (False). Latter will be slower but captures interactions between layers. Defaults to True.
         scale_first (bool, optional): makes first step small, usually not needed. Defaults to False.
         inner (Chainable | None, optional): Inner modules applied after updating preconditioner and before applying it. Defaults to None.
     """

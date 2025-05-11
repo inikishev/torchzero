@@ -11,6 +11,20 @@ from .rfdm import RandomizedFDM
 
 
 class ForwardGradient(RandomizedFDM):
+    """Forward gradient method, same as randomized finite difference but directional derivative is estimated via autograd (as jacobian vector product)
+
+    Args:
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        distribution (Distributions, optional): distribution for random gradient samples. Defaults to "gaussian".
+        beta (float, optional):
+            if not 0, acts as momentum on gradient samples, making the subspace spanned by them change slowly. Defaults to 0.
+        pre_generate (bool, optional):
+            whether to pre-generate gradient samples before each step. Defaults to True.
+        jvp_method (str, optional):
+            how to calculate jacobian vector product, note that with `forward` and 'central' this is identical to randomized finite difference. Defaults to 'autograd'.
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        target (GradTarget, optional): what to set on vars. Defaults to "closure".
+    """
     PRE_MULTIPLY_BY_H = False
     def __init__(
         self,

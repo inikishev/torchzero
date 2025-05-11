@@ -80,6 +80,7 @@ _FD_FUNCS = {
     "forward2": _forward2,
     "backward2": _backward2,
     "central2": _central2,
+    "central3": _central2, # they are the same
     "forward3": _forward3,
     "backward3": _backward3,
     "central4": _central4,
@@ -87,6 +88,13 @@ _FD_FUNCS = {
 
 
 class FDM(GradApproximator):
+    """Approximate gradients via finite difference method
+
+    Args:
+        h (float, optional): magnitude of parameter perturbation. Defaults to 1e-3.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        target (GradTarget, optional): what to set on vars. Defaults to 'closure'.
+    """
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)
         super().__init__(defaults, target=target)
