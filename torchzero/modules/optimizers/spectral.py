@@ -5,6 +5,7 @@ from typing import Literal, Any
 
 import torch
 from ...core import Chainable, TensorwisePreconditioner
+from ...utils.linalg.matrix_power import matrix_power_svd
 
 class _Solver:
     @abstractmethod
@@ -54,13 +55,15 @@ class _SVDLowRankSolver(_Solver):
         Utg = (U.T @ g).div_(S)
         return U @ Utg
 
-class _QRSolver(_Solver):
+class _QRDiagonalSolver(_Solver):
+    def __init__(self, sqrt=True): self.sqrt = sqrt
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
         try:
             Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
             R_diag = R.diag().abs()
             if damping is not None and damping != 0: R_diag.add_(damping)
+            if self.sqrt: R_diag.sqrt_()
             return Q, R_diag
         except torch.linalg.LinAlgError:
             return None, None
@@ -69,15 +72,38 @@ class _QRSolver(_Solver):
         Qtg = (Q.T @ g).div_(R_diag)
         return Q @ Qtg
 
+class _QRSolver(_Solver):
+    def __init__(self, sqrt=True): self.sqrt = sqrt
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        try:
+            # Q: d x k, R: k x k
+            Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
+            A = R @ R.T
+            if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
+            if self.sqrt: A = matrix_power_svd(A, 0.5)
+            return Q, A
+        except (torch.linalg.LinAlgError):
+            return None,None
+
+    def apply(self, g: torch.Tensor, Q: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+        g_proj = Q.T @ g
+        y, _ = torch.linalg.solve_ex(A, g_proj) # pylint:disable=not-callable
+        return Q @ y
 
 class _EighSolver(_Solver):
+    def __init__(self, sqrt=True):
+        self.sqrt = sqrt
+
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
         grams = M_hist @ M_hist.T # (d, d)
         if damping is not None and damping != 0: grams.diagonal(dim1=-2, dim2=-1).add_(damping)
         try:
             L, Q = torch.linalg.eigh(grams) # L: (d,), Q: (d, d) # pylint:disable=not-callable
-            return Q, L.abs().clamp_(min=1e-12)
+            L = L.abs().clamp_(min=1e-12)
+            if self.sqrt: L = L.sqrt()
+            return Q, L
         except torch.linalg.LinAlgError:
             return None, None
 
@@ -90,9 +116,10 @@ SOLVERS = {
     "svd": _SVDSolver(), # fallbacks on "gesvd" which basically takes ages or just hangs completely
     "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd"
     "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, sometimes better sometimes worse but faster
-    "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this
+    "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this, with current ones its slower and worse
     "eigh": _EighSolver(), # this is O(n**2) storage
     "qr": _QRSolver(),
+    "qrdiag": _QRDiagonalSolver(),
 }
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
@@ -125,9 +152,9 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _Solver = 'svd_gesvdj',
-        U_beta: float | None = None,
-        S_beta: float | None = None,
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver = 'svd_gesvdj',
+        A_beta: float | None = None,
+        B_beta: float | None = None,
         interval: int = 1,
         concat_params: bool = False,
         scale_first: bool = False,
@@ -135,7 +162,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
     ):
         if isinstance(solver, str): solver = SOLVERS[solver]
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, U_beta=U_beta, S_beta=S_beta, solver=solver)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, A_beta=A_beta, B_beta=B_beta, solver=solver)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -144,8 +171,8 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         history_size = settings['history_size']
         update_freq = settings['update_freq']
         damping = settings['damping']
-        U_beta = settings['U_beta']
-        S_beta = settings['S_beta']
+        A_beta = settings['A_beta']
+        B_beta = settings['B_beta']
         solver: _Solver = settings['solver']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
@@ -178,8 +205,8 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
             A, B = solver.update(history, damping=damping)
-            maybe_lerp_(state, U_beta, 'A', A)
-            maybe_lerp_(state, S_beta, 'B', B)
+            maybe_lerp_(state, A_beta, 'A', A)
+            maybe_lerp_(state, B_beta, 'B', B)
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
