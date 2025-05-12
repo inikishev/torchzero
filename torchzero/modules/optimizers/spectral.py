@@ -6,6 +6,8 @@ from typing import Literal, Any
 import torch
 from ...core import Chainable, TensorwisePreconditioner
 from ...utils.linalg.matrix_power import matrix_power_svd
+from ...utils.linalg.svd import randomized_svd
+
 
 class _Solver:
     @abstractmethod
@@ -46,6 +48,21 @@ class _SVDLowRankSolver(_Solver):
         M_hist = torch.stack(tuple(history), dim=1)
         try:
             U, S, _ = torch.svd_lowrank(M_hist, q=self.q, niter=self.niter)
+            if damping is not None and damping != 0: S.add_(damping)
+            return U, S
+        except torch.linalg.LinAlgError:
+            return None, None
+
+    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
+        Utg = (U.T @ g).div_(S)
+        return U @ Utg
+
+class _RandomizedSVDSolver(_Solver):
+    def __init__(self, k: int = 3): self.k = k
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        try:
+            U, S, _ = randomized_svd(M_hist, self.k)
             if damping is not None and damping != 0: S.add_(damping)
             return U, S
         except torch.linalg.LinAlgError:
@@ -117,6 +134,11 @@ SOLVERS = {
     "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd"
     "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, sometimes better sometimes worse but faster
     "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this, with current ones its slower and worse
+    "randomized_svd1": _RandomizedSVDSolver(1),
+    "randomized_svd2": _RandomizedSVDSolver(2),
+    "randomized_svd3": _RandomizedSVDSolver(3),
+    "randomized_svd4": _RandomizedSVDSolver(4),
+    "randomized_svd5": _RandomizedSVDSolver(5),
     "eigh": _EighSolver(), # this is O(n**2) storage
     "qr": _QRSolver(),
     "qrdiag": _QRDiagonalSolver(),
@@ -152,7 +174,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver = 'qr',
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver | str = 'qr',
         A_beta: float | None = None,
         B_beta: float | None = None,
         interval: int = 1,
