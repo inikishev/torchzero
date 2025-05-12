@@ -1,27 +1,92 @@
+from abc import ABC, abstractmethod
 import math
 from collections import deque
-from typing import Literal
+from typing import Literal, Any
 
 import torch
 
 from ...core import Chainable, TensorwisePreconditioner
 
+class _SpectralPreconditionerType:
+    @abstractmethod
+    def update(self, history: deque[torch.Tensor], damping: float | None) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+        """returns stuff for apply"""
+    @abstractmethod
+    def apply(self, __g: torch.Tensor, __A:torch.Tensor, __B:torch.Tensor) -> torch.Tensor:
+        """apply preconditioning to tensor"""
 
-def get_US(history: deque, damping: float):
-    M_hist = torch.stack(tuple(history), dim=1)
-    try:
-        # U - (d, history_size)
-        # S - (history_size, history_size)
-        U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
-        return U, S.pow_(2).add_(damping).sqrt_() # this is a more "correct" way to do damping
+class _SVDPreconditioner(_SpectralPreconditionerType):
+    def __init__(self, driver=None): self.driver=driver
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
 
-    except torch.linalg.LinAlgError:
-        return None, None
+        try:
+            device = None # driver is CUDA only
+            if self.driver is not None:
+                device = M_hist.device
+                M_hist = M_hist.cuda()
+
+            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver=self.driver) # pylint:disable=not-callable
+
+            if self.driver is not None:
+                U = U.to(device); S = S.to(device)
+
+            if damping is not None and damping != 0: S.add_(damping)
+            return U, S
+
+        except torch.linalg.LinAlgError:
+            return None, None
+
+    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
+        Utg = (U.T @ g).div_(S)
+        return U @ Utg
+
+class _SVDLowRankPreconditioner(_SpectralPreconditionerType):
+    def __init__(self, q: int = 6, niter: int = 2): self.q, self.niter = q, niter
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        U, S, _ = torch.svd_lowrank(M_hist, q=self.q, niter=self.niter)
+        if damping is not None and damping != 0: S.add_(damping)
+        return U, S
+
+    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
+        Utg = (U.T @ g).div_(S)
+        return U @ Utg
+
+class _QRPreconditioner(_SpectralPreconditionerType):
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
+        R_diag = R.diag().abs()
+        if damping is not None and damping != 0: R_diag.add_(damping)
+        return Q, R_diag
+
+    def apply(self, g: torch.Tensor, Q: torch.Tensor, R_diag: torch.Tensor):
+        Qtg = (Q.T @ g).div_(R_diag)
+        return Q @ Qtg
 
 
-def spectral_precondition(tensor: torch.Tensor, U: torch.Tensor, S: torch.Tensor, ):
-    Utg = (U.T @ tensor).div_(S)
-    return U @ Utg
+class _EighPreconditioner(_SpectralPreconditionerType):
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        MMT = M_hist @ M_hist.T # (d, d)
+        if damping is not None and damping != 0: MMT.diagonal(dim1=-2, dim2=-1).add_(damping)
+        L, Q = torch.linalg.eigh(MMT) # L: (d,), Q: (d, d) # pylint:disable=not-callable
+        return Q, L.abs().clamp_(min=1e-12)
+
+    def apply(self, g: torch.Tensor, Q: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
+        Qtg = (Q.T @ g).div_(L)
+        return Q @ Qtg
+
+
+PRECONDITIONER_TYPES = {
+    "svd": _SVDPreconditioner(),
+    "svd_gesvdj": _SVDPreconditioner("gesvdj"), # no fallback on slow "gesvd", CUDA only
+    "svd_gesvda": _SVDPreconditioner("gesvda"), # approximate method for wide matrices, CUDA only
+    "svd_lowrank": _SVDLowRankPreconditioner(),
+    "eigh": _EighPreconditioner(),
+    "qr": _QRPreconditioner(),
+}
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
     if key not in state_: state_[key] = value
@@ -29,7 +94,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
         if beta is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class SpectralSVDPreconditioner(TensorwisePreconditioner):
+class SpectralPreconditioner(TensorwisePreconditioner):
     """A low rank preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences.
 
     Args:
@@ -51,15 +116,18 @@ class SpectralSVDPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
+        preconditioner_type: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _SpectralPreconditionerType = 'svd',
         U_beta: float | None = None,
         S_beta: float | None = None,
+        interval: int = 1,
         concat_params: bool = False,
         scale_first: bool = False,
         inner: Chainable | None = None,
     ):
+        if isinstance(preconditioner_type, str): preconditioner_type = PRECONDITIONER_TYPES[preconditioner_type]
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, U_beta=U_beta, S_beta=S_beta)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, U_beta=U_beta, S_beta=S_beta, preconditioner_type=preconditioner_type)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner, update_freq=interval)
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, state, settings):
@@ -69,6 +137,7 @@ class SpectralSVDPreconditioner(TensorwisePreconditioner):
         damping = settings['damping']
         U_beta = settings['U_beta']
         S_beta = settings['S_beta']
+        preconditioner: _SpectralPreconditionerType = settings['preconditioner_type']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -99,25 +168,27 @@ class SpectralSVDPreconditioner(TensorwisePreconditioner):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S = get_US(history, damping=damping)
-            if U is not None and S is not None:
-                maybe_lerp_(state, U_beta, 'U', U)
-                maybe_lerp_(state, S_beta, 'S', S)
+            A, B = preconditioner.update(history, damping=damping)
+            if A is not None and B is not None:
+                maybe_lerp_(state, U_beta, 'A', A)
+                maybe_lerp_(state, S_beta, 'B', B)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
         history_size = settings['history_size']
+        preconditioner: _SpectralPreconditionerType = settings['preconditioner_type']
+
         state['step'] = state.get('step', 0)
         n = len(state['history'])
         if n != 0: state['step'] += 1 # do not increment if history wasn't updated
 
-        U = state.get('U', None)
-        if U is None:
+        A = state.get('A', None)
+        if A is None:
             # make a conservative step to avoid issues due to different GD scaling
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
-        S = state['S']
-        update = spectral_precondition(tensor.view(-1), U, S).view_as(tensor)
+        B = state['B']
+        update = preconditioner.apply(tensor.view(-1), A, B).view_as(tensor)
 
         if n != history_size: update.mul_(n/history_size)
         return update
