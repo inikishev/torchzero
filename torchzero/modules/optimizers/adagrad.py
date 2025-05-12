@@ -5,7 +5,6 @@ import torch
 from ...core import (
     Chainable,
     Module,
-    Precondition,
     Preconditioner,
     Target,
     TensorwisePreconditioner,
@@ -113,25 +112,26 @@ class Adagrad(Transform):
 
 
 
-class FullMatrixWhiten(TensorwisePreconditioner):
-    def __init__(self, beta: float | None = None, decay: float | None = None):
-        super().__init__()
-        self.beta = beta
-        self.decay = decay
+class FullMatrixAdagrad(TensorwisePreconditioner):
+    def __init__(self, beta: float | None = None, decay: float | None = None, concat_params=False, update_freq=1, inner: Chainable | None = None):
+        defaults = dict(beta = beta, decay = decay)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state):
+    def update_tensor(self, tensor, param, grad, state, settings):
         G = tensor.ravel()
         GG = torch.outer(G, G)
+        decay = settings['decay']
+        beta = settings['beta']
 
         if 'GG' not in state: state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
-        if self.decay is not None: state['GG'].mul_(self.decay)
+        if decay is not None: state['GG'].mul_(decay)
 
-        if self.beta is not None: state['GG'].lerp_(GG, 1-self.beta)
+        if beta is not None: state['GG'].lerp_(GG, 1-beta)
         else: state['GG'].add_(GG)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state):
+    def apply_tensor(self, tensor, param, grad, state, settings):
         GG = state['GG']
 
         if tensor.numel() == 1:
@@ -140,8 +140,3 @@ class FullMatrixWhiten(TensorwisePreconditioner):
         B = matrix_power_svd(GG, -1/2)
         return (B @ tensor.ravel()).view_as(tensor)
 
-class FullMatrixAdagrad(Precondition):
-    def __init__(self, beta: float | None = None, decay: float | None = None, tensorwise=True, update_freq=1, inner: Chainable | None = None):
-        super().__init__(FullMatrixWhiten(beta=beta, decay=decay), uses_grad=False, tensorwise=tensorwise, update_freq=update_freq, inner=inner)
-
-Whiten = FullMatrixAdagrad

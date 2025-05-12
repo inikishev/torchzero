@@ -2,25 +2,34 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner, Precondition
+from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner
 from ...utils import TensorList
 
 
-class BFGSInverseUpdateStrategy(TensorwisePreconditioner):
-    def __init__(self, tol=1e-10, init_scale: float | Literal['auto'] = 'auto'):
-        super().__init__()
-        self.init_scale: float | Literal['auto'] = init_scale
-        self.tol = tol
+class BFGS(TensorwisePreconditioner):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-10,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(init_scale=init_scale, tol=tol)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state):
+    def update_tensor(self, tensor, param, grad, state, settings):
         p = param; g = tensor
         H = state.get('H', None)
         step = state.get('step', 0)
+        init_scale = settings['init_scale']
+        tol = settings['tol']
 
         if H is None:
             H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
-            if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: H *= self.init_scale
+            if isinstance(init_scale, (int, float)) and init_scale != 1: H *= init_scale
             state['H'] = H
             state['p_prev'] = p.clone()
             state['g_prev'] = g.clone()
@@ -32,10 +41,10 @@ class BFGSInverseUpdateStrategy(TensorwisePreconditioner):
         y_k: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= self.tol:
+        if y_k.abs().max() <= tol:
             return
 
-        if step == 1 and self.init_scale == 'auto':
+        if step == 1 and init_scale == 'auto':
             ys = y_k.dot(s_k)
             yy = y_k.dot(y_k)
             if ys != 0 and yy != 0: H *= ys/yy
@@ -54,50 +63,39 @@ class BFGSInverseUpdateStrategy(TensorwisePreconditioner):
         state['g_prev'] = g.clone()
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state):
+    def apply_tensor(self, tensor, param, grad, state, settings):
         state['step'] = state.get('step', 0) + 1
         H = state['H']
         return H @ tensor
 
 
-
-class BFGS(Precondition):
+class SR1(TensorwisePreconditioner):
     def __init__(
         self,
-        init_scale: float | Literal["auto"] = "auto",
+        init_scale: float | Literal["auto"] = 1,
         tol: float = 1e-10,
+        eps: float = 1e-8,
         update_freq: int = 1,
         scale_first: bool = True,
-        tensorwise: bool = False,
+        scale_second: bool = True,
+        concat_params: bool = True,
         inner: Chainable | None = None,
     ):
-        super().__init__(
-            BFGSInverseUpdateStrategy(init_scale=init_scale, tol=tol),
-            uses_grad=False,
-            update_freq=update_freq,
-            tensorwise=tensorwise,
-            scale_first=scale_first,
-            inner=inner,
-        )
-
-
-class SR1InverseUpdateStrategy(TensorwisePreconditioner):
-    def __init__(self, eps=1e-8, tol: float = 1e-10, init_scale: float | Literal['auto'] = 1, scale_second:bool=True):
-        super().__init__()
-        self.eps = eps
-        self.init_scale: float | Literal['auto'] = init_scale
-        self.tol = tol
-        self.scale_second = scale_second
+        defaults = dict(eps=eps, init_scale=init_scale, tol=tol, scale_second=scale_second)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state):
+    def update_tensor(self, tensor, param, grad, state, settings):
         p = param; g = tensor
         H = state.get('H', None)
         step = state.get('step', 0)
+        init_scale = settings['init_scale']
+        tol = settings['tol']
+        eps = settings['tol']
 
         if H is None:
             H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
-            if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: H *= self.init_scale
+            if isinstance(init_scale, (int, float)) and init_scale != 1: H *= init_scale
             state['H'] = H
             state['p_prev'] = p.clone()
             state['g_prev'] = g.clone()
@@ -109,10 +107,10 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
         y_k: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= self.tol:
+        if y_k.abs().max() <= tol:
             return
 
-        if step == 1 and self.init_scale == 'auto':
+        if step == 1 and init_scale == 'auto':
             ys = y_k.dot(s_k)
             yy = y_k.dot(y_k)
             if ys != 0 and yy != 0: H *= ys/yy
@@ -122,64 +120,48 @@ class SR1InverseUpdateStrategy(TensorwisePreconditioner):
         denom = torch.dot(z, y_k)
 
         # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
-        if denom.abs() >= self.eps * torch.linalg.norm(y_k) * torch.linalg.norm(z): # pylint:disable=not-callable
+        if denom.abs() >= eps * torch.linalg.norm(y_k) * torch.linalg.norm(z): # pylint:disable=not-callable
             H += torch.outer(z, z) / denom
 
         self.p_prev = p.clone()
         self.g_prev = g.clone()
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state):
+    def apply_tensor(self, tensor, param, grad, state, settings):
         """precondition"""
         step = state['step'] = state.get('step', 0) + 1
         H = state['H']
-        if self.scale_second and step == 2:
+        if settings['scale_second'] and step == 2:
             tensor = tensor/max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
         return H @ tensor
 
-class SR1(Precondition):
+
+
+class DiagonalBFGS(Preconditioner):
     def __init__(
         self,
-        init_scale: float | Literal["auto"] = 1,
+        init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        eps: float = 1e-8,
-        update_freq: int = 1,
+        res_beta: float | None = None,
+        H_beta: float | None = None,
+        growth_clip: float | None = None,
         scale_first: bool = True,
-        scale_second: bool = True,
-        tensorwise: bool = False,
         inner: Chainable | None = None,
     ):
-        super().__init__(
-            SR1InverseUpdateStrategy(init_scale=init_scale, tol=tol, eps=eps, scale_second=scale_second),
-            uses_grad=False,
-            update_freq=update_freq,
-            tensorwise=tensorwise,
-            scale_first=scale_first,
-            inner=inner,
-        )
-
-
-
-class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
-    def __init__(self, tol=1e-10, res_beta: float | None = None, H_beta: float | None = None, growth_clip: float | None = None, init_scale: float | Literal['auto'] = 'auto'):
-        super().__init__()
-        self.init_scale: float | Literal['auto'] = init_scale
-        self.res_beta = res_beta
-        self.H_beta = H_beta
-        self.growth_clip = growth_clip
-        self.tol = tol
+        defaults = dict(init_scale=init_scale, res_beta=res_beta, H_beta=H_beta, growth_clip=growth_clip, tol=tol)
+        super().__init__(defaults, uses_grad=False, concat_params=False, scale_first=scale_first, inner=inner)
 
     @torch.no_grad
-    def update(self, tensors, params, grads, keys):
+    def update(self, tensors, params, grads, states, settings):
         p = TensorList(params); g = TensorList(tensors)
-        states = [self.state[k] for k in keys]
         step = self.global_state.get('step', 0)
 
         if any('H' not in s for s in states):
-            for param, grad, state in zip(params, tensors, states):
+            for param, grad, state, setting in zip(params, tensors, states, settings):
+                init_scale = setting['init_scale']
                 if 'H' not in state:
                     state['H'] = torch.ones_like(param)
-                if isinstance(self.init_scale, (int, float)) and self.init_scale != 1: state['H'] *= self.init_scale
+                if isinstance(init_scale, (int, float)) and init_scale != 1: state['H'] *= init_scale
                 state['p_prev'] = param.clone()
                 state['g_prev'] = grad.clone()
             return
@@ -191,10 +173,10 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
         y_k = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().global_max() <= self.tol:
+        if y_k.abs().global_max() <= settings[0]['tol']:
             return
 
-        if step == 1 and self.init_scale == 'auto':
+        if step == 1 and settings[0]['init_scale'] == 'auto':
             ys = y_k.dot(s_k)
             yy = y_k.dot(y_k)
             if ys != 0 and yy != 0: H *= ys/yy
@@ -218,19 +200,19 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
             term2 = num2 / skyk
             res = term1 - term2
 
-            if self.res_beta is not None:
+            if settings[0]['res_beta'] is not None:
                 for s,param in zip(states, params):
                     if 'res' not in s:
                         s['res'] = torch.zeros_like(param)
                 res = TensorList(s['res'] for s in states)
-                res.lerp_(res, 1-self.res_beta)
+                res.lerp_(res, 1-settings[0]['res_beta'])
 
-            if self.growth_clip is not None:
+            if settings[0]['growth_clip'] is not None:
                 norm = res.global_vector_norm()
 
                 if 'prev_norm' in self.global_state:
                     prev_norm = self.global_state['prev_norm']
-                    allowed_norm = prev_norm * self.growth_clip
+                    allowed_norm = prev_norm * settings[0]['res_beta']
                     if norm > allowed_norm:
                         mul = (allowed_norm/norm).clip_(min=1e-5)
                         res.mul_(mul)
@@ -238,37 +220,15 @@ class DiagonalBFGSInverseUpdateStrategy(Preconditioner):
 
                 self.global_state['prev_norm'] = norm
 
-            if self.H_beta is None: H += res
-            else: H.lerp_(H + res, weight=1-self.H_beta)
+            if settings[0]['H_beta'] is None: H += res
+            else: H.lerp_(H + res, weight=1-settings[0]['H_beta'])
 
         p_prev.copy_(p)
         g_prev.copy_(g)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, keys):
+    def apply(self, tensors, params, grads, states, settings):
         self.global_state['step'] = self.global_state.get('step', 0) + 1
-        return TensorList(tensors).mul_([self.state[k]['H'] for k in keys])
+        return TensorList(tensors).mul_([s['H'] for s in states])
 
 
-class DiagBFGS(Precondition):
-    def __init__(
-        self,
-        init_scale: float | Literal["auto"] = "auto",
-        res_beta: float | None = None,
-        H_beta: float | None = None,
-        growth_clip: float | None = None,
-        scale_first: bool = True,
-        inner: Chainable | None = None,
-    ):
-        super().__init__(
-            DiagonalBFGSInverseUpdateStrategy(
-                res_beta=res_beta,
-                H_beta=H_beta,
-                init_scale=init_scale,
-                growth_clip=growth_clip,
-            ),
-            uses_grad=False,
-            scale_first=scale_first,
-            tensorwise=True,
-            inner=inner,
-        )

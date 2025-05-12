@@ -1,4 +1,4 @@
-from .adagrad import Adagrad, FullMatrixAdagrad, Whiten
+from .adagrad import Adagrad, FullMatrixAdagrad
 from .adam import Adam
 from .lion import Lion
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
@@ -13,4 +13,4 @@ from .rprop import (
 from .shampoo import Shampoo
 from .soap import SOAP
 from .orthograd import OrthoGrad, orthograd_
-from .spectral import SpectralPreconditioning
+from .spectral import SpectralSVDPreconditioner

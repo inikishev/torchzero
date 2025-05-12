@@ -69,7 +69,7 @@ class AdaptiveMatrixMomentum(Module):
     """
     Mu here is estimated as ||s_k||/||y_k||.
     """
-    def __init__(self, mu_mul:float=1, beta:float=0.99, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+    def __init__(self, mu_mul:float=1, beta:float=1, eps=1e-4, hvp_mode: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
         defaults = dict(mu_mul=mu_mul, beta=beta, hvp_mode=hvp_mode, h=h, eps=eps)
         super().__init__(defaults)
 
