@@ -28,6 +28,15 @@ def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
 def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
     return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
 
+def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None):
+    try:
+        eigvals, eigvecs = torch.linalg.eigh(H) # pylint:disable=not-callable
+        if tfm is not None: eigvals = tfm(eigvals)
+        eigvals.reciprocal_()
+        return torch.linalg.multi_dot([eigvecs, torch.diag(eigvals), eigvecs.mH, g]) # pylint:disable=not-callable
+    except torch.linalg.LinAlgError:
+        return None
+
 def tikhonov_(H: torch.Tensor, reg: float):
     if reg!=0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(reg))
     return H
@@ -36,46 +45,39 @@ def eig_tikhonov_(H: torch.Tensor, reg: float):
     v = torch.linalg.eigvalsh(H).min().clamp_(max=0).neg_() + reg # pylint:disable=not-callable
     return tikhonov_(H, v)
 
-def inv_matrix_clamp(H: torch.Tensor, reg: float):
-    try:
-        eigvals, eigvecs = torch.linalg.eigh(H) # pylint:disable=not-callable
-        eigvals.clamp_(min=reg).reciprocal_()
-        return eigvecs @ torch.diag(eigvals) @ eigvecs.mH
-    except Exception:
-        return None
-
 
 class Newton(Module):
     """Exact newton via autograd.
 
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
-        min_eigval (float | None, optional):
-            if not None, clips eigenvalues to be larger than this value. This is usually better
-            than eig_reg, plus eigenvectors will be reused to invert the hessian. Defaults to None.
         eig_reg (bool, optional): whether to use largest negative eigenvalue as regularizer. Defaults to False.
         hessian_method (str):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
             whether to enable vectorized hessian. Defaults to True.
         inner (Chainable | None, optional): inner modules. Defaults to None.
-        H_tfm (Chainable | None, optional):
+        H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
             must return a tuple: `(hessian, is_inverted)` with transformed hessian and a boolean value
             which must be True if transform inverted the hessian and False otherwise. Defaults to None.
+        eigval_tfm (Callable | None, optional):
+            optional eigenvalues transform, for example torch.abs or torch.clip(min=1e-8).
+            If this is specified, eigendecomposition will be used to solve Hx = g.
+
     """
     def __init__(
         self,
         reg: float = 1e-6,
-        min_eigval: float | None = None,
         eig_reg: bool = False,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
         inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | None = None,
+        eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(reg=reg, eig_reg=eig_reg, min_eigval=min_eigval, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm)
+        defaults = dict(reg=reg, eig_reg=eig_reg, abs=abs,hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm)
         super().__init__(defaults)
 
         if inner is not None:
@@ -90,10 +92,10 @@ class Newton(Module):
         settings = self.settings[params[0]]
         reg = settings['reg']
         eig_reg = settings['eig_reg']
-        min_eigval = settings['min_eigval']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
         H_tfm = settings['H_tfm']
+        eigval_tfm = settings['eigval_tfm']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         if hessian_method == 'autograd':
@@ -129,9 +131,8 @@ class Newton(Module):
             H, is_inv = H_tfm(H, g)
             if is_inv: update = H
 
-        if min_eigval is not None:
-            if update is not None: raise RuntimeError('min_eigval and H_tfm that inverts the hessian are incompatible')
-            update = inv_matrix_clamp(H, min_eigval) @ g
+        if eigval_tfm is not None:
+            update = eigh_solve(H, g, eigval_tfm)
 
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)

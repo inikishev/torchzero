@@ -152,7 +152,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver = 'svd_gesvdj',
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver = 'qr',
         A_beta: float | None = None,
         B_beta: float | None = None,
         interval: int = 1,
