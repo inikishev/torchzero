@@ -67,13 +67,6 @@ def as_tensorlist(x):
     if isinstance(x, TensorList): return x
     return TensorList(x)
 
-def generic_clamp(x: Any, min=None,max=None) -> Any:
-    if isinstance(x, (torch.Tensor, TensorList)): return x.clamp(min,max)
-    if isinstance(x, (list, tuple)): return x.__class__(generic_clamp(i,min,max) for i in x)
-    if x < min: return min
-    if x > max: return max
-    return x
-
 
 # tensorlist must subclass list
 # UserList doesn't work with _foreach_xxx
@@ -330,7 +323,7 @@ class TensorList(list[torch.Tensor | Any]):
         return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
     def global_any(self): return builtins.any(self.any())
     def global_all(self): return builtins.all(self.all())
-    def global_numel(self): return builtins.sum(self.numel())
+    def global_numel(self) -> int: return builtins.sum(self.numel())
 
     def empty_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.empty_like(i, **kwargs) for i in self)
     def zeros_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.zeros_like(i, **kwargs) for i in self)
@@ -1047,4 +1040,28 @@ def where(condition: TensorList, input: _STOrSTSeq, other: _STOrSTSeq):
     """Where but for a tensorlist."""
     args = [i if isinstance(i, (list, tuple)) else [i]*len(condition) for i in (input, other)]
     return condition.__class__(torch.where(*z) for z in zip(condition, *args))
+
+def generic_clamp(x: Any, min=None,max=None) -> Any:
+    if isinstance(x, (torch.Tensor, TensorList)): return x.clamp(min,max)
+    if isinstance(x, (list, tuple)): return x.__class__(generic_clamp(i,min,max) for i in x)
+    if x < min: return min
+    if x > max: return max
+    return x
+
+def generic_numel(x: torch.Tensor | TensorList) -> int:
+    if isinstance(x, torch.Tensor): return x.numel()
+    return x.global_numel()
+
+@overload
+def generic_zeros_like(x: torch.Tensor) -> torch.Tensor: ...
+@overload
+def generic_zeros_like(x: TensorList) -> TensorList: ...
+def generic_zeros_like(x: torch.Tensor | TensorList):
+    if isinstance(x, torch.Tensor): return torch.zeros_like(x)
+    return x.zeros_like()
+
+def generic_vector_norm(x: torch.Tensor | TensorList, ord=2) -> torch.Tensor:
+    if isinstance(x, torch.Tensor): return torch.linalg.vector_norm(x, ord=ord) # pylint:disable=not-callable
+    return x.global_vector_norm(ord)
+
 

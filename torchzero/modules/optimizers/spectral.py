@@ -4,12 +4,11 @@ from collections import deque
 from typing import Literal, Any
 
 import torch
-
 from ...core import Chainable, TensorwisePreconditioner
 
 class _Solver:
     @abstractmethod
-    def update(self, history: deque[torch.Tensor], damping: float | None) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    def update(self, history: deque[torch.Tensor], damping: float | None) -> tuple[Any, Any]:
         """returns stuff for apply"""
     @abstractmethod
     def apply(self, __g: torch.Tensor, __A:torch.Tensor, __B:torch.Tensor) -> torch.Tensor:
@@ -19,13 +18,12 @@ class _SVDSolver(_Solver):
     def __init__(self, driver=None): self.driver=driver
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
+        device = None # driver is CUDA only
+        if self.driver is not None:
+            device = M_hist.device
+            M_hist = M_hist.cuda()
 
         try:
-            device = None # driver is CUDA only
-            if self.driver is not None:
-                device = M_hist.device
-                M_hist = M_hist.cuda()
-
             U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver=self.driver) # pylint:disable=not-callable
 
             if self.driver is not None:
@@ -45,9 +43,12 @@ class _SVDLowRankSolver(_Solver):
     def __init__(self, q: int = 6, niter: int = 2): self.q, self.niter = q, niter
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
-        U, S, _ = torch.svd_lowrank(M_hist, q=self.q, niter=self.niter)
-        if damping is not None and damping != 0: S.add_(damping)
-        return U, S
+        try:
+            U, S, _ = torch.svd_lowrank(M_hist, q=self.q, niter=self.niter)
+            if damping is not None and damping != 0: S.add_(damping)
+            return U, S
+        except torch.linalg.LinAlgError:
+            return None, None
 
     def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
         Utg = (U.T @ g).div_(S)
@@ -56,10 +57,13 @@ class _SVDLowRankSolver(_Solver):
 class _QRSolver(_Solver):
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
-        Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
-        R_diag = R.diag().abs()
-        if damping is not None and damping != 0: R_diag.add_(damping)
-        return Q, R_diag
+        try:
+            Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
+            R_diag = R.diag().abs()
+            if damping is not None and damping != 0: R_diag.add_(damping)
+            return Q, R_diag
+        except torch.linalg.LinAlgError:
+            return None, None
 
     def apply(self, g: torch.Tensor, Q: torch.Tensor, R_diag: torch.Tensor):
         Qtg = (Q.T @ g).div_(R_diag)
@@ -69,10 +73,13 @@ class _QRSolver(_Solver):
 class _EighSolver(_Solver):
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
-        MMT = M_hist @ M_hist.T # (d, d)
-        if damping is not None and damping != 0: MMT.diagonal(dim1=-2, dim2=-1).add_(damping)
-        L, Q = torch.linalg.eigh(MMT) # L: (d,), Q: (d, d) # pylint:disable=not-callable
-        return Q, L.abs().clamp_(min=1e-12)
+        grams = M_hist @ M_hist.T # (d, d)
+        if damping is not None and damping != 0: grams.diagonal(dim1=-2, dim2=-1).add_(damping)
+        try:
+            L, Q = torch.linalg.eigh(grams) # L: (d,), Q: (d, d) # pylint:disable=not-callable
+            return Q, L.abs().clamp_(min=1e-12)
+        except torch.linalg.LinAlgError:
+            return None, None
 
     def apply(self, g: torch.Tensor, Q: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
         Qtg = (Q.T @ g).div_(L)
@@ -80,18 +87,18 @@ class _EighSolver(_Solver):
 
 
 SOLVERS = {
-    "svd": _SVDSolver(),
-    "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd", CUDA only
-    "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, CUDA only
-    "svd_lowrank": _SVDLowRankSolver(),
-    "eigh": _EighSolver(),
+    "svd": _SVDSolver(), # fallbacks on "gesvd" which basically takes ages or just hangs completely
+    "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd"
+    "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, sometimes better sometimes worse but faster
+    "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this
+    "eigh": _EighSolver(), # this is O(n**2) storage
     "qr": _QRSolver(),
 }
 
-def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
-    if key not in state_: state_[key] = value
+def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
+    if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
     else:
-        if beta is None or state_[key].shape != value.shape: state_[key] = value
+        if state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
 class SpectralPreconditioner(TensorwisePreconditioner):
@@ -103,8 +110,10 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         damping (float, optional): damping term, makes it closer to GD. Defaults to 1e-7.
         order (int, optional):
             whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
+        solver (str, optional): what to use for whitening. Defaults to 'svd'.
         U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
         S_beta (float | None, optional): beta for S (probably a bad idea). Defaults to None.
+        interval (int, optional): How often to update history. Defaults to 1 (every step).
         concat_params (bool, optional):
             whether to apply preconditioning to each tensor (False, default) or to all tensors concatenated into a vector (True). Latter will be slower but captures interactions between layers. Defaults to True.
         scale_first (bool, optional): makes first step small, usually not needed. Defaults to False.
@@ -116,7 +125,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _Solver = 'svd',
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _Solver = 'svd_gesvdj',
         U_beta: float | None = None,
         S_beta: float | None = None,
         interval: int = 1,
@@ -169,18 +178,16 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
             A, B = solver.update(history, damping=damping)
-            if A is not None and B is not None:
-                maybe_lerp_(state, U_beta, 'A', A)
-                maybe_lerp_(state, S_beta, 'B', B)
+            maybe_lerp_(state, U_beta, 'A', A)
+            maybe_lerp_(state, S_beta, 'B', B)
+
+        if len(history) != 0:
+            state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
         history_size = settings['history_size']
         solver: _Solver = settings['solver']
-
-        state['step'] = state.get('step', 0)
-        n = len(state['history'])
-        if n != 0: state['step'] += 1 # do not increment if history wasn't updated
 
         A = state.get('A', None)
         if A is None:
@@ -190,6 +197,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         B = state['B']
         update = solver.apply(tensor.view(-1), A, B).view_as(tensor)
 
+        n = len(state['history'])
         if n != history_size: update.mul_(n/history_size)
         return update
 

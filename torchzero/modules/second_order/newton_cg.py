@@ -1,45 +1,13 @@
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, overload
 import warnings
 import torch
 
-from ...utils import TensorList, as_tensorlist
+from ...utils import TensorList, as_tensorlist, generic_zeros_like, generic_vector_norm, generic_numel
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 from ...core import Chainable, apply, Module
-
-def cg(
-    A_mm: Callable[[TensorList], TensorList],
-    b: TensorList,
-    x0_: TensorList | None,
-    tol: float | None,
-    maxiter: int | None,
-):
-    if maxiter is None: maxiter = b.global_numel()
-    if x0_ is None: x0_ = b.zeros_like()
-
-    x = x0_
-    residual = b - A_mm(x)
-    p = residual.clone() # search direction
-    r_norm = residual.global_vector_norm()
-    if tol is not None and r_norm < tol: return x
-    k = 0
-
-    while True:
-        Ap = A_mm(p)
-        step_size = (r_norm**2) / p.dot(Ap)
-        x += step_size * p # Update solution
-        residual -= step_size * Ap # Update residual
-        new_r_norm = residual.global_vector_norm()
-
-        k += 1
-        if tol is not None and new_r_norm <= tol: return x
-        if maxiter is not None and k >= maxiter: return x
-
-        beta = (new_r_norm**2) / (r_norm**2)
-        p = residual + beta*p
-        r_norm = new_r_norm
-
+from ...utils.linalg.cg import cg
 
 class NewtonCG(Module):
     def __init__(self, maxiter=None, tol=1e-3, hvp_method: Literal['forward', 'central','autograd'] = 'forward', h=1e-3, warm_start=False, inner: Chainable | None = None):
