@@ -7,7 +7,7 @@ import torch
 
 from ...core import Chainable, TensorwisePreconditioner
 
-class _SpectralPreconditionerType:
+class _Solver:
     @abstractmethod
     def update(self, history: deque[torch.Tensor], damping: float | None) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """returns stuff for apply"""
@@ -15,7 +15,7 @@ class _SpectralPreconditionerType:
     def apply(self, __g: torch.Tensor, __A:torch.Tensor, __B:torch.Tensor) -> torch.Tensor:
         """apply preconditioning to tensor"""
 
-class _SVDPreconditioner(_SpectralPreconditionerType):
+class _SVDSolver(_Solver):
     def __init__(self, driver=None): self.driver=driver
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
@@ -41,7 +41,7 @@ class _SVDPreconditioner(_SpectralPreconditionerType):
         Utg = (U.T @ g).div_(S)
         return U @ Utg
 
-class _SVDLowRankPreconditioner(_SpectralPreconditionerType):
+class _SVDLowRankSolver(_Solver):
     def __init__(self, q: int = 6, niter: int = 2): self.q, self.niter = q, niter
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
@@ -53,7 +53,7 @@ class _SVDLowRankPreconditioner(_SpectralPreconditionerType):
         Utg = (U.T @ g).div_(S)
         return U @ Utg
 
-class _QRPreconditioner(_SpectralPreconditionerType):
+class _QRSolver(_Solver):
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
         Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
@@ -66,7 +66,7 @@ class _QRPreconditioner(_SpectralPreconditionerType):
         return Q @ Qtg
 
 
-class _EighPreconditioner(_SpectralPreconditionerType):
+class _EighSolver(_Solver):
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
         MMT = M_hist @ M_hist.T # (d, d)
@@ -79,13 +79,13 @@ class _EighPreconditioner(_SpectralPreconditionerType):
         return Q @ Qtg
 
 
-PRECONDITIONER_TYPES = {
-    "svd": _SVDPreconditioner(),
-    "svd_gesvdj": _SVDPreconditioner("gesvdj"), # no fallback on slow "gesvd", CUDA only
-    "svd_gesvda": _SVDPreconditioner("gesvda"), # approximate method for wide matrices, CUDA only
-    "svd_lowrank": _SVDLowRankPreconditioner(),
-    "eigh": _EighPreconditioner(),
-    "qr": _QRPreconditioner(),
+SOLVERS = {
+    "svd": _SVDSolver(),
+    "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd", CUDA only
+    "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, CUDA only
+    "svd_lowrank": _SVDLowRankSolver(),
+    "eigh": _EighSolver(),
+    "qr": _QRSolver(),
 }
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: torch.Tensor):
@@ -116,7 +116,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        preconditioner_type: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _SpectralPreconditionerType = 'svd',
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr'] | _Solver = 'svd',
         U_beta: float | None = None,
         S_beta: float | None = None,
         interval: int = 1,
@@ -124,9 +124,9 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         scale_first: bool = False,
         inner: Chainable | None = None,
     ):
-        if isinstance(preconditioner_type, str): preconditioner_type = PRECONDITIONER_TYPES[preconditioner_type]
+        if isinstance(solver, str): solver = SOLVERS[solver]
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, U_beta=U_beta, S_beta=S_beta, preconditioner_type=preconditioner_type)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, U_beta=U_beta, S_beta=S_beta, solver=solver)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -137,7 +137,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         damping = settings['damping']
         U_beta = settings['U_beta']
         S_beta = settings['S_beta']
-        preconditioner: _SpectralPreconditionerType = settings['preconditioner_type']
+        solver: _Solver = settings['solver']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -168,7 +168,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            A, B = preconditioner.update(history, damping=damping)
+            A, B = solver.update(history, damping=damping)
             if A is not None and B is not None:
                 maybe_lerp_(state, U_beta, 'A', A)
                 maybe_lerp_(state, S_beta, 'B', B)
@@ -176,7 +176,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
         history_size = settings['history_size']
-        preconditioner: _SpectralPreconditionerType = settings['preconditioner_type']
+        solver: _Solver = settings['solver']
 
         state['step'] = state.get('step', 0)
         n = len(state['history'])
@@ -188,7 +188,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
             return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
 
         B = state['B']
-        update = preconditioner.apply(tensor.view(-1), A, B).view_as(tensor)
+        update = solver.apply(tensor.view(-1), A, B).view_as(tensor)
 
         if n != history_size: update.mul_(n/history_size)
         return update
