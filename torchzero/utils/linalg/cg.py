@@ -20,6 +20,7 @@ def cg(
     tol: float | None,
     maxiter: int | None,
 ) -> TensorList: ...
+
 def cg(
     A_mm: Callable,
     b: torch.Tensor | TensorList,
