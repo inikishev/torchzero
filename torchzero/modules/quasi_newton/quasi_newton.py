@@ -354,20 +354,64 @@ class Pearson2(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return pearson2_H_(H=H, s=s, y=y)
 
-
-def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, phi: float, theta: float):
+# Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.
+def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4]):
+    # in notation p is s, q is y, H is D
+    # another p is lr
+    # omega (o) = sy
+    # tau (t) = yHy
+    # epsilon = p'D^-1 p
+    # however p.12 says eps = gs / gHy
 
     Hy = H@y
-    sy = s.dot(y)
+    gHy = g.dot(Hy)
     yHy = y.dot(Hy)
+    sy = s.dot(y)
+    if sy < 1e-10: return H
+    if yHy.abs() < 1e-10: return H
+    if gHy.abs() < 1e-10: return H
+
     v_mul = yHy.sqrt()
-    v_term1 = s/s.dot(y)
+    v_term1 = s/sy
     v_term2 = Hy/yHy
     v = (v_term1.sub_(v_term2)).mul_(v_mul)
-    gHy = g.dot(Hy)
-    # u can also be chosen in other ways but I didn't understand how to implement them
-    u = phi * (g.dot(s)/gHy) + (1 - phi) * (sy/yHy)
+    gs = g.dot(s)
 
+    if isinstance(switch, tuple): phi, theta = switch
+    else:
+        o = sy
+        t = yHy
+        e = gs / gHy
+        if switch in (1, 3):
+            if e/o <= 1:
+                if o == 0: return H
+                phi = e/o
+                theta = 0
+            elif o/t >= 1:
+                if t == 0: return H
+                phi = o/t
+                theta = 1
+            else:
+                phi = 1
+                denom = e*t - o**2
+                if denom == 0: return H
+                if switch == 1: theta = o * (e - o) / denom
+                else: theta = o * (t - o) / denom
+
+        elif switch == 2:
+            if t == 0 or o == 0 or e == 0: return H
+            phi = (e / t) ** 0.5
+            theta = 1 / (1 + (t*e / o**2)**0.5)
+
+        elif switch == 4:
+            if t == 0: return H
+            phi = e/t
+            theta = 1/2
+
+        else: raise ValueError(switch)
+
+
+    u = phi * (gs/gHy) + (1 - phi) * (sy/yHy)
     term1 = (H @ y.outer(y) @ H).div_(yHy)
     term2 = v.outer(v).mul_(theta)
     term3 = s.outer(s).div_(sy)
@@ -380,22 +424,21 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, phi
 
 
 class SSVM(HessianUpdateStrategy):
-    """might actually be good, is from Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
+    """This one is from Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
     """
     def __init__(
         self,
-        phi: float,
-        theta: float,
+        switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 1,
         tol: float = 1e-10,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = True,
+        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(phi=phi, theta=theta)
+        defaults = dict(switch=switch)
         super().__init__(
             defaults=defaults,
             init_scale=init_scale,
@@ -410,4 +453,4 @@ class SSVM(HessianUpdateStrategy):
         )
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return ssvm_H_(H=H, s=s, y=y, g=g, phi=settings['phi'], theta=settings['theta'])
+        return ssvm_H_(H=H, s=s, y=y, g=g, switch=settings['switch'])
