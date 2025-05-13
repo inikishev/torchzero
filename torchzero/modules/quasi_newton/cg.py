@@ -154,7 +154,7 @@ class ConjugateDescent(Transform):
     def transform(self, tensors, params, grads, vars):
         g = as_tensorlist(tensors)
 
-        prev_d = self.get_state('prev_dir', params=params, cls=TensorList, init = [torch.zeros_like, g])
+        prev_d = self.get_state('prev_dir', params=params, cls=TensorList, init = torch.zeros_like)
         if 'denom' not in self.global_state:
             self.global_state['denom'] = torch.tensor(0.).to(g[0])
 
