@@ -79,14 +79,16 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
                 if inverse: M *= ys/yy
                 else: M *= yy/ys
 
+        beta = settings['beta']
+        if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
         if inverse:
             _maybe_lerp_(state, 'H',
                          self.update_H(H=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings),
-                         settings['beta'])
+                         beta)
         else:
             _maybe_lerp_(state, 'B',
                          self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings),
-                         settings['beta'])
+                         beta)
 
         state['p_prev'] = p.clone()
         state['g_prev'] = g.clone()
@@ -227,8 +229,8 @@ def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     H -= num/denom
     return H
 
-def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g: torch.Tensor):
-    c = g
+def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor):
+    c = g_prev
     denom = c.dot(y)
     if denom.abs() <= 1e-10: return H
     num = (H@y).sub_(s).outer(c)
@@ -253,7 +255,7 @@ class BroydenBad(BFGS):
 
 class Greenstadt1(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return greenstadt1_H_(H=H, s=s, y=y, g=g)
+        return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev)
 
 class Greenstadt2(SR1):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
@@ -317,12 +319,12 @@ def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
 class PSB(HessianUpdateStrategy):
     def __init__(
         self,
-        init_scale: float | Literal["auto"] = 1,
+        init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = True,
+        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):

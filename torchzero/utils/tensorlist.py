@@ -605,6 +605,11 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_erfc_(self)
         return self
 
+    def sigmoid(self): return self.__class__(torch._foreach_sigmoid(self))
+    def sigmoid_(self):
+        torch._foreach_sigmoid_(self)
+        return self
+
     def _global_fn(self, keepdim, fn, *args, **kwargs):
         """checks that keepdim is False and returns fn(*args, **kwargs)"""
         #if keepdim: raise ValueError('dim = global and keepdim = True')
