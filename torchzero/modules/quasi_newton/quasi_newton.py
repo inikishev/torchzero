@@ -280,12 +280,71 @@ class DFP(TensorwisePreconditioner):
         skyk = torch.dot(s_k, y_k)
         if skyk > 1e-10:
             term1 = torch.outer(s_k, s_k).div_(skyk)
-            H_yk = H @ y_k
-            denom = torch.dot(y_k, H_yk) #
+            denom = torch.dot(y_k, H @ y_k) #
             if abs(denom) > 1e-10:
                 num = H @ torch.outer(y_k, y_k) @ H
                 term2 = num.div_(denom)
                 H.add_(term1.sub_(term2))
+
+        state['p_prev'] = p.clone()
+        state['g_prev'] = g.clone()
+
+    @torch.no_grad
+    def apply_tensor(self, tensor, param, grad, state, settings):
+        state['step'] = state.get('step', 0) + 1
+        H = state['H']
+        return H @ tensor
+
+
+
+class Broyden(TensorwisePreconditioner):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-10,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(init_scale=init_scale, tol=tol)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+
+    @torch.no_grad
+    def update_tensor(self, tensor, param, grad, state, settings):
+        p = param; g = tensor
+        H = state.get('H', None)
+        step = state.get('step', 0)
+        init_scale = settings['init_scale']
+        tol = settings['tol']
+
+        if H is None:
+            H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            if isinstance(init_scale, (int, float)) and init_scale != 1: H *= init_scale
+            state['H'] = H
+            state['p_prev'] = p.clone()
+            state['g_prev'] = g.clone()
+            return
+
+        p_prev = state['p_prev']
+        g_prev = state['g_prev']
+        s_k: torch.Tensor = p - p_prev
+        y_k: torch.Tensor = g - g_prev
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y_k.abs().max() <= tol:
+            return
+
+        if step == 1 and init_scale == 'auto':
+            ys = y_k.dot(s_k)
+            yy = y_k.dot(y_k)
+            if ys != 0 and yy != 0: H *= ys/yy
+
+        # Broyden update
+        denom = torch.dot(s_k, H @ y_k)
+        if denom > 1e-10:
+            num = (s_k - H@y_k).outer(s_k) @ H
+            H.add_(num.div_(denom))
 
         state['p_prev'] = p.clone()
         state['g_prev'] = g.clone()
