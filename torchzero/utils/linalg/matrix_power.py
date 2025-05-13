@@ -19,8 +19,10 @@ def matrix_power_eigh(A: torch.Tensor, pow:float):
     return (Q * L.pow(pow).unsqueeze(-2)) @ Q.mH
 
 
-def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> torch.Tensor:
+def inv_sqrt_2x2(A: torch.Tensor, force_pd: bool=False) -> torch.Tensor:
     """Inverse square root of a possibly batched 2x2 matrix using a general formula for 2x2 matrices so that this is way faster than torch linalg. I tried doing a hierarchical 2x2 preconditioning but it didn't work well."""
+    eps = torch.finfo(A.dtype).eps
+
     a = A[..., 0, 0]
     b = A[..., 0, 1]
     c = A[..., 1, 0]
@@ -58,3 +60,28 @@ def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> to
     M = torch.stack([row1, row2], dim=-2)
 
     return coeff * M
+
+
+def x_inv(diag: torch.Tensor,antidiag: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """invert a matrix with diagonal and anti-diagonal non zero elements, with no checks that it is invertible"""
+    n = diag.shape[0]
+    if diag.dim() != 1 or antidiag.dim() != 1 or antidiag.shape[0] != n:
+        raise ValueError("Input tensors must be 1D and have the same size.")
+    if n == 0:
+        return torch.empty_like(diag), torch.empty_like(antidiag)
+
+    # opposite indexes
+    diag_rev = torch.flip(diag, dims=[0])
+    antidiag_rev = torch.flip(antidiag, dims=[0])
+
+    # determinants
+    # det_i = d[i] * d[n-1-i] - a[i] * a[n-1-i]
+    determinant_vec = diag * diag_rev - antidiag * antidiag_rev
+
+    # inverse diagonal elements: y_d[i] = d[n-1-i] / det_i
+    inv_diag_vec = diag_rev / determinant_vec
+
+    # inverse anti-diagonal elements: y_a[i] = -a[i] / det_i
+    inv_anti_diag_vec = -antidiag / determinant_vec
+
+    return inv_diag_vec, inv_anti_diag_vec

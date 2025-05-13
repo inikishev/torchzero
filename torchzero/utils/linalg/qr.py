@@ -64,8 +64,8 @@ def _qr_householder_reduced(A:torch.Tensor):
 
     return Q, R
 
-@enable_compilation
+# @enable_compilation
 def qr_householder(A:torch.Tensor, mode: Literal['complete', 'reduced'] = 'reduced'):
-    """an attempt at making QR decomposition for very tall and thin matrices that doesn't freeze, but it is around n_cols times slower than torch.linalg.qr, but compilation makes it faster"""
+    """an attempt at making QR decomposition for very tall and thin matrices that doesn't freeze, but it is around n_cols times slower than torch.linalg.qr, but compilation makes it faster, but it has to recompile when processing different shapes"""
     if mode == 'reduced': return _qr_householder_reduced(A)
     return _qr_householder_complete(A)

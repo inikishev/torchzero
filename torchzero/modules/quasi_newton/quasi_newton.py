@@ -53,11 +53,10 @@ class BFGS(TensorwisePreconditioner):
         skyk = torch.dot(s_k, y_k)
         if skyk > 1e-10:
             num1 = (skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))
-            denom1 = skyk**2
-            term1 = num1 / denom1
-            num2 = (torch.outer(H @ y_k, s_k) + torch.outer(s_k, y_k) @ H)
-            term2 = num2 / skyk
-            H += term1 - term2
+            term1 = num1.div_(skyk**2)
+            num2 = (torch.outer(H @ y_k, s_k).add_(torch.outer(s_k, y_k) @ H))
+            term2 = num2.div_(skyk)
+            H += term1.sub_(term2)
 
         state['p_prev'] = p.clone()
         state['g_prev'] = g.clone()
@@ -121,7 +120,7 @@ class SR1(TensorwisePreconditioner):
 
         # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
         if denom.abs() >= eps * torch.linalg.norm(y_k) * torch.linalg.norm(z): # pylint:disable=not-callable
-            H += torch.outer(z, z) / denom
+            H += torch.outer(z, z).div_(denom)
 
         self.p_prev = p.clone()
         self.g_prev = g.clone()
@@ -232,3 +231,67 @@ class DiagonalBFGS(Preconditioner):
         return TensorList(tensors).mul_([s['H'] for s in states])
 
 
+
+
+class DFP(TensorwisePreconditioner):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-10,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(init_scale=init_scale, tol=tol)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+
+    @torch.no_grad
+    def update_tensor(self, tensor, param, grad, state, settings):
+        p = param; g = tensor
+        H = state.get('H', None)
+        step = state.get('step', 0)
+        init_scale = settings['init_scale']
+        tol = settings['tol']
+
+        if H is None:
+            H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            if isinstance(init_scale, (int, float)) and init_scale != 1: H *= init_scale
+            state['H'] = H
+            state['p_prev'] = p.clone()
+            state['g_prev'] = g.clone()
+            return
+
+        p_prev = state['p_prev']
+        g_prev = state['g_prev']
+        s_k: torch.Tensor = p - p_prev
+        y_k: torch.Tensor = g - g_prev
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y_k.abs().max() <= tol:
+            return
+
+        if step == 1 and init_scale == 'auto':
+            ys = y_k.dot(s_k)
+            yy = y_k.dot(y_k)
+            if ys != 0 and yy != 0: H *= ys/yy
+
+        # DFP update
+        skyk = torch.dot(s_k, y_k)
+        if skyk > 1e-10:
+            term1 = torch.outer(s_k, s_k).div_(skyk)
+            H_yk = H @ y_k
+            denom = torch.dot(y_k, H_yk) #
+            if abs(denom) > 1e-10:
+                num = H @ torch.outer(y_k, y_k) @ H
+                term2 = num.div_(denom)
+                H.add_(term1.sub_(term2))
+
+        state['p_prev'] = p.clone()
+        state['g_prev'] = g.clone()
+
+    @torch.no_grad
+    def apply_tensor(self, tensor, param, grad, state, settings):
+        state['step'] = state.get('step', 0) + 1
+        H = state['H']
+        return H @ tensor
