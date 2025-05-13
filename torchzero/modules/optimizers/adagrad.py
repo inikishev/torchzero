@@ -113,8 +113,8 @@ class Adagrad(Transform):
 
 
 class FullMatrixAdagrad(TensorwisePreconditioner):
-    def __init__(self, eps: float = 1e-8, beta: float | None = None, decay: float | None = None, concat_params=False, update_freq=1, inner: Chainable | None = None):
-        defaults = dict(eps=eps, beta=beta, decay=decay)
+    def __init__(self, beta: float | None = None, decay: float | None = None, concat_params=False, update_freq=1, inner: Chainable | None = None):
+        defaults = dict(beta=beta, decay=decay)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -133,13 +133,12 @@ class FullMatrixAdagrad(TensorwisePreconditioner):
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
         GG = state['GG']
-        eps = settings['eps']
 
         if tensor.numel() == 1:
             return tensor / (GG**(1/2)).squeeze()
 
         try:
-            B = matrix_power_eigh(GG, -1/2, eps=eps)
+            B = matrix_power_eigh(GG, -1/2)
         except torch.linalg.LinAlgError:
             return tensor.div_(tensor.abs().max()) # conservative scaling
 

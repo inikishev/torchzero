@@ -13,9 +13,9 @@ def singular_vals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tenso
     S = fn(S)
     return (U * S.unsqueeze(-2)) @ V.mT
 
-def matrix_power_eigh(A: torch.Tensor, pow:float, eps: float | None = None):
+def matrix_power_eigh(A: torch.Tensor, pow:float):
     L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
-    if eps is not None: L.clip_(min = L.abs().mean() * eps)
+    if pow % 2 != 0: L.clip_(min = torch.finfo(A.dtype).eps)
     return (Q * L.pow(pow).unsqueeze(-2)) @ Q.mH
 
 

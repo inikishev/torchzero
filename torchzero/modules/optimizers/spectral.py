@@ -112,7 +112,7 @@ class _QRSolver(_Solver):
             Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
             A = R @ R.T
             if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_eigh(A, 0.5, 1e-12)
+            if self.sqrt: A = matrix_power_eigh(A, 0.5)
             return Q, A
         except (torch.linalg.LinAlgError):
             return None,None
@@ -131,7 +131,7 @@ class _QRHouseholderSolver(_Solver):
             Q, R = qr_householder(M_hist, mode='reduced') # pylint:disable=not-callable
             A = R @ R.T
             if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_eigh(A, 0.5, 1e-12)
+            if self.sqrt: A = matrix_power_eigh(A, 0.5)
             return Q, A
         except (torch.linalg.LinAlgError):
             return None,None

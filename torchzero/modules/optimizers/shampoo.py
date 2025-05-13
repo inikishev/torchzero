@@ -17,7 +17,6 @@ def update_shampoo_preconditioner_(
     update_freq: int,
     exp_override: int | None,
     beta: float | None,
-    matrix_eps: float,
 ):
     for i, (accumulator, preconditioner) in enumerate(zip(accumulators_, preconditioners_)):
         if accumulator is None: continue
@@ -29,7 +28,7 @@ def update_shampoo_preconditioner_(
 
         if step % update_freq == 0:
             matrix_exp = -1/(grad.ndim*2) if exp_override is None else -1/exp_override
-            set_storage_(preconditioner, matrix_power_eigh(accumulator, matrix_exp, matrix_eps))
+            set_storage_(preconditioner, matrix_power_eigh(accumulator, matrix_exp))
 
 
 def apply_shampoo_preconditioner(
@@ -107,7 +106,7 @@ class Shampoo(Transform):
         self,
         decay: float | None = None,
         beta: float | None = None,
-        matrix_eps: float = 1e-6,
+        reg: float = 1e-6,
         update_freq: int = 10,
         exp_override: int | None = None,
         merge_small: bool = True,
@@ -116,7 +115,7 @@ class Shampoo(Transform):
         adagrad_eps: float = 1e-8,
         inner: Chainable | None = None,
     ):
-        defaults = dict(decay=decay, beta=beta, matrix_eps=matrix_eps, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps)
+        defaults = dict(decay=decay, beta=beta, reg=reg, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps)
         super().__init__(defaults, uses_grad=False)
 
         if inner is not None:
@@ -129,8 +128,8 @@ class Shampoo(Transform):
         for i,(p,t) in enumerate(zip(params, tensors)):
             state = self.state[p]
             settings = self.settings[p]
-            beta, matrix_eps, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
-                'beta', 'matrix_eps', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d')(settings)
+            beta, reg, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
+                'beta', 'reg', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d')(settings)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -164,7 +163,6 @@ class Shampoo(Transform):
                     update_freq=update_freq,
                     exp_override=exp_override,
                     beta=beta,
-                    matrix_eps=matrix_eps,
                 )
 
         # inner step
