@@ -20,7 +20,7 @@ def _get_w_tau(R: torch.Tensor, i: int, eps: float):
 def _qr_householder_complete(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
-    eps = torch.finfo(A.dtype).eps * 100
+    eps = torch.finfo(A.dtype).eps
 
     Q = torch.eye(m, dtype=A.dtype, device=A.device).expand(*b, m, m).clone() # clone because expanded dims refer to same memory
     R = A.clone()
@@ -36,7 +36,7 @@ def _qr_householder_complete(A:torch.Tensor):
 def _qr_householder_reduced(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
-    eps = torch.finfo(A.dtype).eps * 100
+    eps = torch.finfo(A.dtype).eps
 
     R = A.clone()
 
