@@ -3,6 +3,17 @@ import time
 import torch
 import torch.utils.benchmark
 
+class _CompiledFunc:
+    def __init__(self, func, **kwargs):
+        self.func = func
+        self.compiled = False
+        self.kwargs = kwargs
+
+    def __call__(self, *args, **kwargs):
+        if not self.compiled:
+            self.func = torch.compile(self.func, **self.kwargs)
+            self.compiled = True
+        return self.func(*args, **kwargs)
 
 class _OptionalCompiler:
     """this holds .enable attribute, set to True to enable compiling library wise"""
@@ -21,7 +32,7 @@ class _OptionalCompiler:
     ):
         """compiles if self.compile is True otherwise returns uncompiled `x`"""
         if self.enable:
-            return torch.compile(x, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
+            return _CompiledFunc(x, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
         return x
 
 _optional_compiler = _OptionalCompiler()
@@ -159,3 +170,10 @@ def benchmark_compile_cpu(fn, n: int, **kwargs):
     sec = time.perf_counter() - start
 
     print(f'Compiled took {sec} s., {sec/n} per call')
+
+
+def set_compilation(enable: bool):
+    """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance. Only a few functions are compiled, because I test all of them and only enable ones that are faster after compiling, and most become slower."""
+    _optional_compiler.enable = enable
+
+def _maybe_compile(fn): return _optional_compiler.compile(fn)

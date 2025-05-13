@@ -1,5 +1,5 @@
 from . import tensorlist as tl
-from .compile import _optional_compiler, benchmark_compile_cpu, benchmark_compile_cuda
+from .compile import _optional_compiler, benchmark_compile_cpu, benchmark_compile_cuda, set_compilation, _maybe_compile
 from .numberlist import NumberList
 from .optimizer import (
     Init,
@@ -25,10 +25,3 @@ from .params import (
 from .python_tools import FallbackDict, flatten, generic_eq, reduce_dim
 from .tensorlist import TensorList, as_tensorlist, Distributions, generic_clamp, generic_numel, generic_vector_norm, generic_zeros_like
 from .torch_tools import tofloat, tolist, tonumpy, totensor, vec_to_tensors, vec_to_tensors_, set_storage_
-
-
-def set_compilation(enable: bool):
-    """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance."""
-    _optional_compiler.enable = enable
-
-def _maybe_compile(fn): return _optional_compiler.compile(fn)
