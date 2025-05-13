@@ -37,25 +37,25 @@ class BFGS(TensorwisePreconditioner):
 
         p_prev = state['p_prev']
         g_prev = state['g_prev']
-        s_k: torch.Tensor = p - p_prev
-        y_k: torch.Tensor = g - g_prev
+        s: torch.Tensor = p - p_prev
+        y: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= tol:
+        if y.abs().max() <= tol:
             return
 
         if step == 1 and init_scale == 'auto':
-            ys = y_k.dot(s_k)
-            yy = y_k.dot(y_k)
+            ys = y.dot(s)
+            yy = y.dot(y)
             if ys != 0 and yy != 0: H *= ys/yy
 
         # BFGS update
-        skyk = torch.dot(s_k, y_k)
-        if skyk > 1e-10:
-            num1 = (skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))
-            term1 = num1.div_(skyk**2)
-            num2 = (torch.outer(H @ y_k, s_k).add_(torch.outer(s_k, y_k) @ H))
-            term2 = num2.div_(skyk)
+        sy = torch.dot(s, y)
+        if sy > 1e-10:
+            num1 = (sy + (y @ H @ y)) * (torch.outer(s, s))
+            term1 = num1.div_(sy**2)
+            num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+            term2 = num2.div_(sy)
             H += term1.sub_(term2)
 
         state['p_prev'] = p.clone()
@@ -102,24 +102,24 @@ class SR1(TensorwisePreconditioner):
 
         p_prev = state['p_prev']
         g_prev = state['g_prev']
-        s_k: torch.Tensor = p - p_prev
-        y_k: torch.Tensor = g - g_prev
+        s: torch.Tensor = p - p_prev
+        y: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= tol:
+        if y.abs().max() <= tol:
             return
 
         if step == 1 and init_scale == 'auto':
-            ys = y_k.dot(s_k)
-            yy = y_k.dot(y_k)
+            ys = y.dot(s)
+            yy = y.dot(y)
             if ys != 0 and yy != 0: H *= ys/yy
 
         # SR1 update
-        z = s_k - H@y_k
-        denom = torch.dot(z, y_k)
+        z = s - H@y
+        denom = torch.dot(z, y)
 
         # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
-        if denom.abs() >= eps * torch.linalg.norm(y_k) * torch.linalg.norm(z): # pylint:disable=not-callable
+        if denom.abs() >= eps * torch.linalg.norm(y) * torch.linalg.norm(z): # pylint:disable=not-callable
             H += torch.outer(z, z).div_(denom)
 
         self.p_prev = p.clone()
@@ -168,20 +168,20 @@ class DiagonalBFGS(Preconditioner):
         H = TensorList(s['H'] for s in states)
         p_prev = TensorList(s['p_prev'] for s in states)
         g_prev = TensorList(s['g_prev'] for s in states)
-        s_k = p - p_prev
-        y_k = g - g_prev
+        s = p - p_prev
+        y = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().global_max() <= settings[0]['tol']:
+        if y.abs().global_max() <= settings[0]['tol']:
             return
 
         if step == 1 and settings[0]['init_scale'] == 'auto':
-            ys = y_k.dot(s_k)
-            yy = y_k.dot(y_k)
+            ys = y.dot(s)
+            yy = y.dot(y)
             if ys != 0 and yy != 0: H *= ys/yy
 
 
-        skyk = s_k.dot(y_k)
+        sy = s.dot(y)
 
         # num1 = (skyk + (y_k @ H @ y_k)) * (torch.outer(s_k, s_k))
         # denom1 = skyk**2
@@ -190,13 +190,13 @@ class DiagonalBFGS(Preconditioner):
         # term2 = num2 / skyk
         # H += term1 - term2
 
-        if skyk > 1e-10:
-            num1 = (skyk + (y_k * H).dot(y_k)) * s_k * s_k
-            denom1 = skyk**2
+        if sy > 1e-10:
+            num1 = (sy + (y * H).dot(y)) * s * s
+            denom1 = sy**2
             term1 = num1 / denom1
-            z = H * y_k * s_k
+            z = H * y * s
             num2 = z + z
-            term2 = num2 / skyk
+            term2 = num2 / sy
             res = term1 - term2
 
             if settings[0]['res_beta'] is not None:
@@ -264,25 +264,25 @@ class DFP(TensorwisePreconditioner):
 
         p_prev = state['p_prev']
         g_prev = state['g_prev']
-        s_k: torch.Tensor = p - p_prev
-        y_k: torch.Tensor = g - g_prev
+        s: torch.Tensor = p - p_prev
+        y: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= tol:
+        if y.abs().max() <= tol:
             return
 
         if step == 1 and init_scale == 'auto':
-            ys = y_k.dot(s_k)
-            yy = y_k.dot(y_k)
+            ys = y.dot(s)
+            yy = y.dot(y)
             if ys != 0 and yy != 0: H *= ys/yy
 
         # DFP update
-        skyk = torch.dot(s_k, y_k)
-        if skyk > 1e-10:
-            term1 = torch.outer(s_k, s_k).div_(skyk)
-            denom = torch.dot(y_k, H @ y_k) #
+        sy = torch.dot(s, y)
+        if sy > 1e-10:
+            term1 = torch.outer(s, s).div_(sy)
+            denom = torch.dot(y, H @ y) #
             if abs(denom) > 1e-10:
-                num = H @ torch.outer(y_k, y_k) @ H
+                num = H @ torch.outer(y, y) @ H
                 term2 = num.div_(denom)
                 H.add_(term1.sub_(term2))
 
@@ -328,23 +328,86 @@ class Broyden(TensorwisePreconditioner):
 
         p_prev = state['p_prev']
         g_prev = state['g_prev']
-        s_k: torch.Tensor = p - p_prev
-        y_k: torch.Tensor = g - g_prev
+        s: torch.Tensor = p - p_prev
+        y: torch.Tensor = g - g_prev
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y_k.abs().max() <= tol:
+        if y.abs().max() <= tol:
             return
 
         if step == 1 and init_scale == 'auto':
-            ys = y_k.dot(s_k)
-            yy = y_k.dot(y_k)
+            ys = y.dot(s)
+            yy = y.dot(y)
             if ys != 0 and yy != 0: H *= ys/yy
 
         # Broyden update
-        denom = torch.dot(s_k, H @ y_k)
+        denom = torch.dot(s, H @ y)
         if denom > 1e-10:
-            num = (s_k - H@y_k).outer(s_k) @ H
+            num = (s - H@y).outer(s) @ H
             H.add_(num.div_(denom))
+
+        state['p_prev'] = p.clone()
+        state['g_prev'] = g.clone()
+
+    @torch.no_grad
+    def apply_tensor(self, tensor, param, grad, state, settings):
+        state['step'] = state.get('step', 0) + 1
+        H = state['H']
+        return H @ tensor
+
+
+
+
+class PSB(TensorwisePreconditioner):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-10,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(init_scale=init_scale, tol=tol)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+
+    @torch.no_grad
+    def update_tensor(self, tensor, param, grad, state, settings):
+        p = param; g = tensor
+        H = state.get('H', None)
+        step = state.get('step', 0)
+        init_scale = settings['init_scale']
+        tol = settings['tol']
+
+        if H is None:
+            H = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            if isinstance(init_scale, (int, float)) and init_scale != 1: H *= init_scale
+            state['H'] = H
+            state['p_prev'] = p.clone()
+            state['g_prev'] = g.clone()
+            return
+
+        p_prev = state['p_prev']
+        g_prev = state['g_prev']
+        s: torch.Tensor = p - p_prev
+        y: torch.Tensor = g - g_prev
+
+        # tolerance on gradient difference to avoid exploding after converging
+        if y.abs().max() <= tol:
+            return
+
+        if step == 1 and init_scale == 'auto':
+            ys = y.dot(s)
+            yy = y.dot(y)
+            if ys != 0 and yy != 0: H *= ys/yy
+
+        # PSB update
+        yy = y.dot(y)
+        if yy > 1e-10:
+            v = s - H @ y
+            term1 = v.outer(y).add_(y.outer(v)).div_(yy)
+            term2 = y.outer(y).mul_(y.dot(v).div_(yy**2))
+            H.add_(term1.sub_(term2))
 
         state['p_prev'] = p.clone()
         state['g_prev'] = g.clone()
