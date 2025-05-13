@@ -1,3 +1,4 @@
+"""Use BFGS or maybe SR1."""
 from typing import Any, Literal
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
@@ -242,7 +243,7 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     H -= num/denom
     return H
 
-class BroydenGood(BFGS):
+class BroydenGood(SR1):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y)
 
@@ -254,7 +255,7 @@ class Greenstadt1(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt1_H_(H=H, s=s, y=y, g=g)
 
-class Greenstadt2(BFGS):
+class Greenstadt2(SR1):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt2_H_(H=H, s=s, y=y)
 
@@ -301,4 +302,43 @@ class ThomasOptimalMethod(SR1):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
         H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y)
         return H
+
+# ------------------------ powell's symmetric broyden ------------------------ #
+def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
+    y_Bs = y - B@s
+    ss = s.dot(s)
+    if ss.abs() < 1e-12: return B
+    num1 = y_Bs.outer(s).add_(s.outer(y_Bs))
+    term1 = num1.div_(ss)
+    term2 = s.outer(s).mul_(y_Bs.dot(s)/(ss**2))
+    B += term1.sub_(term2)
+    return B
+
+class PSB(HessianUpdateStrategy):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = 1,
+        tol: float = 1e-10,
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        scale_second: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        super().__init__(
+            defaults=None,
+            init_scale=init_scale,
+            tol=tol,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=False,
+            inner=inner,
+        )
+
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return psb_B_(B=B, s=s, y=y)
 
