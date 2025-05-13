@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from ...core import Chainable, Transform, apply
-from ...utils.linalg import matrix_power_eig, matrix_power_svd
+from ...utils.linalg import matrix_func_eigh, matrix_power_svd
 from ...utils import set_storage_
 
 
@@ -30,7 +30,7 @@ def update_shampoo_preconditioner_(
         if step % update_freq == 0:
             matrix_exp = -1/(grad.ndim*2) if exp_override is None else -1/exp_override
             #matrix_exp = exp if exp is not None else grad.ndim*2
-            set_storage_(preconditioner, matrix_power_eig(accumulator, matrix_exp, matrix_eps))
+            set_storage_(preconditioner, matrix_power_svd(accumulator, matrix_exp))
 
 
 def apply_shampoo_preconditioner(

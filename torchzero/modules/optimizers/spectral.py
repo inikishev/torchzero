@@ -7,6 +7,7 @@ import torch
 from ...core import Chainable, TensorwisePreconditioner
 from ...utils.linalg.matrix_power import matrix_power_svd
 from ...utils.linalg.svd import randomized_svd
+from ...utils.linalg.qr import qr_householder
 
 
 class _Solver:
@@ -108,6 +109,26 @@ class _QRSolver(_Solver):
         y, _ = torch.linalg.solve_ex(A, g_proj) # pylint:disable=not-callable
         return Q @ y
 
+class _QRHouseholderSolver(_Solver):
+    def __init__(self, sqrt=True): self.sqrt = sqrt
+    def update(self, history, damping):
+        M_hist = torch.stack(tuple(history), dim=1)
+        try:
+            # Q: d x k, R: k x k
+            Q, R = qr_householder(M_hist, mode='reduced') # pylint:disable=not-callable
+            A = R @ R.T
+            if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
+            if self.sqrt: A = matrix_power_svd(A, 0.5)
+            return Q, A
+        except (torch.linalg.LinAlgError):
+            return None,None
+
+    def apply(self, g: torch.Tensor, Q: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+        g_proj = Q.T @ g
+        y, _ = torch.linalg.solve_ex(A, g_proj) # pylint:disable=not-callable
+        return Q @ y
+
+
 class _EighSolver(_Solver):
     def __init__(self, sqrt=True):
         self.sqrt = sqrt
@@ -134,13 +155,13 @@ SOLVERS = {
     "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd"
     "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, sometimes better sometimes worse but faster
     "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this, with current ones its slower and worse
-    "randomized_svd1": _RandomizedSVDSolver(1),
     "randomized_svd2": _RandomizedSVDSolver(2),
     "randomized_svd3": _RandomizedSVDSolver(3),
     "randomized_svd4": _RandomizedSVDSolver(4),
     "randomized_svd5": _RandomizedSVDSolver(5),
-    "eigh": _EighSolver(), # this is O(n**2) storage
+    "eigh": _EighSolver(), # this is O(n**2) storage, but is this more accurate?
     "qr": _QRSolver(),
+    "qr_householder": _QRHouseholderSolver(), # this is slower... but maybe it won't freeze? I think svd_gesvda is better
     "qrdiag": _QRDiagonalSolver(),
 }
 
@@ -174,7 +195,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         update_freq: int = 1,
         damping: float = 1e-12,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag'] | _Solver | str = 'qr',
+        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag', 'qr_householder'] | _Solver | str = 'svd_gesvda',
         A_beta: float | None = None,
         B_beta: float | None = None,
         interval: int = 1,

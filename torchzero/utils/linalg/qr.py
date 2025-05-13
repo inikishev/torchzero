@@ -65,6 +65,6 @@ def _qr_householder_reduced(A:torch.Tensor):
     return Q, R
 
 def qr_householder(A:torch.Tensor, mode: Literal['complete', 'reduced'] = 'reduced'):
-    """an attempt at making QR decomposition for very tall matrices that doesn't freeze, but it is around n_cols times slower than torch.linalg.qr"""
+    """an attempt at making QR decomposition for very tall and thin matrices that doesn't freeze, but it is around n_cols times slower than torch.linalg.qr."""
     if mode == 'reduced': return _qr_householder_reduced(A)
     return _qr_householder_complete(A)

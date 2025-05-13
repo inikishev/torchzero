@@ -137,6 +137,10 @@ class FullMatrixAdagrad(TensorwisePreconditioner):
         if tensor.numel() == 1:
             return tensor / (GG**(1/2)).squeeze()
 
-        B = matrix_power_svd(GG, -1/2)
+        try:
+            B = matrix_power_svd(GG, -1/2)
+        except torch.linalg.LinAlgError:
+            return tensor.div_(tensor.abs().max()) # conservative scaling
+
         return (B @ tensor.ravel()).view_as(tensor)
 

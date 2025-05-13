@@ -30,10 +30,10 @@ def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
 
 def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None):
     try:
-        eigvals, eigvecs = torch.linalg.eigh(H) # pylint:disable=not-callable
-        if tfm is not None: eigvals = tfm(eigvals)
-        eigvals.reciprocal_()
-        return torch.linalg.multi_dot([eigvecs, torch.diag(eigvals), eigvecs.mH, g]) # pylint:disable=not-callable
+        L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
+        if tfm is not None: L = tfm(L)
+        L.reciprocal_()
+        return torch.linalg.multi_dot([Q * L.unsqueeze(-2), Q.mH, g]) # pylint:disable=not-callable
     except torch.linalg.LinAlgError:
         return None
 

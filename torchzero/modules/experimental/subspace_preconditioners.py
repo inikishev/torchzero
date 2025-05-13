@@ -6,13 +6,13 @@ import torch
 # import torchzero as tz
 
 from ...core import Transform
-from ...utils.linalg import inv_sqrt_2x2, matrix_power_svd
+from ...utils.linalg import inv_sqrt_2x2, matrix_func_svd
 from ...utils import TensorList, vec_to_tensors_
 
 
 def inverse_sqrt(M):
     if M.shape[-1] == 2: return inv_sqrt_2x2(M, force_pd=True) # general formula for 2x2 matrices
-    return matrix_power_svd(M, -1/2)
+    return matrix_func_svd(M, -1/2)
 
 def update_subspace_preconditioner_(
     grad: torch.Tensor, # store grads and basis as vectors for matmul
