@@ -3,5 +3,5 @@ from .lbfgs import LBFGS
 from .olbfgs import OnlineLBFGS
 # from .experimental import ModularLBFGS
 
-from .quasi_newton import BFGS, SR1, DiagonalBFGS, DFP, Broyden, PSB
+from .quasi_newton import BFGS, SR1, DFP, BroydenGood, BroydenBad, Greenstadt1, Greenstadt2, ColumnUpdatingMethod, ThomasOptimalMethod
 from .lsr1 import LSR1
