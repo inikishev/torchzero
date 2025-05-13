@@ -5,7 +5,7 @@ from typing import Literal, Any
 
 import torch
 from ...core import Chainable, TensorwisePreconditioner
-from ...utils.linalg.matrix_power import matrix_power_svd
+from ...utils.linalg.matrix_power import matrix_power_eigh
 from ...utils.linalg.svd import randomized_svd
 from ...utils.linalg.qr import qr_householder
 
@@ -59,13 +59,26 @@ class _SVDLowRankSolver(_Solver):
         return U @ Utg
 
 class _RandomizedSVDSolver(_Solver):
-    def __init__(self, k: int = 3): self.k = k
+    def __init__(self, k: int = 3, driver: str | None = 'gesvda'):
+        self.driver = driver
+        self.k = k
+
     def update(self, history, damping):
         M_hist = torch.stack(tuple(history), dim=1)
+        device = None # driver is CUDA only
+        if self.driver is not None:
+            device = M_hist.device
+            M_hist = M_hist.cuda()
+
         try:
-            U, S, _ = randomized_svd(M_hist, self.k)
+            U, S, _ = randomized_svd(M_hist, k=self.k, driver=self.driver)
+
+            if self.driver is not None:
+                U = U.to(device); S = S.to(device)
+
             if damping is not None and damping != 0: S.add_(damping)
             return U, S
+
         except torch.linalg.LinAlgError:
             return None, None
 
@@ -99,7 +112,7 @@ class _QRSolver(_Solver):
             Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
             A = R @ R.T
             if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_svd(A, 0.5)
+            if self.sqrt: A = matrix_power_eigh(A, 0.5)
             return Q, A
         except (torch.linalg.LinAlgError):
             return None,None
@@ -118,7 +131,7 @@ class _QRHouseholderSolver(_Solver):
             Q, R = qr_householder(M_hist, mode='reduced') # pylint:disable=not-callable
             A = R @ R.T
             if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_svd(A, 0.5)
+            if self.sqrt: A = matrix_power_eigh(A, 0.5)
             return Q, A
         except (torch.linalg.LinAlgError):
             return None,None

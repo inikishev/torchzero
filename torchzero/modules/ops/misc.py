@@ -344,6 +344,29 @@ class Dropout(Transform):
 
         return tensors.mul_(tensors.rademacher_like(1-p).add_(1).div_(2))
 
+class WeightDropout(Module):
+    """Applies dropout directly to weights."""
+    def __init__(self, p: float = 0.5, graft: bool = True):
+        defaults = dict(p=p, graft=graft)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def step(self, vars):
+        closure = vars.closure
+        if closure is None: raise RuntimeError('WeightDropout requires closure')
+        params = TensorList(vars.params)
+        p = self.get_settings('p', params=params)
+        mask = params.rademacher_like(p).add_(1).div_(2).as_bool()
+
+        def dropout_closure(backward=True):
+            orig_params = params.clone()
+            params.mul_(mask)
+            loss = closure(backward)
+            params.copy_(orig_params)
+            return loss
+
+        vars.closure = dropout_closure
+        return vars
 
 class NoiseSign(Transform):
     """uses random vector with update sign"""

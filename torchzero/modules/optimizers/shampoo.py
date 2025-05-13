@@ -1,11 +1,11 @@
 from collections.abc import Sequence
 from operator import itemgetter
-
+from functools import partial
 import numpy as np
 import torch
 
 from ...core import Chainable, Transform, apply
-from ...utils.linalg import matrix_func_eigh, matrix_power_svd
+from ...utils.linalg import matrix_power_eigh
 from ...utils import set_storage_
 
 
@@ -29,8 +29,7 @@ def update_shampoo_preconditioner_(
 
         if step % update_freq == 0:
             matrix_exp = -1/(grad.ndim*2) if exp_override is None else -1/exp_override
-            #matrix_exp = exp if exp is not None else grad.ndim*2
-            set_storage_(preconditioner, matrix_power_svd(accumulator, matrix_exp))
+            set_storage_(preconditioner, matrix_power_eigh(accumulator, matrix_exp, matrix_eps))
 
 
 def apply_shampoo_preconditioner(
@@ -144,7 +143,7 @@ class Shampoo(Transform):
                     state['accumulators'] = []
 
                 else:
-                    state['accumulators'] = [matrix_eps * torch.eye(s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
+                    state['accumulators'] = [torch.eye(s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
                     state['preconditioners'] = [torch.eye(s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
 
                 # either scalar parameter, 1d with precondition_1d=False, or too big, then basic diagonal preconditioner is used.

@@ -50,6 +50,7 @@ from .misc import (
     Relative,
     Sequential,
     UpdateSign,
+    WeightDropout,
 )
 from .multi import (
     ClipModules,

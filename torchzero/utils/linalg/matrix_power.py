@@ -3,21 +3,21 @@ from collections.abc import Callable
 
 import torch
 
-def matrix_func_eigh(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
-    """compute function on eigenvalues (A must be symmetric or pytorch will do horrible atrocities to it)"""
+def eigvals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
     L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
     L = fn(L)
-    return  Q * L.unsqueeze(-2) @ Q.mH
+    return  (Q * L.unsqueeze(-2)) @ Q.mH
 
-def matrix_func_svd(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
-    """compute function on singular values"""
-    U, S, V = torch.svd(A)
+def singular_vals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
+    U, S, V = torch.linalg.svd(A) # pylint:disable=not-callable
     S = fn(S)
-    return U * S.unsqueeze(-2) @ V.mT
+    return (U * S.unsqueeze(-2)) @ V.mT
 
-def matrix_power_svd(A: torch.Tensor, pow:float):
-    U, S, V = torch.svd(A)
-    return U * S.pow(pow).unsqueeze(-2) @ V.mT
+def matrix_power_eigh(A: torch.Tensor, pow:float, eps: float | None = None):
+    L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
+    if eps is not None: L.clip_(min = eps)
+    return (Q * L.pow(pow).unsqueeze(-2)) @ Q.mH
+
 
 def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> torch.Tensor:
     """Inverse square root of a possibly batched 2x2 matrix using a general formula for 2x2 matrices so that this is way faster than torch linalg. I tried doing a hierarchical 2x2 preconditioning but it didn't work well."""
@@ -31,7 +31,7 @@ def inv_sqrt_2x2(A: torch.Tensor, eps: float = 1e-6, force_pd: bool=False) -> to
 
     if force_pd:
         # add smallest eigenvalue magnitude to diagonal to force PD
-        # could also clamp eigenvalues bc there is a formula for eigenvectors
+        # could also abs or clip eigenvalues bc there is a formula for eigenvectors
         term1 = trace/2
         term2 = (trace.pow(2).div_(4).sub_(det)).clamp_(min=eps).sqrt_()
         y1 = term1 + term2
