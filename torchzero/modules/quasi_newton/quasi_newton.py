@@ -342,3 +342,72 @@ class PSB(HessianUpdateStrategy):
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
         return psb_B_(B=B, s=s, y=y)
 
+def pearson2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    sy = s.dot(y)
+    if sy.abs() <= 1e-10: return H
+    num = (s - H@y).outer(s)
+    H += num.div_(sy)
+    return H
+
+class Pearson2(BFGS):
+    """finally found a reference in https://www.recotechnologies.com/~beigi/ps/asme-jdsmc-93-2.pdf"""
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return pearson2_H_(H=H, s=s, y=y)
+
+
+def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, phi: float, theta: float):
+
+    Hy = H@y
+    sy = s.dot(y)
+    yHy = y.dot(Hy)
+    v_mul = yHy.sqrt()
+    v_term1 = s/s.dot(y)
+    v_term2 = Hy/yHy
+    v = (v_term1.sub_(v_term2)).mul_(v_mul)
+    gHy = g.dot(Hy)
+    # u can also be chosen in other ways but I didn't understand how to implement them
+    u = phi * (g.dot(s)/gHy) + (1 - phi) * (sy/yHy)
+
+    term1 = (H @ y.outer(y) @ H).div_(yHy)
+    term2 = v.outer(v).mul_(theta)
+    term3 = s.outer(s).div_(sy)
+
+    H -= term1
+    H += term2
+    H *= u
+    H += term3
+    return H
+
+
+class SSVM(HessianUpdateStrategy):
+    """might actually be good, is from Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
+    """
+    def __init__(
+        self,
+        phi: float,
+        theta: float,
+        init_scale: float | Literal["auto"] = 1,
+        tol: float = 1e-10,
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        scale_second: bool = True,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(phi=phi, theta=theta)
+        super().__init__(
+            defaults=defaults,
+            init_scale=init_scale,
+            tol=tol,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=True,
+            inner=inner,
+        )
+
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return ssvm_H_(H=H, s=s, y=y, g=g, phi=settings['phi'], theta=settings['theta'])
