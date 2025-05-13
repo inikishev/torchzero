@@ -8,7 +8,7 @@ class _OptionalCompiler:
     def __init__(self):
         self.enable = False
 
-    def enable_compile(
+    def enable_compilation(
         self,
         x,
         fullgraph: bool = False,
@@ -38,6 +38,11 @@ class _MaybeCompiledFunc:
 _optional_compiler = _OptionalCompiler()
 """this holds .enable attribute, set to True to enable compiling for a few functions that benefit from it."""
 
+def set_compilation(enable: bool):
+    """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance."""
+    _optional_compiler.enable = enable
+
+def enable_compilation(fn): return _optional_compiler.enable_compilation(fn)
 
 def benchmark_compile_cuda(fn, n: int, **kwargs):
     # warmup
@@ -170,10 +175,3 @@ def benchmark_compile_cpu(fn, n: int, **kwargs):
     sec = time.perf_counter() - start
 
     print(f'Compiled took {sec} s., {sec/n} per call')
-
-
-def set_compilation(enable: bool):
-    """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance. Only a few functions are compiled, because I test all of them and only enable ones that are faster after compiling, and most become slower."""
-    _optional_compiler.enable = enable
-
-def _maybe_compile(fn): return _optional_compiler.enable_compile(fn)

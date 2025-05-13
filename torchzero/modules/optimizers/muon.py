@@ -7,7 +7,7 @@ from typing import Literal
 import torch
 
 from ...core import Modular, TensorwiseTransform, Target, Transform
-from ...utils import _maybe_compile
+from ...utils import enable_compilation
 
 
 def reverse_dims(t:torch.Tensor):
@@ -19,7 +19,7 @@ def _is_at_least_2d(p: torch.Tensor):
 
 # stolen from:
 # https://github.com/KellerJordan/Muon/blob/master/muon.py
-@_maybe_compile
+@enable_compilation
 def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
     """
     Applies to last 2 dims - so usually reverse_dims should be applied to G before and after.

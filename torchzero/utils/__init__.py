@@ -1,5 +1,5 @@
 from . import tensorlist as tl
-from .compile import _optional_compiler, benchmark_compile_cpu, benchmark_compile_cuda, set_compilation, _maybe_compile
+from .compile import _optional_compiler, benchmark_compile_cpu, benchmark_compile_cuda, set_compilation, enable_compilation
 from .numberlist import NumberList
 from .optimizer import (
     Init,
