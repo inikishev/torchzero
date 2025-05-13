@@ -161,13 +161,13 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, eps:float):
 class SR1(HessianUpdateStrategy):
     def __init__(
         self,
-        init_scale: float | Literal["auto"] = 1,
+        init_scale: float | Literal["auto"] = 'auto',
         eps: float = 1e-8,
         tol: float = 1e-10,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = True,
+        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -204,7 +204,7 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     H += term1.sub_(term2)
     return H
 
-class DFP(SR1):
+class DFP(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return dfp_H_(H=H, s=s, y=y)
 
@@ -245,7 +245,7 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     H -= num/denom
     return H
 
-class BroydenGood(SR1):
+class BroydenGood(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y)
 
@@ -257,7 +257,7 @@ class Greenstadt1(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev)
 
-class Greenstadt2(SR1):
+class Greenstadt2(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt2_H_(H=H, s=s, y=y)
 
@@ -298,7 +298,7 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor)
     H -= num/denom
     return H, R
 
-class ThomasOptimalMethod(SR1):
+class ThomasOptimalMethod(BFGS):
     """Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975."""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
@@ -431,7 +431,7 @@ class SSVM(HessianUpdateStrategy):
     def __init__(
         self,
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
-        init_scale: float | Literal["auto"] = 1,
+        init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
         beta: float | None = None,
         update_freq: int = 1,
