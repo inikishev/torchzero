@@ -3,18 +3,6 @@ import time
 import torch
 import torch.utils.benchmark
 
-class _CompiledFunc:
-    def __init__(self, func, **kwargs):
-        self.func = func
-        self.compiled = False
-        self.kwargs = kwargs
-
-    def __call__(self, *args, **kwargs):
-        if not self.compiled:
-            self.func = torch.compile(self.func, **self.kwargs)
-            self.compiled = True
-        return self.func(*args, **kwargs)
-
 class _OptionalCompiler:
     """this holds .enable attribute, set to True to enable compiling library wise"""
     def __init__(self):
@@ -32,8 +20,21 @@ class _OptionalCompiler:
     ):
         """compiles if self.compile is True otherwise returns uncompiled `x`"""
         if self.enable:
-            return _CompiledFunc(x, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
+            return _MaybeCompiledFunc(x, self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
         return x
+
+class _MaybeCompiledFunc:
+    def __init__(self, func, compiler: _OptionalCompiler, **kwargs):
+        self.func = func
+        self.kwargs = kwargs
+        self.compiler = compiler
+
+    def __call__(self, *args, **kwargs):
+        if self.compiler.enable and not self.compiled:
+            self.func = torch.compile(self.func, **self.kwargs)
+            self.compiled = True
+        return self.func(*args, **kwargs)
+
 
 _optional_compiler = _OptionalCompiler()
 """this holds .enable attribute, set to True to enable compiling for a few functions that benefit from it."""
