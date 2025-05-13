@@ -8,7 +8,7 @@ class _OptionalCompiler:
     def __init__(self):
         self.enable = False
 
-    def compile(
+    def enable_compile(
         self,
         x,
         fullgraph: bool = False,
@@ -19,14 +19,13 @@ class _OptionalCompiler:
         disable: bool = False,
     ):
         """compiles if self.compile is True otherwise returns uncompiled `x`"""
-        if self.enable:
-            return _MaybeCompiledFunc(x, self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
-        return x
+        return _MaybeCompiledFunc(x, self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable)
 
 class _MaybeCompiledFunc:
     def __init__(self, func, compiler: _OptionalCompiler, **kwargs):
         self.func = func
         self.kwargs = kwargs
+        self.compiled = False
         self.compiler = compiler
 
     def __call__(self, *args, **kwargs):
@@ -177,4 +176,4 @@ def set_compilation(enable: bool):
     """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance. Only a few functions are compiled, because I test all of them and only enable ones that are faster after compiling, and most become slower."""
     _optional_compiler.enable = enable
 
-def _maybe_compile(fn): return _optional_compiler.compile(fn)
+def _maybe_compile(fn): return _optional_compiler.enable_compile(fn)
