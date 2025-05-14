@@ -70,7 +70,7 @@ def tikhonov(H: torch.Tensor, reg: float, algebra: ta.Algebra = ta.TropicalSemir
 
 
 class TropicalNewton(Module):
-    """newton in any other algebraic structures except solving the linear system is really hard unless probabilistic one is used"""
+    """newton in other algebras, not practical because solving linear system is very hard."""
     def __init__(
         self,
         reg: float | None = None,
