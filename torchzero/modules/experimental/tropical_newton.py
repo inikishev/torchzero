@@ -86,6 +86,7 @@ class TropicalNewton(Module):
         defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize)
         super().__init__(defaults)
 
+        self.algebra = ta.get_algebra(algebra)
         self.lstsq_args:dict = dict(solver=solver, maxiter=maxiter, tol=tol, algebra=algebra, verbose=verbose)
 
         if inner is not None:
@@ -130,6 +131,13 @@ class TropicalNewton(Module):
         if reg is not None: H = tikhonov(H, reg)
 
         # ----------------------------------- solve ---------------------------------- #
-        update = tropical_lstsq(H, g, **self.lstsq_args)
+        tropical_update = tropical_lstsq(H, g, **self.lstsq_args)
+        # what now? w - u is not defined, it is defined for max version if u < w
+        # basically when relaxed it is max(u, w), not that it helps
+        # basically the only semiring it works in is the boring probabilistic one (and log for positive numbers)
+        w = params.to_vec()
+        w_hat = self.algebra.sub(w, tropical_update)
+        update = w_hat - w
+
         vars.update = vec_to_tensors(update, params)
         return vars

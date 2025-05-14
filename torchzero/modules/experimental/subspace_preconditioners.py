@@ -5,7 +5,7 @@ import torch
 
 # import torchzero as tz
 
-from ...core import Transform
+from ...core import Transform, Chainable, apply
 from ...utils.linalg import inv_sqrt_2x2, matrix_power_eigh
 from ...utils import TensorList, vec_to_tensors_
 
@@ -37,7 +37,7 @@ def apply_subspace_preconditioner(
     update_projected = preconditioner @ tensor_projected # k
     return basis @ update_projected # d
 
-class RandomPreconditioning(Transform):
+class RandomSubspacePreconditioning(Transform):
     """full matrix rmsprop in random subspace"""
     def __init__(self, k: int, beta: float | None = 0.99):
         defaults = dict(k=k, beta=beta)
@@ -57,17 +57,27 @@ class RandomPreconditioning(Transform):
         accumulator = self.global_state['accumulator']
 
         update_subspace_preconditioner_(g, basis, accumulator, beta)
-        preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
+        try:
+            preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
+        except torch.linalg.LinAlgError:
+            denom = g.abs().sum()
+            if denom <= 1e-10: denom = torch.ones_like(denom)
+            preconditioned = g / g.abs().sum()
         vec_to_tensors_(preconditioned, tensors)
 
         return tensors
 
 
-class HistoryPreconditioning(Transform):
-    """full matrix rmsprop in subspace spanned by gradient differences"""
-    def __init__(self, k: int, beta: float | None = 0.99, weight=1e-2):
-        defaults = dict(k=k, beta=beta, weight=weight)
+class HistorySubspacePreconditioning(Transform):
+    """full matrix rmsprop in subspace spanned by gradient
+
+    basis_beta is how much basis is allowed to change
+    """
+    def __init__(self, k: int, beta: float | None = 0.99, basis_beta=0.99, inner: Chainable | None = None):
+        defaults = dict(k=k, beta=beta, basis_beta=basis_beta)
         super().__init__(defaults, uses_grad=False)
+
+        if inner is not None: self.set_child('inner', inner)
 
     def transform(self, tensors, params, grads, vars):
         settings = self.settings[params[0]]
@@ -75,7 +85,7 @@ class HistoryPreconditioning(Transform):
         g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
         beta = settings['beta']
-        weight = settings['weight']
+        basis_beta = settings['basis_beta']
 
         if 'history' not in self.global_state:
             self.global_state['history'] = deque(maxlen=k)
@@ -99,9 +109,19 @@ class HistoryPreconditioning(Transform):
         basis_t[:,:-1] = basis_t[:, :-1] - basis_t[:, 1:]
         basis_t = (basis_t - basis_t.mean()) / basis_t.std()
 
-        basis.lerp_(basis_t, weight)
+        basis.lerp_(basis_t, 1-basis_beta)
         update_subspace_preconditioner_(g, basis, accumulator, beta)
-        preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
+
+        if 'inner' in self.children:
+            tensors = apply(self.children['inner'], tensors, params, grads, vars)
+            g = torch.cat([t.view(-1) for t in tensors])
+
+        try:
+            preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
+        except torch.linalg.LinAlgError:
+            denom = g.abs().sum()
+            if denom <= 1e-10: denom = torch.ones_like(denom)
+            preconditioned = g / g.abs().sum()
         vec_to_tensors_(preconditioned, tensors)
 
         return tensors
