@@ -23,7 +23,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         defaults: dict | None = None,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol_reset: bool = True,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -41,15 +41,15 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         """returns multiplier to H or B"""
         ys = y.dot(s)
         yy = y.dot(y)
-        if ys != 0 and yy != 0:
-            if inverse: return ys/yy
-            else: return yy/ys
+        if ys != 0 and yy != 0: return yy/ys
         return 1
 
-    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor,inverse:bool, init_scale: float | Literal['auto']):
+    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor,inverse:bool, init_scale: Any):
         set_storage_(M, torch.eye(M.size(-1), device=M.device, dtype=M.dtype))
-        if isinstance(init_scale, (int, float)) and init_scale != 1: M *= init_scale
-        elif init_scale == 'auto': M *= self._get_init_scale(s,y,inverse)
+        if init_scale == 'auto': init_scale = self._get_init_scale(s,y,inverse)
+        if init_scale >= 1:
+            if inverse: M /= init_scale
+            else: M *= init_scale
 
     def update_H(self, H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
                  p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], settings: Mapping[str, Any]) -> torch.Tensor:
@@ -75,7 +75,10 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
 
         if M is None:
             M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
-            if isinstance(init_scale, (int, float)) and init_scale != 1: M *= init_scale
+            if isinstance(init_scale, (int, float)) and init_scale != 1:
+                if inverse: M /= init_scale
+                else: M *= init_scale
+
             state[M_key] = M
             state['p_prev'] = p.clone()
             state['g_prev'] = g.clone()
@@ -99,19 +102,19 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
             return
 
         if step == 1 and init_scale == 'auto':
-            M *= self._get_init_scale(s,y,inverse)
+            if inverse: M /= self._get_init_scale(s,y,inverse)
+            else: M *= self._get_init_scale(s,y,inverse)
 
         beta = settings['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
-        if inverse:
-            _maybe_lerp_(state, 'H',
-                         self.update_H(H=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings),
-                         beta)
-        else:
-            _maybe_lerp_(state, 'B',
-                         self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings),
-                         beta)
 
+        if inverse:
+            H_new = self.update_H(H=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings)
+            _maybe_lerp_(state, 'H', H_new, beta)
+
+        else:
+            B_new = self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings)
+            _maybe_lerp_(state, 'B', B_new, beta)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
@@ -128,23 +131,12 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         B = state['B']
         return torch.linalg.solve(B, tensor.view(-1)).view_as(tensor) # pylint:disable=not-callable
 
-# ----------------------------------- BFGS ----------------------------------- #
-def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    sy = torch.dot(s, y)
-    if sy <= 1e-10: return H
-    num1 = (sy + (y @ H @ y)) * s.outer(s)
-    term1 = num1.div_(sy**2)
-    num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
-    term2 = num2.div_(sy)
-    H += term1.sub_(term2)
-    return H
-
-class BFGS(HessianUpdateStrategy):
+class QuasiNewton(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol_reset: bool = True,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -167,99 +159,110 @@ class BFGS(HessianUpdateStrategy):
             inverse=True,
             inner=inner,
         )
+# ----------------------------------- BFGS ----------------------------------- #
+def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    sy = torch.dot(s, y)
+    if sy <= tol: return H # don't reset H in this case
+    num1 = (sy + (y @ H @ y)) * s.outer(s)
+    term1 = num1.div_(sy**2)
+    num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+    term2 = num2.div_(sy)
+    H += term1.sub_(term2)
+    return H
 
+class BFGS(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return bfgs_H_(H=H, s=s, y=y)
+        return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 # ------------------------------------ SR1 ----------------------------------- #
-def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, eps:float):
+def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H@y
     denom = torch.dot(z, y)
 
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
-    if denom.abs() >= eps * torch.linalg.norm(y) * torch.linalg.norm(z): # pylint:disable=not-callable
-        H += torch.outer(z, z).div_(denom)
+    if denom.abs() < tol * torch.linalg.norm(y) * torch.linalg.norm(z): return H # pylint:disable=not-callable
+    H += torch.outer(z, z).div_(denom)
     return H
 
-class SR1(BFGS):
+class SR1(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return sr1_H_(H=H, s=s, y=y, eps=settings['eps'])
+        return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 # BFGS has defaults - init_scale = "auto" and scale_second = False
 # SR1 has defaults -  init_scale = 1 and scale_second = True
 # basically some methods work better with first and some with second.
 # I inherit from BFGS or SR1 to avoid writing all those arguments again
 # ------------------------------------ DFP ----------------------------------- #
-def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = torch.dot(s, y)
-    if sy.abs() <= 1e-10: return H
+    if sy.abs() <= tol: return H
     term1 = torch.outer(s, s).div_(sy)
     denom = torch.dot(y, H @ y) #
-    if denom.abs() <= 1e-10: return H
+    if denom.abs() <= tol: return H
     num = H @ torch.outer(y, y) @ H
     term2 = num.div_(denom)
     H += term1.sub_(term2)
     return H
 
-class DFP(BFGS):
+class DFP(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return dfp_H_(H=H, s=s, y=y)
+        return dfp_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 
 # formulas for methods below from Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
 # H' = H - (Hy - S)c^T / c^T*y
 # the difference is how `c` is calculated
 
-def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = H.T @ s
     denom = c.dot(y)
-    if denom.abs() <= 1e-10: return H
+    if denom.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
     H -= num/denom
     return H
 
-def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = y
     denom = c.dot(y)
-    if denom.abs() <= 1e-10: return H
+    if denom.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
     H -= num/denom
     return H
 
-def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor):
+def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor, tol: float):
     c = g_prev
     denom = c.dot(y)
-    if denom.abs() <= 1e-10: return H
+    if denom.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
     H -= num/denom
     return H
 
-def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = torch.linalg.multi_dot([H,H,y]) # pylint:disable=not-callable
     denom = c.dot(y)
-    if denom.abs() <= 1e-10: return H
+    if denom.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
     H -= num/denom
     return H
 
-class BroydenGood(BFGS):
+class BroydenGood(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_good_H_(H=H, s=s, y=y)
+        return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class BroydenBad(BFGS):
+class BroydenBad(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_bad_H_(H=H, s=s, y=y)
+        return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class Greenstadt1(BFGS):
+class Greenstadt1(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev)
+        return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev, tol=settings['tol'])
 
-class Greenstadt2(BFGS):
+class Greenstadt2(QuasiNewton):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return greenstadt2_H_(H=H, s=s, y=y)
+        return greenstadt2_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 
-def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
+def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float):
     n = H.shape[0]
 
     j = y.abs().argmax()
@@ -267,7 +270,7 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
     u[j] = 1.0
 
     denom = y[j]
-    if denom.abs() < 1e-10: return H
+    if denom.abs() < tol: return H
 
     Hy = H @ y.unsqueeze(1)
     num = s.unsqueeze(1) - Hy
@@ -275,38 +278,38 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
     H[:, j] += num.squeeze() / denom
     return H
 
-class ColumnUpdatingMethod(BFGS):
+class ColumnUpdatingMethod(QuasiNewton):
     """Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return column_updating_H_(H=H, s=s, y=y)
+        return column_updating_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
+def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
     s_norm = torch.linalg.vector_norm(s) # pylint:disable=not-callable
     I = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
     d = (R + I * (s_norm/2)) @ s
     denom = d.dot(s)
-    if denom.abs() <= 1e-10: return H, R
+    if denom.abs() <= tol: return H, R
     R = (1 + s_norm) * ((I*s_norm).add_(R).sub_(d.outer(d).div_(denom)))
 
     c = H.T @ d
     denom = c.dot(y)
-    if denom.abs() <= 1e-10: return H, R
+    if denom.abs() <= tol: return H, R
     num = (H@y).sub_(s).outer(c)
     H -= num/denom
     return H, R
 
-class ThomasOptimalMethod(BFGS):
+class ThomasOptimalMethod(QuasiNewton):
     """Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975."""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
-        H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y)
+        H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
         return H
 
 # ------------------------ powell's symmetric broyden ------------------------ #
-def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
+def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
     y_Bs = y - B@s
     ss = s.dot(s)
-    if ss.abs() < 1e-12: return B
+    if ss.abs() < tol: return B
     num1 = y_Bs.outer(s).add_(s.outer(y_Bs))
     term1 = num1.div_(ss)
     term2 = s.outer(s).mul_(y_Bs.dot(s)/(ss**2))
@@ -318,6 +321,8 @@ class PSB(HessianUpdateStrategy):
         self,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -329,6 +334,8 @@ class PSB(HessianUpdateStrategy):
             defaults=None,
             init_scale=init_scale,
             tol=tol,
+            tol_reset=tol_reset,
+            reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -339,22 +346,22 @@ class PSB(HessianUpdateStrategy):
         )
 
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return psb_B_(B=B, s=s, y=y)
+        return psb_B_(B=B, s=s, y=y, tol=settings['tol'])
 
-def pearson2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+def pearson2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
-    if sy.abs() <= 1e-10: return H
+    if sy.abs() <= tol: return H
     num = (s - H@y).outer(s)
     H += num.div_(sy)
     return H
 
-class Pearson2(BFGS):
+class Pearson2(QuasiNewton):
     """finally found a reference in https://www.recotechnologies.com/~beigi/ps/asme-jdsmc-93-2.pdf"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return pearson2_H_(H=H, s=s, y=y)
+        return pearson2_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 # Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.
-def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4]):
+def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4], tol: float):
     # in notation p is s, q is y, H is D
     # another p is lr
     # omega (o) = sy
@@ -366,9 +373,9 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
     gHy = g.dot(Hy)
     yHy = y.dot(Hy)
     sy = s.dot(y)
-    if sy < 1e-10: return H
-    if yHy.abs() < 1e-10: return H
-    if gHy.abs() < 1e-10: return H
+    if sy < tol: return H
+    if yHy.abs() < tol: return H
+    if gHy.abs() < tol: return H
 
     v_mul = yHy.sqrt()
     v_term1 = s/sy
@@ -383,27 +390,27 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
         e = gs / gHy
         if switch in (1, 3):
             if e/o <= 1:
-                if o == 0: return H
+                if o.abs() <= tol: return H
                 phi = e/o
                 theta = 0
             elif o/t >= 1:
-                if t == 0: return H
+                if t.abs() <= tol: return H
                 phi = o/t
                 theta = 1
             else:
                 phi = 1
                 denom = e*t - o**2
-                if denom == 0: return H
+                if denom.abs() <= tol: return H
                 if switch == 1: theta = o * (e - o) / denom
                 else: theta = o * (t - o) / denom
 
         elif switch == 2:
-            if t == 0 or o == 0 or e == 0: return H
+            if t.abs() <= tol or o.abs() <= tol or e.abs() <= tol: return H
             phi = (e / t) ** 0.5
             theta = 1 / (1 + (t*e / o**2)**0.5)
 
         elif switch == 4:
-            if t == 0: return H
+            if t.abs() <= tol: return H
             phi = e/t
             theta = 1/2
 
@@ -430,7 +437,7 @@ class SSVM(HessianUpdateStrategy):
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol_reset: bool = True,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -456,4 +463,4 @@ class SSVM(HessianUpdateStrategy):
         )
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return ssvm_H_(H=H, s=s, y=y, g=g, switch=settings['switch'])
+        return ssvm_H_(H=H, s=s, y=y, g=g, switch=settings['switch'], tol=settings['tol'])
