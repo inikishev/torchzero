@@ -63,7 +63,7 @@ class Newton(Module):
             must return a tuple: `(hessian, is_inverted)` with transformed hessian and a boolean value
             which must be True if transform inverted the hessian and False otherwise. Defaults to None.
         eigval_tfm (Callable | None, optional):
-            optional eigenvalues transform, for example torch.abs or torch.clip(min=1e-8).
+            optional eigenvalues transform, for example :code:`torch.abs` or :code:`lambda L: torch.clip(L, min=1e-8)`.
             If this is specified, eigendecomposition will be used to solve Hx = g.
 
     """
