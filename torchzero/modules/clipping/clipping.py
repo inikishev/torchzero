@@ -67,7 +67,7 @@ def _clip_norm_(
             minv = min[i] if isinstance(min, (list,tuple)) else min
             maxv = max[i] if isinstance(max, (list,tuple)) else max
 
-            mul = 0
+            mul = 1
             if minv is not None:
                 mul_to_min = (minv / norm).clamp(min=1)
                 mul *= mul_to_min
@@ -186,12 +186,12 @@ class ClipNorm(Transform):
 
     @torch.no_grad
     def transform(self, tensors, params, grads, vars):
-        max_norm, min_norm = self.get_settings('max_norm', 'min_norm', params=params, cls=NumberList)
+        max_norm = self.get_settings('max_norm', params=params, cls=NumberList)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
         _clip_norm_(
             tensors_ = TensorList(tensors),
-            min = min_norm if min_norm[0] is not None else None,
-            max = max_norm if max_norm[0] is not None else None,
+            min = 0,
+            max = max_norm,
             norm_value = None,
             ord = ord,
             dim = dim,

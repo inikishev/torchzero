@@ -5,7 +5,7 @@ from collections.abc import Mapping
 import torch
 
 from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner
-from ...utils import TensorList
+from ...utils import TensorList, set_storage_
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -23,17 +23,33 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         defaults: dict | None = None,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = True,
+        scale_first: bool = False,
         scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, scale_second=scale_second, inverse=inverse, beta=beta))
+        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, tol_reset=tol_reset, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+
+    def _get_init_scale(self,s:torch.Tensor,y:torch.Tensor,inverse:bool) -> torch.Tensor | float:
+        """returns multiplier to H or B"""
+        ys = y.dot(s)
+        yy = y.dot(y)
+        if ys != 0 and yy != 0:
+            if inverse: return ys/yy
+            else: return yy/ys
+        return 1
+
+    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor,inverse:bool, init_scale: float | Literal['auto']):
+        set_storage_(M, torch.eye(M.size(-1), device=M.device, dtype=M.dtype))
+        if isinstance(init_scale, (int, float)) and init_scale != 1: M *= init_scale
+        elif init_scale == 'auto': M *= self._get_init_scale(s,y,inverse)
 
     def update_H(self, H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
                  p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], settings: Mapping[str, Any]) -> torch.Tensor:
@@ -54,6 +70,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         step = state.get('step', 0)
         init_scale = settings['init_scale']
         tol = settings['tol']
+        tol_reset = settings['tol_reset']
+        reset_interval = settings['reset_interval']
 
         if M is None:
             M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
@@ -67,17 +85,21 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         g_prev = state['g_prev']
         s: torch.Tensor = p - p_prev
         y: torch.Tensor = g - g_prev
+        state['p_prev'].copy_(p)
+        state['g_prev'].copy_(g)
+
+        if reset_interval is not None and step % reset_interval == 0:
+            self._reset_M_(M, s, y, inverse, init_scale)
+            return
 
         # tolerance on gradient difference to avoid exploding after converging
         if y.abs().max() <= tol:
+            # reset history
+            if tol_reset: self._reset_M_(M, s, y, inverse, init_scale)
             return
 
         if step == 1 and init_scale == 'auto':
-            ys = y.dot(s)
-            yy = y.dot(y)
-            if ys != 0 and yy != 0:
-                if inverse: M *= ys/yy
-                else: M *= yy/ys
+            M *= self._get_init_scale(s,y,inverse)
 
         beta = settings['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
@@ -90,8 +112,6 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
                          self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings),
                          beta)
 
-        state['p_prev'] = p.clone()
-        state['g_prev'] = g.clone()
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
@@ -105,9 +125,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
             H = state['H']
             return (H @ tensor.view(-1)).view_as(tensor)
 
-        else:
-            B = state['B']
-            return torch.linalg.solve(B, tensor.view(-1)).view_as(tensor) # pylint:disable=not-callable
+        B = state['B']
+        return torch.linalg.solve(B, tensor.view(-1)).view_as(tensor) # pylint:disable=not-callable
 
 # ----------------------------------- BFGS ----------------------------------- #
 def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
@@ -125,9 +144,11 @@ class BFGS(HessianUpdateStrategy):
         self,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = True,
+        scale_first: bool = False,
         scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
@@ -136,6 +157,8 @@ class BFGS(HessianUpdateStrategy):
             defaults=None,
             init_scale=init_scale,
             tol=tol,
+            tol_reset=tol_reset,
+            reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -158,33 +181,7 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, eps:float):
         H += torch.outer(z, z).div_(denom)
     return H
 
-class SR1(HessianUpdateStrategy):
-    def __init__(
-        self,
-        init_scale: float | Literal["auto"] = 'auto',
-        eps: float = 1e-8,
-        tol: float = 1e-10,
-        beta: float | None = None,
-        update_freq: int = 1,
-        scale_first: bool = True,
-        scale_second: bool = False,
-        concat_params: bool = True,
-        inner: Chainable | None = None,
-    ):
-        defaults = dict(eps=eps)
-        super().__init__(
-            defaults=defaults,
-            init_scale=init_scale,
-            tol=tol,
-            beta=beta,
-            update_freq=update_freq,
-            scale_first=scale_first,
-            scale_second=scale_second,
-            concat_params=concat_params,
-            inverse=True,
-            inner=inner,
-        )
-
+class SR1(BFGS):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_H_(H=H, s=s, y=y, eps=settings['eps'])
 
@@ -323,7 +320,7 @@ class PSB(HessianUpdateStrategy):
         tol: float = 1e-10,
         beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = True,
+        scale_first: bool = False,
         scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
@@ -433,9 +430,11 @@ class SSVM(HessianUpdateStrategy):
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = True,
+        scale_first: bool = False,
         scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
@@ -445,6 +444,8 @@ class SSVM(HessianUpdateStrategy):
             defaults=defaults,
             init_scale=init_scale,
             tol=tol,
+            tol_reset=tol_reset,
+            reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,

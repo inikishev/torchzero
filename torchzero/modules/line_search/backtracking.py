@@ -81,6 +81,10 @@ class Backtracking(LineSearch):
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
+    def reset(self):
+        super().reset()
+        self.global_state['beta_scale'] = 1.0
+
     @torch.no_grad
     def search(self, update, vars):
         init, beta, c, maxiter, min_alpha, adaptive, try_negative = itemgetter(
@@ -125,6 +129,11 @@ class AdaptiveBacktracking(LineSearch):
         defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
         super().__init__(defaults=defaults)
 
+        self.global_state['beta_scale'] = 1.0
+        self.global_state['initial_scale'] = 1.0
+
+    def reset(self):
+        super().reset()
         self.global_state['beta_scale'] = 1.0
         self.global_state['initial_scale'] = 1.0
 

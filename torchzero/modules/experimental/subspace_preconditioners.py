@@ -6,7 +6,7 @@ import torch
 # import torchzero as tz
 
 from ...core import Transform, Chainable, apply
-from ...utils.linalg import inv_sqrt_2x2, matrix_power_eigh
+from ...utils.linalg import inv_sqrt_2x2, matrix_power_eigh, gram_schmidt
 from ...utils import TensorList, vec_to_tensors_
 
 
@@ -105,6 +105,68 @@ class HistorySubspacePreconditioning(Transform):
 
         else:
             basis_t = torch.stack(tuple(history), -1)
+
+        basis_t[:,:-1] = basis_t[:, :-1] - basis_t[:, 1:]
+        basis_t = (basis_t - basis_t.mean()) / basis_t.std()
+
+        basis.lerp_(basis_t, 1-basis_beta)
+        update_subspace_preconditioner_(g, basis, accumulator, beta)
+
+        if 'inner' in self.children:
+            tensors = apply(self.children['inner'], tensors, params, grads, vars)
+            g = torch.cat([t.view(-1) for t in tensors])
+
+        try:
+            preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
+        except torch.linalg.LinAlgError:
+            denom = g.abs().sum()
+            if denom <= 1e-10: denom = torch.ones_like(denom)
+            preconditioned = g / g.abs().sum()
+        vec_to_tensors_(preconditioned, tensors)
+
+        return tensors
+
+
+
+class GoodSubspacePreconditioning(Transform):
+    """trying to make the subspace good is what this does"""
+    def __init__(self, beta: float | None = 0.99, basis_beta=0.99, inner: Chainable | None = None):
+        defaults = dict(beta=beta, basis_beta=basis_beta)
+        super().__init__(defaults, uses_grad=False)
+
+        if inner is not None: self.set_child('inner', inner)
+
+    def transform(self, tensors, params, grads, vars):
+        settings = self.settings[params[0]]
+
+        p = torch.cat([t.view(-1) for t in tensors])
+        g = torch.cat([t.view(-1) for t in tensors])
+        k = settings['k']
+        beta = settings['beta']
+        basis_beta = settings['basis_beta']
+
+        if 'history' not in self.global_state:
+            self.global_state['p_history'] = deque(maxlen=k)
+            self.global_state['g_history'] = deque(maxlen=k)
+            self.global_state['accumulator'] = torch.eye(k, device=g.device, dtype=g.dtype)
+            self.global_state['basis'] = torch.ones(g.numel(), k, device=g.device, dtype=g.dtype)
+
+
+        p_history: deque = self.global_state['p_history']
+        g_history: deque = self.global_state['g_history']
+        accumulator = self.global_state['accumulator']
+        basis = self.global_state['basis']
+
+        p_history.append(p)
+        g_history.append(g)
+        if len(g_history) < k:
+            # since basis shape doesn't chage initially we don't have enough history and use random basis
+            basis_t = torch.randn(g.numel(), k, device=g.device, dtype=g.dtype)
+            history_basis = torch.stack(tuple(g_history), -1)
+            basis_t[:, -len(g_history):] = history_basis
+
+        else:
+            basis_t = torch.stack(tuple(g_history), -1)
 
         basis_t[:,:-1] = basis_t[:, :-1] - basis_t[:, 1:]
         basis_t = (basis_t - basis_t.mean()) / basis_t.std()

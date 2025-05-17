@@ -116,6 +116,8 @@ class LBFGS(Module):
             how often to update L-BFGS history. Defaults to 1.
         z_beta (float | None, optional):
             optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
+        tol_reset (bool, optional):
+            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
     """
@@ -130,9 +132,10 @@ class LBFGS(Module):
         grads_beta: float | None = None,
         update_freq = 1,
         z_beta: float | None = None,
+        tol_reset: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta)
+        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, tol_reset=tol_reset)
         super().__init__(defaults)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -161,8 +164,8 @@ class LBFGS(Module):
         y_history: deque[TensorList] = self.global_state['y_history']
         sy_history: deque[torch.Tensor] = self.global_state['sy_history']
 
-        tol, damping, init_damping, eigval_bounds, update_freq, z_beta = itemgetter(
-            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta')(self.settings[params[0]])
+        tol, damping, init_damping, eigval_bounds, update_freq, z_beta, tol_reset = itemgetter(
+            'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta', 'tol_reset')(self.settings[params[0]])
         params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params)
 
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
@@ -198,6 +201,7 @@ class LBFGS(Module):
         if tol is not None:
             if y_k is not None and y_k.abs().global_max() <= tol:
                 vars.update = update # may have been updated by inner module, probably makes sense to use it here?
+                if tol_reset: self.reset()
                 return vars
 
         # lerp initial H^-1 @ q guess

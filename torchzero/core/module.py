@@ -408,6 +408,8 @@ class Module(ABC):
 
     def reset(self):
         """Resets the internal state of the module (e.g. momentum)."""
+        # no complex logic is allowed there because this is overridden by many modules
+        # where super().reset() shouldn't be called
         self.state.clear()
         self.global_state.clear()
 

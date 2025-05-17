@@ -23,6 +23,7 @@ def tropical_lstsq(
     algebra,
     verbose,
 ):
+    """it can run on any algebra with add despite it saying tropical"""
     algebra = ta.get_algebra(algebra)
 
     x = torch.zeros_like(g, requires_grad=True)
