@@ -35,8 +35,9 @@ class ForwardGradient(RandomizedFDM):
         jvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
         h: float = 1e-3,
         target: GradTarget = "closure",
+        seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples, distribution=distribution, beta=beta, target=target, pre_generate=pre_generate)
+        super().__init__(h=h, n_samples=n_samples, distribution=distribution, beta=beta, target=target, pre_generate=pre_generate, seed=seed)
         self.defaults['jvp_method'] = jvp_method
 
     @torch.no_grad
@@ -51,11 +52,12 @@ class ForwardGradient(RandomizedFDM):
         distribution = settings['distribution']
         default = [None]*n_samples
         perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
+        generator = self._get_generator(settings['seed'], params)
 
         grad = None
         for i in range(n_samples):
             prt = perturbations[i]
-            if prt[0] is None: prt = params.sample_like(distribution=distribution)
+            if prt[0] is None: prt = params.sample_like(distribution=distribution, generator=generator)
             else: prt = TensorList(prt)
 
             if jvp_method == 'autograd':

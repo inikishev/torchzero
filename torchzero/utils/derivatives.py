@@ -228,7 +228,7 @@ def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]) -> 
     duals = []
     with fwAD.dual_level():
         for p, d, t in zip(params, detached_params, tangent):
-            dual = fwAD.make_dual(d, t)
+            dual = fwAD.make_dual(d, t).requires_grad_(p.requires_grad)
             duals.append(dual)
             swap_tensors_no_use_count_check(p, dual)
 
@@ -237,7 +237,6 @@ def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]) -> 
 
     for p, d in zip(params, duals):
         swap_tensors_no_use_count_check(p, d)
-
     return loss, res
 
 

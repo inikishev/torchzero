@@ -43,14 +43,14 @@ class ClipValueGrowth(TensorwiseTransform):
             return tensor
 
         if 'prev' not in state:
-            state['prev'] = tensor
+            state['prev'] = tensor.clone()
             return tensor
 
         prev: torch.Tensor = state['prev']
 
         # additive bound
         if add is not None:
-            growth = (tensor - prev).abs()
+            growth = (tensor.abs() - prev.abs()).clip(min=0)
             tensor.sub_(torch.where(growth > add, (growth-add).copysign_(tensor), 0))
 
         # multiplicative bound

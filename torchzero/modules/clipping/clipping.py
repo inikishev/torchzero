@@ -46,6 +46,7 @@ def _clip_norm_(
 
     for i, tensor in enumerate(tensors_):
         # remove dimensions that overflow tensor.ndim or are too small
+        if tensor.ndim == 0: tensor = tensor.unsqueeze(0)
         if dim is None: dim = list(range(tensor.ndim))
         real_dim = [d for d in dim if d < tensor.ndim]
         if inverse_dims: real_dim = [d for d in range(tensor.ndim) if d not in real_dim]
@@ -303,7 +304,7 @@ class Centralize(Transform):
         self,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
-        min_size: int = 3,
+        min_size: int = 2,
         target: Target = "update",
     ):
         defaults = dict(dim=dim,min_size=min_size,inverse_dims=inverse_dims)

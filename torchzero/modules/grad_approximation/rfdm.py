@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from typing import Any
-
+from functools import partial
 import torch
 
 from ...utils import TensorList, Distributions, NumberList, generic_eq
@@ -100,9 +100,23 @@ class RandomizedFDM(GradApproximator):
         beta: float = 0,
         pre_generate = True,
         target: GradTarget = "closure",
+        seed: int | None | torch.Generator = None,
     ):
-        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta, pre_generate=pre_generate)
+        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta, pre_generate=pre_generate, seed=seed)
         super().__init__(defaults, target=target)
+
+    def reset(self):
+        self.state.clear()
+        generator = self.global_state.get('generator', None) # avoid resetting generator
+        self.global_state.clear()
+        if generator is not None: self.global_state['generator'] = generator
+
+    def _get_generator(self, seed: int | None | torch.Generator, params: list[torch.Tensor]):
+        if 'generator' not in self.global_state:
+            if isinstance(seed, torch.Generator): self.global_state['generator'] = seed
+            elif seed is not None: self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
+            else: self.global_state['generator'] = None
+        return self.global_state['generator']
 
     def pre_step(self, vars):
         h, beta = self.get_settings('h', 'beta', params=vars.params)
@@ -113,7 +127,8 @@ class RandomizedFDM(GradApproximator):
 
         if pre_generate:
             params = TensorList(vars.params)
-            perturbations = [params.sample_like(distribution=distribution) for _ in range(n_samples)]
+            generator = self._get_generator(settings['seed'], vars.params)
+            perturbations = [params.sample_like(distribution=distribution, generator=generator) for _ in range(n_samples)]
 
             if self.PRE_MULTIPLY_BY_H:
                 torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])
@@ -132,7 +147,7 @@ class RandomizedFDM(GradApproximator):
 
                 cur = [self.state[p]['perturbations'][:n_samples] for p in params]
                 cur_flat = [p for l in cur for p in l]
-                new_flat = [p for l in perturbations for p in l]
+                new_flat = [p for l in zip(*perturbations) for p in l]
                 betas = [1-v for b in beta for v in [b]*n_samples]
                 torch._foreach_lerp_(cur_flat, new_flat, betas)
 
@@ -148,11 +163,12 @@ class RandomizedFDM(GradApproximator):
         default = [None]*n_samples
         perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
         distribution = settings['distribution']
+        generator = self._get_generator(settings['seed'], params)
 
         grad = None
         for i in range(n_samples):
             prt = perturbations[i]
-            if prt[0] is None: prt = params.sample_like(distribution=distribution).mul_(h)
+            if prt[0] is None: prt = params.sample_like(distribution=distribution, generator=generator).mul_(h)
             else: prt = TensorList(prt)
 
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, v_0=loss)
@@ -163,12 +179,46 @@ class RandomizedFDM(GradApproximator):
         if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
 
+SPSA = RandomizedFDM
+
+class RDSA(RandomizedFDM):
+    def __init__(
+        self,
+        h: float = 1e-3,
+        n_samples: int = 1,
+        formula: _FD_Formula = "central2",
+        distribution: Distributions = "gaussian",
+        beta: float = 0,
+        pre_generate = True,
+        target: GradTarget = "closure",
+        seed: int | None | torch.Generator = None,
+    ):
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
+
+class GaussianSmoothing(RandomizedFDM):
+    def __init__(
+        self,
+        h: float = 1e-2,
+        n_samples: int = 100,
+        formula: _FD_Formula = "central2",
+        distribution: Distributions = "gaussian",
+        beta: float = 0,
+        pre_generate = True,
+        target: GradTarget = "closure",
+        seed: int | None | torch.Generator = None,
+    ):
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
 
 class MeZO(GradApproximator):
     def __init__(self, h: float=1e-3, n_samples: int = 1, formula: _FD_Formula = 'central2',
-                 distribution: Distributions = 'gaussian', target: GradTarget = 'closure'):
+                 distribution: Distributions = 'rademacher', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution)
         super().__init__(defaults, target=target)
+
+    def _seeded_perturbation(self, params: list[torch.Tensor], distribution, seed, h):
+        return TensorList(params).sample_like(
+            distribution=distribution, generator=torch.Generator(params[0].device).manual_seed(seed)
+        ).mul_(h)
 
     def pre_step(self, vars):
         h = self.get_settings('h', params=vars.params)
@@ -182,10 +232,7 @@ class MeZO(GradApproximator):
         prt_fns = []
         for i in range(n_samples):
 
-            prt_fn = lambda: TensorList(vars.params).sample_like(
-                distribution=distribution, generator=torch.Generator(device=vars.params[0].device)
-                .manual_seed(1_000_000*step + i)).mul_(h)
-
+            prt_fn = partial(self._seeded_perturbation, params=vars.params, distribution=distribution, seed=1_000_000*step + i, h=h)
             prt_fns.append(prt_fn)
 
         self.global_state['prt_fns'] = prt_fns
