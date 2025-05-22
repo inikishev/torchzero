@@ -528,7 +528,7 @@ class Modular(torch.optim.Optimizer):
         self.defaults.clear()
         self.defaults.update(state_dict['defaults'])
 
-        idx_to_param = {i:p for i,p in enumerate(state_dict['params'])}
+        idx_to_param = dict(enumerate(state_dict['params']))
         groups = []
         for g in state_dict['groups']:
             g = g.copy()
@@ -622,7 +622,6 @@ def maybe_chain(*modules: Chainable) -> Module:
     flat_modules: list[Module] = flatten(modules)
     if len(flat_modules) == 1:
         return flat_modules[0]
-    else:
-        return Chain(*flat_modules)
+    return Chain(*flat_modules)
 # endregion
 

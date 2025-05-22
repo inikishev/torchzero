@@ -15,18 +15,21 @@ from ..momentum.experimental import sqrt_nag_ema_sq_
 from ..momentum.momentum import nag_
 
 
-def adam_(
+def adadam_(
     tensors: TensorList,
     exp_avg_: TensorList,
     exp_avg_sq_: TensorList,
+    exp_avg_qu_: TensorList,
     alpha: float | NumberList,
     beta1: float | NumberList,
     beta2: float | NumberList,
+    precond_beta: float | NumberList,
     eps: float | NumberList,
     step: int,
     pow: float = 2,
     debiased: bool = True,
     max_exp_avg_sq_: TensorList | None = None,
+    max_exp_avg_qu_: TensorList | None = None,
     params_: TensorList | None = None,
 ):
     """Returns new tensors or updates params in-place."""
@@ -34,40 +37,32 @@ def adam_(
 
     sqrt_exp_avg_sq = sqrt_ema_sq_(tensors, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
                                    debiased=False,step=step,pow=pow)
+    sqrt_exp_avg_qu = sqrt_ema_sq_(tensors/(sqrt_exp_avg_sq+1e-8), exp_avg_sq_=exp_avg_qu_,
+                                   beta=precond_beta,max_exp_avg_sq_=max_exp_avg_qu_, debiased=False,step=step,pow=pow)
 
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
 
     # params is None, return update
-    if params_ is None: return (exp_avg_ / sqrt_exp_avg_sq.add_(eps)).lazy_mul(alpha)
+    if params_ is None: return (exp_avg_ / sqrt_exp_avg_qu.add_(eps)).lazy_mul(alpha)
 
     # update params in-place
-    params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq.add_(eps), -alpha)
+    params_.addcdiv_(exp_avg_, sqrt_exp_avg_qu.add_(eps), -alpha)
     return None
 
-class Adam(Module):
-    """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size. This implementation is slightly different from
-    pytorch in that debiasing is applied after adding epsilon.
-
-    Args:
-        beta1 (float, optional): momentum. Defaults to 0.9.
-        beta2 (float, optional): second momentum. Defaults to 0.999.
-        eps (float, optional): epsilon. Defaults to 1e-8.
-        alpha (float, optional): learning rate. Defaults to 1.
-        amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
-        pow (float, optional): power used in second momentum power and root. Defaults to 2.
-        debiased (bool, optional): whether to apply debiasing to momentums based on current step. Defaults to True.
-    """
+class Adadam(Module):
+    """Adam with a diagonally preconditioned preconditioner and a graceful name."""
     def __init__(
         self,
         beta1: float = 0.9,
         beta2: float = 0.999,
+        precond_beta: float = 0.999,
         eps: float = 1e-8,
         amsgrad: bool = False,
         alpha: float = 1.,
         pow: float = 2,
         debiased: bool = True,
     ):
-        defaults=dict(beta1=beta1,beta2=beta2,eps=eps,alpha=alpha,amsgrad=amsgrad,pow=pow,debiased=debiased)
+        defaults=dict(beta1=beta1,beta2=beta2,precond_beta=precond_beta,eps=eps,alpha=alpha,amsgrad=amsgrad,pow=pow,debiased=debiased)
         super().__init__(defaults)
         self.getter = itemgetter('amsgrad','pow','debiased')
 
@@ -75,14 +70,15 @@ class Adam(Module):
     def step(self, vars):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        beta1,beta2,eps,alpha=self.get_settings('beta1','beta2','eps','alpha', params=vars.params, cls=NumberList)
+        beta1,beta2,precond_beta,eps,alpha=self.get_settings('beta1','beta2','precond_beta','eps','alpha', params=vars.params, cls=NumberList)
         amsgrad,pow,debiased = self.getter(self.settings[vars.params[0]])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg','exp_avg_sq','max_exp_avg_sq', params=vars.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', params=vars.params, cls=TensorList)
         else:
-            exp_avg, exp_avg_sq = self.get_state('exp_avg','exp_avg_sq', params=vars.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', params=vars.params, cls=TensorList)
             max_exp_avg_sq = None
+            max_exp_avg_qu = None
 
         # if this is last module, update parameters in-place with slightly more efficient addcdiv_
         if vars.is_last:
@@ -94,18 +90,21 @@ class Adam(Module):
         else:
             passed_params = None
 
-        vars.update = adam_(
+        vars.update = adadam_(
             tensors=TensorList(vars.get_update()),
             exp_avg_=exp_avg,
             exp_avg_sq_=exp_avg_sq,
+            exp_avg_qu_=exp_avg_qu,
             alpha=alpha,
             beta1=beta1,
             beta2=beta2,
+            precond_beta=precond_beta,
             eps=eps,
             step=step,
             pow=pow,
             debiased=debiased,
             max_exp_avg_sq_=max_exp_avg_sq,
+            max_exp_avg_qu_=max_exp_avg_qu,
             params_=passed_params,
         )
 

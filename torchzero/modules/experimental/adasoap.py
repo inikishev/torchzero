@@ -9,10 +9,16 @@ from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
 def update_soap_covariances_(
     grad: torch.Tensor,
     GGs_: list[torch.Tensor | None],
+    GG_sqs: list[torch.Tensor | None],
     beta: float | None,
+    precond_beta: float | None,
 ):
-    for i, GG in enumerate(GGs_):
+    for i, (GG, GG_sq) in enumerate(zip(GGs_, GG_sqs)):
         if GG is None: continue
+        assert GG_sq is not None
+
+        if precond_beta is None: GG_sq.addcmul_(GG, GG)
+        else: GG_sq.mul_(precond_beta).addcmul_(GG, GG, value=1-precond_beta)
 
         axes = list(range(i)) + list(range(i + 1, grad.ndim)) # this works fine with 1d params
         if beta is None: GG.add_(torch.tensordot(grad, grad, (axes, axes))) # pyright:ignore[reportArgumentType]
@@ -135,34 +141,17 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
     return final, exp_avg_sq
 
-class SOAP(Transform):
-    """SOAP (ShampoO with Adam in the Preconditioner's eigenbasis from https://arxiv.org/abs/2409.11321).
+class AdaSOAP(Transform):
+    """SOAP with diagonally preconditioned GG^Ts
 
-    Args:
-        beta1 (float, optional): beta for first momentum. Defaults to 0.95.
-        beta2 (float, optional): beta for second momentum. Defaults to 0.95.
-        shampoo_beta (float | None, optional):
-            beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad (which works worse). Defaults to 0.95.
-        precond_freq (int, optional): How often to update the preconditioner. Defaults to 10.
-        merge_small (bool, optional): Whether to merge small dims. Defaults to True.
-        max_dim (int, optional): Won't precondition dims larger than this. Defaults to 2_000.
-        precondition_1d (bool, optional):
-            Whether to precondition 1d params (SOAP paper sets this to False). Defaults to True.
-        eps (float, optional):
-            epsilon for dividing first momentum by second. Defaults to 1e-8.
-        decay (float | None, optional):
-            Decays covariance matrix accumulators, this may be useful if `shampoo_beta` is None. Defaults to None.
-        unprojected_exp_avg (bool, optional):
-            whether to update first momentum in unprojected space. Both true and false work and lead to different
-            results but True usually works better. Defaults to True.
-        bias_correction (bool, optional):
-            enables adam bias correction. Defaults to True.
+    precond_beta - beta for GG^T squares
     """
     def __init__(
         self,
         beta1: float = 0.95,
         beta2: float = 0.95,
         shampoo_beta: float | None = 0.95,
+        precond_beta: float | None = 0.95,
         precond_freq: int = 10,
         merge_small: bool = True,
         max_dim: int = 2_000,
@@ -177,6 +166,7 @@ class SOAP(Transform):
             beta1=beta1,
             beta2=beta2,
             shampoo_beta=shampoo_beta,
+            precond_beta=precond_beta,
             precond_freq=precond_freq,
             merge_small=merge_small,
             max_dim=max_dim,
@@ -198,6 +188,7 @@ class SOAP(Transform):
             settings = self.settings[p]
             beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg,alpha = itemgetter(
                 'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg','alpha')(settings)
+            precond_beta = settings['precond_beta']
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -209,22 +200,27 @@ class SOAP(Transform):
 
                 if not precondition_1d and t.ndim <= 1:
                     state['GG'] = []
+                    state['GG_sq'] = []
 
                 else:
                     state['GG'] = [torch.zeros(s, s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
+                    state['GG_sq'] = [torch.zeros(s, s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
 
                 # either scalar parameter, 1d with precondition_1d=False, or all dims are too big.
                 if len([i is not None for i in state['GG']]) == 0:
                     state['GG'] = None
+                    state['GG_sq'] = None
 
                 if state['GG'] is not None:
-                    update_soap_covariances_(t, GGs_=state['GG'], beta=shampoo_beta)
-                    state['Q'] = get_orthogonal_matrix(state['GG'])
+                    assert state['GG_sq'] is not None
+                    update_soap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
+                    GG_precond = [GG / (GG_sq+1e-8) if GG is not None and GG_sq is not None else None for GG, GG_sq in zip(state['GG'], state['GG_sq'])]
+                    state['Q'] = get_orthogonal_matrix(GG_precond)
 
                 state['step'] = 0
-                updates.append(tensors[i] / tensors[i].abs().sum())
+                updates.append(tensors[i].sign())
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
-                # I use scaled update instead as to not mess up with next modules.
+                # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
 
             # Projecting gradients to the eigenbases of Shampoo's preconditioner
             # i.e. projecting to the eigenbases of matrices in state['GG']
@@ -278,8 +274,9 @@ class SOAP(Transform):
 
             # Update is done after the gradient step to avoid using current gradients in the projection.
             if state['GG'] is not None:
-                update_soap_covariances_(t, state['GG'], shampoo_beta)
+                update_soap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
+                GG_precond = [GG / (GG_sq+1e-8) if GG is not None and GG_sq is not None else None for GG, GG_sq in zip(state['GG'], state['GG_sq'])]
                 if state['step'] % settings['precond_freq'] == 0:
-                    state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, state['GG'], state['Q'])
+                    state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, GG_precond, state['Q'])
 
         return updates

@@ -13,4 +13,4 @@ from .rprop import (
 from .shampoo import Shampoo
 from .soap import SOAP
 from .orthograd import OrthoGrad, orthograd_
-from .spectral import SpectralPreconditioner
+# from .spectral import SpectralPreconditioner

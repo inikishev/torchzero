@@ -15,8 +15,11 @@ from ..momentum.experimental import sqrt_nag_ema_sq_
 from ..momentum.momentum import nag_
 
 
-def adam_(
-    tensors: TensorList,
+def adamy_(
+    p: TensorList,
+    p_prev: TensorList,
+    g: TensorList,
+    g_prev: TensorList,
     exp_avg_: TensorList,
     exp_avg_sq_: TensorList,
     alpha: float | NumberList,
@@ -30,9 +33,23 @@ def adam_(
     params_: TensorList | None = None,
 ):
     """Returns new tensors or updates params in-place."""
-    exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
+    if step == 1:
+        p_prev.copy_(p)
+        g_prev.copy_(g)
 
-    sqrt_exp_avg_sq = sqrt_ema_sq_(tensors, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
+        update = g.sign().lazy_mul_(alpha*0.1)
+        if params_ is None: return update
+        params_.sub_(update)
+        return None
+
+    s = p-p_prev
+    y = (g-g_prev).div_(s.global_vector_norm().clip(min=1e-8))
+    p_prev.copy_(p)
+    g_prev.copy_(g)
+
+    exp_avg_ = ema_(g, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
+
+    sqrt_exp_avg_sq = sqrt_ema_sq_(y, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
                                    debiased=False,step=step,pow=pow)
 
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
@@ -44,9 +61,8 @@ def adam_(
     params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq.add_(eps), -alpha)
     return None
 
-class Adam(Module):
-    """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size. This implementation is slightly different from
-    pytorch in that debiasing is applied after adding epsilon.
+class AdamY(Module):
+    """Adam but uses scaled gradient differences for second momentum.
 
     Args:
         beta1 (float, optional): momentum. Defaults to 0.9.
@@ -94,8 +110,15 @@ class Adam(Module):
         else:
             passed_params = None
 
-        vars.update = adam_(
-            tensors=TensorList(vars.get_update()),
+        p_prev = self.get_state('p_prev', params=vars.params, cls=TensorList)
+        g_prev = self.get_state('g_prev', params=vars.params, cls=TensorList)
+
+
+        vars.update = adamy_(
+            p=TensorList(vars.params),
+            p_prev=p_prev,
+            g=TensorList(vars.get_update()),
+            g_prev=g_prev,
             exp_avg_=exp_avg,
             exp_avg_sq_=exp_avg_sq,
             alpha=alpha,

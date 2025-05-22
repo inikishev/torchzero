@@ -38,34 +38,3 @@ def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
     if isinstance(other, (list, tuple)): return self.__class__(fn(i, j, *args, **kwargs) for i, j in zip(self, other))
     return self.__class__(fn(i, other, *args, **kwargs) for i in self)
 
-
-K = TypeVar("K")
-V = TypeVar("V")
-class FallbackDict(UserDict[K, V]):
-    """Dictionary with a fallback dictionary.
-
-    :code:`fd = d[key]` - returns data[key] if key is in data else fallback[key]
-
-    :code:`fd[key] = value` - always sets data[key] = value
-
-    :code:`fd.keys(); fd.values(); fd(items); dict(fd); str(fd)` - for all purposes this behaves like a union of fallback and data, where data has a higher priority.
-
-    Args:
-        data (dict[str, Any]): main dict.
-        fallback (dict[str, Any]): fallback dict.
-    """
-    __slots__ = ('fallback', )
-    def __init__(self, data: dict[K, V], fallback: dict[K, V]):
-        super().__init__(data)
-        self.fallback = fallback
-
-    def __getitem__(self, k):
-        if k in self.data: return self.data[k]
-        return self.fallback[k]
-
-    def keys(self): return (self.fallback | self.data).keys()
-    def values(self): return (self.fallback | self.data).values()
-    def items(self): return (self.fallback | self.data).items()
-
-    def __repr__(self):
-        return dict.__repr__(self.fallback | self.data)

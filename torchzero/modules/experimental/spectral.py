@@ -185,7 +185,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         else: state_[key].lerp_(value, 1-beta)
 
 class SpectralPreconditioner(TensorwisePreconditioner):
-    """A low rank preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences.
+    """Whitening preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences.
 
     Args:
         history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
@@ -246,13 +246,13 @@ class SpectralPreconditioner(TensorwisePreconditioner):
                     state[f'prev_p_{i}'] = cur_p
                     state[f'prev_g_{i}'] = cur_g
                     break
-                else:
-                    s_k = cur_p - state[f'prev_p_{i}']
-                    y_k = cur_g - state[f'prev_g_{i}']
-                    state[f'prev_p_{i}'] = cur_p
-                    state[f'prev_g_{i}'] = cur_g
-                    cur_p = s_k
-                    cur_g = y_k
+
+                s_k = cur_p - state[f'prev_p_{i}']
+                y_k = cur_g - state[f'prev_g_{i}']
+                state[f'prev_p_{i}'] = cur_p
+                state[f'prev_g_{i}'] = cur_g
+                cur_p = s_k
+                cur_g = y_k
 
                 if i == order - 1:
                     cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable

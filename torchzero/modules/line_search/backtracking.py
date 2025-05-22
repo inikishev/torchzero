@@ -123,7 +123,7 @@ class AdaptiveBacktracking(LineSearch):
         min_alpha: float | None = None,
         target_iters = 1,
         nplus = 2.0,
-        scale_beta = 0.9,
+        scale_beta = 0.0,
         try_negative: bool = True,
     ):
         defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
