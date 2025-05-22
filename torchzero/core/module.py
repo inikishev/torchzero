@@ -540,7 +540,7 @@ class Modular(torch.optim.Optimizer):
             self.add_param_group(group)
 
         id_to_tensor = {state_dict['idx_to_id'][i]: p for i,p in enumerate(state_dict['params'])}
-        for m, sd in zip(self.unrolled_modules, state_dict['modules']):
+        for m, sd in zip(self.unrolled_modules, state_dict['modules'].values()):
             m.load_state_dict(sd, id_to_tensor)
 
 
