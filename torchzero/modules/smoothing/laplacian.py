@@ -105,7 +105,7 @@ class LaplacianSmoothing(Transform):
         # full laplacian smoothing
         # precompute full denominator
         tensors = TensorList(tensors)
-        if self.global_state['full_denominator'] is None:
+        if self.global_state.get('full_denominator', None) is None:
             self.global_state['full_denominator'] = _precompute_denominator(tensors.to_vec(), self.settings[params[0]]['sigma'])
 
         # apply the smoothing

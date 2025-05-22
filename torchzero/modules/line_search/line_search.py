@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from functools import partial
@@ -43,7 +44,7 @@ class LineSearch(Module, ABC):
         params: list[torch.Tensor],
         update: list[torch.Tensor],
     ):
-        if not np.isfinite(step_size): return
+        if not math.isfinite(step_size): return
         step_size = max(min(tofloat(step_size), 1e36), -1e36) # fixes overflow when backtracking keeps increasing alpha after converging
         alpha = self._current_step_size - step_size
         if alpha != 0:

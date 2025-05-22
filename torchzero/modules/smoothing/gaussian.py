@@ -52,8 +52,8 @@ def _decay_sigma_(self: Module, params):
         settings = self.settings[p]
         state['sigma'] *= settings['decay']
 
-def _generate_perturbations_to_state_(self: Module, params: TensorList, n_samples, sigmas):
-    perturbations = [params.sample_like() for _ in range(n_samples)]
+def _generate_perturbations_to_state_(self: Module, params: TensorList, n_samples, sigmas, generator):
+    perturbations = [params.sample_like(generator=generator) for _ in range(n_samples)]
     torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in sigmas for v in [vv]*n_samples])
     for param, prt in zip(params, zip(*perturbations)):
         self.state[param]['perturbations'] = prt
@@ -72,9 +72,18 @@ class GaussianHomotopy(Reformulation):
         decay=0.5,
         max_steps: int | None = None,
         clear_state=True,
+        seed: int | None = None,
     ):
-        defaults = dict(n_samples=n_samples, init_sigma=init_sigma, tol=tol, decay=decay, max_steps=max_steps, clear_state=clear_state)
+        defaults = dict(n_samples=n_samples, init_sigma=init_sigma, tol=tol, decay=decay, max_steps=max_steps, clear_state=clear_state, seed=seed)
         super().__init__(defaults)
+
+
+    def _get_generator(self, seed: int | None | torch.Generator, params: list[torch.Tensor]):
+        if 'generator' not in self.global_state:
+            if isinstance(seed, torch.Generator): self.global_state['generator'] = seed
+            elif seed is not None: self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
+            else: self.global_state['generator'] = None
+        return self.global_state['generator']
 
     def pre_step(self, vars):
         params = TensorList(vars.params)
@@ -84,7 +93,8 @@ class GaussianHomotopy(Reformulation):
         sigmas = self.get_state('sigma', params = params, init=init_sigma)
 
         if any('perturbations' not in self.state[p] for p in params):
-            _generate_perturbations_to_state_(self, params, n_samples, sigmas)
+            generator = self._get_generator(settings['seed'], params)
+            _generate_perturbations_to_state_(self, params=params, n_samples=n_samples, sigmas=sigmas, generator=generator)
 
         # sigma decay rules
         max_steps = settings['max_steps']
@@ -111,7 +121,8 @@ class GaussianHomotopy(Reformulation):
                 prev_params.copy_(params)
 
         if decayed:
-            _generate_perturbations_to_state_(self, params, n_samples, sigmas)
+            generator = self._get_generator(settings['seed'], params)
+            _generate_perturbations_to_state_(self, params=params, n_samples=n_samples, sigmas=sigmas, generator=generator)
             if settings['clear_state']:
                 vars.post_step_hooks.append(partial(_clear_state_hook, self=self))
 
