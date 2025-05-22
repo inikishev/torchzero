@@ -38,7 +38,7 @@ def backtracking_line_search(
     for iteration in range(maxiter):
         f_a = f(a)
 
-        if f_a <= f_x + c * a * g_0:
+        if f_a <= f_x + c * a * min(g_0, 0): # pyright: ignore[reportArgumentType]
             # found an acceptable alpha
             return a
 
@@ -124,7 +124,7 @@ class AdaptiveBacktracking(LineSearch):
         target_iters = 1,
         nplus = 2.0,
         scale_beta = 0.0,
-        try_negative: bool = True,
+        try_negative: bool = False,
     ):
         defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
         super().__init__(defaults=defaults)
