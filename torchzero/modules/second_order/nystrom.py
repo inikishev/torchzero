@@ -83,7 +83,7 @@ class NystromPCG(Module):
         sketch_size: int,
         maxiter=None,
         tol=1e-3,
-        reg: float = 1e-4,
+        reg: float = 1e-6,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         h=1e-3,
         inner: Chainable | None = None,

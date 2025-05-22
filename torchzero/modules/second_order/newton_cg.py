@@ -14,7 +14,7 @@ class NewtonCG(Module):
         self,
         maxiter=None,
         tol=1e-3,
-        reg: float = 0,
+        reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "forward",
         h=1e-3,
         warm_start=False,

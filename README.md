@@ -154,6 +154,8 @@ for epoch in range(100):
 * **Second Order (`torchzero/modules/second_order/`)**: Second order methods.
   * `Newton`: Classic Newton's method.
   * `NewtonCG`: Matrix-free newton's method with conjugate gradient solver.
+  * `NystromSketchAndSolve`: Nyström sketch-and-solve method.
+  * `NystromPCG`: NewtonCG with Nyström preconditioning.
 * **Smoothing (`torchzero/modules/smoothing/`)**: Techniques for smoothing the loss landscape or gradients.
   * `LaplacianSmoothing`: Laplacian smoothing for gradients.
   * `GaussianHomotopy`: Smoothing via randomized Gaussian homotopy.
