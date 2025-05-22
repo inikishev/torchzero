@@ -569,6 +569,7 @@ class Modular(torch.optim.Optimizer):
 
         # step
         for i, module in enumerate(self.modules):
+            if i!=0: vars = vars.clone(clone_update=False)
 
             # last module, or next to last module before lr
             if (i == n_modules - 1) or ((i == n_modules - 2) and (last_lr is not None)):
@@ -576,7 +577,7 @@ class Modular(torch.optim.Optimizer):
                 else: vars.is_last = True
                 if last_lr is not None: vars.last_module_lrs = last_module.get_settings('lr', params=vars.params)
 
-            vars = module.step(vars.clone(clone_update=False))
+            vars = module.step(vars)
             if vars.stop: break
 
         # apply update

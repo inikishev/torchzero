@@ -71,8 +71,8 @@ class RandomStepSize(Transform):
             if True, generate random step size for each parameter separately,
             if False generate one global random step size. Defaults to False.
     """
-    def __init__(self, low: float = 0, high: float = 1, parameterwise=False):
-        defaults = dict(low=low, high=high, parameterwise=parameterwise)
+    def __init__(self, low: float = 0, high: float = 1, parameterwise=False, seed:int|None=None):
+        defaults = dict(low=low, high=high, parameterwise=parameterwise,seed=seed)
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
@@ -80,13 +80,18 @@ class RandomStepSize(Transform):
         settings = self.settings[params[0]]
         parameterwise = settings['parameterwise']
 
+        seed = settings['seed']
+        if 'generator' not in self.global_state:
+            self.global_state['generator'] = random.Random(seed)
+        generator: random.Random = self.global_state['generator']
+
         if parameterwise:
             low, high = self.get_settings('low', 'high', params=params)
-            lr = [random.uniform(l, h) for l, h in zip(low, high)]
+            lr = [generator.uniform(l, h) for l, h in zip(low, high)]
         else:
             low = settings['low']
             high = settings['high']
-            lr = random.uniform(low, high)
+            lr = generator.uniform(low, high)
 
         torch._foreach_mul_(tensors, lr)
         return tensors

@@ -40,7 +40,7 @@ def warmup(step: int, start_lr: float | NumberList, end_lr: float | NumberList, 
     return start_lr + (end_lr - start_lr) * (step / steps)
 
 class Warmup(Transform):
-    def __init__(self, start_lr = 1e-5, end_lr = 1, steps = 100):
+    def __init__(self, start_lr = 1e-5, end_lr:float = 1, steps = 100):
         defaults = dict(start_lr=start_lr,end_lr=end_lr, steps=steps)
         super().__init__(defaults, uses_grad=False)
 

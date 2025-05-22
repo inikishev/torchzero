@@ -16,7 +16,6 @@ class TrustRegion(LineSearch):
 
         nplus, nminus, c, init, backtrack, adaptive = itemgetter('nplus','nminus','c','init','backtrack', 'adaptive')(self.settings[vars.params[0]])
         step_size = self.global_state.setdefault('step_size', init)
-
         previous_success = self.global_state.setdefault('previous_success', False)
         nplus_mul =  self.global_state.setdefault('nplus_mul', 1)
         nminus_mul = self.global_state.setdefault('nminus_mul', 1)
@@ -29,7 +28,7 @@ class TrustRegion(LineSearch):
         else: d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), update))
 
         # test step size
-        sufficient_f = f_0 + c * step_size * d
+        sufficient_f = f_0 + c * step_size * min(d, 0) # pyright:ignore[reportArgumentType]
 
         f_1 = self.evaluate_step_size(step_size, vars, backward=False)
 
@@ -48,7 +47,7 @@ class TrustRegion(LineSearch):
         #elif f_1 <= f_0: pass
 
         # bad step
-        if f_1 > f_0:
+        if f_1 >= f_0:
             self.global_state['step_size'] *= nminus * nminus_mul
 
             # two bad steps in a row - decrease nminus_mul

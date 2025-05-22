@@ -36,11 +36,6 @@ class Preconditioner(Transform):
     def apply(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> list[torch.Tensor]:
         """applies preconditioner to `tensors`, any internal state should be stored using `keys`"""
 
-    def reset(self):
-        """reset the internal state"""
-        self.state.clear()
-        self.global_state.clear()
-
 
     def _tensor_wise_transform(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, vars:Vars) -> list[torch.Tensor]:
         step = self.global_state.get('step', 0)
@@ -104,7 +99,8 @@ class Preconditioner(Transform):
 
         # scale initial step, when preconditioner might not have been applied
         if scale_first and step == 0:
-            tensors_vec /= scale_factor
+            if scale_factor >= torch.finfo(tensors_vec.dtype).eps:
+                tensors_vec /= scale_factor
 
         tensors = vec_to_tensors(vec=tensors_vec, reference=tensors)
         self.global_state['step'] = step + 1

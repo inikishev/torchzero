@@ -212,6 +212,7 @@ class StrongWolfe(LineSearch):
             'expand', 'adaptive', 'fallback', 'plus_minus')(self.settings[vars.params[0]])
 
         f_0, g_0 = objective(0)
+
         step_size,f_a = strong_wolfe(
             objective,
             f_0=f_0, g_0=g_0,
@@ -223,6 +224,7 @@ class StrongWolfe(LineSearch):
             expand=expand,
             plus_minus=plus_minus,
         )
+
         if f_a is not None and (f_a > f_0 or _notfinite(f_a)): step_size = None
         if step_size is not None and step_size != 0 and not _notfinite(step_size):
             self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))

@@ -37,7 +37,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, tol_reset=tol_reset, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
-    def _get_init_scale(self,s:torch.Tensor,y:torch.Tensor,inverse:bool) -> torch.Tensor | float:
+    def _get_init_scale(self,s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
         """returns multiplier to H or B"""
         ys = y.dot(s)
         yy = y.dot(y)
@@ -46,7 +46,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
 
     def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor,inverse:bool, init_scale: Any):
         set_storage_(M, torch.eye(M.size(-1), device=M.device, dtype=M.dtype))
-        if init_scale == 'auto': init_scale = self._get_init_scale(s,y,inverse)
+        if init_scale == 'auto': init_scale = self._get_init_scale(s,y)
         if init_scale >= 1:
             if inverse: M /= init_scale
             else: M *= init_scale
@@ -91,6 +91,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         state['p_prev'].copy_(p)
         state['g_prev'].copy_(g)
 
+
         if reset_interval is not None and step % reset_interval == 0:
             self._reset_M_(M, s, y, inverse, init_scale)
             return
@@ -102,8 +103,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
             return
 
         if step == 1 and init_scale == 'auto':
-            if inverse: M /= self._get_init_scale(s,y,inverse)
-            else: M *= self._get_init_scale(s,y,inverse)
+            if inverse: M /= self._get_init_scale(s,y)
+            else: M *= self._get_init_scale(s,y)
 
         beta = settings['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
@@ -121,7 +122,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         step = state['step'] = state.get('step', 0) + 1
 
         if settings['scale_second'] and step == 2:
-            tensor = tensor/max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
+            s = max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
+            if s < settings['tol']: tensor = tensor/s
 
         inverse = settings['inverse']
         if inverse:
@@ -129,7 +131,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
             return (H @ tensor.view(-1)).view_as(tensor)
 
         B = state['B']
-        return torch.linalg.solve(B, tensor.view(-1)).view_as(tensor) # pylint:disable=not-callable
+
+        return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
 
 class QuasiNewton(HessianUpdateStrategy):
     def __init__(
@@ -179,8 +182,13 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H@y
     denom = torch.dot(z, y)
 
+    z_norm = torch.linalg.norm(z) # pylint:disable=not-callable
+    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
+
+    if y_norm*z_norm < tol: return H
+
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
-    if denom.abs() < tol * torch.linalg.norm(y) * torch.linalg.norm(z): return H # pylint:disable=not-callable
+    if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
     H += torch.outer(z, z).div_(denom)
     return H
 

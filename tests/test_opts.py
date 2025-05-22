@@ -15,7 +15,10 @@ def _rosen(x, y):
 def _ill(x, y):
     return x**2 + y**2 + 1.99999*x*y
 
-funcs = {"booth": (_booth,  (0, -8)), "rosen": (_rosen, (-1.1, 2.5)), "ill": (_ill, (-9, 2.5))}
+def _lstsq(x,y): # specifically for CG and quasi newton methods, staircase effect is more pronounced there
+    return (2*x + 3*y - 5)**2 + (5*x - 2*y - 3)**2
+
+funcs = {"booth": (_booth,  (0, -8)), "rosen": (_rosen, (-1.1, 2.5)), "ill": (_ill, (-9, 2.5)), "lstsq": (_lstsq, (-0.9, 0))}
 """{"name": (function, x0)}"""
 
 class _TestModel(torch.nn.Module):

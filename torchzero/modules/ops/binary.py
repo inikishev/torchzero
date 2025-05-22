@@ -169,7 +169,7 @@ class MirroredClip(BinaryOperation):
 
 class Graft(BinaryOperation):
     """use direction from update and magnitude from `magnitude` module"""
-    def __init__(self, magnitude: Chainable, tensorwise:bool=False, ord:float=2, eps:float = 1e-6):
+    def __init__(self, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, magnitude=magnitude)
 
@@ -181,7 +181,7 @@ class Graft(BinaryOperation):
 class RGraft(BinaryOperation):
     """use direction from `direction` module and magnitude from update"""
 
-    def __init__(self, direction: Chainable, tensorwise:bool=False, ord:float=2, eps:float = 1e-6):
+    def __init__(self, direction: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, direction=direction)
 

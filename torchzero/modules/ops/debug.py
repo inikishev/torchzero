@@ -14,7 +14,6 @@ class PrintUpdate(Module):
         self.settings[vars.params[0]]["print_fn"](f'{self.settings[vars.params[0]]["text"]}{vars.update}')
         return vars
 
-
 class PrintShape(Module):
     def __init__(self, text = 'shapes = ', print_fn = print):
         defaults = dict(text=text, print_fn=print_fn)

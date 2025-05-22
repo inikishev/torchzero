@@ -44,11 +44,11 @@ def apply_shampoo_preconditioner(
 
 
 def update_diagonal_(grad: torch.Tensor, diagonal_accumulator_: torch.Tensor, beta: float | None):
-    if beta is None: diagonal_accumulator_.add_(grad)
-    else: diagonal_accumulator_.lerp_(grad, 1-beta)
+    if beta is None: diagonal_accumulator_.add_(grad.pow(2))
+    else: diagonal_accumulator_.mul_(beta).addcmul_(grad, grad, value=1-beta)
 
 def apply_diagonal_(grad_: torch.Tensor, diagonal_accumulator_: torch.Tensor, decay: float | None, eps: float):
-    grad_.div_(diagonal_accumulator_ + eps)
+    grad_.div_(diagonal_accumulator_.sqrt() + eps)
     if decay is not None: diagonal_accumulator_.mul_(decay)
     return grad_
 

@@ -29,6 +29,7 @@ class Averaging(TensorwiseTransform):
         return average / len(history)
 
 class WeightedAveraging(TensorwiseTransform):
+    """weights are oldest to newest"""
     def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: Target = 'update'):
         defaults = dict(weights = tolist(weights))
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -43,12 +44,17 @@ class WeightedAveraging(TensorwiseTransform):
 
         history = state['history']
         history.append(tensor)
+        if len(history) != len(weights):
+            weights = weights[-len(history):]
 
-        average = cast(torch.Tensor, None)
+        average = None
         for i, (h, w) in enumerate(zip(history, weights)):
-            if i == 0: average = h * (w / len(history))
-            else: average += h * (w / len(history))
+            if average is None: average = h * (w / len(history))
+            else:
+                if w == 0: continue
+                average += h * (w / len(history))
 
+        assert average is not None
         return average
 
 

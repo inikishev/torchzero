@@ -290,7 +290,7 @@ class TensorList(list[torch.Tensor | Any]):
         for e in self: e.requires_grad_(mode)
         return self
 
-    def to_vec(self): return torch.cat(self.view_flat())
+    def to_vec(self): return torch.cat(self.ravel())
     def from_vec_(self, vec:torch.Tensor):
         """Sets elements of this TensorList to the values of a 1D tensor.
         The length of the tensor must be equal to the total number of elements in this TensorList."""

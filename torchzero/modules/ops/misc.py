@@ -358,10 +358,14 @@ class WeightDropout(Module):
         p = self.get_settings('p', params=params)
         mask = params.rademacher_like(p).add_(1).div_(2).as_bool()
 
+        @torch.no_grad
         def dropout_closure(backward=True):
             orig_params = params.clone()
             params.mul_(mask)
-            loss = closure(backward)
+            if backward:
+                with torch.enable_grad(): loss = closure()
+            else:
+                loss = closure(False)
             params.copy_(orig_params)
             return loss
 

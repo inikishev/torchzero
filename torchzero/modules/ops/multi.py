@@ -117,7 +117,7 @@ class ClipModules(MultiOperation):
 
 
 class GraftModules(MultiOperation):
-    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, strength:float=1):
+    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6, strength:float=1):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
         super().__init__(defaults, direction=direction, magnitude=magnitude)
 
