@@ -1070,3 +1070,12 @@ def generic_vector_norm(x: torch.Tensor | TensorList, ord=2) -> torch.Tensor:
     return x.global_vector_norm(ord)
 
 
+
+@overload
+def generic_randn_like(x: torch.Tensor) -> torch.Tensor: ...
+@overload
+def generic_randn_like(x: TensorList) -> TensorList: ...
+def generic_randn_like(x: torch.Tensor | TensorList):
+    if isinstance(x, torch.Tensor): return torch.randn_like(x)
+    return x.randn_like()
+

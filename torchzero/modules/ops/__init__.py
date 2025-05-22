@@ -32,7 +32,7 @@ from .misc import (
     DivByLoss,
     Dropout,
     FillLoss,
-    GradAccumulation,
+    GradientAccumulation,
     GradSign,
     GraftGradToUpdate,
     GraftToGrad,

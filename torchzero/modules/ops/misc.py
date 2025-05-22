@@ -288,7 +288,7 @@ class Sequential(Module):
         return _sequential_step(self, vars, sequential=True)
 
 
-class GradAccumulation(Module):
+class GradientAccumulation(Module):
     """gradient accumulation"""
     def __init__(self, modules: Chainable, n: int, mean=True, stop=True):
         defaults = dict(n=n, mean=mean, stop=stop)

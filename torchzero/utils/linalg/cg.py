@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import overload
 import torch
 
-from ...utils import TensorList, generic_zeros_like, generic_vector_norm, generic_numel
+from ...utils import TensorList, generic_zeros_like, generic_vector_norm, generic_numel, generic_randn_like
 
 @overload
 def cg(
@@ -53,3 +53,32 @@ def cg(
         beta = (new_r_norm**2) / (r_norm**2)
         p = residual + beta*p
         r_norm = new_r_norm
+
+
+# https://arxiv.org/pdf/2110.02820
+
+# def nystrom_approximation(
+#     A_mm: Callable[[torch.Tensor], torch.Tensor],
+#     b: torch.Tensor,
+#     rank: int,
+#     eps: float,
+#     x0_: torch.Tensor | None,
+#     tol: float | None,
+#     maxiter: int | None,
+#     generator = None,
+# ):
+#     n = b.numel()
+#     if maxiter is None: maxiter = n
+#     if x0_ is None: x0_ = torch.zeros_like(b)
+
+#     omega = torch.randn((n, rank), device=b.device, dtype=b.dtype, generator=generator) # Gaussian test matrix
+#     omega = torch.linalg.qr(omega)[0] # Thin QR decomposition # pylint:disable=not-callable
+
+#     # Y = AΩ
+#     Y = torch.stack([A_mm(o) for o in omega])
+#     v = eps * torch.linalg.matrix_norm(Y, ord='fro') # Compute shift # pylint:disable=not-callable
+#     Yv = Y + v*omega # Shift for stability
+#     C = torch.linalg.cholesky(omega.T @ Yv) # pylint:disable=not-callable
+#     B = Yv/C
+#     U, S, _ = torch.linalg.svd(B) # pylint:disable=not-callable
+#     Λ = max{0, Σ2 − νI}# Remove shift, compute eigs

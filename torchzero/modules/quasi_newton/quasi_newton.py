@@ -134,7 +134,8 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
 
         return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
 
-class QuasiNewton(HessianUpdateStrategy):
+# to avoid typing all arguments for each method
+class QuasiNewtonH(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
@@ -173,7 +174,7 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += term1.sub_(term2)
     return H
 
-class BFGS(QuasiNewton):
+class BFGS(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -192,7 +193,7 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     H += torch.outer(z, z).div_(denom)
     return H
 
-class SR1(QuasiNewton):
+class SR1(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -212,7 +213,7 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += term1.sub_(term2)
     return H
 
-class DFP(QuasiNewton):
+class DFP(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return dfp_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -253,19 +254,19 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H -= num/denom
     return H
 
-class BroydenGood(QuasiNewton):
+class BroydenGood(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class BroydenBad(QuasiNewton):
+class BroydenBad(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class Greenstadt1(QuasiNewton):
+class Greenstadt1(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev, tol=settings['tol'])
 
-class Greenstadt2(QuasiNewton):
+class Greenstadt2(QuasiNewtonH):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt2_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -286,7 +287,7 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float
     H[:, j] += num.squeeze() / denom
     return H
 
-class ColumnUpdatingMethod(QuasiNewton):
+class ColumnUpdatingMethod(QuasiNewtonH):
     """Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return column_updating_H_(H=H, s=s, y=y, tol=settings['tol'])
@@ -306,7 +307,7 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor,
     H -= num/denom
     return H, R
 
-class ThomasOptimalMethod(QuasiNewton):
+class ThomasOptimalMethod(QuasiNewtonH):
     """Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975."""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
@@ -363,7 +364,7 @@ def pearson2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += num.div_(sy)
     return H
 
-class Pearson2(QuasiNewton):
+class Pearson2(QuasiNewtonH):
     """finally found a reference in https://www.recotechnologies.com/~beigi/ps/asme-jdsmc-93-2.pdf"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return pearson2_H_(H=H, s=s, y=y, tol=settings['tol'])
