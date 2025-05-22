@@ -7,11 +7,20 @@ from ...utils import TensorList, as_tensorlist, generic_zeros_like, generic_vect
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 from ...core import Chainable, apply, Module
-from ...utils.linalg.cg import cg
+from ...utils.linalg.solve import cg
 
 class NewtonCG(Module):
-    def __init__(self, maxiter=None, tol=1e-3, hvp_method: Literal['forward', 'central','autograd'] = 'forward', h=1e-3, warm_start=False, inner: Chainable | None = None):
-        defaults = dict(tol=tol, maxiter=maxiter, hvp_method=hvp_method, h=h, warm_start=warm_start)
+    def __init__(
+        self,
+        maxiter=None,
+        tol=1e-3,
+        reg: float = 0,
+        hvp_method: Literal["forward", "central", "autograd"] = "forward",
+        h=1e-3,
+        warm_start=False,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, warm_start=warm_start)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -25,6 +34,7 @@ class NewtonCG(Module):
 
         settings = self.settings[params[0]]
         tol = settings['tol']
+        reg = settings['reg']
         maxiter = settings['maxiter']
         hvp_method = settings['hvp_method']
         h = settings['h']
@@ -63,10 +73,12 @@ class NewtonCG(Module):
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
         if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
-        x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter)
+        x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter, reg=reg)
         if warm_start:
             assert x0 is not None
             x0.set_(x)
 
         vars.update = x
         return vars
+
+

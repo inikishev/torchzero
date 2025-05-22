@@ -5,7 +5,7 @@ from typing import Literal, Any
 
 import torch
 from ...core import Chainable, TensorwisePreconditioner
-from ...utils.linalg.matrix_power import matrix_power_eigh
+from ...utils.linalg.matrix_funcs import matrix_power_eigh
 from ...utils.linalg.svd import randomized_svd
 from ...utils.linalg.qr import qr_householder
 
