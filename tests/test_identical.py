@@ -89,6 +89,7 @@ def _assert_identical_merge_closure(opt_fn: Callable, device, steps: int):
 
 def _assert_identical_device(opt_fn: Callable, merge: bool, use_closure: bool, steps: int):
     """checks that trajectories match on cpu and cuda."""
+    if not torch.cuda.is_available(): return
     cpu, cpu_opt = _get_trajectory(opt_fn, _BOOTH_X0.clone().cpu(), merge=merge, use_closure=use_closure, steps=steps)
     cuda, cuda_opt = _get_trajectory(opt_fn, _BOOTH_X0.clone().cuda(), merge=merge, use_closure=use_closure, steps=steps)
     _compare_trajectories(cpu_opt, cpu, cuda_opt, cuda.to(cpu))
