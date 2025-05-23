@@ -99,6 +99,7 @@ for epoch in range(100):
   * `Shampoo`.
   * `SOAP` (my current recommendation).
   * `Muon`.
+  * `SophiaH`.
   * `Adagrad` and `FullMatrixAdagrad`.
   * `Lion`.
   * `RMSprop`.

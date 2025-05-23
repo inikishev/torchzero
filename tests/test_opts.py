@@ -845,6 +845,15 @@ NystromPCG = Run(
     sphere_steps=2, sphere_loss=1e-9,
 )
 
+# ---------------------------- optimizers/sophia_h --------------------------- #
+SophiaH = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.SophiaH(seed=0), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SophiaH(seed=0), tz.m.LR(0.3)),
+    needs_closure=True,
+    func='ill', steps=50, loss=0.02, merge_invariant=True,
+    sphere_steps=10, sphere_loss=40,
+)
+
 # ------------------------------------ CGs ----------------------------------- #
 for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY):
     for func_steps,sphere_steps_ in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
