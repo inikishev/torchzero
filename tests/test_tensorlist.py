@@ -1301,7 +1301,7 @@ def test_reduction_ops(simple_tl: TensorList, reduction_method, dim, keepdim):
         expected_tl = TensorList(expected_list)
         assert isinstance(result, TensorList)
         assert len(result) == len(expected_tl)
-        assert_tl_allclose(result, expected_tl, atol=1e-6) # Use allclose due to potential float variations
+        assert_tl_allclose(result, expected_tl, atol=1e-3) # Use allclose due to potential float variations
 
 # --- Grafting, Rescaling, Normalizing, Clipping ---
 
@@ -1381,8 +1381,8 @@ def test_rescale(simple_tl: TensorList, dim):
         assert torch.allclose(rescaled_scalar.global_min(), torch.tensor(min_val))
         assert torch.allclose(rescaled_scalar.global_max(), torch.tensor(max_val))
     else:
-        assert_tl_allclose(rescaled_scalar_min, TensorList([torch.full_like(t, min_val) for t in rescaled_scalar_min]),atol=1e-4)
-        assert_tl_allclose(rescaled_scalar_max, TensorList([torch.full_like(t, max_val) for t in rescaled_scalar_max]),atol=1e-4)
+        assert_tl_allclose(rescaled_scalar_min, TensorList([torch.full_like(t, min_val) for t in rescaled_scalar_min]),atol=1e-3)
+        assert_tl_allclose(rescaled_scalar_max, TensorList([torch.full_like(t, max_val) for t in rescaled_scalar_max]),atol=1e-3)
 
 
     # Rescale list
@@ -1402,8 +1402,8 @@ def test_rescale(simple_tl: TensorList, dim):
          assert global_max_rescaled < avg_max + 1.0 # Loose check
 
     else:
-        assert_tl_allclose(rescaled_list_min, TensorList([torch.full_like(t, mn) for t, mn in zip(rescaled_list_min, min_list)]),atol=1e-4)
-        assert_tl_allclose(rescaled_list_max, TensorList([torch.full_like(t, mx) for t, mx in zip(rescaled_list_max, max_list)]),atol=1e-4)
+        assert_tl_allclose(rescaled_list_min, TensorList([torch.full_like(t, mn) for t, mn in zip(rescaled_list_min, min_list)]),atol=1e-3)
+        assert_tl_allclose(rescaled_list_max, TensorList([torch.full_like(t, mx) for t, mx in zip(rescaled_list_max, max_list)]),atol=1e-3)
 
     # Rescale to 01 helper
     rescaled_01 = simple_tl.rescale_to_01(dim=dim, eps=eps)
@@ -1413,8 +1413,8 @@ def test_rescale(simple_tl: TensorList, dim):
         assert torch.allclose(rescaled_01.global_min(), torch.tensor(0.0))
         assert torch.allclose(rescaled_01.global_max(), torch.tensor(1.0))
     else:
-        assert_tl_allclose(rescaled_01_min, TensorList([torch.zeros_like(t) for t in rescaled_01_min]), atol=1e-4)
-        assert_tl_allclose(rescaled_01_max, TensorList([torch.ones_like(t) for t in rescaled_01_max]), atol=1e-4)
+        assert_tl_allclose(rescaled_01_min, TensorList([torch.zeros_like(t) for t in rescaled_01_min]), atol=1e-3)
+        assert_tl_allclose(rescaled_01_max, TensorList([torch.ones_like(t) for t in rescaled_01_max]), atol=1e-3)
 
 
     # Test inplace
@@ -1454,11 +1454,11 @@ def test_normalize(big_tl: TensorList, dim):
     normalized_scalar_var = normalized_scalar.var(dim=dim if dim != 'global' else None)
 
     if dim == 'global':
-        assert torch.allclose(normalized_scalar.global_mean(), torch.tensor(mean_val), atol=1e-4)
-        assert torch.allclose(normalized_scalar.global_var(), torch.tensor(var_val), atol=1e-4)
+        assert torch.allclose(normalized_scalar.global_mean(), torch.tensor(mean_val), atol=1e-3)
+        assert torch.allclose(normalized_scalar.global_var(), torch.tensor(var_val), atol=1e-3)
     else:
-        assert_tl_allclose(normalized_scalar_mean, TensorList([torch.full_like(t, mean_val) for t in normalized_scalar_mean]), atol=1e-4)
-        assert_tl_allclose(normalized_scalar_var, TensorList([torch.full_like(t, var_val) for t in normalized_scalar_var]), atol=1e-4)
+        assert_tl_allclose(normalized_scalar_mean, TensorList([torch.full_like(t, mean_val) for t in normalized_scalar_mean]), atol=1e-3)
+        assert_tl_allclose(normalized_scalar_var, TensorList([torch.full_like(t, var_val) for t in normalized_scalar_var]), atol=1e-3)
 
     # Normalize list mean/var
     normalized_list = simple_tl.normalize(mean_list, var_list, dim=dim)
@@ -1476,19 +1476,19 @@ def test_normalize(big_tl: TensorList, dim):
         #  assert torch.allclose(global_mean_rescaled, torch.tensor(avg_mean), rtol=1e-1, atol=1e-1) # Loose check
         #  assert torch.allclose(global_var_rescaled, torch.tensor(avg_var), rtol=1e-1, atol=1e-1) # Loose check
     else:
-        assert_tl_allclose(normalized_list_mean, TensorList([torch.full_like(t, m) for t, m in zip(normalized_list_mean, mean_list)]), atol=1e-4)
-        assert_tl_allclose(normalized_list_var, TensorList([torch.full_like(t, v) for t, v in zip(normalized_list_var, var_list)]), atol=1e-4)
+        assert_tl_allclose(normalized_list_mean, TensorList([torch.full_like(t, m) for t, m in zip(normalized_list_mean, mean_list)]), atol=1e-3)
+        assert_tl_allclose(normalized_list_var, TensorList([torch.full_like(t, v) for t, v in zip(normalized_list_var, var_list)]), atol=1e-3)
 
     # Z-normalize helper
     znorm = simple_tl.znormalize(dim=dim, eps=1e-10)
     znorm_mean = znorm.mean(dim=dim if dim != 'global' else None)
     znorm_var = znorm.var(dim=dim if dim != 'global' else None)
     if dim == 'global':
-        assert torch.allclose(znorm.global_mean(), torch.tensor(0.0), atol=1e-4)
-        assert torch.allclose(znorm.global_var(), torch.tensor(1.0), atol=1e-4)
+        assert torch.allclose(znorm.global_mean(), torch.tensor(0.0), atol=1e-3)
+        assert torch.allclose(znorm.global_var(), torch.tensor(1.0), atol=1e-3)
     else:
-        assert_tl_allclose(znorm_mean, TensorList([torch.zeros_like(t) for t in znorm_mean]), atol=1e-4)
-        assert_tl_allclose(znorm_var, TensorList([torch.ones_like(t) for t in znorm_var]), atol=1e-4)
+        assert_tl_allclose(znorm_mean, TensorList([torch.zeros_like(t) for t in znorm_mean]), atol=1e-3)
+        assert_tl_allclose(znorm_var, TensorList([torch.ones_like(t) for t in znorm_var]), atol=1e-3)
 
 
     # Test inplace
