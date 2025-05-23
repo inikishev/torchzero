@@ -80,7 +80,7 @@ class TropicalNewton(Module):
         solver=lambda p: torch.optim.LBFGS(p, line_search_fn='strong_wolfe'),
         maxiter=1000,
         tol: float | None = 1e-10,
-        algebra: ta.Algebra | str = ta.TropicalSemiring('max'),
+        algebra: ta.Algebra | str = 'tropical max',
         verbose: bool = False,
         inner: Chainable | None = None,
     ):
@@ -134,11 +134,12 @@ class TropicalNewton(Module):
         # ----------------------------------- solve ---------------------------------- #
         tropical_update = tropical_lstsq(H, g, **self.lstsq_args)
         # what now? w - u is not defined, it is defined for max version if u < w
-        # basically when relaxed it is max(u, w), not that it helps
-        # basically the only semiring it works in is the boring probabilistic one (and log for positive numbers)
-        w = params.to_vec()
-        w_hat = self.algebra.sub(w, tropical_update)
-        update = w_hat - w
+        # w = params.to_vec()
+        # w_hat = self.algebra.sub(w, tropical_update)
+        # update = w_hat - w
+        # no
+        # it makes sense to solve tropical system and sub normally
+        # the only thing is that tropical system can have no solutions
 
-        vars.update = vec_to_tensors(update, params)
+        vars.update = vec_to_tensors(tropical_update, params)
         return vars

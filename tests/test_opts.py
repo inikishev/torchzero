@@ -2,6 +2,7 @@
 from collections.abc import Callable
 from functools import partial
 
+import pytest
 import torch
 import torchzero as tz
 
@@ -127,6 +128,8 @@ def _run(func_opt: Callable, sphere_opt: Callable, needs_closure: bool, func:str
     l = sphere_losses[0]
     assert all(i == l for i in sphere_losses), f"Sphere losses don't match: {[l.item() for l in sphere_losses]}"
 
+RUNS = []
+"""Whenever a Run is created (__init__ is called) it gets appened to this"""
 
 class Run:
     """
@@ -146,6 +149,7 @@ class Run:
     def __init__(self, func_opt: Callable, sphere_opt: Callable, needs_closure: bool, func: str, steps: int, loss:float, merge_invariant: bool, sphere_steps:int, sphere_loss:float):
         self.kwargs = locals().copy()
         del self.kwargs['self']
+        RUNS.append(self)
     def test(self): _run(**self.kwargs)
 
 # ---------------------------------------------------------------------------- #
@@ -823,31 +827,47 @@ Wrap = Run(
     sphere_steps=20, sphere_loss=4,
 )
 
-# ------------------------------------ run ----------------------------------- #
-def test_opts():
-    for v in globals().copy().values():
-        if isinstance(v, Run):
-            v.test()
+# --------------------------- second_order/nystrom --------------------------- #
+NystromSketchAndSolve = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(2, seed=0), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(10, seed=0), tz.m.StrongWolfe()),
+    needs_closure=True,
+    func='booth', steps=3, loss=1e-8, merge_invariant=True,
+    sphere_steps=10, sphere_loss=1e-12,
+)
+NystromPCG = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.NystromPCG(2, seed=0), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.NystromPCG(10, seed=0), tz.m.StrongWolfe()),
+    needs_closure=True,
+    func='ill', steps=2, loss=1e-5, merge_invariant=True,
+    sphere_steps=2, sphere_loss=1e-9,
+)
 
-def test_cg():
-    for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY):
-        for steps,sphere_steps in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
-            # but also test 10 to make sure it doesn't explode after converging
-            Run(
-                func_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
-                sphere_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
-                needs_closure=True,
-                func='lstsq', steps=steps, loss=1e-10, merge_invariant=False, # strong wolfe adds float imprecision
-                sphere_steps=sphere_steps, sphere_loss=0,
-            ).test()
-
-def test_qn():
-    # stability test
-    for QN in (tz.m.BFGS, tz.m.SR1, tz.m.DFP, tz.m.BroydenGood, tz.m.BroydenBad, tz.m.Greenstadt1, tz.m.Greenstadt2, tz.m.ColumnUpdatingMethod,  tz.m.ThomasOptimalMethod, tz.m.PSB, tz.m.Pearson2, tz.m.SSVM):
+# ------------------------------------ CGs ----------------------------------- #
+for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY):
+    for func_steps,sphere_steps_ in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
+        # but also test 10 to make sure it doesn't explode after converging
         Run(
-            func_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
-            sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
+            func_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
+            sphere_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
             needs_closure=True,
-            func='lstsq', steps=50, loss=1e-10, merge_invariant=False,
-            sphere_steps=10, sphere_loss=1e-20,
-        ).test()
+            func='lstsq', steps=func_steps, loss=1e-10, merge_invariant=False, # strong wolfe adds float imprecision
+            sphere_steps=sphere_steps_, sphere_loss=0,
+        )
+
+# ------------------------------- QN stability ------------------------------- #
+# stability test
+for QN in (tz.m.BFGS, tz.m.SR1, tz.m.DFP, tz.m.BroydenGood, tz.m.BroydenBad, tz.m.Greenstadt1, tz.m.Greenstadt2, tz.m.ColumnUpdatingMethod,  tz.m.ThomasOptimalMethod, tz.m.PSB, tz.m.Pearson2, tz.m.SSVM):
+    Run(
+        func_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
+        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
+        needs_closure=True,
+        func='lstsq', steps=50, loss=1e-10, merge_invariant=False,
+        sphere_steps=10, sphere_loss=1e-20,
+    )
+
+# ---------------------------------------------------------------------------- #
+#                                      run                                     #
+# ---------------------------------------------------------------------------- #
+@pytest.mark.parametrize("run", RUNS)
+def test_opt(run: Run): run.test()

@@ -17,8 +17,9 @@ class NystromSketchAndSolve(Module):
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         h=1e-3,
         inner: Chainable | None = None,
+        seed: int | None = None,
     ):
-        defaults = dict(rank=rank, reg=reg, hvp_method=hvp_method, h=h)
+        defaults = dict(rank=rank, reg=reg, hvp_method=hvp_method, h=h, seed=seed)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -36,6 +37,13 @@ class NystromSketchAndSolve(Module):
         reg = settings['reg']
         hvp_method = settings['hvp_method']
         h = settings['h']
+
+        seed = settings['seed']
+        generator = None
+        if seed is not None:
+            if 'generator' not in self.global_state:
+                self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
+            generator = self.global_state['generator']
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
@@ -71,7 +79,7 @@ class NystromSketchAndSolve(Module):
             b = apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_sketch_and_solve(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg)
+        x = nystrom_sketch_and_solve(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
         vars.update = vec_to_tensors(x, reference=params)
         return vars
 
@@ -87,8 +95,9 @@ class NystromPCG(Module):
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         h=1e-3,
         inner: Chainable | None = None,
+        seed: int | None = None,
     ):
-        defaults = dict(sketch_size=sketch_size, reg=reg, maxiter=maxiter, tol=tol, hvp_method=hvp_method, h=h)
+        defaults = dict(sketch_size=sketch_size, reg=reg, maxiter=maxiter, tol=tol, hvp_method=hvp_method, h=h, seed=seed)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -109,6 +118,15 @@ class NystromPCG(Module):
         hvp_method = settings['hvp_method']
         h = settings['h']
 
+
+        seed = settings['seed']
+        generator = None
+        if seed is not None:
+            if 'generator' not in self.global_state:
+                self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
+            generator = self.global_state['generator']
+
+
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
             grad = vars.get_grad(create_graph=True)
@@ -143,7 +161,7 @@ class NystromPCG(Module):
             b = apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_pcg(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None)
+        x = nystrom_pcg(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)
         vars.update = vec_to_tensors(x, reference=params)
         return vars
 

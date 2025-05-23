@@ -1,22 +1,23 @@
 from operator import itemgetter
 
 import torch
-
+from typing import Literal
 from ...core import Chainable, Transform, apply
-from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
+from ..optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
 
 @torch.no_grad
 def update_soap_covariances_(
-    grad: torch.Tensor,
+    g1: torch.Tensor,
+    g2: torch.Tensor,
     GGs_: list[torch.Tensor | None],
     beta: float | None,
 ):
     for i, GG in enumerate(GGs_):
         if GG is None: continue
 
-        axes = list(range(i)) + list(range(i + 1, grad.ndim)) # this works fine with 1d params
-        if beta is None: GG.add_(torch.tensordot(grad, grad, (axes, axes))) # pyright:ignore[reportArgumentType]
-        else: GG.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
+        axes = list(range(i)) + list(range(i + 1, g1.ndim)) # this works fine with 1d params
+        if beta is None: GG.add_(torch.tensordot(g1, g2, (axes, axes))) # pyright:ignore[reportArgumentType]
+        else: GG.lerp_(torch.tensordot(g1, g2, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
 
 @torch.no_grad
 def project(tensors: torch.Tensor, Q: list[torch.Tensor | None]):
@@ -135,8 +136,9 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
     return final, exp_avg_sq
 
-class DSOAP(Transform):
-    """SOAP but uses scaled gradient differences
+Source=Literal['p','g','s','y', 'gy', 'sy', 'gys', 'sys']
+class ABSOAP(Transform):
+    """SOAP but with two extra letters included in its name in order to improve converence
 
     new args
 
@@ -158,7 +160,13 @@ class DSOAP(Transform):
         alpha: float = 1,
         bias_correction: bool = True,
         scale_by_s: bool = True,
-        y_to_ema2: bool = False,
+        first: Source='g',
+        second: Source='g',
+        ema1: Source='g',
+        ema2: tuple[Source, Source] = ('g','g'),
+        rel1: bool=False,
+        rel2: bool=False,
+        norm: bool = False,
     ):
         defaults = dict(
             beta1=beta1,
@@ -173,7 +181,12 @@ class DSOAP(Transform):
             bias_correction=bias_correction,
             alpha=alpha,
             scale_by_s=scale_by_s,
-            y_to_ema2=y_to_ema2,
+            ema1=ema1,
+            ema2=ema2,
+            first=first,
+            second=second,
+            rel1=rel1, rel2=rel2,
+            norm=norm,
         )
         super().__init__(defaults, uses_grad=False)
 
@@ -187,7 +200,12 @@ class DSOAP(Transform):
             beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, alpha = itemgetter(
                 'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'alpha')(settings)
             scale_by_s = settings['scale_by_s']
-            y_to_ema2 = settings['y_to_ema2']
+            ema1 = settings['ema1']
+            ema2 = settings['ema2']
+            first=settings['first']
+            second=settings['second']
+            rel1 = settings['rel1']; rel2 = settings['rel2']
+            norm=settings['norm']
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -207,11 +225,42 @@ class DSOAP(Transform):
             state['p_prev'].copy_(p)
             state['g_prev'].copy_(t)
 
+            def _get(c: Source):
+                if c == 'p': return p
+                if c == 'g': return t
+                if c == 's': return s
+                if c == 'y': return y
+                if c == 'gy': return t+y
+                if c == 'sy': return s+y
+                if c == 'gys':
+                    g_norm = torch.linalg.norm(t) # pylint:disable=not-callable
+                    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
+                    y_scaled = y * (g_norm/y_norm.clip(min=1e-8))
+                    return t+y_scaled
+                if c == 'sys':
+                    s_norm = torch.linalg.norm(s) # pylint:disable=not-callable
+                    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
+                    y_scaled = y * (s_norm/y_norm.clip(min=1e-8))
+                    return s+y_scaled
+                raise RuntimeError("Big Chungus")
+
+            t1 = _get(first)
+            if rel1: t1 = t1 * p.abs().clip(min=1e-6)
+            t2 = _get(second)
+            if rel2: t2 = t2 * p.abs().clip(min=1e-6)
+
+            t_ema1 = _get(ema1)
+            t_ema2s = _get(ema2[0]), _get(ema2[1])
+
+            if norm:
+                t1 = t1/torch.linalg.norm(t1).clip(min=1e-8) # pylint:disable=not-callable
+                t2 = t2/torch.linalg.norm(t2).clip(min=1e-8) # pylint:disable=not-callable
+
+
             # initialize state on 1st step
             if 'GG' not in state:
                 state["exp_avg"] = torch.zeros_like(t)
-                if y_to_ema2: state["exp_avg_sq"] = torch.ones_like(t)
-                else: state["exp_avg_sq"] = torch.zeros_like(t)
+                state["exp_avg_sq"] = torch.ones_like(t)
 
                 if not precondition_1d and t.ndim <= 1:
                     state['GG'] = []
@@ -224,7 +273,7 @@ class DSOAP(Transform):
                     state['GG'] = None
 
                 if state['GG'] is not None:
-                    update_soap_covariances_(y, GGs_=state['GG'], beta=shampoo_beta)
+                    update_soap_covariances_(t1, t2, GGs_=state['GG'], beta=shampoo_beta)
                     state['Q'] = get_orthogonal_matrix(state['GG'])
 
                 state['step'] = 0
@@ -234,27 +283,30 @@ class DSOAP(Transform):
 
             # Projecting gradients to the eigenbases of Shampoo's preconditioner
             # i.e. projecting to the eigenbases of matrices in state['GG']
-            z_projected = None
+            z1_projected = None
+            z2_projected = None
+
             if state['GG'] is not None:
-                if y_to_ema2: z_projected = project(y, state['Q'])
-                else: z_projected = project(t, state['Q'])
+                z1_projected = project(t_ema2s[0], state['Q'])
+                if ema2[0] == ema2[1]: z2_projected = z1_projected
+                else: z2_projected = project(t_ema2s[1], state['Q'])
 
             # exponential moving averages
             # this part could be foreached but I will do that at some point its not a big difference compared to preconditioning
             exp_avg: torch.Tensor = state["exp_avg"]
             exp_avg_sq: torch.Tensor = state["exp_avg_sq"]
 
-            exp_avg.lerp_(t, 1-beta1)
+            exp_avg.lerp_(t_ema1, 1-beta1)
 
-            if z_projected is None:
-                if y_to_ema2: exp_avg_sq.mul_(beta2).addcmul_(y, y, value=1-beta2)
-                else: exp_avg_sq.mul_(beta2).addcmul_(t, t, value=1-beta2)
+            if z1_projected is None:
+                exp_avg_sq.mul_(beta2).addcmul_(*t_ema2s, value=1-beta2)
             else:
-                exp_avg_sq.mul_(beta2).addcmul_(z_projected, z_projected, value=1-beta2)
+                assert z2_projected is not None
+                exp_avg_sq.mul_(beta2).addcmul_(z1_projected, z2_projected, value=1-beta2)
 
             # project exponential moving averages if they are accumulated unprojected
             exp_avg_projected = exp_avg
-            if z_projected is not None:
+            if z1_projected is not None:
                 exp_avg_projected = project(exp_avg, state['Q'])
 
             exp_avg_sq_projected = exp_avg_sq
@@ -265,7 +317,7 @@ class DSOAP(Transform):
             # Projecting back the preconditioned (by Adam) exponential moving average of gradients
             # to the original space
             update = exp_avg_projected / denom
-            if z_projected is not None:
+            if z1_projected is not None:
                 update = project_back(update, state["Q"])
 
             if settings['bias_correction']:
@@ -283,7 +335,7 @@ class DSOAP(Transform):
 
             # Update is done after the gradient step to avoid using current gradients in the projection.
             if state['GG'] is not None:
-                update_soap_covariances_(y, state['GG'], shampoo_beta)
+                update_soap_covariances_(t1, t2, state['GG'], shampoo_beta)
                 if state['step'] % settings['precond_freq'] == 0:
                     state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, state['GG'], state['Q'])
 
