@@ -6,6 +6,7 @@ import pytest
 import torch
 import torchzero as tz
 
+PRINT = False # set to true in nbs
 
 def _booth(x, y):
     return (x + 2 * y - 7) ** 2 + (2 * x + y - 5) ** 2
@@ -100,9 +101,9 @@ def _run(func_opt: Callable, sphere_opt: Callable, needs_closure: bool, func:str
 
     for merge in [True, False]:
         for use_closure in [True] if needs_closure else [True, False]:
-            # print(f"testing with {merge = }, {use_closure = }")
+            if PRINT: print(f"testing with {merge = }, {use_closure = }")
             v,opt = _run_func(func_opt, func, merge, use_closure, steps)
-            # print(f'{func} loss after {steps} steps is {v}, target is {loss}')
+            if PRINT: print(f'{func} loss after {steps} steps is {v}, target is {loss}')
             assert v <= loss, f"{opt}: Loss on {func} is {v}, which is above target {loss}. {merge = }, {use_closure = }"
             if merge: merged_losses.append(v)
             else: unmerged_losses.append(v)
@@ -110,10 +111,10 @@ def _run(func_opt: Callable, sphere_opt: Callable, needs_closure: bool, func:str
             if not tested_sphere[use_closure]:
                 tested_sphere[use_closure] = True
                 v,opt = _run_sphere(sphere_opt, use_closure, sphere_steps)
-                # print(f'sphere loss after {sphere_steps} is {v}, target is {sphere_loss}')
+                if PRINT: print(f'sphere loss after {sphere_steps} is {v}, target is {sphere_loss}')
                 assert v <= sphere_loss, f"{opt}: Loss on sphere is {v}, which is above target {sphere_loss}. {merge = }, {use_closure = }"
                 sphere_losses.append(v)
-            # print()
+            if PRINT: print()
 
     # test if losses match
     if merge_invariant: losses = merged_losses + unmerged_losses
