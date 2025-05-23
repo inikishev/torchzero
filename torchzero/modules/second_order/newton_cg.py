@@ -76,7 +76,7 @@ class NewtonCG(Module):
         x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter, reg=reg)
         if warm_start:
             assert x0 is not None
-            x0.set_(x)
+            x0.copy_(x)
 
         vars.update = x
         return vars

@@ -71,7 +71,7 @@ def tikhonov(H: torch.Tensor, reg: float, algebra: ta.Algebra = ta.TropicalSemir
 
 
 class AlgebraicNewton(Module):
-    """newton in other algebras, not practical because solving linear system is very hard."""
+    """newton in other algebras, not that it works."""
     def __init__(
         self,
         reg: float | None = None,

@@ -13,7 +13,7 @@ def curveball(
     momentum: float | NumberList,
     precond_lr: float | NumberList,
 ):
-    """returns z_, clone it!!!"""
+    """returns z_, clone it!!! (no just negate it)"""
     delta = Hz + tensors
     z_.mul_(momentum).sub_(delta.mul_(precond_lr)) # z ← ρz − βΔ
     return z_

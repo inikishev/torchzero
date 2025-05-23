@@ -3,7 +3,7 @@ from operator import itemgetter
 import torch
 
 from ...core import Chainable, Transform, apply
-from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
+from ..optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
 
 @torch.no_grad
 def update_soap_covariances_(
@@ -135,7 +135,7 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
     return final, exp_avg_sq
 
-class DSOAP(Transform):
+class SOAPY(Transform):
     """SOAP but uses scaled gradient differences
 
     new args

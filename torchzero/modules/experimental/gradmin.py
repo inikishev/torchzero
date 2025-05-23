@@ -14,7 +14,7 @@ from ..smoothing.gaussian import Reformulation
 
 
 class GradMin(Reformulation):
-    """Reformulates the objective to minimize sum of gradient magnitudes via autograd.
+    """Reformulates the objective to minimize sum of gradient magnitudes via autograd. This is not expected to be practical.
 
     Args:
         loss_term (float, optional): adds loss value times this to sum of gradient magnitudes. Defaults to 1.

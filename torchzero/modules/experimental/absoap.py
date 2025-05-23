@@ -140,11 +140,17 @@ Source=Literal['p','g','s','y', 'gy', 'sy', 'sn', 'yn', 'gys', 'sys','sn', 'yn']
 class ABSOAP(Transform):
     """SOAP but with two extra letters included in its name in order to improve converence
 
+    so what you can do is choose what goes into what ,and that is supposed to be good.
+
     new args
 
     scale by s whether to scale gradient differences by parameter differences
 
     y_to_ema2 whether to use gradient differences for exponential moving average too
+
+    okay I changed these args into another ones
+
+    BASICALLY THIS IS FOR MY EXPERIMENTS
     """
     def __init__(
         self,

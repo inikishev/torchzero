@@ -50,7 +50,7 @@ def adadam_(
     return None
 
 class Adadam(Module):
-    """Adam with a diagonally preconditioned preconditioner and a graceful name."""
+    """Adam with a diagonally preconditioned preconditioner."""
     def __init__(
         self,
         beta1: float = 0.9,

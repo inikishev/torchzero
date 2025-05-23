@@ -194,8 +194,10 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         order (int, optional):
             whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
         solver (str, optional): what to use for whitening. Defaults to 'svd'.
-        U_beta (float | None, optional): beta for U (probably a bad idea). Defaults to None.
-        S_beta (float | None, optional): beta for S (probably a bad idea). Defaults to None.
+        A_beta (float | None, optional):
+            beta for U (in SVD and other letters in other solvers) (probably a bad idea). Defaults to None.
+        B_beta (float | None, optional):
+            beta for S (in SVD and other letters in other solvers) (probably a bad idea). Defaults to None.
         interval (int, optional): How often to update history. Defaults to 1 (every step).
         concat_params (bool, optional):
             whether to apply preconditioning to each tensor (False, default) or to all tensors concatenated into a vector (True). Latter will be slower but captures interactions between layers. Defaults to True.

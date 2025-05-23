@@ -38,16 +38,19 @@ def apply_subspace_preconditioner(
     return basis @ update_projected # d
 
 class RandomSubspacePreconditioning(Transform):
-    """full matrix rmsprop in random subspace"""
-    def __init__(self, k: int, beta: float | None = 0.99):
-        defaults = dict(k=k, beta=beta)
+    """full matrix rmsprop in random slowly changing subspace"""
+    def __init__(self, k: int, beta: float | None = 0.99, basis_beta: float | None = 0.99, inner: Chainable | None = None):
+        defaults = dict(k=k, beta=beta, basis_beta=basis_beta)
         super().__init__(defaults, uses_grad=False)
+
+        if inner is not None: self.set_child('inner', inner)
 
     def transform(self, tensors, params, grads, vars):
         settings = self.settings[params[0]]
         g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
         beta = settings['beta']
+        basis_beta = settings['basis_beta']
 
         if 'basis' not in self.global_state:
             self.global_state['basis'] = torch.randn(g.numel(), k, device=g.device, dtype=g.dtype)
@@ -56,7 +59,15 @@ class RandomSubspacePreconditioning(Transform):
         basis = self.global_state['basis']
         accumulator = self.global_state['accumulator']
 
+        if basis_beta is not None:
+            basis.lerp_(torch.randn_like(basis), 1-basis_beta)
+
         update_subspace_preconditioner_(g, basis, accumulator, beta)
+
+        if 'inner' in self.children:
+            tensors = apply(self.children['inner'], tensors, params, grads, vars)
+            g = torch.cat([t.view(-1) for t in tensors])
+
         try:
             preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
         except torch.linalg.LinAlgError:
