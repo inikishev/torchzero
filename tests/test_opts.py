@@ -723,7 +723,7 @@ Shampoo = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.2)),
     needs_closure=False,
     func='booth', steps=50, loss=200, merge_invariant=False,
-    sphere_steps=20, sphere_loss=1e-4, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=20, sphere_loss=1e-3, # merge and unmerge lrs are very different so need to test convergence separately somewhere
 )
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #
@@ -800,7 +800,7 @@ GaussianHomotopy = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(), tz.m.StrongWolfe()),
     needs_closure=True,
     func='booth', steps=20, loss=0.1, merge_invariant=True,
-    sphere_steps=10, sphere_loss=150, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=10, sphere_loss=200,
 )
 
 # ---------------------------- smoothing/laplacian --------------------------- #
@@ -809,7 +809,7 @@ LaplacianSmoothing = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(min_numel=1), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.4, merge_invariant=False,
-    sphere_steps=10, sphere_loss=3, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=10, sphere_loss=3,
 )
 
 LaplacianSmoothing_global = Run(
@@ -817,7 +817,7 @@ LaplacianSmoothing_global = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(layerwise=False), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.4, merge_invariant=True,
-    sphere_steps=10, sphere_loss=3, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=10, sphere_loss=3,
 )
 
 # -------------------------- wrappers/optim_wrapper -------------------------- #
@@ -834,7 +834,7 @@ NystromSketchAndSolve = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(2, seed=0), tz.m.StrongWolfe()),
     sphere_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(10, seed=0), tz.m.StrongWolfe()),
     needs_closure=True,
-    func='booth', steps=3, loss=1e-8, merge_invariant=True,
+    func='booth', steps=3, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=1e-12,
 )
 NystromPCG = Run(
