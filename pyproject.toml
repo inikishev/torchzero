@@ -1,9 +1,9 @@
-# NEW VERSION TUTORIAL
-# STEP 1 - CREATE TAG WITH NEW VERSION
-# STEP 2 - CHANGE VERSION IN THIS FILE
-# STEP 3 - PUSH TO GITHUB
-# STEP 4 - PUSH TAG TO GITHUB
-# STEP 5 - WAIT AND SEE THAT TESTS PASS ON GITHUB AND THAT IT DIDNT FIND ANOTHER REASON TO SKIP PIP
+# NEW VERSION TUTORIAL FOR MYSELF
+# STEP 1 - COMMIT NEW CHANGES BUT DON'T PUSH THEM YET
+# STEP 2 - BUMP VERSION AND COMMIT IT
+# STEP 3 - CREATE TAG WITH THAT VERSION
+# STEP 4 - PUSH CHANGES
+# STEP 5 - PUSH TAG
 
 [build-system]
 requires = ["setuptools >= 61.0"]
@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 name = "torchzero"
 description = "Modular optimization library for PyTorch."
 
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
   "torch",
   "numpy",
