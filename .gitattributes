@@ -1,1 +1,1 @@
-*.ipynb linguist-language=Python # make ipynb count towards python
+*.ipynb linguist-language=Python # makes ipynb count towards python
