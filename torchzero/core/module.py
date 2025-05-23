@@ -24,7 +24,8 @@ def _closure_backward(closure, params, retain_graph, create_graph):
 
         for p in params: p.grad = None
         loss = closure(False)
-        loss.backward(retain_graph=retain_graph, create_graph=create_graph)
+        grad = torch.autograd.grad(loss, params, retain_graph=retain_graph, create_graph=create_graph)
+        for p,g in zip(params,grad): p.grad = g
         return loss
 
 # region Vars
@@ -110,7 +111,7 @@ class Vars:
 
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
-        Do not call this at perturbed parameters."""
+        Do not call this at perturbed parameters. Backward always zeroes grads before recomputing."""
 
         if self.loss is None:
             if self.closure is None: raise RuntimeError("closure is None")

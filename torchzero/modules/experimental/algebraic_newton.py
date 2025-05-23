@@ -3,6 +3,7 @@ from functools import partial
 from typing import Literal
 from collections.abc import Callable
 import torch
+import torchalgebras as ta
 
 from ...core import Chainable, apply, Module
 from ...utils import vec_to_tensors, TensorList
@@ -11,68 +12,83 @@ from ...utils.derivatives import (
     hessian_mat,
     jacobian_and_hessian_wrt,
 )
-from ..second_order.newton import lu_solve, cholesky_solve, least_squares_solve
 
-def tropical_sum(x, dim): return torch.amax(x, dim=dim)
-def tropical_mul(x, y): return x+y
+class MaxItersReached(Exception): pass
+def tropical_lstsq(
+    H: torch.Tensor,
+    g: torch.Tensor,
+    solver,
+    maxiter,
+    tol,
+    algebra,
+    verbose,
+):
+    """it can run on any algebra with add despite it saying tropical"""
+    algebra = ta.get_algebra(algebra)
 
-def tropical_matmul(x: torch.Tensor, y: torch.Tensor):
-    # this imlements matmul by calling mul and sum
+    x = torch.zeros_like(g, requires_grad=True)
+    best_x = x.detach().clone()
+    best_loss = float('inf')
+    opt = solver([x])
 
-    x_squeeze = False
-    y_squeeze = False
+    niter = 0
+    def closure(backward=True):
+        nonlocal niter, best_x, best_loss
+        if niter == maxiter: raise MaxItersReached
+        niter += 1
 
-    if x.ndim == 1:
-        x_squeeze = True
-        x = x.unsqueeze(0)
+        g_hat = algebra.mm(H, x)
+        loss = torch.nn.functional.mse_loss(g_hat, g)
+        if loss < best_loss:
+            best_x = x.detach().clone()
+            best_loss = loss.detach()
 
-    if y.ndim == 1:
-        y_squeeze = True
-        y = y.unsqueeze(1)
+        if backward:
+            opt.zero_grad()
+            loss.backward()
+        return loss
 
-    res = tropical_sum(tropical_mul(x.unsqueeze(-1), y.unsqueeze(-3)), dim = -2)
+    loss = None
+    prev_loss = float('inf')
+    for i in range(maxiter):
+        try:
+            loss = opt.step(closure)
+            if loss == 0: break
+            if tol is not None and prev_loss - loss < tol: break
+            prev_loss = loss
+        except MaxItersReached:
+            break
 
-    if x_squeeze: res = res.squeeze(-2)
-    if y_squeeze: res = res.squeeze(-1)
+    if verbose: print(f'{best_loss = } after {niter} iters')
+    return best_x.detach()
 
-    return res
-
-def tropical_dot(x:torch.Tensor, y:torch.Tensor):
-    assert x.ndim == 1 and y.ndim == 1
-    return tropical_matmul(x.unsqueeze(0), y.unsqueeze(1))
-
-def tropical_outer(x:torch.Tensor, y:torch.Tensor):
-    assert x.ndim == 1 and y.ndim == 1
-    return tropical_matmul(x.unsqueeze(1), y.unsqueeze(0))
-
-
-def tropical_solve(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r = b.unsqueeze(1) - A
-    return r.amin(dim=-2)
-
-def tropical_solve_and_reconstruct(A: torch.Tensor, b: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r = b.unsqueeze(1) - A
-    x = r.amin(dim=-2)
-    b_hat = tropical_matmul(A, x)
-    return x, b_hat
-
-def tikhonov(H: torch.Tensor, reg: float):
-    if reg!=0: H += torch.eye(H.size(-1), dtype=H.dtype, device=H.device) * reg
+def tikhonov(H: torch.Tensor, reg: float, algebra: ta.Algebra = ta.TropicalSemiring()):
+    if reg!=0:
+        I = ta.AlgebraicTensor(torch.eye(H.size(-1), dtype=H.dtype, device=H.device), algebra)
+        I = I * reg
+        H = algebra.add(H, I.data)
     return H
 
 
-class TropicalNewton(Module):
-    """suston"""
+class AlgebraicNewton(Module):
+    """newton in other algebras, not practical because solving linear system is very hard."""
     def __init__(
         self,
         reg: float | None = None,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
-        interpolate:bool=False,
+        solver=lambda p: torch.optim.LBFGS(p, line_search_fn='strong_wolfe'),
+        maxiter=1000,
+        tol: float | None = 1e-10,
+        algebra: ta.Algebra | str = 'tropical max',
+        verbose: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize, interpolate=interpolate)
+        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize)
         super().__init__(defaults)
+
+        self.algebra = ta.get_algebra(algebra)
+        self.lstsq_args:dict = dict(solver=solver, maxiter=maxiter, tol=tol, algebra=algebra, verbose=verbose)
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -87,7 +103,6 @@ class TropicalNewton(Module):
         reg = settings['reg']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
-        interpolate = settings['interpolate']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         if hessian_method == 'autograd':
@@ -117,20 +132,14 @@ class TropicalNewton(Module):
         if reg is not None: H = tikhonov(H, reg)
 
         # ----------------------------------- solve ---------------------------------- #
-        tropical_update, g_hat = tropical_solve_and_reconstruct(H, g)
-
-        g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
-        abs_error = torch.linalg.vector_norm(g-g_hat) # pylint:disable=not-callable
-        rel_error = abs_error/g_norm.clip(min=1e-8)
-
-        if interpolate:
-            if rel_error > 1e-8:
-
-                update = cholesky_solve(H, g)
-                if update is None: update = lu_solve(H, g)
-                if update is None: update = least_squares_solve(H, g)
-
-                tropical_update.lerp_(update.ravel(), rel_error.clip(max=1))
+        tropical_update = tropical_lstsq(H, g, **self.lstsq_args)
+        # what now? w - u is not defined, it is defined for max version if u < w
+        # w = params.to_vec()
+        # w_hat = self.algebra.sub(w, tropical_update)
+        # update = w_hat - w
+        # no
+        # it makes sense to solve tropical system and sub normally
+        # the only thing is that tropical system can have no solutions
 
         vars.update = vec_to_tensors(tropical_update, params)
         return vars

@@ -363,6 +363,7 @@ def hvp(
 
         y_hat = model(X)
         loss = F.mse_loss(y_hat, y)
+        loss.backward(create_graph=True)
 
         grads = [p.grad for p in model.parameters()]
         vec = [torch.randn_like(p) for p in model.parameters()]
@@ -374,7 +375,8 @@ def hvp(
     g = list(grads)
     vec = list(vec)
 
-    return torch.autograd.grad(g, params, vec, create_graph=create_graph, retain_graph=retain_graph, allow_unused=allow_unused)
+    with torch.enable_grad():
+        return torch.autograd.grad(g, params, vec, create_graph=create_graph, retain_graph=retain_graph, allow_unused=allow_unused)
 
 
 @torch.no_grad

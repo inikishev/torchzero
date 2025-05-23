@@ -153,6 +153,7 @@ class Run:
         RUNS.append(self)
     def test(self): _run(**self.kwargs)
 
+# target losses for all of those are set to just above what they reach
 # ---------------------------------------------------------------------------- #
 #                                     tests                                    #
 # ---------------------------------------------------------------------------- #

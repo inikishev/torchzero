@@ -33,13 +33,8 @@ class MatrixMomentum(Module):
 
         if hvp_mode == 'autograd':
             with torch.enable_grad():
-                vars.zero_grad()
-                vars.loss = vars.loss_approx = vars.closure(False)
-                assert vars.loss is not None
-                vars.loss.backward(create_graph=True)
-                vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in vars.params]
-
-                hvp_ = TensorList(hvp(vars.params, grads=vars.grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
+                grad = vars.get_grad(create_graph=True)
+                hvp_ = TensorList(hvp(vars.params, grads=grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
 
         elif hvp_mode == 'forward':
             vars.get_grad()
@@ -90,13 +85,8 @@ class AdaptiveMatrixMomentum(Module):
 
         if hvp_mode == 'autograd':
             with torch.enable_grad():
-                vars.zero_grad()
-                vars.loss = vars.loss_approx = vars.closure(False)
-                assert vars.loss is not None
-                vars.loss.backward(create_graph=True)
-                vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in vars.params]
-
-                hvp_ = TensorList(hvp(vars.params, grads=vars.grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
+                grad = vars.get_grad(create_graph=True)
+                hvp_ = TensorList(hvp(vars.params, grads=grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
 
         elif hvp_mode == 'forward':
             vars.get_grad()

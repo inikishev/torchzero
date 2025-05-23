@@ -136,7 +136,7 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
     return final, exp_avg_sq
 
-Source=Literal['p','g','s','y', 'gy', 'sy', 'gys', 'sys']
+Source=Literal['p','g','s','y', 'gy', 'sy', 'sn', 'yn', 'gys', 'sys','sn', 'yn']
 class ABSOAP(Transform):
     """SOAP but with two extra letters included in its name in order to improve converence
 
@@ -220,7 +220,17 @@ class ABSOAP(Transform):
             g_prev = state['g_prev']
             s = p - p_prev
             y = t - g_prev
-            if scale_by_s: y /= torch.linalg.norm(s).clip(min=1e-8) # pylint:disable=not-callable
+
+            # keep malding
+            p_norm = torch.linalg.vector_norm(p) # pylint:disable=not-callable
+            g_norm = torch.linalg.vector_norm(t) # pylint:disable=not-callable
+            s_norm = torch.linalg.vector_norm(s) # pylint:disable=not-callable
+            y_norm = torch.linalg.vector_norm(y) # pylint:disable=not-callable
+
+            sn = p - p_prev * (p_norm / torch.linalg.vector_norm(p_prev))# pylint:disable=not-callable
+            yn = t - g_prev * (g_norm / torch.linalg.vector_norm(g_prev))# pylint:disable=not-callable
+
+            if scale_by_s: y /= s_norm.clip(min=1e-8) # pylint:disable=not-callable
 
             state['p_prev'].copy_(p)
             state['g_prev'].copy_(t)
@@ -230,16 +240,14 @@ class ABSOAP(Transform):
                 if c == 'g': return t
                 if c == 's': return s
                 if c == 'y': return y
+                if c == 'sn': return sn
+                if c == 'yn': return yn
                 if c == 'gy': return t+y
                 if c == 'sy': return s+y
                 if c == 'gys':
-                    g_norm = torch.linalg.norm(t) # pylint:disable=not-callable
-                    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
                     y_scaled = y * (g_norm/y_norm.clip(min=1e-8))
                     return t+y_scaled
                 if c == 'sys':
-                    s_norm = torch.linalg.norm(s) # pylint:disable=not-callable
-                    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
                     y_scaled = y * (s_norm/y_norm.clip(min=1e-8))
                     return s+y_scaled
                 raise RuntimeError("Big Chungus")
@@ -253,8 +261,8 @@ class ABSOAP(Transform):
             t_ema2s = _get(ema2[0]), _get(ema2[1])
 
             if norm:
-                t1 = t1/torch.linalg.norm(t1).clip(min=1e-8) # pylint:disable=not-callable
-                t2 = t2/torch.linalg.norm(t2).clip(min=1e-8) # pylint:disable=not-callable
+                t1 = t1/torch.linalg.vector_norm(t1).clip(min=1e-8) # pylint:disable=not-callable
+                t2 = t2/torch.linalg.vector_norm(t2).clip(min=1e-8) # pylint:disable=not-callable
 
 
             # initialize state on 1st step

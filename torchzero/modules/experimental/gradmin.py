@@ -56,8 +56,7 @@ class GradMin(Reformulation):
         with torch.enable_grad():
             for p in params: p.grad = None
             loss = closure(False)
-            loss.backward(create_graph = True)
-            grads = TensorList(p.grad for p in params if p.grad is not None)
+            grads = TensorList(torch.autograd.grad(loss, params, create_graph=True))
 
             if square: grads = grads ** 2
             else: grads = grads.abs()
@@ -81,8 +80,6 @@ class GradMin(Reformulation):
             grad = None
             if backward:
                 for p in params: p.grad = None
-                f.backward(create_graph=create_graph)
-                grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-
+                grad = TensorList(torch.autograd.grad(f, params, create_graph=create_graph))
 
         return loss, grad
