@@ -117,7 +117,7 @@ for epoch in range(100):
   * `Newton`: Classic Newton's method.
   * `NewtonCG`: Matrix-free newton's method with conjugate gradient solver.
   * `NystromSketchAndSolve`: Nyström sketch-and-solve method.
-  * `NystromPCG`: NewtonCG with Nyström preconditioning (my current recommendation).
+  * `NystromPCG`: NewtonCG with Nyström preconditioning (usually beats NewtonCG).
 
 * **Quasi-Newton**: Approximate second-order optimization methods.
   * `LBFGS`: Limited-memory BFGS.
