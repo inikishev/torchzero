@@ -101,8 +101,7 @@ class Preconditioner(Transform):
 
         # scale initial step, when preconditioner might not have been applied
         if scale_first and step == 0:
-            if scale_factor >= torch.finfo(tensors_vec.dtype).eps:
-                tensors_vec /= scale_factor
+            tensors_vec /= scale_factor
 
         tensors = vec_to_tensors(vec=tensors_vec, reference=tensors)
         self.global_state['__step'] = step + 1

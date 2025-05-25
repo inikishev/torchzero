@@ -65,7 +65,9 @@ def lsr1_(
         Hx.add_(w_k, alpha=w_k.dot(tensors_) / wy) # pyright:ignore[reportArgumentType]
 
     if scale_second and step == 1:
-        Hx.div_(max(1.0, tensors_.abs().global_sum())) # pyright:ignore[reportArgumentType]
+        scale = 1 / tensors_.abs().global_sum()
+        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
+        Hx.mul_(min(1.0, scale)) # pyright:ignore[reportArgumentType]
     return Hx
 
 
