@@ -8,27 +8,27 @@ from .. import TensorList, generic_zeros_like, generic_vector_norm, generic_nume
 def cg(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
-    x0_: torch.Tensor | None,
-    tol: float | None,
-    maxiter: int | None,
+    x0_: torch.Tensor | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
     reg: float = 0,
 ) -> torch.Tensor: ...
 @overload
 def cg(
     A_mm: Callable[[TensorList], TensorList],
     b: TensorList,
-    x0_: TensorList | None,
-    tol: float | None,
-    maxiter: int | None,
+    x0_: TensorList | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
 ) -> TensorList: ...
 
 def cg(
     A_mm: Callable,
     b: torch.Tensor | TensorList,
-    x0_: torch.Tensor | TensorList | None,
-    tol: float | None,
-    maxiter: int | None,
+    x0_: torch.Tensor | TensorList | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
 ):
     def A_mm_reg(x): # A_mm with regularization
@@ -90,7 +90,7 @@ def nystrom_sketch_and_solve(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     rank: int,
-    reg: float,
+    reg: float = 1e-3,
     generator=None,
 ) -> torch.Tensor:
     U, lambd = nystrom_approximation(
@@ -116,10 +116,10 @@ def nystrom_pcg(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     sketch_size: int,
-    reg: float,
-    x0_: torch.Tensor | None,
-    tol: float | None,
-    maxiter: int | None,
+    reg: float = 1e-6,
+    x0_: torch.Tensor | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
     generator=None,
 ) -> torch.Tensor:
     U, lambd = nystrom_approximation(
@@ -166,3 +166,4 @@ def nystrom_pcg(
         z = P_inv @ residual
         beta = residual.dot(z) / rz
         p = z + p*beta
+

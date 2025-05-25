@@ -68,6 +68,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         M_key = 'H' if inverse else 'B'
         M = state.get(M_key, None)
         step = state.get('step', 0)
+        state['step'] = step + 1
         init_scale = settings['init_scale']
         tol = settings['tol']
         tol_reset = settings['tol_reset']
@@ -119,7 +120,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, state, settings):
-        step = state['step'] = state.get('step', 0) + 1
+        step = state.get('step', 0)
 
         if settings['scale_second'] and step == 2:
             s = max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
