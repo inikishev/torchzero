@@ -17,8 +17,9 @@ def lsr1_(
 ):
     if step == 0 or not s_history:
         # initial step size guess from pytorch
-        tensors_.div_(max(1.0, tensors_.abs().global_sum())) # pyright:ignore[reportArgumentType]
-        return tensors_
+        scale = 1 / tensors_.abs().global_sum()
+        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
+        return tensors_.mul_(min(1.0, scale)) # pyright: ignore[reportArgumentType]
 
     m = len(s_history)
 

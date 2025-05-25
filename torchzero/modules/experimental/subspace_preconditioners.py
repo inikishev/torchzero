@@ -71,9 +71,7 @@ class RandomSubspacePreconditioning(Transform):
         try:
             preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
         except torch.linalg.LinAlgError:
-            denom = g.abs().sum()
-            if denom <= 1e-10: denom = torch.ones_like(denom)
-            preconditioned = g / g.abs().sum()
+            preconditioned = g.clip(-0.1, 0.1)
         vec_to_tensors_(preconditioned, tensors)
 
         return tensors
@@ -130,9 +128,7 @@ class HistorySubspacePreconditioning(Transform):
         try:
             preconditioned = apply_subspace_preconditioner(g, basis, accumulator)
         except torch.linalg.LinAlgError:
-            denom = g.abs().sum()
-            if denom <= 1e-10: denom = torch.ones_like(denom)
-            preconditioned = g / g.abs().sum()
+            preconditioned = g.clip(-0.1,0.1)
         vec_to_tensors_(preconditioned, tensors)
 
         return tensors

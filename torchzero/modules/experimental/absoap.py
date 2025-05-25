@@ -219,7 +219,7 @@ class ABSOAP(Transform):
             if 'g_prev' not in state:
                 state['p_prev'] = p.clone()
                 state['g_prev'] = t.clone()
-                updates.append(tensors[i].sign())
+                updates.append(tensors[i].clip(-0.1,0.1))
                 continue
 
             p_prev = state['p_prev']
@@ -291,7 +291,7 @@ class ABSOAP(Transform):
                     state['Q'] = get_orthogonal_matrix(state['GG'])
 
                 state['step'] = 0
-                updates.append(tensors[i].sign())
+                updates.append(tensors[i].clip(-0.1,0.1))
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
                 # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
 

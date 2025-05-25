@@ -38,7 +38,7 @@ class Preconditioner(Transform):
 
 
     def _tensor_wise_transform(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, vars:Vars) -> list[torch.Tensor]:
-        step = self.global_state.get('step', 0)
+        step = self.global_state.get('__step', 0)
         states = [self.state[p] for p in params]
         settings = [self.settings[p] for p in params]
         global_settings = settings[0]
@@ -47,8 +47,10 @@ class Preconditioner(Transform):
         scale_first = global_settings['__scale_first']
         scale_factor = 0
         if scale_first and step == 0:
-            # initial step size guess from pytorch LBFGS
-            scale_factor = TensorList(tensors).abs().sum()
+            # initial step size guess from pytorch LBFGS was too unstable
+            # I switched to norm
+            tensors = TensorList(tensors)
+            scale_factor = tensors.abs().global_mean().clip(min=1)
 
         # update preconditioner
         if step % update_freq == 0:
@@ -65,11 +67,11 @@ class Preconditioner(Transform):
         if scale_first and step == 0:
             torch._foreach_div_(tensors, scale_factor)
 
-        self.global_state['step'] = step + 1
+        self.global_state['__step'] = step + 1
         return tensors
 
     def _concat_transform(self, tensors:list[torch.Tensor], params:list[torch.Tensor], grads:list[torch.Tensor] | None, vars:Vars) -> list[torch.Tensor]:
-        step = self.global_state.get('step', 0)
+        step = self.global_state.get('__step', 0)
         tensors_vec = torch.cat([t.ravel() for t in tensors])
         params_vec = torch.cat([p.ravel() for p in params])
         grads_vec = [torch.cat([g.ravel() for g in grads])] if grads is not None else None
@@ -82,8 +84,8 @@ class Preconditioner(Transform):
         scale_first = global_settings['__scale_first']
         scale_factor = 0
         if scale_first and step == 0:
-            # initial step size guess from pytorch LBFGS
-            scale_factor = tensors_vec.abs().sum()
+            # initial step size guess from pytorch LBFGS was too unstable
+            scale_factor = tensors_vec.abs().mean().clip(min=1)
 
         # update preconditioner
         if step % update_freq == 0:
@@ -103,7 +105,7 @@ class Preconditioner(Transform):
                 tensors_vec /= scale_factor
 
         tensors = vec_to_tensors(vec=tensors_vec, reference=tensors)
-        self.global_state['step'] = step + 1
+        self.global_state['__step'] = step + 1
         return tensors
 
     @torch.no_grad

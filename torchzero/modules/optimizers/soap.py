@@ -222,8 +222,7 @@ class SOAP(Transform):
                     state['Q'] = get_orthogonal_matrix(state['GG'])
 
                 state['step'] = 0
-                updates.append(tensors[i].sign().div_(10))
-                # updates.append(tensors[i] / tensors[i].abs().sum())
+                updates.append(tensors[i].clip(-0.1, 0.1))
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
                 # I use scaled update instead as to not mess up with next modules.
 

@@ -277,7 +277,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         A = state.get('A', None)
         if A is None:
             # make a conservative step to avoid issues due to different GD scaling
-            return tensor.div_(max(1, tensor.abs().sum())) # pyright:ignore[reportArgumentType]
+            return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
         B = state['B']
         update = solver.apply(tensor.view(-1), A, B).view_as(tensor)

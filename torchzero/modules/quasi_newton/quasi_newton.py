@@ -92,13 +92,12 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         state['p_prev'].copy_(p)
         state['g_prev'].copy_(g)
 
-
-        if reset_interval is not None and step % reset_interval == 0:
+        if reset_interval is not None and step != 0 and step % reset_interval == 0:
             self._reset_M_(M, s, y, inverse, init_scale)
             return
 
         # tolerance on gradient difference to avoid exploding after converging
-        if y.abs().max() <= tol:
+        elif y.abs().max() <= tol:
             # reset history
             if tol_reset: self._reset_M_(M, s, y, inverse, init_scale)
             return
@@ -123,8 +122,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         step = state.get('step', 0)
 
         if settings['scale_second'] and step == 2:
-            s = max(1, tensor.abs().sum()) # pyright:ignore[reportArgumentType]
-            if s < settings['tol']: tensor = tensor/s
+            tensor = tensor / tensor.abs().mean().clip(min=1)
 
         inverse = settings['inverse']
         if inverse:

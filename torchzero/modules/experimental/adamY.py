@@ -37,7 +37,7 @@ def adamy_(
         p_prev.copy_(p)
         g_prev.copy_(g)
 
-        update = g.sign().lazy_mul_(alpha*0.1)
+        update = g.clip(-0.1,0.1).lazy_mul_(alpha)
         if params_ is None: return update
         params_.sub_(update)
         return None

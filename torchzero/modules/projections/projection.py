@@ -1,4 +1,5 @@
 import math
+from functools import partial
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, Literal
@@ -32,6 +33,25 @@ def _make_projected_closure(closure, vars: Vars, projection: "Projection",
         return loss
 
     return projected_closure
+
+def _projected_get_grad_override(
+    retain_graph: bool | None = None,
+    create_graph: bool = False,
+    projection: Any = ...,
+    unprojected_vars: Any = ...,
+    self: Any = ...,
+):
+    assert isinstance(projection, Projection)
+    assert isinstance(unprojected_vars, Vars)
+    assert isinstance(self, Vars)
+
+    if self.grad is not None: return self.grad
+    grads = unprojected_vars.get_grad(retain_graph, create_graph)
+    projected_grads = list(projection.project(grads, self, current='grads'))
+    self.grad = projected_grads
+    for p, g in zip(self.params, projected_grads):
+        p.grad = g
+    return self.grad
 
 
 class Projection(Module, ABC):
@@ -137,6 +157,12 @@ class Projection(Module, ABC):
 
         # step
         projected_vars.params = self._projected_params
+        projected_vars.get_grad = partial(
+            _projected_get_grad_override,
+            projection=self,
+            unprojected_vars=vars,
+            self=projected_vars,
+        )
         projected_vars = self.children['modules'].step(projected_vars)
 
         # empty fake params storage
@@ -149,7 +175,7 @@ class Projection(Module, ABC):
         unprojected_vars = projected_vars.clone(clone_update=False)
         unprojected_vars.closure = vars.closure
         unprojected_vars.params = vars.params
-        if unprojected_vars.grad is None: unprojected_vars.grad = vars.grad
+        unprojected_vars.grad = vars.grad
 
         if self._project_update:
             assert projected_vars.update is not None

@@ -36,10 +36,11 @@ def lbfgs(
     step: int,
 ):
     if len(s_history) == 0 or y_k is None or ys_k is None:
-        # dir = params.grad.sign() # may work fine
 
-        # initial step size guess taken from pytorch L-BFGS
-        return tensors_.mul_(min(1.0, 1.0 / tensors_.abs().global_sum())) # pyright: ignore[reportArgumentType]
+        # initial step size guess modified from pytorch L-BFGS
+        scale = 1 / tensors_.abs().global_sum()
+        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
+        return tensors_.mul_(min(1.0, scale)) # pyright: ignore[reportArgumentType]
 
     else:
         # 1st loop

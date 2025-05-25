@@ -218,7 +218,7 @@ class AdaSOAP(Transform):
                     state['Q'] = get_orthogonal_matrix(GG_precond)
 
                 state['step'] = 0
-                updates.append(tensors[i].sign())
+                updates.append(tensors[i].clip(-0.1,0.1))
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
                 # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
 
