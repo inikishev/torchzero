@@ -220,7 +220,7 @@ class AdaSOAP(Transform):
                 state['step'] = 0
                 updates.append(tensors[i].clip(-0.1,0.1))
                 continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
-                # I use sign instead as to not mess up with next modules. 1st Adam step is always sign anyway.
+                # that can mess with other modules scaling
 
             # Projecting gradients to the eigenbases of Shampoo's preconditioner
             # i.e. projecting to the eigenbases of matrices in state['GG']

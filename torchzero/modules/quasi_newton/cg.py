@@ -64,7 +64,7 @@ class ConguateGradientBase(Transform, ABC):
 # ------------------------------- Polak-Ribière ------------------------------ #
 def polak_ribiere_beta(g: TensorList, prev_g: TensorList):
     denom = prev_g.dot(prev_g)
-    if denom == 0: return 0
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
     return g.dot(g - prev_g) / denom
 
 class PolakRibiere(ConguateGradientBase):
@@ -76,8 +76,8 @@ class PolakRibiere(ConguateGradientBase):
         return polak_ribiere_beta(g, prev_g)
 
 # ------------------------------ Fletcher–Reeves ----------------------------- #
-def fletcher_reeves_beta(gg, prev_gg):
-    if prev_gg == 0: return 0
+def fletcher_reeves_beta(gg: torch.Tensor, prev_gg: torch.Tensor):
+    if prev_gg.abs() <= torch.finfo(gg.dtype).eps: return 0
     return gg / prev_gg
 
 class FletcherReeves(ConguateGradientBase):
@@ -98,7 +98,7 @@ class FletcherReeves(ConguateGradientBase):
 def hestenes_stiefel_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     grad_diff = g - prev_g
     denom = prev_d.dot(grad_diff)
-    if denom == 0: return 0
+    if denom.abs() < torch.finfo(g[0].dtype).eps: return 0
     return (g.dot(grad_diff) / denom).neg()
 
 
@@ -114,7 +114,7 @@ class HestenesStiefel(ConguateGradientBase):
 # --------------------------------- Dai–Yuan --------------------------------- #
 def dai_yuan_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     denom = prev_d.dot(g - prev_g)
-    if denom == 0: return 0
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
     return (g.dot(g) / denom).neg()
 
 class DaiYuan(ConguateGradientBase):
@@ -129,7 +129,7 @@ class DaiYuan(ConguateGradientBase):
 # -------------------------------- Liu-Storey -------------------------------- #
 def liu_storey_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList, ):
     denom = prev_g.dot(prev_d)
-    if denom == 0: return 0
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
     return g.dot(g - prev_g) / denom
 
 class LiuStorey(ConguateGradientBase):
@@ -159,7 +159,7 @@ class ConjugateDescent(Transform):
             self.global_state['denom'] = torch.tensor(0.).to(g[0])
 
         prev_gd = self.global_state.get('prev_gd', 0)
-        if prev_gd == 0: beta = 0
+        if abs(prev_gd) <= torch.finfo(g[0].dtype).eps: beta = 0
         else: beta = g.dot(g) / prev_gd
 
         # inner step
@@ -176,7 +176,7 @@ class ConjugateDescent(Transform):
 def hager_zhang_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList,):
     g_diff = g - prev_g
     denom = prev_d.dot(g_diff)
-    if denom == 0: return 0
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
 
     term1 = 1/denom
     # term2
@@ -198,7 +198,7 @@ class HagerZhang(ConguateGradientBase):
 def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     grad_diff = g - prev_g
     denom = prev_d.dot(grad_diff)
-    if denom == 0: return 0
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
 
     # Dai-Yuan
     dy_beta = (g.dot(g) / denom).neg().clamp(min=0)
