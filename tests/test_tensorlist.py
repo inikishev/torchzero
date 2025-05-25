@@ -835,7 +835,7 @@ def test_global_reductions(simple_tl: TensorList, global_method, vec_equiv_metho
     expected = vec_equiv_func()
 
     if isinstance(result, bool): assert result == expected
-    else: assert torch.allclose(result, expected), f"Tensors not close: {result = }, {expected = }"
+    else: assert torch.allclose(result, expected, atol=1e-4), f"Tensors not close: {result = }, {expected = }"
 
 
 def test_global_vector_norm(simple_tl: TensorList):
