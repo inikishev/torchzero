@@ -45,12 +45,11 @@ class Preconditioner(Transform):
         update_freq = global_settings['__update_freq']
 
         scale_first = global_settings['__scale_first']
-        scale_factor = 0
+        scale_factor = 1
         if scale_first and step == 0:
-            # initial step size guess from pytorch LBFGS was too unstable
-            # I switched to norm
-            tensors = TensorList(tensors)
-            scale_factor = tensors.abs().global_mean().clip(min=1)
+            # initial step size guess from pytorch LBFGS
+            scale_factor = 1 / TensorList(tensors).abs().global_sum().clip(min=1)
+            scale_factor = scale_factor.clip(min=torch.finfo(tensors[0].dtype).eps)
 
         # update preconditioner
         if step % update_freq == 0:
@@ -65,7 +64,7 @@ class Preconditioner(Transform):
 
         # scale initial step, when preconditioner might not have been applied
         if scale_first and step == 0:
-            torch._foreach_div_(tensors, scale_factor)
+            torch._foreach_mul_(tensors, scale_factor)
 
         self.global_state['__step'] = step + 1
         return tensors
@@ -82,10 +81,11 @@ class Preconditioner(Transform):
         update_freq = global_settings['__update_freq']
 
         scale_first = global_settings['__scale_first']
-        scale_factor = 0
+        scale_factor = 1
         if scale_first and step == 0:
-            # initial step size guess from pytorch LBFGS was too unstable
-            scale_factor = tensors_vec.abs().mean().clip(min=1)
+            # initial step size guess from pytorch LBFGS
+            scale_factor = 1 / tensors_vec.abs().sum().clip(min=1)
+            scale_factor = scale_factor.clip(min=torch.finfo(tensors_vec.dtype).eps)
 
         # update preconditioner
         if step % update_freq == 0:
@@ -101,7 +101,7 @@ class Preconditioner(Transform):
 
         # scale initial step, when preconditioner might not have been applied
         if scale_first and step == 0:
-            tensors_vec /= scale_factor
+            tensors_vec *= scale_factor
 
         tensors = vec_to_tensors(vec=tensors_vec, reference=tensors)
         self.global_state['__step'] = step + 1

@@ -122,7 +122,9 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         step = state.get('step', 0)
 
         if settings['scale_second'] and step == 2:
-            tensor = tensor / tensor.abs().mean().clip(min=1)
+            scale_factor = 1 / tensor.abs().sum().clip(min=1)
+            scale_factor = scale_factor.clip(min=torch.finfo(tensor.dtype).eps)
+            tensor = tensor * scale_factor
 
         inverse = settings['inverse']
         if inverse:

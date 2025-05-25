@@ -1,14 +1,18 @@
 import warnings
+from collections.abc import Callable
 from functools import partial
 from typing import Literal
-from collections.abc import Callable
+
 import torch
 
-from ...core import Chainable, apply, Module
-from ...utils import vec_to_tensors, TensorList
+from ...core import Chainable, Module, apply
+from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
     hessian_mat,
+    hvp,
+    hvp_fd_central,
+    hvp_fd_forward,
     jacobian_and_hessian_wrt,
 )
 
@@ -117,9 +121,10 @@ class Newton(Module):
             raise ValueError(hessian_method)
 
         # -------------------------------- inner step -------------------------------- #
+        update = vars.get_update()
         if 'inner' in self.children:
-            g_list = apply(self.children['inner'], list(g_list), params=params, grads=list(g_list), vars=vars)
-        g = torch.cat([t.view(-1) for t in g_list])
+            update = apply(self.children['inner'], update, params=params, grads=list(g_list), vars=vars)
+        g = torch.cat([t.view(-1) for t in update])
 
         # ------------------------------- regulazition ------------------------------- #
         if eig_reg: H = eig_tikhonov_(H, reg)

@@ -17,9 +17,9 @@ def lsr1_(
 ):
     if step == 0 or not s_history:
         # initial step size guess from pytorch
-        scale = 1 / tensors_.abs().global_sum()
-        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
-        return tensors_.mul_(min(1.0, scale)) # pyright: ignore[reportArgumentType]
+        scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
+        scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
+        return tensors_.mul_(scale_factor)
 
     m = len(s_history)
 
@@ -65,9 +65,10 @@ def lsr1_(
         Hx.add_(w_k, alpha=w_k.dot(tensors_) / wy) # pyright:ignore[reportArgumentType]
 
     if scale_second and step == 1:
-        scale = 1 / tensors_.abs().global_sum()
-        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
-        Hx.mul_(min(1.0, scale)) # pyright:ignore[reportArgumentType]
+        scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
+        scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
+        Hx.mul_(scale_factor)
+
     return Hx
 
 

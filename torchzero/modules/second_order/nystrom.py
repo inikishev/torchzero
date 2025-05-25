@@ -15,7 +15,7 @@ class NystromSketchAndSolve(Module):
         rank: int,
         reg: float = 1e-3,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
-        h=1e-3,
+        h=1e-2,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -74,9 +74,9 @@ class NystromSketchAndSolve(Module):
 
 
         # -------------------------------- inner step -------------------------------- #
-        b = grad
+        b = vars.get_update()
         if 'inner' in self.children:
-            b = apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars)
+            b = apply(self.children['inner'], b, params=params, grads=grad, vars=vars)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
         x = nystrom_sketch_and_solve(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
@@ -93,7 +93,7 @@ class NystromPCG(Module):
         tol=1e-3,
         reg: float = 1e-6,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
-        h=1e-3,
+        h=1e-2,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -156,9 +156,9 @@ class NystromPCG(Module):
 
 
         # -------------------------------- inner step -------------------------------- #
-        b = grad
+        b = vars.get_update()
         if 'inner' in self.children:
-            b = apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars)
+            b = apply(self.children['inner'], b, params=params, grads=grad, vars=vars)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
         x = nystrom_pcg(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)

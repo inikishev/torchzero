@@ -38,9 +38,9 @@ def lbfgs(
     if len(s_history) == 0 or y_k is None or ys_k is None:
 
         # initial step size guess modified from pytorch L-BFGS
-        scale = 1 / tensors_.abs().global_sum()
-        if scale < 1e-5: scale = 1 / tensors_.abs().mean()
-        return tensors_.mul_(min(1.0, scale)) # pyright: ignore[reportArgumentType]
+        scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
+        scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
+        return tensors_.mul_(scale_factor)
 
     else:
         # 1st loop
