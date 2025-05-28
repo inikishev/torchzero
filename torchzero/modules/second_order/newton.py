@@ -124,7 +124,7 @@ class Newton(Module):
         update = vars.get_update()
         if 'inner' in self.children:
             update = apply(self.children['inner'], update, params=params, grads=list(g_list), vars=vars)
-        g = torch.cat([t.view(-1) for t in update])
+        g = torch.cat([t.ravel() for t in update])
 
         # ------------------------------- regulazition ------------------------------- #
         if eig_reg: H = eig_tikhonov_(H, reg)

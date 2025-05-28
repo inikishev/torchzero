@@ -68,7 +68,7 @@ class NewtonNewton(Module):
             g_list = torch.autograd.grad(loss, params, create_graph=True)
             vars.grad = list(g_list)
 
-            xp = torch.cat([t.view(-1) for t in g_list])
+            xp = torch.cat([t.ravel() for t in g_list])
             I = torch.eye(xp.numel(), dtype=xp.dtype, device=xp.device)
 
             for o in range(2, order + 1):
@@ -120,7 +120,7 @@ class AcceleratedNewtonNewton(Module):
             g_list = torch.autograd.grad(loss, params, create_graph=True)
             vars.grad = list(g_list)
 
-            xp = torch.cat([t.view(-1) for t in g_list])
+            xp = torch.cat([t.ravel() for t in g_list])
             I = torch.eye(xp.numel(), dtype=xp.dtype, device=xp.device)
 
             x_list = []
