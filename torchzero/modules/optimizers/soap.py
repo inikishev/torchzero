@@ -170,7 +170,6 @@ class SOAP(Transform):
         eps: float = 1e-8,
         decay: float | None = None,
         alpha: float = 1,
-        unprojected_exp_avg: bool = True,
         bias_correction: bool = True,
     ):
         defaults = dict(
@@ -183,7 +182,6 @@ class SOAP(Transform):
             precondition_1d=precondition_1d,
             eps=eps,
             decay=decay,
-            unprojected_exp_avg=unprojected_exp_avg,
             bias_correction=bias_correction,
             alpha=alpha,
         )
@@ -196,8 +194,8 @@ class SOAP(Transform):
         for i,(p,t) in enumerate(zip(params, tensors)):
             state = self.state[p]
             settings = self.settings[p]
-            beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg,alpha = itemgetter(
-                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg','alpha')(settings)
+            beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps,alpha = itemgetter(
+                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps','alpha')(settings)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -237,10 +235,7 @@ class SOAP(Transform):
             exp_avg: torch.Tensor = state["exp_avg"]
             exp_avg_sq: torch.Tensor = state["exp_avg_sq"]
 
-            if unprojected_exp_avg or t_projected is None:
-                exp_avg.lerp_(t, 1-beta1)
-            else:
-                exp_avg.lerp_(t_projected, 1-beta1)
+            exp_avg.lerp_(t, 1-beta1)
 
             if t_projected is None:
                 exp_avg_sq.mul_(beta2).addcmul_(t, t, value=1-beta2)
@@ -249,7 +244,7 @@ class SOAP(Transform):
 
             # project exponential moving averages if they are accumulated unprojected
             exp_avg_projected = exp_avg
-            if unprojected_exp_avg and t_projected is not None:
+            if t_projected is not None:
                 exp_avg_projected = project(exp_avg, state['Q'])
 
             exp_avg_sq_projected = exp_avg_sq
@@ -260,6 +255,7 @@ class SOAP(Transform):
             # Projecting back the preconditioned (by Adam) exponential moving average of gradients
             # to the original space
             update = exp_avg_projected / denom
+
             if t_projected is not None:
                 update = project_back(update, state["Q"])
 

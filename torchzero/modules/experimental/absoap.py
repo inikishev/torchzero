@@ -1,9 +1,11 @@
 from operator import itemgetter
+from typing import Literal
 
 import torch
-from typing import Literal
+
 from ...core import Chainable, Transform, apply
 from ..optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
+
 
 @torch.no_grad
 def update_soap_covariances_(
@@ -219,8 +221,8 @@ class ABSOAP(Transform):
             if 'g_prev' not in state:
                 state['p_prev'] = p.clone()
                 state['g_prev'] = t.clone()
-                updates.append(tensors[i].clip(-0.1,0.1))
-                continue
+                # updates.append(tensors[i].clip(-0.1,0.1))
+                # continue
 
             p_prev = state['p_prev']
             g_prev = state['g_prev']
@@ -270,11 +272,10 @@ class ABSOAP(Transform):
                 t1 = t1/torch.linalg.vector_norm(t1).clip(min=1e-8) # pylint:disable=not-callable
                 t2 = t2/torch.linalg.vector_norm(t2).clip(min=1e-8) # pylint:disable=not-callable
 
-
             # initialize state on 1st step
             if 'GG' not in state:
                 state["exp_avg"] = torch.zeros_like(t)
-                state["exp_avg_sq"] = torch.ones_like(t)
+                state["exp_avg_sq"] = torch.zeros_like(t)
 
                 if not precondition_1d and t.ndim <= 1:
                     state['GG'] = []

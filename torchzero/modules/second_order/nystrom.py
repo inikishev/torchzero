@@ -15,7 +15,7 @@ class NystromSketchAndSolve(Module):
         rank: int,
         reg: float = 1e-3,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
-        h=1e-2,
+        h=1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -93,7 +93,7 @@ class NystromPCG(Module):
         tol=1e-3,
         reg: float = 1e-6,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
-        h=1e-2,
+        h=1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
