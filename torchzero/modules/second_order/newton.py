@@ -18,9 +18,12 @@ from ...utils.derivatives import (
 
 
 def lu_solve(H: torch.Tensor, g: torch.Tensor):
-    x, info = torch.linalg.solve_ex(H, g) # pylint:disable=not-callable
-    if info == 0: return x
-    return None
+    try:
+        x, info = torch.linalg.solve_ex(H, g) # pylint:disable=not-callable
+        if info == 0: return x
+        return None
+    except RuntimeError:
+        return None
 
 def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
     x, info = torch.linalg.cholesky_ex(H) # pylint:disable=not-callable

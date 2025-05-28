@@ -54,7 +54,7 @@ class CurveBall(Module):
         hvp_method = settings['hvp_method']
         h = settings['h']
 
-        precond_lr, momentum, reg = self.get_settings('momentum', 'decay_rate', 'reg', params=params, cls=NumberList)
+        precond_lr, momentum, reg = self.get_settings('precond_lr', 'momentum', 'reg', params=params, cls=NumberList)
 
 
         closure = vars.closure
