@@ -1,14 +1,14 @@
+from typing import Literal
 from abc import ABC, abstractmethod
 
 import torch
 
-from ...core import Chainable, Transform, apply
+from ...core import Chainable, Transform, apply, TensorwisePreconditioner
 from ...utils import TensorList, as_tensorlist
-
 
 class ConguateGradientBase(Transform, ABC):
     """all CGs are the same except beta calculation"""
-    def __init__(self, defaults = None, clip_beta: bool = False, reset_interval: int | None = None, inner: Chainable | None = None):
+    def __init__(self, defaults = None, clip_beta: bool = False, reset_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None):
         if defaults is None: defaults = {}
         defaults['reset_interval'] = reset_interval
         defaults['clip_beta'] = clip_beta
@@ -56,6 +56,7 @@ class ConguateGradientBase(Transform, ABC):
         # resetting
         self.global_state['step'] = step + 1
         reset_interval = self.settings[params[0]]['reset_interval']
+        if reset_interval == 'auto': reset_interval = tensors.global_numel() + 1
         if reset_interval is not None and (step+1) % reset_interval == 0:
             self.reset()
 
@@ -82,7 +83,7 @@ def fletcher_reeves_beta(gg: torch.Tensor, prev_gg: torch.Tensor):
 
 class FletcherReeves(ConguateGradientBase):
     """Fletcher–Reeves nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def initialize(self, p, g):
@@ -104,7 +105,7 @@ def hestenes_stiefel_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 
 class HestenesStiefel(ConguateGradientBase):
     """Hestenes–Stiefel nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
@@ -119,7 +120,7 @@ def dai_yuan_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 
 class DaiYuan(ConguateGradientBase):
     """Dai–Yuan nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
@@ -134,7 +135,7 @@ def liu_storey_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList, ):
 
 class LiuStorey(ConguateGradientBase):
     """Liu-Storey nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
@@ -187,7 +188,7 @@ def hager_zhang_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList,):
 class HagerZhang(ConguateGradientBase):
     """Hager-Zhang nonlinear conjugate gradient method,
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
@@ -211,8 +212,56 @@ def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 class HybridHS_DY(ConguateGradientBase):
     """HS-DY hybrid conjugate gradient method.
     This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
-    def __init__(self, reset_interval: int | None = None, clip_beta=False, inner: Chainable | None = None):
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return hs_dy_beta(g, prev_d, prev_g)
+
+
+def projected_gradient_(H:torch.Tensor, y:torch.Tensor, tol: float):
+    Hy = H @ y
+    denom = y.dot(Hy)
+    if denom.abs() < tol: return H
+    H -= (H @ y.outer(y) @ H) / denom
+    return H
+
+class ProjectedGradientMethod(TensorwisePreconditioner):
+    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+    The matrix denoted by H is not an estimate for inverse hessian.
+    """
+
+    def __init__(
+        self,
+        tol: float = 1e-10,
+        reset_interval: int | None = None,
+        update_freq: int = 1,
+        scale_first: bool = False,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(reset_interval=reset_interval, tol=tol)
+        super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
+
+    def update_tensor(self, tensor, param, grad, state, settings):
+        step = state.get('step', 0)
+        state['step'] = step + 1
+        reset_interval = settings['reset_interval']
+        if reset_interval is None: reset_interval = tensor.numel() + 1 # as recommended
+
+        if ("H" not in state) or (step % reset_interval == 0):
+            state["H"] = torch.eye(tensor.numel(), device=tensor.device, dtype=tensor.dtype)
+            state['g_prev'] = tensor.clone()
+            return
+
+        H = state['H']
+        g_prev = state['g_prev']
+        state['g_prev'] = tensor.clone()
+        y = (tensor - g_prev).ravel()
+
+        projected_gradient_(H, y, settings['tol'])
+
+    def apply_tensor(self, tensor, param, grad, state, settings):
+        H = state['H']
+        return (H @ tensor.view(-1)).view_as(tensor)

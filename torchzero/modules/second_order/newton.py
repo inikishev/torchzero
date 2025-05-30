@@ -35,10 +35,15 @@ def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
 def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
     return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
 
-def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None):
+def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, negative_curvature: bool):
     try:
         L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
         if tfm is not None: L = tfm(L)
+        if negative_curvature and L[0] < 0:
+            d = Q[0]
+             # use eigvec or -eigvec depending on if it points in same direction as gradient
+            return g.dot(d).sign() * d
+
         L.reciprocal_()
         return torch.linalg.multi_dot([Q * L.unsqueeze(-2), Q.mH, g]) # pylint:disable=not-callable
     except torch.linalg.LinAlgError:
@@ -59,6 +64,8 @@ class Newton(Module):
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
         eig_reg (bool, optional): whether to use largest negative eigenvalue as regularizer. Defaults to False.
+        negative_curvature (bool, Optional):
+            if True, whenever a negative eigenvalue is detected, the direction is taken along an eigenvector corresponding to a negative eigenvalue.
         hessian_method (str):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
@@ -78,13 +85,14 @@ class Newton(Module):
         self,
         reg: float = 1e-6,
         eig_reg: bool = False,
+        negative_curvature: bool = False,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
         inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | None = None,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm)
+        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, negative_curvature=negative_curvature)
         super().__init__(defaults)
 
         if inner is not None:
@@ -99,6 +107,7 @@ class Newton(Module):
         settings = self.settings[params[0]]
         reg = settings['reg']
         eig_reg = settings['eig_reg']
+        negative_curvature = settings['negative_curvature']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
         H_tfm = settings['H_tfm']
@@ -139,8 +148,8 @@ class Newton(Module):
             H, is_inv = H_tfm(H, g)
             if is_inv: update = H
 
-        if eigval_tfm is not None:
-            update = eigh_solve(H, g, eigval_tfm)
+        if negative_curvature or (eigval_tfm is not None):
+            update = eigh_solve(H, g, eigval_tfm, negative_curvature=negative_curvature)
 
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)

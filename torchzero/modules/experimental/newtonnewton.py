@@ -39,7 +39,19 @@ def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None):
         return None
 
 class NewtonNewton(Module):
-    """A method I thought of."""
+    """
+    Method that I thought of and then it worked.
+
+    1. Calculate newton step by solving Hx=g
+
+    2. Calculate jacobian of x wrt parameters and call it H2
+
+    3. Solve H2 x2 = x for x2.
+
+    4. Optionally, repeat (if order is higher than 3.)
+
+    Memory is n^order. It tends to converge faster on convex functions, but can be unstable on non-convex. Orders higher than 3 are usually too unsable and yield little benefit.
+    """
     def __init__(
         self,
         reg: float = 1e-6,

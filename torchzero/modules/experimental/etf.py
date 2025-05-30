@@ -24,7 +24,7 @@ class ExponentialTrajectoryFit(Module):
         for i in range(3):
             if i == 0: grad = vars.get_grad()
             else:
-                closure()
+                with torch.enable_grad(): closure()
                 grad = [cast(torch.Tensor, p.grad) for p in vars.params]
 
             # GD step
@@ -112,6 +112,61 @@ class ExponentialTrajectoryFitV2(Module):
         x_star = torch.linalg.lstsq(A, b).solution # pylint:disable=not-callable
 
         vec_to_tensors_(points[0], vars.params)
+        difference = torch._foreach_sub(vars.params, vec_to_tensors(x_star, vars.params))
+        vars.update = list(difference)
+        return vars
+
+
+
+
+def _fit_exponential(y0, y1, y2):
+    """x0, x1 and x2 are assumed to be 0, 1, 2"""
+    r = (y2 - y1) / (y1 - y0)
+    ones = r==1
+    r[ones] = 0
+    B = (y1 - y0) / (r - 1)
+    A = y0 - B
+
+    A[ones] = 0
+    B[ones] = 0
+    return A, B, r
+
+class PointwiseExponential(Module):
+    """different and also a bad method compared to one above"""
+    def __init__(self, step_size: float = 1e-3, reg: float = 1e-2, steps = 10000):
+        defaults = dict(reg=reg, steps=steps, step_size=step_size)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def step(self, vars):
+        closure = vars.closure
+        assert closure is not None
+        settings = self.settings[vars.params[0]]
+        step_size = settings['step_size']
+        reg = settings['reg']
+        steps = settings['steps']
+
+        # 1. perform 2 GD steps to obtain 3 points
+        points = [torch.cat([p.view(-1) for p in vars.params])]
+        for i in range(2):
+            if i == 0: grad = vars.get_grad()
+            else:
+                with torch.enable_grad(): closure()
+                grad = [cast(torch.Tensor, p.grad) for p in vars.params]
+
+            # GD step
+            torch._foreach_sub_(vars.params, grad, alpha=step_size)
+
+            points.append(torch.cat([p.view(-1) for p in vars.params]))
+
+        assert len(points) == 3, len(points)
+        y0, y1, y2 = points
+
+        A, B, r = _fit_exponential(y0, y1, y2)
+        r = r.clip(max = 1-reg)
+        x_star = A + B * r**steps
+
+        vec_to_tensors_(y0, vars.params)
         difference = torch._foreach_sub(vars.params, vec_to_tensors(x_star, vars.params))
         vars.update = list(difference)
         return vars

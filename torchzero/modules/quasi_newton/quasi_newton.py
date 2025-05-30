@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 import torch
 
-from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner
+from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner, Transform
 from ...utils import TensorList, set_storage_
 
 def _safe_dict_update_(d1_:dict, d2:dict):
@@ -24,7 +24,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
         tol_reset: bool = True,
-        reset_interval: int | None = None,
+        reset_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
@@ -44,7 +44,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         if ys != 0 and yy != 0: return yy/ys
         return 1
 
-    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor,inverse:bool, init_scale: Any):
+    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]):
         set_storage_(M, torch.eye(M.size(-1), device=M.device, dtype=M.dtype))
         if init_scale == 'auto': init_scale = self._get_init_scale(s,y)
         if init_scale >= 1:
@@ -73,6 +73,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         tol = settings['tol']
         tol_reset = settings['tol_reset']
         reset_interval = settings['reset_interval']
+        if reset_interval == 'auto': reset_interval = tensor.numel() + 1
 
         if M is None:
             M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
@@ -93,13 +94,13 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         state['g_prev'].copy_(g)
 
         if reset_interval is not None and step != 0 and step % reset_interval == 0:
-            self._reset_M_(M, s, y, inverse, init_scale)
+            self._reset_M_(M, s, y, inverse, init_scale, state)
             return
 
         # tolerance on gradient difference to avoid exploding after converging
-        elif y.abs().max() <= tol:
+        if y.abs().max() <= tol:
             # reset history
-            if tol_reset: self._reset_M_(M, s, y, inverse, init_scale)
+            if tol_reset: self._reset_M_(M, s, y, inverse, init_scale, state)
             return
 
         if step == 1 and init_scale == 'auto':
@@ -207,10 +208,10 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = torch.dot(s, y)
     if sy.abs() <= tol: return H
     term1 = torch.outer(s, s).div_(sy)
-    denom = torch.dot(y, H @ y) #
-    if denom.abs() <= tol: return H
+    yHy = torch.dot(y, H @ y) #
+    if yHy.abs() <= tol: return H
     num = H @ torch.outer(y, y) @ H
-    term2 = num.div_(denom)
+    term2 = num.div_(yHy)
     H += term1.sub_(term2)
     return H
 
@@ -225,34 +226,35 @@ class DFP(HUpdateStrategy):
 
 def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = H.T @ s
-    denom = c.dot(y)
-    if denom.abs() <= tol: return H
+    cy = c.dot(y)
+    if cy.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
-    H -= num/denom
+    H -= num/cy
     return H
 
 def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = y
-    denom = c.dot(y)
-    if denom.abs() <= tol: return H
+    cy = c.dot(y)
+    if cy.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
-    H -= num/denom
+    H -= num/cy
     return H
 
 def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor, tol: float):
     c = g_prev
-    denom = c.dot(y)
-    if denom.abs() <= tol: return H
+    cy = c.dot(y)
+    if cy.abs() <= tol: return H
     num = (H@y).sub_(s).outer(c)
-    H -= num/denom
+    H -= num/cy
     return H
 
 def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    c = torch.linalg.multi_dot([H,H,y]) # pylint:disable=not-callable
-    denom = c.dot(y)
-    if denom.abs() <= tol: return H
-    num = (H@y).sub_(s).outer(c)
-    H -= num/denom
+    Hy = H @ y
+    c = H @ Hy # pylint:disable=not-callable
+    cy = c.dot(y)
+    if cy.abs() <= tol: return H
+    num = Hy.sub_(s).outer(c)
+    H -= num/cy
     return H
 
 class BroydenGood(HUpdateStrategy):
@@ -297,15 +299,15 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor,
     s_norm = torch.linalg.vector_norm(s) # pylint:disable=not-callable
     I = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
     d = (R + I * (s_norm/2)) @ s
-    denom = d.dot(s)
-    if denom.abs() <= tol: return H, R
-    R = (1 + s_norm) * ((I*s_norm).add_(R).sub_(d.outer(d).div_(denom)))
+    ds = d.dot(s)
+    if ds.abs() <= tol: return H, R
+    R = (1 + s_norm) * ((I*s_norm).add_(R).sub_(d.outer(d).div_(ds)))
 
     c = H.T @ d
-    denom = c.dot(y)
-    if denom.abs() <= tol: return H, R
+    cy = c.dot(y)
+    if cy.abs() <= tol: return H, R
     num = (H@y).sub_(s).outer(c)
-    H -= num/denom
+    H -= num/cy
     return H, R
 
 class ThomasOptimalMethod(HUpdateStrategy):
@@ -314,6 +316,11 @@ class ThomasOptimalMethod(HUpdateStrategy):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
         H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
         return H
+
+    def _reset_M_(self, M, s, y,inverse, init_scale, state):
+        super()._reset_M_(M, s, y, inverse, init_scale, state)
+        for st in self.state.values():
+            st.pop("R", None)
 
 # ------------------------ powell's symmetric broyden ------------------------ #
 def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
@@ -358,17 +365,90 @@ class PSB(HessianUpdateStrategy):
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
         return psb_B_(B=B, s=s, y=y, tol=settings['tol'])
 
-def pearson2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+
+# Algorithms from Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171
+def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    Hy = H@y
+    yHy = y.dot(Hy)
+    if yHy.abs() <= tol: return H
+    num = (s - Hy).outer(Hy)
+    H += num.div_(yHy)
+    return H
+
+class Pearson(HUpdateStrategy):
+    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+    This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method."""
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return pearson_H_(H=H, s=s, y=y, tol=settings['tol'])
+
+def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
     if sy.abs() <= tol: return H
     num = (s - H@y).outer(s)
     H += num.div_(sy)
     return H
 
-class Pearson2(HUpdateStrategy):
-    """finally found a reference in https://www.recotechnologies.com/~beigi/ps/asme-jdsmc-93-2.pdf"""
+class McCormick(HUpdateStrategy):
+    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+    This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method."""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return pearson2_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return mccormick_H_(H=H, s=s, y=y, tol=settings['tol'])
+
+
+def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
+    Hy = H @ y
+    yHy = y.dot(Hy)
+    if yHy.abs() < tol: return H, R
+    H -= Hy.outer(Hy) / yHy
+    R += (s - R@y).outer(Hy) / yHy
+    return H, R
+
+class ProjectedNewtonRaphson(HessianUpdateStrategy):
+    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+    Algorithm 7"""
+    def __init__(
+        self,
+        switch: tuple[float,float] | Literal[1,2,3,4] = 3,
+        init_scale: float | Literal["auto"] = 'auto',
+        tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None | Literal['auto'] = 'auto',
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        scale_second: bool = False,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(switch=switch)
+        super().__init__(
+            defaults=defaults,
+            init_scale=init_scale,
+            tol=tol,
+            tol_reset=tol_reset,
+            reset_interval=reset_interval,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=True,
+            inner=inner,
+        )
+
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
+        H, R = projected_newton_raphson_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
+        state["R"] = R
+        return H
+
+    def _reset_M_(self, M, s, y, inverse, init_scale, state):
+        assert inverse
+        set_storage_(M, state["R"])
+
 
 # Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.
 def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4], tol: float):
@@ -474,3 +554,54 @@ class SSVM(HessianUpdateStrategy):
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return ssvm_H_(H=H, s=s, y=y, g=g, switch=settings['switch'], tol=settings['tol'])
+
+# HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
+def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    Hy = H@y
+    ys = y.dot(s)
+    if ys.abs() <= tol: return H
+    yHy = y.dot(Hy)
+    denom = ys + yHy
+    if denom.abs() <= tol: return H
+
+    term1 = 1/denom
+    term2 = s.outer(s).mul_(1 + ((2 * yHy) / ys))
+    term3 = s.outer(y) @ H
+    term4 = Hy.outer(s)
+    term5 = Hy.outer(y) @ H
+
+    inner_term = term2 - term3 - term4 - term5
+    H += inner_term.mul_(term1)
+    return H
+
+def gradient_correction(g: TensorList, s: TensorList, y: TensorList):
+    sy = s.dot(y)
+    if sy.abs() < torch.finfo(g[0].dtype).eps: return g
+    return g - (y * (s.dot(g) / sy))
+
+
+class GradientCorrection(Transform):
+    """estimates gradient at minima along search direction assuming function is quadratic as proposed in HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
+
+    This can useful as inner module for second order methods."""
+    def __init__(self):
+        super().__init__(None, uses_grad=False)
+
+    def transform(self, tensors, params, grads, vars):
+        if 'p_prev' not in self.state[params[0]]:
+            p_prev = self.get_state('p_prev', params=params, init=params)
+            g_prev = self.get_state('g_prev', params=params, init=tensors)
+            return tensors
+
+        p_prev = self.get_state('p_prev', params=params, cls=TensorList)
+        g_prev = self.get_state('g_prev', params=params, cls=TensorList)
+        g_hat = gradient_correction(TensorList(tensors), params-p_prev, tensors-g_prev)
+
+        p_prev.copy_(params)
+        g_prev.copy_(tensors)
+        return g_hat
+
+class Horisho(HUpdateStrategy):
+    """HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394"""
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return hoshino_H_(H=H, s=s, y=y, tol=settings['tol'])

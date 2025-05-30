@@ -76,7 +76,7 @@ class NewtonSolver(Module):
                 assert loss is not None
                 if min(loss, loss/initial_loss) < tol: break
 
-        print(f'{loss = }')
+        # print(f'{loss = }')
 
         if warm_start:
             assert x0 is not None

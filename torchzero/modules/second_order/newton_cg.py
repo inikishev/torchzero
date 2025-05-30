@@ -13,7 +13,7 @@ class NewtonCG(Module):
     def __init__(
         self,
         maxiter=None,
-        tol=1e-3,
+        tol=1e-4,
         reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "forward",
         h=1e-3,
@@ -73,6 +73,7 @@ class NewtonCG(Module):
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
         if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
+
         x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter, reg=reg)
         if warm_start:
             assert x0 is not None
