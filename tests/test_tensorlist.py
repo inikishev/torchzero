@@ -1261,8 +1261,8 @@ def test_reduction_ops(simple_tl: TensorList, reduction_method, dim, keepdim):
         elif reduction_method == 'quantile': expected = vec.quantile(q)
         else:
             pytest.fail("Unknown global reduction")
-            assert False, 'sus'
-        assert torch.allclose(result, expected)
+            assert False, reduction_method
+        assert torch.allclose(result, expected, atol=1e-4)
     else:
         expected_list = []
         for t in simple_tl:

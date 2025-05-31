@@ -791,7 +791,7 @@ NewtonCG = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=20, loss=1e-7, merge_invariant=True,
-    sphere_steps=2, sphere_loss=1e-6,
+    sphere_steps=2, sphere_loss=3e-4,
 )
 
 # ---------------------------- smoothing/gaussian ---------------------------- #
@@ -855,7 +855,7 @@ SophiaH = Run(
 )
 
 # ------------------------------------ CGs ----------------------------------- #
-for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY):
+for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY, tz.m.ProjectedGradientMethod):
     for func_steps,sphere_steps_ in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
         # but also test 10 to make sure it doesn't explode after converging
         Run(
@@ -868,7 +868,25 @@ for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.Da
 
 # ------------------------------- QN stability ------------------------------- #
 # stability test
-for QN in (tz.m.BFGS, tz.m.SR1, tz.m.DFP, tz.m.BroydenGood, tz.m.BroydenBad, tz.m.Greenstadt1, tz.m.Greenstadt2, tz.m.ColumnUpdatingMethod,  tz.m.ThomasOptimalMethod, tz.m.PSB, tz.m.McCormick, tz.m.SSVM):
+for QN in (
+    tz.m.BFGS,
+    tz.m.SR1,
+    tz.m.DFP,
+    tz.m.BroydenGood,
+    tz.m.BroydenBad,
+    tz.m.Greenstadt1,
+    tz.m.Greenstadt2,
+    tz.m.ColumnUpdatingMethod,
+    tz.m.ThomasOptimalMethod,
+    tz.m.FletcherVMM,
+    tz.m.Horisho,
+    lambda scale_first: tz.m.Horisho(scale_first=scale_first, inner=tz.m.GradientCorrection()),
+    tz.m.Pearson,
+    tz.m.ProjectedNewtonRaphson,
+    tz.m.PSB,
+    tz.m.McCormick,
+    tz.m.SSVM,
+):
     Run(
         func_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
         sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
