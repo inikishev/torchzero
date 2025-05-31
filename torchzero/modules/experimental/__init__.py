@@ -3,7 +3,7 @@ from .adadam import Adadam
 from .adamY import AdamY
 from .adasoap import AdaSOAP
 from .curveball import CurveBall
-from .etf import ExponentialTrajectoryFit, ExponentialTrajectoryFitV2
+from .etf import ExponentialTrajectoryFit, ExponentialTrajectoryFitV2, PointwiseExponential
 from .gradmin import GradMin
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
@@ -15,4 +15,5 @@ from .subspace_preconditioners import (
     HistorySubspacePreconditioning,
     RandomSubspacePreconditioning,
 )
-from .tropical_newton import TropicalNewton
+from .tada import TAda
+from .eigendescent import EigenDescent

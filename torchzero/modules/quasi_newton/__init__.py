@@ -31,4 +31,5 @@ from .quasi_newton import (
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
     GradientCorrection,
+    FletcherVMM,
 )

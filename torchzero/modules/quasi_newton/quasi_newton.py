@@ -605,3 +605,24 @@ class Horisho(HUpdateStrategy):
     """HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return hoshino_H_(H=H, s=s, y=y, tol=settings['tol'])
+
+# Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
+def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    sy = s.dot(y)
+    if sy.abs() < tol: return H
+    Hy = H @ y
+
+    term1 = (s.outer(y) @ H).div_(sy)
+    term2 = (Hy.outer(s)).div_(sy)
+    term3 = 1 + (y.dot(Hy) / sy)
+    term4 = s.outer(s).div_(sy)
+
+    H -= (term1 + term2 - term4.mul_(term3))
+    return H
+
+class FletcherVMM(HUpdateStrategy):
+    """Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317"""
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return fletcher_vmm_H_(H=H, s=s, y=y, tol=settings['tol'])
+
+

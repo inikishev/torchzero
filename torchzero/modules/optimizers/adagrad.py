@@ -137,8 +137,8 @@ class FullMatrixAdagrad(TensorwisePreconditioner):
 
         if tensor.numel() == 1:
             GG = GG.squeeze()
-            if sqrt: return tensor / (GG**(1/2))
-            return tensor / GG.reciprocal()
+            if sqrt: return tensor / GG.sqrt()
+            return tensor / GG
 
         try:
             if sqrt: B = matrix_power_eigh(GG, -1/2)
