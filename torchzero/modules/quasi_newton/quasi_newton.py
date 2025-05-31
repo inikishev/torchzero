@@ -199,10 +199,6 @@ class SR1(HUpdateStrategy):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-# BFGS has defaults - init_scale = "auto" and scale_second = False
-# SR1 has defaults -  init_scale = 1 and scale_second = True
-# basically some methods work better with first and some with second.
-# I inherit from BFGS or SR1 to avoid writing all those arguments again
 # ------------------------------------ DFP ----------------------------------- #
 def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = torch.dot(s, y)
@@ -275,11 +271,7 @@ class Greenstadt2(HUpdateStrategy):
 
 
 def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float):
-    n = H.shape[0]
-
     j = y.abs().argmax()
-    u = torch.zeros(n, device=H.device, dtype=H.dtype)
-    u[j] = 1.0
 
     denom = y[j]
     if denom.abs() < tol: return H

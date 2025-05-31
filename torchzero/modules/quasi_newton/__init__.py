@@ -23,6 +23,8 @@ from .quasi_newton import (
     BroydenBad,
     BroydenGood,
     ColumnUpdatingMethod,
+    FletcherVMM,
+    GradientCorrection,
     Greenstadt1,
     Greenstadt2,
     Horisho,
@@ -30,6 +32,4 @@ from .quasi_newton import (
     Pearson,
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
-    GradientCorrection,
-    FletcherVMM,
 )
