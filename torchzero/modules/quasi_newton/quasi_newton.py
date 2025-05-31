@@ -325,6 +325,7 @@ def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
     B += term1.sub_(term2)
     return B
 
+# I couldn't find formula for H
 class PSB(HessianUpdateStrategy):
     def __init__(
         self,
@@ -388,7 +389,6 @@ class McCormick(HUpdateStrategy):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return mccormick_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-
 def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
     Hy = H @ y
     yHy = y.dot(Hy)
@@ -403,7 +403,6 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
     Algorithm 7"""
     def __init__(
         self,
-        switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
         tol_reset: bool = True,
@@ -415,9 +414,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(switch=switch)
         super().__init__(
-            defaults=defaults,
             init_scale=init_scale,
             tol=tol,
             tol_reset=tol_reset,
@@ -439,8 +436,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
 
     def _reset_M_(self, M, s, y, inverse, init_scale, state):
         assert inverse
-        set_storage_(M, state["R"])
-
+        M.copy_(state["R"])
 
 # Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.
 def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4], tol: float):
