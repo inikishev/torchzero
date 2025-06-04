@@ -68,6 +68,7 @@ def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, step
             assert torch.isfinite(loss), f"{opt}: Inifinite loss - {[l.item() for l in losses]}"
             losses.append(loss)
 
+    losses.append(objective())
     return torch.stack(losses).nan_to_num(0,10000,10000).min()
 
 def _run_func(opt_fn: Callable, func:str, merge: bool, use_closure: bool, steps: int):
@@ -852,6 +853,15 @@ SophiaH = Run(
     needs_closure=True,
     func='ill', steps=50, loss=0.02, merge_invariant=True,
     sphere_steps=10, sphere_loss=40,
+)
+
+# -------------------------- optimizers/higher_order ------------------------- #
+HigherOrderNewton = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(2)),
+    needs_closure=True,
+    func='rosen', steps=1, loss=2e-10, merge_invariant=True,
+    sphere_steps=1, sphere_loss=1e-10,
 )
 
 # ------------------------------------ CGs ----------------------------------- #
