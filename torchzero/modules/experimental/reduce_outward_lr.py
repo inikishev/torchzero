@@ -8,6 +8,8 @@ class ReduceOutwardLR(Transform):
     When update sign matches weight sign, the learning rate for that weight is multiplied by `mul`.
 
     This means updates that move weights towards zero have higher learning rates.
+
+    A note on this is that it sounded good but its really bad in practice.
     """
     def __init__(self, mul = 0.5, use_grad=False, invert=False, target: Target = 'update'):
         defaults = dict(mul=mul, use_grad=use_grad, invert=invert)

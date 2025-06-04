@@ -142,7 +142,7 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     return final, exp_avg_sq
 
 class AdaSOAP(Transform):
-    """SOAP with diagonally preconditioned GG^Ts
+    """SOAP with diagonally preconditioned GG^Ts. Please note that this is experimental and isn't guaranteed to work.
 
     precond_beta - beta for GG^T squares
     """

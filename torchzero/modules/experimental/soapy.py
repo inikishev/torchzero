@@ -136,13 +136,11 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     return final, exp_avg_sq
 
 class SOAPY(Transform):
-    """SOAP but uses scaled gradient differences
+    """Adam but uses scaled gradient differences for GGᵀ. Please note that this is experimental and isn't guaranteed to work.
 
-    new args
-
-    scale by s whether to scale gradient differences by parameter differences
-
-    y_to_ema2 whether to use gradient differences for exponential moving average too
+    New args:
+        scale_by_s - whether to scale gradient differences by parameter differences
+        y_to_ema2 - whether to use gradient differences for exponential moving average too
     """
     def __init__(
         self,

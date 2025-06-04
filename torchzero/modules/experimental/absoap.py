@@ -138,21 +138,32 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
     return final, exp_avg_sq
 
-Source=Literal['p','g','s','y', 'gy', 'sy', 'sn', 'yn', 'gys', 'sys','sn', 'yn']
+Source=Literal['p','g','s','y', 'gy', 'sy', 'sn', 'yn', 'gys', 'sys']
 class ABSOAP(Transform):
-    """SOAP but with two extra letters included in its name in order to improve converence
+    """SOAP but with some extra options for testing. Please note that this is experimental and isn't guaranteed to work.
 
-    so what you can do is choose what goes into what ,and that is supposed to be good.
+    Args:
+        scale_by_s - whether to scale y by s
+        gg1 - 1st vector into GGᵀ
+        gg2 - 2nd vector into GGᵀ
+        ema1 - vector into 1st momentum
+        ema2 - 2 vectors into 2nd momentum
+        rel1 - if True, multiplies gg1 by params
+        rel2 - same but for gg2
+        norm - if True, gg1 a and gg2 are normalized, and I need to make that into a letter
 
-    new args
+    letters:
+        p - params
+        g - grad
+        s - param difference
+        y - grad difference
+        gy - g+y
+        sy - s+y
+        sn - s normalized
+        yn - y normalized
+        gys - g + y#g
+        sys - s + y#s
 
-    scale by s whether to scale gradient differences by parameter differences
-
-    y_to_ema2 whether to use gradient differences for exponential moving average too
-
-    okay I changed these args into another ones
-
-    BASICALLY THIS IS FOR MY EXPERIMENTS
     """
     def __init__(
         self,
@@ -168,8 +179,8 @@ class ABSOAP(Transform):
         alpha: float = 1,
         bias_correction: bool = True,
         scale_by_s: bool = True,
-        first: Source='g',
-        second: Source='g',
+        gg1: Source='g',
+        gg2: Source='g',
         ema1: Source='g',
         ema2: tuple[Source, Source] = ('g','g'),
         rel1: bool=False,
@@ -191,8 +202,8 @@ class ABSOAP(Transform):
             scale_by_s=scale_by_s,
             ema1=ema1,
             ema2=ema2,
-            first=first,
-            second=second,
+            first=gg1,
+            second=gg2,
             rel1=rel1, rel2=rel2,
             norm=norm,
         )

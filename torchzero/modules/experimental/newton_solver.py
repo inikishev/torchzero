@@ -9,7 +9,7 @@ from ...utils.derivatives import hvp
 from ..quasi_newton import LBFGS
 
 class NewtonSolver(Module):
-    """Matrix free newton via with any custom solver (usually it is better to just use NewtonCG or NystromPCG is even better)"""
+    """Matrix free newton via with any custom solver (in practice use NewtonCG or NystromPCG)"""
     def __init__(
         self,
         solver: Callable[[list[torch.Tensor]], Any] = lambda p: Modular(p, LBFGS()),

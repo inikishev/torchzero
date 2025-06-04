@@ -62,17 +62,7 @@ def adamy_(
     return None
 
 class AdamY(Module):
-    """Adam but uses scaled gradient differences for second momentum.
-
-    Args:
-        beta1 (float, optional): momentum. Defaults to 0.9.
-        beta2 (float, optional): second momentum. Defaults to 0.999.
-        eps (float, optional): epsilon. Defaults to 1e-8.
-        alpha (float, optional): learning rate. Defaults to 1.
-        amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
-        pow (float, optional): power used in second momentum power and root. Defaults to 2.
-        debiased (bool, optional): whether to apply debiasing to momentums based on current step. Defaults to True.
-    """
+    """Adam but uses scaled gradient differences for second momentum. Please note that this is experimental and isn't guaranteed to work."""
     def __init__(
         self,
         beta1: float = 0.9,

@@ -23,7 +23,21 @@ def _cosine_similarity(x, y):
 
 class EigenDescent(Module):
     """
-    uses largest negative or largest positive eigenvalue or eigenvalue of largest magnitude
+    Uses eigenvectors corresponding to certain eigenvalues. Please note that this is experimental and isn't guaranteed to work.
+
+    Args:
+        mode (str, optional):
+            - largest - use largest eigenvalue unless all eigenvalues are negative, then smallest is used.
+            - smallest - use smallest eigenvalue unless all eigenvalues are positive, then largest is used.
+            - mean-sign - use mean of eigenvectors multiplied by 1 or -1 if they point in opposite direction from gradient.
+            - mean-dot - use mean of eigenvectors multiplied by dot product with gradient.
+            - mean-cosine - use mean of eigenvectors multiplied by cosine similarity with gradient.
+            - mm - for testing.
+
+            Defaults to 'mean-sign'.
+        hessian_method (str, optional): how to calculate hessian. Defaults to "autograd".
+        vectorize (bool, optional): how to calculate hessian. Defaults to True.
+
     """
     def __init__(
         self,

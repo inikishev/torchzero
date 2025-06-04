@@ -38,7 +38,7 @@ def apply_subspace_preconditioner(
     return basis @ update_projected # d
 
 class RandomSubspacePreconditioning(Transform):
-    """full matrix rmsprop in random slowly changing subspace"""
+    """Whitens in random slowly changing subspace. Please note that this is experimental and isn't guaranteed to work."""
     def __init__(self, k: int, beta: float | None = 0.99, basis_beta: float | None = 0.99, inner: Chainable | None = None):
         defaults = dict(k=k, beta=beta, basis_beta=basis_beta)
         super().__init__(defaults, uses_grad=False)
@@ -78,9 +78,12 @@ class RandomSubspacePreconditioning(Transform):
 
 
 class HistorySubspacePreconditioning(Transform):
-    """full matrix rmsprop in subspace spanned by history of gradient differences
+    """Whitens in subspace spanned by history of gradient differences.
+    Please note that this is experimental and isn't guaranteed to work.
 
-    basis_beta is how much basis is allowed to change, and beta is for preconditioner itself in the basis.
+    Args:
+        beta - for preconditioner itself in the basis.
+        basis_beta - how much basis is allowed to change.
     """
     def __init__(self, k: int, beta: float | None = 0.99, basis_beta=0.99, inner: Chainable | None = None):
         defaults = dict(k=k, beta=beta, basis_beta=basis_beta)

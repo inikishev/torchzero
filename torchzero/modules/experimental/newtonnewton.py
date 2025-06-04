@@ -50,7 +50,7 @@ class NewtonNewton(Module):
 
     4. Optionally, repeat (if order is higher than 3.)
 
-    Memory is n^order. It tends to converge faster on convex functions, but can be unstable on non-convex. Orders higher than 3 are usually too unsable and yield little benefit.
+    Memory is n^order. It tends to converge faster on convex functions, but can be unstable on non-convex. Orders higher than 3 are usually too unsable and have little benefit.
     """
     def __init__(
         self,

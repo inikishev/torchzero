@@ -185,7 +185,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         else: state_[key].lerp_(value, 1-beta)
 
 class SpectralPreconditioner(TensorwisePreconditioner):
-    """Whitening preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences.
+    """Whitening preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences. Please note that this is experimental and isn't guaranteed to work.
 
     Args:
         history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
