@@ -130,15 +130,14 @@ class HigherOrderNewton(Module):
         increase (float, optional): trust region multiplier on good steps. Defaults to 1.5.
         decrease (float, optional): trust region multiplier on bad steps. Defaults to 0.75.
         trust_tol (float, optional):
-            Maximum ratio of expected loss reduction to actual reduction for step to be good.
-            A step is only considered bad if loss increased. Defaults to 2.
+            Maximum ratio of expected loss reduction to actual reduction for trust region increase.
+            Should 1 or higer. Defaults to 2.
         prox (float, optional):
             proximal penalty weight. Penalizes points too far from current point when minimizing the polynomial.
             Defaults to 0.
         de_iters (int | None, optional):
             If this is specified, taylor approximation is minimized via differential evolution first,
-            then it is passed to scipy.optimize.minimize DE can find better initial point to avoid
-            getting stuck at local minima. Defaults to None.
+            then it is passed to scipy.optimize.minimize which could get stuck in local minima. Defaults to None.
         vectorize (bool, optional):
             whether to enable vectorized jacobians. Defaults to True.
 
