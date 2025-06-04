@@ -11,3 +11,4 @@ from .smoothing import *
 from .weight_decay import *
 from .wrappers import *
 from .second_order import *
+from .higher_order import *
