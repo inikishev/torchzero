@@ -9,6 +9,12 @@ from ...utils import tolist
 
 
 class Averaging(TensorwiseTransform):
+    """Average of past n updates.
+
+    Args:
+        history_size (int): Number of past updates to average
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size=history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -29,7 +35,12 @@ class Averaging(TensorwiseTransform):
         return average / len(history)
 
 class WeightedAveraging(TensorwiseTransform):
-    """weights are oldest to newest"""
+    """Weighted average of past n updates.
+
+    Args:
+        weights (Sequence[float]): a sequence of weights from oldest to newest.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: Target = 'update'):
         defaults = dict(weights = tolist(weights))
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -59,6 +70,12 @@ class WeightedAveraging(TensorwiseTransform):
 
 
 class MedianAveraging(TensorwiseTransform):
+    """Median of past n updates.
+
+    Args:
+        history_size (int): Number of past updates to average
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, history_size: int, target: Target = 'update'):
         defaults = dict(history_size = history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
