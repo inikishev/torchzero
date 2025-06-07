@@ -3,7 +3,7 @@ from collections.abc import Iterable, Sequence
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList, as_tensorlist
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
 
 @torch.no_grad
 def weight_decay_(
@@ -26,8 +26,8 @@ class WeightDecay(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        weight_decay = self.get_settings('weight_decay', params=params, cls=NumberList)
-        ord = self.settings[params[0]]['ord']
+        weight_decay = NumberList(s['weight_decay'] for s in settings)
+        ord = settings[0]['ord']
 
         return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
 
@@ -45,7 +45,7 @@ class DirectWeightDecay(Module):
 
     @torch.no_grad
     def step(self, var):
-        weight_decay = self.get_settings('weight_decay', params=var.params, cls=NumberList)
+        weight_decay = self.get_settings(var.params, 'weight_decay', cls=NumberList)
         ord = self.settings[var.params[0]]['ord']
 
         decay_weights_(var.params, weight_decay, ord)

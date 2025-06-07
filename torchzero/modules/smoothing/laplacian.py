@@ -83,18 +83,16 @@ class LaplacianSmoothing(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        layerwise = self.settings[params[0]]['layerwise']
+        layerwise = settings[0]['layerwise']
 
         # layerwise laplacian smoothing
         if layerwise:
 
             # precompute the denominator for each layer and store it in each parameters state
             smoothed_target = TensorList()
-            for p, t in zip(params, tensors):
-                settings = self.settings[p]
-                if p.numel() > settings['min_numel']:
-                    state = self.state[p]
-                    if 'denominator' not in state: state['denominator'] = _precompute_denominator(p, settings['sigma'])
+            for p, t, state, setting in zip(params, tensors, states, settings):
+                if p.numel() > setting['min_numel']:
+                    if 'denominator' not in state: state['denominator'] = _precompute_denominator(p, setting['sigma'])
                     smoothed_target.append(torch.fft.ifft(torch.fft.fft(t.view(-1)) / state['denominator']).real.view_as(t)) #pylint:disable=not-callable
                 else:
                     smoothed_target.append(t)
@@ -106,7 +104,7 @@ class LaplacianSmoothing(Transform):
         # precompute full denominator
         tensors = TensorList(tensors)
         if self.global_state.get('full_denominator', None) is None:
-            self.global_state['full_denominator'] = _precompute_denominator(tensors.to_vec(), self.settings[params[0]]['sigma'])
+            self.global_state['full_denominator'] = _precompute_denominator(tensors.to_vec(), settings[0]['sigma'])
 
         # apply the smoothing
         vec = tensors.to_vec()

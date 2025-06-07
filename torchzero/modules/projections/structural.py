@@ -131,18 +131,18 @@ class TensorNormsProjection(Projection):
 
     @torch.no_grad
     def project(self, tensors, var, current):
-        orig = self.get_state(f'{current}_orig', params=var.params)
+        orig = self.get_state(var.params, f'{current}_orig')
         torch._foreach_copy_(orig, tensors)
 
         norms = torch._foreach_norm(tensors)
-        self.get_state(f'{current}_orig_norms', params=var.params, init=norms, cls=TensorList).set_(norms)
+        self.get_state(var.params, f'{current}_orig_norms', cls=TensorList).set_(norms)
 
         return [torch.stack(norms)]
 
     @torch.no_grad
     def unproject(self, tensors, var, current):
-        orig = self.get_state(f'{current}_orig', params=var.params)
-        orig_norms = torch.stack(self.get_state(f'{current}_orig_norms', params=var.params))
+        orig = self.get_state(var.params, f'{current}_orig')
+        orig_norms = torch.stack(self.get_state(var.params, f'{current}_orig_norms'))
         target_norms = tensors[0]
 
         orig_norms = torch.where(orig_norms == 0, 1, orig_norms)

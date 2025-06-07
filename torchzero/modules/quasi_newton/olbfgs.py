@@ -113,7 +113,7 @@ class OnlineLBFGS(Module):
 
         # sample gradient at previous params with current mini-batch
         if sample_grads == 'before':
-            prev_params = self.get_state('prev_params', params=params, cls=TensorList)
+            prev_params = self.get_state(params, 'prev_params', cls=TensorList)
             if step == 0:
                 s_k = None; y_k = None; ys_k = None
             else:
@@ -175,7 +175,7 @@ class OnlineLBFGS(Module):
         # lerp initial H^-1 @ q guess
         z_ema = None
         if z_beta is not None:
-            z_ema = self.get_state('z_ema', params=var.params, cls=TensorList)
+            z_ema = self.get_state(params, 'z_ema', cls=TensorList)
 
         # precondition
         dir = lbfgs(

@@ -167,10 +167,10 @@ class LBFGS(Module):
 
         tol, damping, init_damping, eigval_bounds, update_freq, z_beta, tol_reset = itemgetter(
             'tol', 'damping', 'init_damping', 'eigval_bounds', 'update_freq', 'z_beta', 'tol_reset')(self.settings[params[0]])
-        params_beta, grads_beta = self.get_settings('params_beta', 'grads_beta', params=params)
+        params_beta, grads_beta = self.get_settings(params, 'params_beta', 'grads_beta')
 
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
-        prev_l_params, prev_l_grad = self.get_state('prev_l_params', 'prev_l_grad', params=params, cls=TensorList)
+        prev_l_params, prev_l_grad = self.get_state(params, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
         # 1st step - there are no previous params and grads, `lbfgs` will do normalized SGD step
         if step == 0:
@@ -208,7 +208,7 @@ class LBFGS(Module):
         # lerp initial H^-1 @ q guess
         z_ema = None
         if z_beta is not None:
-            z_ema = self.get_state('z_ema', params=var.params, cls=TensorList)
+            z_ema = self.get_state(var.params, 'z_ema', cls=TensorList)
 
         # precondition
         dir = lbfgs(

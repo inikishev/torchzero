@@ -72,7 +72,7 @@ class NewtonCG(Module):
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
-        if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
+        if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         x = cg(A_mm=H_mm, b=as_tensorlist(b), x0_=x0, tol=tol, maxiter=maxiter, reg=reg)
         if warm_start:

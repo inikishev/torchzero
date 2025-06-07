@@ -1,10 +1,11 @@
-from typing import Literal
 from abc import ABC, abstractmethod
+from typing import Literal
 
 import torch
 
-from ...core import Chainable, Transform, apply_transform, TensorwisePreconditioner
-from ...utils import TensorList, as_tensorlist
+from ...core import Chainable, TensorwiseTransform, Transform, apply_transform
+from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
+
 
 class ConguateGradientBase(Transform, ABC):
     """all CGs are the same except beta calculation"""
@@ -30,7 +31,7 @@ class ConguateGradientBase(Transform, ABC):
         params = as_tensorlist(params)
 
         step = self.global_state.get('step', 0)
-        prev_dir, prev_grads = self.get_state('prev_dir', 'prev_grad', params=params, cls=TensorList)
+        prev_dir, prev_grads = unpack_states(states, tensors, 'prev_dir', 'prev_grad', cls=TensorList)
 
         # initialize on first step
         if step == 0:
@@ -42,12 +43,12 @@ class ConguateGradientBase(Transform, ABC):
 
         # get beta
         beta = self.get_beta(params, tensors, prev_grads, prev_dir)
-        if self.settings[params[0]]['clip_beta']: beta = max(0, beta) # pyright:ignore[reportArgumentType]
+        if settings[0]['clip_beta']: beta = max(0, beta) # pyright:ignore[reportArgumentType]
         prev_grads.copy_(tensors)
 
         # inner step
         if 'inner' in self.children:
-            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads, var))
+            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads))
 
         # calculate new direction with beta
         dir = tensors.add_(prev_dir.mul_(beta))
@@ -55,7 +56,7 @@ class ConguateGradientBase(Transform, ABC):
 
         # resetting
         self.global_state['step'] = step + 1
-        reset_interval = self.settings[params[0]]['reset_interval']
+        reset_interval = settings[0]['reset_interval']
         if reset_interval == 'auto': reset_interval = tensors.global_numel() + 1
         if reset_interval is not None and (step+1) % reset_interval == 0:
             self.reset()
@@ -155,7 +156,7 @@ class ConjugateDescent(Transform):
     def apply(self, tensors, params, grads, loss, states, settings):
         g = as_tensorlist(tensors)
 
-        prev_d = self.get_state('prev_dir', params=params, cls=TensorList, init = torch.zeros_like)
+        prev_d = unpack_states(states, tensors, 'prev_dir', cls=TensorList, init=torch.zeros_like)
         if 'denom' not in self.global_state:
             self.global_state['denom'] = torch.tensor(0.).to(g[0])
 
@@ -165,7 +166,7 @@ class ConjugateDescent(Transform):
 
         # inner step
         if 'inner' in self.children:
-            g = as_tensorlist(apply_transform(self.children['inner'], g, params, grads, var))
+            g = as_tensorlist(apply_transform(self.children['inner'], g, params, grads))
 
         dir = g.add_(prev_d.mul_(beta))
         prev_d.copy_(dir)
@@ -226,7 +227,7 @@ def projected_gradient_(H:torch.Tensor, y:torch.Tensor, tol: float):
     H -= (H @ y.outer(y) @ H) / denom
     return H
 
-class ProjectedGradientMethod(TensorwisePreconditioner):
+class ProjectedGradientMethod(TensorwiseTransform):
     """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
 
     The matrix denoted by H is not an estimate for inverse hessian.
@@ -244,7 +245,7 @@ class ProjectedGradientMethod(TensorwisePreconditioner):
         defaults = dict(reset_interval=reset_interval, tol=tol)
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
-    def update_tensor(self, tensor, param, grad, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
         step = state.get('step', 0)
         state['step'] = step + 1
         reset_interval = settings['reset_interval']
@@ -262,6 +263,6 @@ class ProjectedGradientMethod(TensorwisePreconditioner):
 
         projected_gradient_(H, y, settings['tol'])
 
-    def apply_tensor(self, tensor, param, grad, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         H = state['H']
         return (H @ tensor.view(-1)).view_as(tensor)

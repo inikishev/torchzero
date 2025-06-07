@@ -89,8 +89,8 @@ class GaussianHomotopy(Reformulation):
         params = TensorList(var.params)
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
-        init_sigma = self.get_settings('init_sigma', params=params)
-        sigmas = self.get_state('sigma', params = params, init=init_sigma)
+        init_sigma = [self.settings[p]['init_sigma'] for p in params]
+        sigmas = self.get_state(params, 'sigma', init=init_sigma)
 
         if any('perturbations' not in self.state[p] for p in params):
             generator = self._get_generator(settings['seed'], params)
@@ -109,9 +109,9 @@ class GaussianHomotopy(Reformulation):
         tol = settings['tol']
         if tol is not None and not decayed:
             if not any('prev_params' in self.state[p] for p in params):
-                prev_params = self.get_state('prev_params', params=params, cls=TensorList, init='param')
+                prev_params = self.get_state(params, 'prev_params', cls=TensorList, init='param')
             else:
-                prev_params = self.get_state('prev_params', params=params, cls=TensorList, init='param')
+                prev_params = self.get_state(params, 'prev_params', cls=TensorList, init='param')
                 s = params - prev_params
 
                 if s.abs().global_max() <= tol:

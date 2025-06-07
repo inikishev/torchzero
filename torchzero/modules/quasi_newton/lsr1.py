@@ -135,10 +135,10 @@ class LSR1(Module):
         settings = self.settings[params[0]]
         tol, update_freq, scale_second = itemgetter('tol', 'update_freq', 'scale_second')(settings)
 
-        params_beta, grads_beta_ = self.get_settings('params_beta', 'grads_beta', params=params) # type: ignore
+        params_beta, grads_beta_ = self.get_settings(params, 'params_beta', 'grads_beta') # type: ignore
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta_)
 
-        prev_l_params, prev_l_grad = self.get_state('prev_l_params', 'prev_l_grad', params=params, cls=TensorList)
+        prev_l_params, prev_l_grad = self.get_state(params, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
         y_k = None
         if step != 0:

@@ -190,7 +190,7 @@ class ModularLBFGS(Module):
             update=update,
         )
 
-        prev_params_h, prev_grad_h = self.get_state('prev_params_h', 'prev_grad_h', params=params, cls=TensorList)
+        prev_params_h, prev_grad_h = self.get_state(params, 'prev_params_h', 'prev_grad_h', cls=TensorList)
 
         # 1st step - there are no previous params and grads, `lbfgs` will do normalized SGD step
         if step == 0:
@@ -226,7 +226,7 @@ class ModularLBFGS(Module):
 
         # transforms into preconditioner
         params_p, update_p = _apply_tfms_into_precond(self, params=params, var=var, update=update)
-        prev_params_p, prev_grad_p = self.get_state('prev_params_p', 'prev_grad_p', params=params, cls=TensorList)
+        prev_params_p, prev_grad_p = self.get_state(params, 'prev_params_p', 'prev_grad_p', cls=TensorList)
 
         if step == 0:
             s_k_p = None; y_k_p = None; ys_k_p = None

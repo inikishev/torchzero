@@ -1,11 +1,13 @@
 """Use BFGS or maybe SR1."""
-from typing import Any, Literal
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from typing import Any, Literal
+
 import torch
 
-from ...core import Chainable, Module, Preconditioner, TensorwisePreconditioner, Transform
-from ...utils import TensorList, set_storage_
+from ...core import Chainable, Module, TensorwiseTransform, Transform
+from ...utils import TensorList, set_storage_, unpack_states
+
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -17,7 +19,7 @@ def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     elif state[key].shape != value.shape: state[key] = value
     else: state[key].lerp_(value, 1-beta)
 
-class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
+class HessianUpdateStrategy(TensorwiseTransform, ABC):
     def __init__(
         self,
         defaults: dict | None = None,
@@ -62,7 +64,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
         raise NotImplementedError
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
         p = param.view(-1); g = tensor.view(-1)
         inverse = settings['inverse']
         M_key = 'H' if inverse else 'B'
@@ -119,7 +121,7 @@ class HessianUpdateStrategy(TensorwisePreconditioner, ABC):
             _maybe_lerp_(state, 'B', B_new, beta)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         step = state.get('step', 0)
 
         if settings['scale_second'] and step == 2:
@@ -576,13 +578,12 @@ class GradientCorrection(Transform):
         super().__init__(None, uses_grad=False)
 
     def apply(self, tensors, params, grads, loss, states, settings):
-        if 'p_prev' not in self.state[params[0]]:
-            p_prev = self.get_state('p_prev', params=params, init=params)
-            g_prev = self.get_state('g_prev', params=params, init=tensors)
+        if 'p_prev' not in states[0]:
+            p_prev = unpack_states(states, tensors, 'p_prev', init=params)
+            g_prev = unpack_states(states, tensors, 'g_prev', init=tensors)
             return tensors
 
-        p_prev = self.get_state('p_prev', params=params, cls=TensorList)
-        g_prev = self.get_state('g_prev', params=params, cls=TensorList)
+        p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
         g_hat = gradient_correction(TensorList(tensors), params-p_prev, tensors-g_prev)
 
         p_prev.copy_(params)
