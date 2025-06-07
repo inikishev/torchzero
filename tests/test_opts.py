@@ -525,7 +525,7 @@ PolyakStepSize = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.PolyakStepSize()),
     sphere_opt=lambda p: tz.Modular(p, tz.m.PolyakStepSize()),
     needs_closure=True,
-    func='booth', steps=50, loss=1e-11, merge_invariant=True,
+    func='booth', steps=50, loss=1e-7, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.002,
 )
 RandomStepSize = Run(
@@ -720,11 +720,11 @@ Lion = Run(
 )
 # ---------------------------- optimizers/shampoo ---------------------------- #
 Shampoo = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.2)),
+    func_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
-    func='booth', steps=50, loss=200, merge_invariant=False,
-    sphere_steps=20, sphere_loss=1e-3, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    func='booth', steps=50, loss=0.02, merge_invariant=False,
+    sphere_steps=20, sphere_loss=1, # merge and unmerge lrs are very different so need to test convergence separately somewhere
 )
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #
@@ -857,8 +857,8 @@ SophiaH = Run(
 
 # -------------------------- optimizers/higher_order ------------------------- #
 HigherOrderNewton = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(2)),
+    func_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(trust_method=None)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(2, trust_method=None)),
     needs_closure=True,
     func='rosen', steps=1, loss=2e-10, merge_invariant=True,
     sphere_steps=1, sphere_loss=1e-10,

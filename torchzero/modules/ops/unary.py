@@ -3,7 +3,7 @@ from collections import deque
 import torch
 
 from ...core import TensorwiseTransform, Target, Transform
-from ...utils import TensorList
+from ...utils import TensorList, unpack_dicts,unpack_states
 
 class UnaryLambda(Transform):
     def __init__(self, fn, target: "Target" = 'update'):
@@ -12,7 +12,7 @@ class UnaryLambda(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        return self.settings[params[0]]['fn'](tensors)
+        return settings[0]['fn'](tensors)
 
 class UnaryParameterwiseLambda(TensorwiseTransform):
     def __init__(self, fn, target: "Target" = 'update'):
@@ -21,7 +21,7 @@ class UnaryParameterwiseLambda(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        return self.settings[param]['fn'](tensor)
+        return settings['fn'](tensor)
 
 class CustomUnaryOperation(Transform):
     def __init__(self, name: str, target: "Target" = 'update'):
@@ -30,7 +30,7 @@ class CustomUnaryOperation(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        return getattr(tensors, self.settings[params[0]]['name'])()
+        return getattr(tensors, settings[0]['name'])()
 
 
 class Abs(Transform):
@@ -67,7 +67,7 @@ class Reciprocal(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        eps = self.get_settings('eps', params=params)
+        eps = [s['eps'] for s in settings]
         if any(e != 0 for e in eps): torch._foreach_add_(tensors, eps)
         torch._foreach_reciprocal_(tensors)
         return tensors
@@ -98,7 +98,7 @@ class NanToNum(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        nan, posinf, neginf = self.get_settings('nan', 'posinf', 'neginf', params=params)
+        nan, posinf, neginf = unpack_dicts(settings, 'nan', 'posinf', 'neginf')
         return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
 class Rescale(Transform):
@@ -109,7 +109,7 @@ class Rescale(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        min,max = self.get_settings('min','max', params=params)
-        tensorwise = self.settings[params[0]]['tensorwise']
+        min, max = unpack_dicts(settings, 'min','max')
+        tensorwise = settings[0]['tensorwise']
         dim = None if tensorwise else 'global'
-        return TensorList(tensors).rescale(min=min, max=max, eps=self.settings[params[0]]['eps'], dim=dim)
+        return TensorList(tensors).rescale(min=min, max=max, eps=settings[0]['eps'], dim=dim)

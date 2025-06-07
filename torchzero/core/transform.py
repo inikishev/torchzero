@@ -60,7 +60,7 @@ class Transform(Module, ABC):
         loss: torch.Tensor | None,
         states: list[dict[str, Any]],
         settings: Sequence[Mapping[str, Any]],
-    ) -> list[torch.Tensor]:
+    ) -> Sequence[torch.Tensor]:
         """Applies the update rule to `tensors`."""
 
     @final
@@ -112,7 +112,7 @@ class Transform(Module, ABC):
                 tensors = [torch.cat([t.ravel() for t in tensors])]
 
         # apply transform
-        tensors = self.apply(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
+        tensors = list(self.apply(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings))
 
         # scale initial step, when preconditioner might not have been applied
         if scale_first and step == 0:

@@ -5,8 +5,8 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, TensorwiseTransform, Target, Transform, Var
-from ...utils import Distributions, NumberList, TensorList
+from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Var
+from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states
 
 
 class Previous(TensorwiseTransform):
@@ -18,8 +18,7 @@ class Previous(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        n = self.settings[param]['n']
-        state = self.state[param]
+        n = settings['n']
 
         if 'history' not in state:
             state['history'] = deque(maxlen=n+1)
@@ -36,9 +35,9 @@ class LastDifference(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        prev_target = self.get_state('prev_target', params=params) # initialized to 0
-        difference = torch._foreach_sub(tensors, prev_target)
-        for p, c in zip(prev_target, tensors): p.set_(c)
+        prev = unpack_states(states, tensors, 'prev_target') # initialized to 0
+        difference = torch._foreach_sub(tensors, prev)
+        for p, c in zip(prev, tensors): p.set_(c)
         return difference
 
 class LastGradDifference(Module):
@@ -49,7 +48,7 @@ class LastGradDifference(Module):
     @torch.no_grad
     def step(self, var):
         grad = var.get_grad()
-        prev_grad = self.get_state('prev_grad', params=var.params) # initialized to 0
+        prev_grad = self.get_state(var.params, 'prev_grad') # initialized to 0
         difference = torch._foreach_sub(grad, prev_grad)
         for p, c in zip(prev_grad, grad): p.set_(c)
         var.update = list(difference)
@@ -63,9 +62,9 @@ class LastProduct(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        prev_target = self.get_state('prev_target', params=params, init=torch.ones_like) # initialized to 1 for prod
-        prod = torch._foreach_mul(tensors, prev_target)
-        for p, c in zip(prev_target, tensors): p.set_(c)
+        prev = unpack_states(states, tensors, 'prev', init=torch.ones_like) # initialized to 1 for prod
+        prod = torch._foreach_mul(tensors, prev)
+        for p, c in zip(prev, tensors): p.set_(c)
         return prod
 
 class LastRatio(Transform):
@@ -76,11 +75,11 @@ class LastRatio(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to ones
-        numerator = self.settings[params[0]]['numerator']
-        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev_target)
-        else: ratio = torch._foreach_div(prev_target, tensors)
-        for p, c in zip(prev_target, tensors): p.set_(c)
+        prev = unpack_states(states, tensors, 'prev', init = torch.ones_like) # initialized to ones
+        numerator = settings[0]['numerator']
+        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev)
+        else: ratio = torch._foreach_div(prev, tensors)
+        for p, c in zip(prev, tensors): p.set_(c)
         return ratio
 
 class LastAbsoluteRatio(Transform):
@@ -91,16 +90,16 @@ class LastAbsoluteRatio(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to 0
-        numerator = self.settings[params[0]]['numerator']
-        eps = self.get_settings('eps', params=params, cls = NumberList)
+        prev = unpack_states(states, tensors, 'prev', init = torch.ones_like) # initialized to ones
+        numerator = settings[0]['numerator']
+        eps = NumberList(s['eps'] for s in settings)
 
         torch._foreach_abs_(tensors)
-        torch._foreach_clamp_min_(prev_target, eps)
+        torch._foreach_clamp_min_(prev, eps)
 
-        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev_target)
-        else: ratio = torch._foreach_div(prev_target, tensors)
-        for p, c in zip(prev_target, tensors): p.set_(c)
+        if numerator == 'cur': ratio = torch._foreach_div(tensors, prev)
+        else: ratio = torch._foreach_div(prev, tensors)
+        for p, c in zip(prev, tensors): p.set_(c)
         return ratio
 
 class GradSign(Transform):
@@ -132,7 +131,7 @@ class GraftToGrad(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(tensors).graft_(grads, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class GraftGradToUpdate(Transform):
@@ -144,7 +143,7 @@ class GraftGradToUpdate(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(grads).graft(tensors, tensorwise=tensorwise, ord=ord, eps=eps)
 
 
@@ -156,7 +155,7 @@ class GraftToParams(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(Transform):
@@ -167,7 +166,7 @@ class Relative(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        mul = TensorList(params).abs().clamp_(self.get_settings('min_value', params=params))
+        mul = TensorList(params).abs().clamp_([s['min_value'] for s in settings])
         torch._foreach_mul_(tensors, mul)
         return tensors
 
@@ -179,38 +178,38 @@ class FillLoss(Module):
 
     @torch.no_grad
     def step(self, var):
-        alpha = self.get_settings('alpha', params=var.params)
+        alpha = self.get_settings(var.params, 'alpha')
         loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
         var.update = [torch.full_like(p, loss*a) for p,a in zip(var.params, alpha)]
         return var
 
-class MulByLoss(Transform):
+class MulByLoss(Module):
     """multiplies update by loss times alpha"""
-    def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True, target: Target = 'update'):
+    def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings): #var used for loss
-        alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
-        loss = var.get_loss(backward=self.settings[params[0]]['backward'])
+    def step(self, var):
+        alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
+        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_mul_(tensors, mul)
-        return tensors
+        torch._foreach_mul_(var.update, mul)
+        return var
 
-class DivByLoss(Transform):
+class DivByLoss(Module):
     """divides update by loss times alpha"""
-    def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True, target: Target = 'update'):
+    def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings): #var used for loss
-        alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
-        loss = var.get_loss(backward=self.settings[params[0]]['backward'])
+    def step(self, var):
+        alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
+        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_div_(tensors, mul)
-        return tensors
+        torch._foreach_div_(var.update, mul)
+        return var
 
 
 
@@ -298,7 +297,7 @@ class GradientAccumulation(Module):
 
     @torch.no_grad
     def step(self, var):
-        accumulator = self.get_state('accumulator', params=var.params)
+        accumulator = self.get_state(var.params, 'accumulator')
         settings = self.settings[var.params[0]]
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
@@ -334,8 +333,8 @@ class Dropout(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        p = self.get_settings('p', params=params, cls=NumberList)
-        graft = self.settings[params[0]]['graft']
+        p = NumberList(s['p'] for s in settings)
+        graft = settings[0]['graft']
 
         if graft:
             target_norm = tensors.global_vector_norm()
@@ -355,7 +354,7 @@ class WeightDropout(Module):
         closure = var.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
         params = TensorList(var.params)
-        p = self.get_settings('p', params=params)
+        p = NumberList(self.settings[p]['p'] for p in params)
         mask = params.rademacher_like(p).add_(1).div_(2).as_bool()
 
         @torch.no_grad
@@ -380,7 +379,7 @@ class NoiseSign(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        alpha = self.get_settings('alpha', params=params)
+        alpha = [s['alpha'] for s in settings]
         distribution = self.settings[params[0]]['distribution']
         return TensorList(tensors).sample_like(alpha, distribution).copysign_(tensors)
 

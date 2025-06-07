@@ -69,7 +69,7 @@ class RandomSample(Module):
     @torch.no_grad
     def step(self, var):
         var.update = TensorList(var.params).sample_like(
-            eps=self.get_settings('eps',params=var.params), distribution=self.settings[var.params[0]]['distribution']
+            eps=[self.settings[p]['eps'] for p in var.params], distribution=self.settings[var.params[0]]['distribution']
         )
         return var
 
@@ -89,7 +89,7 @@ class Uniform(Module):
 
     @torch.no_grad
     def step(self, var):
-        low,high = self.get_settings('low','high', params=var.params)
+        low,high = self.get_settings(var.params, 'low','high')
         var.update = [torch.empty_like(t).uniform_(l,h) for t,l,h in zip(var.params, low, high)]
         return var
 

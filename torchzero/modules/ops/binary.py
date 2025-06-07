@@ -129,7 +129,7 @@ class Lerp(BinaryOperation):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], end: list[torch.Tensor]):
-        torch._foreach_lerp_(update, end, weight=self.get_settings('weight',params=var))
+        torch._foreach_lerp_(update, end, weight=self.get_settings(var.params, 'weight'))
         return update
 
 class CopySign(BinaryOperation):

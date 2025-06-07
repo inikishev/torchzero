@@ -121,16 +121,17 @@ class Shampoo(Transform):
             self.set_child('inner', inner)
 
     def apply(self, tensors, params, grads, loss, states, settings):
-        merged_target = [] # target with merged dims
+        merged_tensors = [] # target with merged dims
 
         # update preconditioners
-        for i,(p,t,state, setting) in enumerate(zip(params, tensors, states, settings)):
+        for i,(t,state, setting) in enumerate(zip(tensors, states, settings)):
             beta, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
                 'beta', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d')(setting)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
-            merged_target.append(t)
+
+            merged_tensors.append(t)
 
             # initialize accumulators and preconditioners for each dim on 1st step
             if 'accumulators' not in state:
@@ -167,16 +168,14 @@ class Shampoo(Transform):
             tensors = apply_transform(self.children['inner'], tensors, params=params, grads=grads)
 
             # have to merge small dims again
-            merged_target = [] # target with merged dims
-            for i,(p,t) in enumerate(zip(params, tensors)):
-                state = self.state[p]
-                settings = self.settings[p]
-                if settings['merge_small']:
-                    t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, settings['max_dim'])
-                merged_target.append(t)
+            merged_tensors = [] # target with merged dims
+            for i,(t,state, setting) in enumerate(zip(tensors, states, settings)):
+                if setting['merge_small']:
+                    t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, setting['max_dim'])
+                merged_tensors.append(t)
 
         # precondition
-        for i,(p,t,state, setting) in enumerate(zip(params, tensors, states, settings)):
+        for i,(t,state, setting) in enumerate(zip(merged_tensors, states, settings)):
             decay, merge_small, adagrad_eps= itemgetter('decay', 'merge_small', 'adagrad_eps')(setting)
 
             if 'diagonal_accumulator' in state:

@@ -311,7 +311,7 @@ def unpack_states(states: Sequence[MutableMapping[str, Any]], tensors: Sequence[
         for i,s in enumerate(states):
             if key not in s:
                 if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(s.keys())}")
-                s[key] = _make_initial_state_value(tensors[0], init, i)
+                s[key] = _make_initial_state_value(tensors[i], init, i)
             values.append(s[key])
         return values
 

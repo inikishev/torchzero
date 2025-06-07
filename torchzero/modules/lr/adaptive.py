@@ -36,16 +36,15 @@ class PolyakStepSize(Transform):
 
         parameterwise, use_grad, max, min_obj_value = itemgetter('parameterwise', 'use_grad', 'max', 'min_obj_value')(settings[0])
 
+        if use_grad: denom = tensors.dot(grads)
+        else: denom = tensors.dot(tensors)
+
         if parameterwise:
-            if use_grad: denom = (tensors * grads).sum()
-            else: denom = tensors.pow(2).sum()
             polyak_step_size: TensorList | Any = (loss - min_obj_value) / denom.where(denom!=0, 1)
             polyak_step_size = polyak_step_size.where(denom != 0, 0)
             if max is not None: polyak_step_size = polyak_step_size.clamp_max(max)
 
         else:
-            if use_grad: denom = tensors.dot(grads)
-            else: denom = tensors.dot(tensors)
             if denom.abs() <= torch.finfo(denom.dtype).eps: polyak_step_size = 0 # converged
             else: polyak_step_size = (loss - min_obj_value) / denom
 
@@ -54,7 +53,6 @@ class PolyakStepSize(Transform):
 
         tensors.mul_(alpha * polyak_step_size)
         return tensors
-
 
 
 class RandomStepSize(Transform):

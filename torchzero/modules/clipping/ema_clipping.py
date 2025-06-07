@@ -38,9 +38,10 @@ class ClipNormByEMA(Transform):
         tensors = TensorList(tensors)
         ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(settings[0])
 
-        beta, eps = unpack_dicts(settings, 'beta', 'eps', cls=TensorList)
+        beta, eps = unpack_dicts(settings, 'beta', 'eps', cls=NumberList)
 
         ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
+
         ema.lerp_(tensors, 1-beta)
 
         if tensorwise:
