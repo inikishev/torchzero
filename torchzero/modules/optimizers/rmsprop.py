@@ -4,7 +4,7 @@ from typing import Literal
 import torch
 
 from ...core import Module, Target, Transform, Chainable, Var, apply_transform
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 
 
@@ -23,7 +23,6 @@ def rmsprop_(
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
     grads: list[torch.Tensor] | None = None,
-    var: Var | None = None,
 ):
     """returns `tensors_`"""
     if exp_avg_ is not None:
@@ -36,7 +35,7 @@ def rmsprop_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads, var=var))
+        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
 
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
@@ -66,21 +65,20 @@ class RMSprop(Transform):
     ):
         defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
         super().__init__(defaults=defaults, uses_grad=False)
-        self.current_step = 0
+
         if inner is not None:
             self.set_child('inner', inner)
 
     def apply(self, tensors, params, grads, loss, states, settings):
-        self.current_step += 1
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+        smoothing,eps = unpack_dicts(settings, 'smoothing', 'eps', cls=NumberList)
+        centered,debiased,amsgrad,pow,init = itemgetter('centered','debiased','amsgrad','pow','init')(settings[0])
 
-        smoothing,eps = self.get_settings('smoothing', 'eps', params=params, cls=NumberList)
-        centered,debiased,amsgrad,pow,init = itemgetter('centered','debiased','amsgrad','pow','init')(self.settings[params[0]])
+        exp_avg_sq = unpack_states(states, tensors, 'exp_avg_sq', cls=TensorList)
+        exp_avg = unpack_states(states, tensors, 'exp_avg', cls=TensorList) if centered else None
+        max_exp_avg_sq = unpack_states(states, tensors, 'max_exp_avg_sq', cls=TensorList) if amsgrad else None
 
-        exp_avg_sq = self.get_state('exp_avg_sq', params=params, cls=TensorList)
-        exp_avg = self.get_state('exp_avg', params=params, cls=TensorList) if centered else None
-        max_exp_avg_sq = self.get_state('max_exp_avg_sq', params=params, cls=TensorList) if amsgrad else None
-
-        if init == 'update' and self.current_step == 1:
+        if init == 'update' and step == 1:
             exp_avg_sq.set_([t**2 for t in tensors])
             if exp_avg is not None: exp_avg.set_([t.clone() for t in tensors])
 
@@ -90,7 +88,7 @@ class RMSprop(Transform):
             smoothing=smoothing,
             eps=eps,
             debiased=debiased,
-            step=self.current_step,
+            step=step,
             exp_avg_=exp_avg,
             max_exp_avg_sq_=max_exp_avg_sq,
             pow=pow,
@@ -99,5 +97,4 @@ class RMSprop(Transform):
             inner=self.children.get("inner", None),
             params=params,
             grads=grads,
-            var=var,
         )

@@ -191,11 +191,9 @@ class SOAP(Transform):
     def apply(self, tensors, params, grads, loss, states, settings):
         updates = []
         # update preconditioners
-        for i,(p,t) in enumerate(zip(params, tensors)):
-            state = self.state[p]
-            settings = self.settings[p]
+        for i,(p,t, state, setting) in enumerate(zip(params, tensors, states, settings)):
             beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps,alpha = itemgetter(
-                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps','alpha')(settings)
+                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps','alpha')(setting)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -259,7 +257,7 @@ class SOAP(Transform):
             if t_projected is not None:
                 update = project_back(update, state["Q"])
 
-            if settings['bias_correction']:
+            if setting['bias_correction']:
                 bias_correction1 = 1.0 - beta1 ** (state["step"]+1)
                 bias_correction2 = 1.0 - beta2 ** (state["step"]+1)
                 update *= ((bias_correction2 ** .5) / bias_correction1) * alpha
@@ -275,7 +273,7 @@ class SOAP(Transform):
             # Update is done after the gradient step to avoid using current gradients in the projection.
             if state['GG'] is not None:
                 update_soap_covariances_(t, state['GG'], shampoo_beta)
-                if state['step'] % settings['precond_freq'] == 0:
+                if state['step'] % setting['precond_freq'] == 0:
                     state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, state['GG'], state['Q'])
 
         return updates

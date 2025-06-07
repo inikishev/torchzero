@@ -37,9 +37,8 @@ class OrthoGrad(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     def apply(self, tensors, params, grads, loss, states, settings):
-        settings = self.settings[params[0]]
-        eps = settings['eps']
-        renormalize = settings['renormalize']
+        eps = settings[0]['eps']
+        renormalize = settings[0]['renormalize']
 
         params = as_tensorlist(params)
         target = as_tensorlist(tensors)

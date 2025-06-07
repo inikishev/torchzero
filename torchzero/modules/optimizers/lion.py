@@ -1,7 +1,7 @@
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
 def lion_(tensors: TensorList, exp_avg_: TensorList, beta1, beta2,):
@@ -29,7 +29,7 @@ class Lion(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        beta1, beta2 = self.get_settings('beta1', 'beta2', params = params, cls=NumberList)
-        exp_avg = self.get_state('ema', params=params, cls=TensorList)
+        beta1, beta2 = unpack_dicts(settings, 'beta1', 'beta2', cls=NumberList)
+        exp_avg = unpack_states(states, tensors, 'ema', cls=TensorList)
         return lion_(TensorList(tensors),exp_avg,beta1,beta2)
 

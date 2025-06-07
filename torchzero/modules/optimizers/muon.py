@@ -174,7 +174,7 @@ class Orthogonalize(TensorwiseTransform):
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         orthogonalize, ns_steps, dual_norm_correction, adjust_lr, method = itemgetter(
-            'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(self.settings[param])
+            'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(settings)
 
         if not orthogonalize: return tensor
 
@@ -214,7 +214,7 @@ class MuonAdjustLR(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     def apply(self, tensors, params, grads, loss, states, settings):
-        alphas = self.get_settings('alpha', params=params)
+        alphas = [s['alpha'] for s in settings]
         tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(tensors, alphas) if _is_at_least_2d(t)]
         tensors = [i[0] for i in tensors_alphas]
         a = [i[1] for i in alphas]

@@ -2,7 +2,7 @@
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList, as_tensorlist
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
 
 
 def _bool_ones_like(x):
@@ -161,20 +161,22 @@ class Rprop(Transform):
         alpha: float = 1,
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, backtrack=backtrack)
-        self.current_step = 0
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        nplus, nminus, lb, ub, alpha = self.get_settings('nplus', 'nminus', 'lb', 'ub', 'alpha', params=params, cls=NumberList)
-        prev, allowed, magnitudes = self.get_state(
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        nplus, nminus, lb, ub, alpha = unpack_dicts(settings, 'nplus', 'nminus', 'lb', 'ub', 'alpha', cls=NumberList)
+        prev, allowed, magnitudes = unpack_states(
+            states, tensors,
             'prev','allowed','magnitudes',
-            params=params,
             init=[torch.zeros_like, _bool_ones_like, torch.zeros_like],
             cls = TensorList,
         )
 
-        target = rprop_(
+        tensors = rprop_(
             tensors_ = as_tensorlist(tensors),
             prev_ = prev,
             allowed_ = allowed,
@@ -184,12 +186,11 @@ class Rprop(Transform):
             lb = lb,
             ub = ub,
             alpha = alpha,
-            backtrack=self.settings[params[0]]['backtrack'],
-            step=self.current_step,
+            backtrack=settings[0]['backtrack'],
+            step=step,
         )
 
-        self.current_step += 1
-        return target
+        return tensors
 
 
 class ScaleLRBySignChange(Transform):
@@ -220,23 +221,25 @@ class ScaleLRBySignChange(Transform):
     ):
         defaults = dict(nplus=nplus, nminus=nminus, alpha=alpha, lb=lb, ub=ub, use_grad=use_grad)
         super().__init__(defaults, uses_grad=use_grad, target=target)
-        self.current_step = 0
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        target = as_tensorlist(tensors)
-        use_grad = self.settings[params[0]]['use_grad']
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        tensors = as_tensorlist(tensors)
+        use_grad = settings[0]['use_grad']
         if use_grad: cur = as_tensorlist(grads)
-        else: cur = target
+        else: cur = tensors
 
-        nplus, nminus, lb, ub = self.get_settings('nplus', 'nminus', 'lb', 'ub', params=params, cls=NumberList)
-        prev, lrs = self.get_state('prev', 'lrs', params=params, cls=TensorList)
+        nplus, nminus, lb, ub = unpack_dicts(settings, 'nplus', 'nminus', 'lb', 'ub', cls=NumberList)
+        prev, lrs = unpack_states(states, tensors, 'prev', 'lrs', cls=TensorList)
 
-        if self.current_step == 0:
-            lrs.set_(target.full_like(self.get_settings('alpha', params=params)))
+        if step == 0:
+            lrs.set_(tensors.full_like([s['alpha'] for s in settings]))
 
-        target = scale_by_sign_change_(
-            tensors_ = target,
+        tensors = scale_by_sign_change_(
+            tensors_ = tensors,
             cur = cur,
             prev_ = prev,
             lrs_ = lrs,
@@ -244,10 +247,9 @@ class ScaleLRBySignChange(Transform):
             nminus = nminus,
             lb = lb,
             ub = ub,
-            step = self.current_step,
+            step = step,
         )
-        self.current_step += 1
-        return target
+        return tensors
 
 class BacktrackOnSignChange(Transform):
     """Negates or undoes update for parameters where where gradient or update sign changes.
@@ -268,28 +270,28 @@ class BacktrackOnSignChange(Transform):
     def __init__(self, use_grad = False, backtrack = True, target: Target = 'update'):
         defaults = dict(use_grad=use_grad, backtrack=backtrack, target=target)
         super().__init__(defaults, uses_grad=use_grad)
-        self.current_step = 0
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        target = as_tensorlist(tensors)
-        settings = self.settings[params[0]]
-        use_grad = settings['use_grad']
-        backtrack = settings['backtrack']
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        tensors = as_tensorlist(tensors)
+        use_grad = settings[0]['use_grad']
+        backtrack = settings[0]['backtrack']
 
         if use_grad: cur = as_tensorlist(grads)
-        else: cur = target
+        else: cur = tensors
 
-        target = backtrack_on_sign_change_(
-            tensors_ = target,
+        tensors = backtrack_on_sign_change_(
+            tensors_ = tensors,
             cur = cur,
-            prev_ = self.get_state('prev', params=params, cls=TensorList),
+            prev_ = unpack_states(states, tensors, 'prev', cls=TensorList),
             backtrack = backtrack,
-            step = self.current_step,
+            step = step,
         )
 
-        self.current_step += 1
-        return target
+        return tensors
 
 class SignConsistencyMask(Transform):
     """0 if sign changed 1 otherwise"""
@@ -298,9 +300,9 @@ class SignConsistencyMask(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        prev = self.get_state('prev', params=params, cls=TensorList)
+        prev = unpack_states(states, tensors, 'prev', cls=TensorList)
         mask = prev.mul_(tensors).gt_(0)
-        prev.set_(tensors)
+        prev.copy_(tensors)
         return mask
 
 
@@ -317,16 +319,18 @@ class SignConsistencyLRs(Transform):
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
         super().__init__(defaults, uses_grad=False, target = target)
-        self.current_step = 0
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        target = as_tensorlist(tensors)
-        nplus, nminus, lb, ub = self.get_settings('nplus', 'nminus', 'lb', 'ub', params=params, cls=NumberList)
-        prev, lrs = self.get_state('prev', 'lrs', params=params, cls=TensorList)
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
-        if self.current_step == 0:
-            lrs.set_(target.full_like(self.get_settings('alpha', params=params)))
+        target = as_tensorlist(tensors)
+        nplus, nminus, lb, ub = unpack_dicts(settings, 'nplus', 'nminus', 'lb', 'ub', cls=NumberList)
+        prev, lrs = unpack_states(states, tensors, 'prev', 'lrs', cls=TensorList)
+
+        if step == 0:
+            lrs.set_(target.full_like([s['alpha'] for s in settings]))
 
         target = sign_consistency_lrs_(
             tensors = target,
@@ -336,7 +340,6 @@ class SignConsistencyLRs(Transform):
             nminus = nminus,
             lb = lb,
             ub = ub,
-            step = self.current_step,
+            step = step,
         )
-        self.current_step += 1
         return target.clone()

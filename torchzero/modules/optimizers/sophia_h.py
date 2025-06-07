@@ -71,10 +71,10 @@ class SophiaH(Module):
                 self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
             generator = self.global_state['generator']
 
-        beta1, beta2, precond_scale, clip, eps = self.get_settings(
-            'beta1', 'beta2', 'precond_scale', 'clip', 'eps', params=params, cls=NumberList)
+        beta1, beta2, precond_scale, clip, eps = self.get_settings(params,
+            'beta1', 'beta2', 'precond_scale', 'clip', 'eps', cls=NumberList)
 
-        exp_avg, h_exp_avg = self.get_state('exp_avg', 'h_exp_avg', params=params, cls=TensorList)
+        exp_avg, h_exp_avg = self.get_state(params, 'exp_avg', 'h_exp_avg', cls=TensorList)
 
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1

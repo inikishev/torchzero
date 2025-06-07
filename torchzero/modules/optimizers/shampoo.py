@@ -106,7 +106,6 @@ class Shampoo(Transform):
         self,
         decay: float | None = None,
         beta: float | None = None,
-        reg: float = 1e-6,
         update_freq: int = 10,
         exp_override: int | None = None,
         merge_small: bool = True,
@@ -115,7 +114,7 @@ class Shampoo(Transform):
         adagrad_eps: float = 1e-8,
         inner: Chainable | None = None,
     ):
-        defaults = dict(decay=decay, beta=beta, reg=reg, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps)
+        defaults = dict(decay=decay, beta=beta, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps)
         super().__init__(defaults, uses_grad=False)
 
         if inner is not None:
@@ -125,11 +124,9 @@ class Shampoo(Transform):
         merged_target = [] # target with merged dims
 
         # update preconditioners
-        for i,(p,t) in enumerate(zip(params, tensors)):
-            state = self.state[p]
-            settings = self.settings[p]
-            beta, reg, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
-                'beta', 'reg', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d')(settings)
+        for i,(p,t,state, setting) in enumerate(zip(params, tensors, states, settings)):
+            beta, update_freq, exp_override, merge_small, max_dim, precondition_1d = itemgetter(
+                'beta', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d')(setting)
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -167,7 +164,7 @@ class Shampoo(Transform):
 
         # inner step
         if 'inner' in self.children:
-            tensors = apply_transform(self.children['inner'], tensors, params=params, grads=grads, var=var)
+            tensors = apply_transform(self.children['inner'], tensors, params=params, grads=grads)
 
             # have to merge small dims again
             merged_target = [] # target with merged dims
@@ -179,10 +176,8 @@ class Shampoo(Transform):
                 merged_target.append(t)
 
         # precondition
-        for i, (p, t) in enumerate(zip(params, merged_target)):
-            state = self.state[p]
-            settings = self.settings[p]
-            decay, merge_small, adagrad_eps= itemgetter('decay', 'merge_small', 'adagrad_eps')(settings)
+        for i,(p,t,state, setting) in enumerate(zip(params, tensors, states, settings)):
+            decay, merge_small, adagrad_eps= itemgetter('decay', 'merge_small', 'adagrad_eps')(setting)
 
             if 'diagonal_accumulator' in state:
                 tensors[i] = apply_diagonal_(t, state['diagonal_accumulator'], decay=decay, eps=adagrad_eps)
