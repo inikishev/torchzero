@@ -5,14 +5,13 @@ import torch
 from ...core import (
     Chainable,
     Module,
-    Preconditioner,
     Target,
-    TensorwisePreconditioner,
+    TensorwiseTransform,
     Transform,
     Var,
     apply_transform,
 )
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ...utils.linalg import matrix_power_eigh
 from ..functional import add_power_, lerp_power_, root
 
@@ -31,7 +30,6 @@ def adagrad_(
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
     grads: list[torch.Tensor] | None = None,
-    var: Var | None = None,
 ):
     """returns `tensors_`"""
     clr = alpha / (1 + step * lr_decay)
@@ -40,7 +38,7 @@ def adagrad_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads, var=var))
+        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
 
     if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
     else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
@@ -83,15 +81,15 @@ class Adagrad(Transform):
         tensors = TensorList(tensors)
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        lr_decay,alpha,eps = self.get_settings('lr_decay', 'alpha', 'eps', params=params, cls=NumberList)
+        lr_decay,alpha,eps = unpack_dicts(settings, 'lr_decay', 'alpha', 'eps', cls=NumberList)
 
-        pow, use_sqrt = itemgetter('pow', 'use_sqrt')(self.settings[params[0]])
+        pow, use_sqrt = itemgetter('pow', 'use_sqrt')(settings[0])
 
-        sq_sum = self.get_state('sq_sum', params=params, cls=TensorList)
+        sq_sum = unpack_states(states, tensors, 'sq_sum', cls=TensorList)
 
         # initialize accumulator on 1st step
         if step == 1:
-            sq_sum.set_(tensors.full_like(self.get_settings('initial_accumulator_value', params=params)))
+            sq_sum.set_(tensors.full_like([s['initial_accumulator_value'] for s in settings]))
 
         return adagrad_(
             tensors,
@@ -107,18 +105,17 @@ class Adagrad(Transform):
             inner=self.children.get("inner", None),
             params=params,
             grads=grads,
-            var=var,
         )
 
 
 
-class FullMatrixAdagrad(TensorwisePreconditioner):
+class FullMatrixAdagrad(TensorwiseTransform):
     def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=False, update_freq=1, inner: Chainable | None = None):
         defaults = dict(beta=beta, decay=decay, sqrt=sqrt)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
         G = tensor.ravel()
         GG = torch.outer(G, G)
         decay = settings['decay']
@@ -131,7 +128,7 @@ class FullMatrixAdagrad(TensorwisePreconditioner):
         else: state['GG'].add_(GG)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         GG = state['GG']
         sqrt = settings['sqrt']
 

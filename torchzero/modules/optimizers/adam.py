@@ -3,8 +3,8 @@ from functools import partial
 
 import torch
 
-from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList
+from ...core import Module, Target, Transform, apply_transform
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     debias, debiased_step_size,
     ema_,
@@ -27,24 +27,25 @@ def adam_(
     pow: float = 2,
     debiased: bool = True,
     max_exp_avg_sq_: TensorList | None = None,
-    params_: TensorList | None = None,
+
+    # inner args
+    inner: Module | None = None,
+    params: list[torch.Tensor] | None = None,
+    grads: list[torch.Tensor] | None = None,
 ):
     """Returns new tensors or updates params in-place."""
-    exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
-
     sqrt_exp_avg_sq = sqrt_ema_sq_(tensors, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
                                    debiased=False,step=step,pow=pow)
 
+    if inner is not None:
+        assert params is not None
+        tensors = TensorList(apply_transform(inner, tensors, params=params, grads=grads))
+
+    exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
+    return (exp_avg_ / sqrt_exp_avg_sq.add_(eps)).lazy_mul(alpha)
 
-    # params is None, return update
-    if params_ is None: return (exp_avg_ / sqrt_exp_avg_sq.add_(eps)).lazy_mul(alpha)
-
-    # update params in-place
-    params_.addcdiv_(exp_avg_, sqrt_exp_avg_sq.add_(eps), -alpha)
-    return None
-
-class Adam(Module):
+class Adam(Transform):
     """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size. This implementation is slightly different from
     pytorch in that debiasing is applied after adding epsilon.
 
@@ -68,34 +69,24 @@ class Adam(Module):
         debiased: bool = True,
     ):
         defaults=dict(beta1=beta1,beta2=beta2,eps=eps,alpha=alpha,amsgrad=amsgrad,pow=pow,debiased=debiased)
-        super().__init__(defaults)
-        self.getter = itemgetter('amsgrad','pow','debiased')
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        beta1,beta2,eps,alpha=self.get_settings('beta1','beta2','eps','alpha', params=var.params, cls=NumberList)
-        amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
+        beta1,beta2,eps,alpha=unpack_dicts(settings, 'beta1','beta2','eps','alpha', cls=NumberList)
+        amsgrad,pow,debiased = itemgetter('amsgrad','pow','debiased')(settings[0])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg','exp_avg_sq','max_exp_avg_sq', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq, max_exp_avg_sq = unpack_states(states, tensors, 'exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', cls=TensorList)
         else:
-            exp_avg, exp_avg_sq = self.get_state('exp_avg','exp_avg_sq', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq = unpack_states(states, tensors, 'exp_avg', 'exp_avg_sq', cls=TensorList)
             max_exp_avg_sq = None
 
-        # if this is last module, update parameters in-place with slightly more efficient addcdiv_
-        if var.is_last:
-            if var.last_module_lrs is not None: alpha = alpha * var.last_module_lrs
-            passed_params = TensorList(var.params)
-            var.stop = True
-            var.skip_update = True
 
-        else:
-            passed_params = None
-
-        var.update = adam_(
-            tensors=TensorList(var.get_update()),
+        return adam_(
+            tensors=TensorList(tensors),
             exp_avg_=exp_avg,
             exp_avg_sq_=exp_avg_sq,
             alpha=alpha,
@@ -106,7 +97,10 @@ class Adam(Module):
             pow=pow,
             debiased=debiased,
             max_exp_avg_sq_=max_exp_avg_sq,
-            params_=passed_params,
-        )
 
-        return var
+            # inner args
+            inner=self.children.get("inner", None),
+            params=params,
+            grads=grads,
+
+        )
