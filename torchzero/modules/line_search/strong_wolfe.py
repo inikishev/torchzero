@@ -204,12 +204,12 @@ class StrongWolfe(LineSearch):
         self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
-    def search(self, update, vars):
-        objective = self.make_objective_with_derivative(vars=vars)
+    def search(self, update, var):
+        objective = self.make_objective_with_derivative(var=var)
 
         init, c1, c2, maxiter, maxzoom, expand, adaptive, fallback, plus_minus = itemgetter(
             'init', 'c1', 'c2', 'maxiter', 'maxzoom',
-            'expand', 'adaptive', 'fallback', 'plus_minus')(self.settings[vars.params[0]])
+            'expand', 'adaptive', 'fallback', 'plus_minus')(self.settings[var.params[0]])
 
         f_0, g_0 = objective(0)
 
@@ -234,10 +234,10 @@ class StrongWolfe(LineSearch):
         if adaptive: self.global_state['initial_scale'] *= 0.5
         if not fallback: return 0
 
-        objective = self.make_objective(vars=vars)
+        objective = self.make_objective(var=var)
 
         # # directional derivative
-        g_0 = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), vars.get_update()))
+        g_0 = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         step_size = backtracking_line_search(
             objective,

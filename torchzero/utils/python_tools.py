@@ -1,7 +1,7 @@
 import functools
 import operator
-from typing import Any, TypeVar
-from collections.abc import Iterable, Callable
+from typing import Any, TypeVar, overload
+from collections.abc import Iterable, Callable, Mapping, MutableSequence
 from collections import UserDict
 
 
@@ -17,8 +17,8 @@ def flatten(iterable: Iterable) -> list[Any]:
     raise TypeError(f'passed object is not an iterable, {type(iterable) = }')
 
 X = TypeVar("X")
-# def reduce_dim[X](x:Iterable[Iterable[X]]) -> list[X]: # pylint:disable=E0602
-def reduce_dim(x:Iterable[Iterable[X]]) -> list[X]: # pylint:disable=E0602
+# def reduce_dim[X](x:Iterable[Iterable[X]]) -> list[X]:
+def reduce_dim(x:Iterable[Iterable[X]]) -> list[X]:
     """Reduces one level of nesting. Takes an iterable of iterables of X, and returns an iterable of X."""
     return functools.reduce(operator.iconcat, x, [])
 
@@ -38,3 +38,16 @@ def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
     if isinstance(other, (list, tuple)): return self.__class__(fn(i, j, *args, **kwargs) for i, j in zip(self, other))
     return self.__class__(fn(i, other, *args, **kwargs) for i in self)
 
+ListLike = TypeVar('ListLike', bound=MutableSequence)
+@overload
+def unpack_dicts(dicts: Iterable[Mapping[str, Any]], key:str, *, cls:type[ListLike]=list) -> ListLike: ...
+@overload
+def unpack_dicts(dicts: Iterable[Mapping[str, Any]], key:str, key2: str, *keys:str, cls:type[ListLike]=list) -> list[ListLike]: ...
+def unpack_dicts(dicts: Iterable[Mapping[str, Any]], key:str, key2: str | None = None, *keys:str, cls:type[ListLike]=list) -> ListLike | list[ListLike]:
+    k1 = (key,) if isinstance(key, str) else tuple(key)
+    k2 = () if key2 is None else (key2,)
+    keys = k1 + k2 + keys
+
+    values = [cls(s[k] for s in dicts) for k in keys] # pyright:ignore[reportCallIssue]
+    if len(values) == 1: return values[0]
+    return values

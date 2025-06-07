@@ -118,16 +118,16 @@ class RandomizedFDM(GradApproximator):
             else: self.global_state['generator'] = None
         return self.global_state['generator']
 
-    def pre_step(self, vars):
-        h, beta = self.get_settings('h', 'beta', params=vars.params)
-        settings = self.settings[vars.params[0]]
+    def pre_step(self, var):
+        h, beta = self.get_settings(var.params, 'h', 'beta')
+        settings = self.settings[var.params[0]]
         n_samples = settings['n_samples']
         distribution = settings['distribution']
         pre_generate = settings['pre_generate']
 
         if pre_generate:
-            params = TensorList(vars.params)
-            generator = self._get_generator(settings['seed'], vars.params)
+            params = TensorList(var.params)
+            generator = self._get_generator(settings['seed'], var.params)
             perturbations = [params.sample_like(distribution=distribution, generator=generator) for _ in range(n_samples)]
 
             if self.PRE_MULTIPLY_BY_H:
@@ -152,11 +152,11 @@ class RandomizedFDM(GradApproximator):
                 torch._foreach_lerp_(cur_flat, new_flat, betas)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
+    def approximate(self, closure, params, loss, var):
         params = TensorList(params)
         loss_approx = None
 
-        h = self.get_settings('h', params=vars.params, cls=NumberList)
+        h = NumberList(self.settings[p]['h'] for p in params)
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         fd_fn = _RFD_FUNCS[settings['formula']]
@@ -220,29 +220,29 @@ class MeZO(GradApproximator):
             distribution=distribution, generator=torch.Generator(params[0].device).manual_seed(seed)
         ).mul_(h)
 
-    def pre_step(self, vars):
-        h = self.get_settings('h', params=vars.params)
-        settings = self.settings[vars.params[0]]
+    def pre_step(self, var):
+        h = NumberList(self.settings[p]['h'] for p in var.params)
+        settings = self.settings[var.params[0]]
         n_samples = settings['n_samples']
         distribution = settings['distribution']
 
-        step = vars.current_step
+        step = var.current_step
 
         # create functions that generate a deterministic perturbation from seed based on current step
         prt_fns = []
         for i in range(n_samples):
 
-            prt_fn = partial(self._seeded_perturbation, params=vars.params, distribution=distribution, seed=1_000_000*step + i, h=h)
+            prt_fn = partial(self._seeded_perturbation, params=var.params, distribution=distribution, seed=1_000_000*step + i, h=h)
             prt_fns.append(prt_fn)
 
         self.global_state['prt_fns'] = prt_fns
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
+    def approximate(self, closure, params, loss, var):
         params = TensorList(params)
         loss_approx = None
 
-        h = self.get_settings('h', params=vars.params, cls=NumberList)
+        h = NumberList(self.settings[p]['h'] for p in params)
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         fd_fn = _RFD_FUNCS[settings['formula']]

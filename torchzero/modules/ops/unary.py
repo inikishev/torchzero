@@ -11,7 +11,7 @@ class UnaryLambda(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         return self.settings[params[0]]['fn'](tensors)
 
 class UnaryParameterwiseLambda(TensorwiseTransform):
@@ -20,7 +20,7 @@ class UnaryParameterwiseLambda(TensorwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def transform(self, tensor, param, grad, vars):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         return self.settings[param]['fn'](tensor)
 
 class CustomUnaryOperation(Transform):
@@ -29,35 +29,35 @@ class CustomUnaryOperation(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         return getattr(tensors, self.settings[params[0]]['name'])()
 
 
 class Abs(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_abs_(tensors)
         return tensors
 
 class Sign(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sign_(tensors)
         return tensors
 
 class Exp(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_exp_(tensors)
         return tensors
 
 class Sqrt(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sqrt_(tensors)
         return tensors
 
@@ -66,7 +66,7 @@ class Reciprocal(Transform):
         defaults = dict(eps = eps)
         super().__init__(defaults, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         eps = self.get_settings('eps', params=params)
         if any(e != 0 for e in eps): torch._foreach_add_(tensors, eps)
         torch._foreach_reciprocal_(tensors)
@@ -75,7 +75,7 @@ class Reciprocal(Transform):
 class Negate(Transform):
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_neg_(tensors)
         return tensors
 
@@ -97,7 +97,7 @@ class NanToNum(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         nan, posinf, neginf = self.get_settings('nan', 'posinf', 'neginf', params=params)
         return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
@@ -108,7 +108,7 @@ class Rescale(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         min,max = self.get_settings('min','max', params=params)
         tensorwise = self.settings[params[0]]['tensorwise']
         dim = None if tensorwise else 'global'

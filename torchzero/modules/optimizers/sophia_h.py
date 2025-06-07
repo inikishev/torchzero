@@ -2,7 +2,7 @@ from typing import Literal
 from collections.abc import Callable
 import torch
 
-from ...core import Module, Target, Transform, Chainable, apply
+from ...core import Module, Target, Transform, Chainable, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_forward, hvp_fd_central
 
@@ -56,8 +56,8 @@ class SophiaH(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = vars.params
+    def step(self, var):
+        params = var.params
         settings = self.settings[params[0]]
         hvp_method = settings['hvp_method']
         fd_h = settings['fd_h']
@@ -79,7 +79,7 @@ class SophiaH(Module):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        closure = vars.closure
+        closure = var.closure
         assert closure is not None
 
         h = None
@@ -90,12 +90,12 @@ class SophiaH(Module):
                 u = [torch.randn(p.shape, device=p.device, dtype=p.dtype, generator=generator) for p in params]
 
                 if hvp_method == 'autograd':
-                    if grad is None: grad = vars.get_grad(create_graph=True)
+                    if grad is None: grad = var.get_grad(create_graph=True)
                     assert grad is not None
                     Hvp = hvp(params, grad, u, retain_graph=i < n_samples-1)
 
                 elif hvp_method == 'forward':
-                    loss, Hvp = hvp_fd_forward(closure, params, u, h=fd_h, g_0=vars.get_grad(), normalize=True)
+                    loss, Hvp = hvp_fd_forward(closure, params, u, h=fd_h, g_0=var.get_grad(), normalize=True)
 
                 elif hvp_method == 'central':
                     loss, Hvp = hvp_fd_central(closure, params, u, h=fd_h, normalize=True)
@@ -109,11 +109,11 @@ class SophiaH(Module):
             assert h is not None
             if n_samples > 1: torch._foreach_div_(h, n_samples)
 
-        update = vars.get_update()
+        update = var.get_update()
         if 'inner' in self.children:
-            update = apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars)
+            update = apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
 
-        vars.update = sophia_H(
+        var.update = sophia_H(
             tensors=TensorList(update),
             h=TensorList(h) if h is not None else None,
             exp_avg_=exp_avg,
@@ -126,4 +126,4 @@ class SophiaH(Module):
             eps=eps,
             step=step,
         )
-        return vars
+        return var

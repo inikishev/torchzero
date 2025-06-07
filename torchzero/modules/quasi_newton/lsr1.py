@@ -3,7 +3,7 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Module, Transform, Vars, apply
+from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
 
 from .lbfgs import _lerp_params_update_
@@ -123,9 +123,9 @@ class LSR1(Module):
 
 
     @torch.no_grad
-    def step(self, vars: Vars):
-        params = as_tensorlist(vars.params)
-        update = as_tensorlist(vars.get_update())
+    def step(self, var: Var):
+        params = as_tensorlist(var.params)
+        update = as_tensorlist(var.get_update())
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -153,13 +153,13 @@ class LSR1(Module):
         prev_l_grad.copy_(l_update)
 
         if 'inner' in self.children:
-            update = TensorList(apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars))
+            update = TensorList(apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
             if y_k is not None and y_k.abs().global_max() <= tol:
-                vars.update = update
-                return vars
+                var.update = update
+                return var
 
         dir = lsr1_(
             tensors_=update,
@@ -169,6 +169,6 @@ class LSR1(Module):
             scale_second=scale_second,
         )
 
-        vars.update = dir
+        var.update = dir
 
-        return vars
+        return var

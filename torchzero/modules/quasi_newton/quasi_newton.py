@@ -575,7 +575,7 @@ class GradientCorrection(Transform):
     def __init__(self):
         super().__init__(None, uses_grad=False)
 
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         if 'p_prev' not in self.state[params[0]]:
             p_prev = self.get_state('p_prev', params=params, init=params)
             g_prev = self.get_state('g_prev', params=params, init=tensors)

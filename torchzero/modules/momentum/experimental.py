@@ -49,7 +49,7 @@ class PrecenteredEMASquared(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         self.current_step += 1
 
         beta1, beta2 = self.get_settings('beta1','beta2', params=params, cls=NumberList)
@@ -146,7 +146,7 @@ class CoordinateMomentum(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         p = self.get_settings('p', params=params, cls=NumberList)
         velocity = self.get_state('velocity', params=params, cls=TensorList)
         return coordinate_momentum_(TensorList(tensors), velocity_=velocity, p=p).clone()
@@ -180,7 +180,7 @@ class CoordinateMomentum(Transform):
 #         super().__init__(defaults, uses_grad=False)
 
 #     @torch.no_grad
-#     def transform(self, tensors, params, grads, vars):
+#     def apply(self, tensors, params, grads, loss, states, settings):
 #         momentum,dampening = self.get_settings('momentum','dampening', params=params, cls=NumberList)
 #         abs,lerp,normalize_velocity = self.first_setting('abs','lerp','normalize_velocity', params=params)
 #         velocity = self.get_state('velocity', params=params, cls=TensorList)

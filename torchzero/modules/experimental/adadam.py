@@ -67,31 +67,31 @@ class Adadam(Module):
         self.getter = itemgetter('amsgrad','pow','debiased')
 
     @torch.no_grad
-    def step(self, vars):
+    def step(self, var):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        beta1,beta2,precond_beta,eps,alpha=self.get_settings('beta1','beta2','precond_beta','eps','alpha', params=vars.params, cls=NumberList)
-        amsgrad,pow,debiased = self.getter(self.settings[vars.params[0]])
+        beta1,beta2,precond_beta,eps,alpha=self.get_settings('beta1','beta2','precond_beta','eps','alpha', params=var.params, cls=NumberList)
+        amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', params=vars.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', params=var.params, cls=TensorList)
         else:
-            exp_avg, exp_avg_sq, exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', params=vars.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', params=var.params, cls=TensorList)
             max_exp_avg_sq = None
             max_exp_avg_qu = None
 
         # if this is last module, update parameters in-place with slightly more efficient addcdiv_
-        if vars.is_last:
-            if vars.last_module_lrs is not None: alpha = alpha * vars.last_module_lrs
-            passed_params = TensorList(vars.params)
-            vars.stop = True
-            vars.skip_update = True
+        if var.is_last:
+            if var.last_module_lrs is not None: alpha = alpha * var.last_module_lrs
+            passed_params = TensorList(var.params)
+            var.stop = True
+            var.skip_update = True
 
         else:
             passed_params = None
 
-        vars.update = adadam_(
-            tensors=TensorList(vars.get_update()),
+        var.update = adadam_(
+            tensors=TensorList(var.get_update()),
             exp_avg_=exp_avg,
             exp_avg_sq_=exp_avg_sq,
             exp_avg_qu_=exp_avg_qu,
@@ -108,4 +108,4 @@ class Adadam(Module):
             params_=passed_params,
         )
 
-        return vars
+        return var

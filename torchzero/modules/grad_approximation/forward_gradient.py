@@ -21,9 +21,9 @@ class ForwardGradient(RandomizedFDM):
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. Defaults to True.
         jvp_method (str, optional):
-            how to calculate jacobian vector product, note that with `forward` and 'central' this is identical to randomized finite difference. Defaults to 'autograd'.
+            how to calculate jacobian vector product, note that with `forward` and 'central' this is equivalent to randomized finite difference. Defaults to 'autograd'.
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
-        target (GradTarget, optional): what to set on vars. Defaults to "closure".
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
     """
     PRE_MULTIPLY_BY_H = False
     def __init__(
@@ -41,7 +41,7 @@ class ForwardGradient(RandomizedFDM):
         self.defaults['jvp_method'] = jvp_method
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
+    def approximate(self, closure, params, loss, var):
         params = TensorList(params)
         loss_approx = None
 

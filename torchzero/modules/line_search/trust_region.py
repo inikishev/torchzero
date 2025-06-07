@@ -6,31 +6,31 @@ from .line_search import LineSearch
 
 
 class TrustRegion(LineSearch):
-    """Basic first order trust region, re-evaluates closure with updated parameters and scales step size based on function value change"""
+    """Basic first order trust region, re-evaluates closure with updated parameters and scales step size based on function value change, very prone to collapsing"""
     def __init__(self, nplus: float=1.5, nminus: float=0.75, c: float=1e-4, init: float = 1, backtrack: bool = True, adaptive: bool = True):
         defaults = dict(nplus=nplus, nminus=nminus, c=c, init=init, backtrack=backtrack, adaptive=adaptive)
         super().__init__(defaults)
 
     @torch.no_grad
-    def search(self, update, vars):
+    def search(self, update, var):
 
-        nplus, nminus, c, init, backtrack, adaptive = itemgetter('nplus','nminus','c','init','backtrack', 'adaptive')(self.settings[vars.params[0]])
+        nplus, nminus, c, init, backtrack, adaptive = itemgetter('nplus','nminus','c','init','backtrack', 'adaptive')(self.settings[var.params[0]])
         step_size = self.global_state.setdefault('step_size', init)
         previous_success = self.global_state.setdefault('previous_success', False)
         nplus_mul =  self.global_state.setdefault('nplus_mul', 1)
         nminus_mul = self.global_state.setdefault('nminus_mul', 1)
 
 
-        f_0 = self.evaluate_step_size(0, vars, backward=False)
+        f_0 = self.evaluate_step_size(0, var, backward=False)
 
         # directional derivative (0 if c = 0 because it is not needed)
         if c == 0: d = 0
-        else: d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), update))
+        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), update))
 
         # test step size
         sufficient_f = f_0 + c * step_size * min(d, 0) # pyright:ignore[reportArgumentType]
 
-        f_1 = self.evaluate_step_size(step_size, vars, backward=False)
+        f_1 = self.evaluate_step_size(step_size, var, backward=False)
 
         proposed = step_size
 

@@ -2,7 +2,7 @@ from typing import Literal
 from collections.abc import Callable
 import torch
 
-from ...core import Module, Target, Transform, Chainable, apply
+from ...core import Module, Target, Transform, Chainable, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_forward, hvp_fd_central
 
@@ -47,27 +47,27 @@ class CurveBall(Module):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
+    def step(self, var):
 
-        params = vars.params
+        params = var.params
         settings = self.settings[params[0]]
         hvp_method = settings['hvp_method']
         h = settings['h']
 
-        precond_lr, momentum, reg = self.get_settings('precond_lr', 'momentum', 'reg', params=params, cls=NumberList)
+        precond_lr, momentum, reg = self.get_settings(params, 'precond_lr', 'momentum', 'reg', cls=NumberList)
 
 
-        closure = vars.closure
+        closure = var.closure
         assert closure is not None
 
-        z, Hz = self.get_state('z', 'Hz', params=params, cls=TensorList)
+        z, Hz = self.get_state(params, 'z', 'Hz', cls=TensorList)
 
         if hvp_method == 'autograd':
-            grad = vars.get_grad(create_graph=True)
+            grad = var.get_grad(create_graph=True)
             Hvp = hvp(params, grad, z)
 
         elif hvp_method == 'forward':
-            loss, Hvp = hvp_fd_forward(closure, params, z, h=h, g_0=vars.get_grad(), normalize=True)
+            loss, Hvp = hvp_fd_forward(closure, params, z, h=h, g_0=var.get_grad(), normalize=True)
 
         elif hvp_method == 'central':
             loss, Hvp = hvp_fd_central(closure, params, z, h=h, normalize=True)
@@ -79,11 +79,11 @@ class CurveBall(Module):
         Hz.set_(Hvp + z*reg)
 
 
-        update = vars.get_update()
+        update = var.get_update()
         if 'inner' in self.children:
-            update = apply(self.children['inner'], update, params, grads=vars.grad, vars=vars)
+            update = apply_transform(self.children['inner'], update, params, grads=var.grad, var=var)
 
         z = curveball(TensorList(update), z, Hz, momentum=momentum, precond_lr=precond_lr)
-        vars.update = z.neg()
+        var.update = z.neg()
 
-        return vars
+        return var

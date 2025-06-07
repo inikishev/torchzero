@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply
+from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
@@ -55,9 +55,9 @@ class StructuredNewton(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -68,19 +68,19 @@ class StructuredNewton(Module):
 
         # ------------------------ calculate grad and hessian ------------------------ #
         if hvp_method == 'autograd':
-            grad = vars.get_grad(create_graph=True)
+            grad = var.get_grad(create_graph=True)
             def Hvp_fn1(x):
                 return hvp(params, grad, x, retain_graph=True)
             Hvp_fn = Hvp_fn1
 
         elif hvp_method == 'forward':
-            grad = vars.get_grad()
+            grad = var.get_grad()
             def Hvp_fn2(x):
                 return hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1]
             Hvp_fn = Hvp_fn2
 
         elif hvp_method == 'central':
-            grad = vars.get_grad()
+            grad = var.get_grad()
             def Hvp_fn3(x):
                 return hvp_fd_central(closure, params, x, h=h, normalize=True)[1]
             Hvp_fn = Hvp_fn3
@@ -88,9 +88,9 @@ class StructuredNewton(Module):
         else: raise ValueError(hvp_method)
 
         # -------------------------------- inner step -------------------------------- #
-        update = vars.get_update()
+        update = var.get_update()
         if 'inner' in self.children:
-            update = apply(self.children['inner'], update, params=params, grads=grad, vars=vars)
+            update = apply_transform(self.children['inner'], update, params=params, grads=grad, var=var)
 
         # hessian
         if structure.startswith('diagonal'):
@@ -99,8 +99,8 @@ class StructuredNewton(Module):
             if structure == 'diagonal_abs': torch._foreach_abs_(H)
             torch._foreach_add_(H, reg)
             torch._foreach_div_(update, H)
-            vars.update = update
-            return vars
+            var.update = update
+            return var
 
         # hessian
         raise NotImplementedError(structure)

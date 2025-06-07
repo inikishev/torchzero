@@ -280,13 +280,13 @@ class HeavyBall(Module):
         defaults = dict(momentum=momentum, dampening=dampening)
         super().__init__(defaults)
 
-    def step(self, vars: Vars):
+    def step(self, var: Vars):
         # a module takes a Vars object, modifies it or creates a new one, and returns it
         # Vars has a bunch of attributes, including parameters, gradients, update, closure, loss
         # for now we are only interested in update, and we will apply the heavyball rule to it.
 
-        params = vars.params
-        update = vars.get_update() # list of tensors
+        params = var.params
+        update = var.get_update() # list of tensors
 
         exp_avg_list = []
         for p, u in zip(params, update):
@@ -307,9 +307,9 @@ class HeavyBall(Module):
             # and it is part of self.state
             exp_avg_list.append(buf.clone())
 
-        # set new update to vars
-        vars.update = exp_avg_list
-        return vars
+        # set new update to var
+        var.update = exp_avg_list
+        return var
 ```
 
 There are a some specialized base modules that make it much easier to implement some specific things.

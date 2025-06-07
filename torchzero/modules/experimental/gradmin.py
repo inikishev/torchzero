@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Vars
+from ...core import Module, Var
 from ...utils import NumberList, TensorList
 from ...utils.derivatives import jacobian_wrt
 from ..grad_approximation import GradApproximator, GradTarget
@@ -42,7 +42,7 @@ class GradMin(Reformulation):
         super().__init__(defaults)
 
     @torch.no_grad
-    def closure(self, backward, closure, params, vars):
+    def closure(self, backward, closure, params, var):
         settings = self.settings[params[0]]
         loss_term = settings['loss_term']
         relative = settings['relative']

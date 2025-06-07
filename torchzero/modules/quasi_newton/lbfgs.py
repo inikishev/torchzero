@@ -2,7 +2,7 @@ from collections import deque
 from operator import itemgetter
 import torch
 
-from ...core import Transform, Chainable, Module, Vars, apply
+from ...core import Transform, Chainable, Module, Var, apply_transform
 from ...utils import TensorList, as_tensorlist, NumberList
 
 
@@ -154,9 +154,9 @@ class LBFGS(Module):
         self.global_state['sy_history'].clear()
 
     @torch.no_grad
-    def step(self, vars):
-        params = as_tensorlist(vars.params)
-        update = as_tensorlist(vars.get_update())
+    def step(self, var):
+        params = as_tensorlist(var.params)
+        update = as_tensorlist(var.get_update())
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -196,19 +196,19 @@ class LBFGS(Module):
 
         # step with inner module before applying preconditioner
         if self.children:
-            update = TensorList(apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars))
+            update = TensorList(apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
             if y_k is not None and y_k.abs().global_max() <= tol:
-                vars.update = update # may have been updated by inner module, probably makes sense to use it here?
+                var.update = update # may have been updated by inner module, probably makes sense to use it here?
                 if tol_reset: self.reset()
-                return vars
+                return var
 
         # lerp initial H^-1 @ q guess
         z_ema = None
         if z_beta is not None:
-            z_ema = self.get_state('z_ema', params=vars.params, cls=TensorList)
+            z_ema = self.get_state('z_ema', params=var.params, cls=TensorList)
 
         # precondition
         dir = lbfgs(
@@ -223,7 +223,7 @@ class LBFGS(Module):
             step=step
         )
 
-        vars.update = dir
+        var.update = dir
 
-        return vars
+        return var
 

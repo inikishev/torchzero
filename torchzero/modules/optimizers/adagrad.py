@@ -9,8 +9,8 @@ from ...core import (
     Target,
     TensorwisePreconditioner,
     Transform,
-    Vars,
-    apply,
+    Var,
+    apply_transform,
 )
 from ...utils import NumberList, TensorList
 from ...utils.linalg import matrix_power_eigh
@@ -31,7 +31,7 @@ def adagrad_(
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
     grads: list[torch.Tensor] | None = None,
-    vars: Vars | None = None,
+    var: Var | None = None,
 ):
     """returns `tensors_`"""
     clr = alpha / (1 + step * lr_decay)
@@ -40,7 +40,7 @@ def adagrad_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply(inner, tensors_, params=params, grads=grads, vars=vars))
+        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads, var=var))
 
     if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
     else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
@@ -79,7 +79,7 @@ class Adagrad(Transform):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
@@ -107,7 +107,7 @@ class Adagrad(Transform):
             inner=self.children.get("inner", None),
             params=params,
             grads=grads,
-            vars=vars,
+            var=var,
         )
 
 

@@ -4,7 +4,7 @@ from functools import partial
 import numpy as np
 import torch
 
-from ...core import Chainable, Transform, apply
+from ...core import Chainable, Transform, apply_transform
 from ...utils.linalg import matrix_power_eigh
 from ...utils import set_storage_
 
@@ -121,7 +121,7 @@ class Shampoo(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         merged_target = [] # target with merged dims
 
         # update preconditioners
@@ -167,7 +167,7 @@ class Shampoo(Transform):
 
         # inner step
         if 'inner' in self.children:
-            tensors = apply(self.children['inner'], tensors, params=params, grads=grads, vars=vars)
+            tensors = apply_transform(self.children['inner'], tensors, params=params, grads=grads, var=var)
 
             # have to merge small dims again
             merged_target = [] # target with merged dims

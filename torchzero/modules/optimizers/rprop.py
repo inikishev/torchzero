@@ -165,7 +165,7 @@ class Rprop(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         nplus, nminus, lb, ub, alpha = self.get_settings('nplus', 'nminus', 'lb', 'ub', 'alpha', params=params, cls=NumberList)
         prev, allowed, magnitudes = self.get_state(
             'prev','allowed','magnitudes',
@@ -223,7 +223,7 @@ class ScaleLRBySignChange(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         target = as_tensorlist(tensors)
         use_grad = self.settings[params[0]]['use_grad']
         if use_grad: cur = as_tensorlist(grads)
@@ -271,7 +271,7 @@ class BacktrackOnSignChange(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         target = as_tensorlist(tensors)
         settings = self.settings[params[0]]
         use_grad = settings['use_grad']
@@ -297,7 +297,7 @@ class SignConsistencyMask(Transform):
         super().__init__({}, uses_grad=False, target = target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         prev = self.get_state('prev', params=params, cls=TensorList)
         mask = prev.mul_(tensors).gt_(0)
         prev.set_(tensors)
@@ -320,7 +320,7 @@ class SignConsistencyLRs(Transform):
         self.current_step = 0
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         target = as_tensorlist(tensors)
         nplus, nminus, lb, ub = self.get_settings('nplus', 'nminus', 'lb', 'ub', params=params, cls=NumberList)
         prev, lrs = self.get_state('prev', 'lrs', params=params, cls=TensorList)

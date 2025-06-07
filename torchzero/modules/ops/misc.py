@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, TensorwiseTransform, Target, Transform, Vars
+from ...core import Chainable, Module, TensorwiseTransform, Target, Transform, Var
 from ...utils import Distributions, NumberList, TensorList
 
 
@@ -17,7 +17,7 @@ class Previous(TensorwiseTransform):
 
 
     @torch.no_grad
-    def transform(self, tensor, param, grad, vars):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         n = self.settings[param]['n']
         state = self.state[param]
 
@@ -35,7 +35,7 @@ class LastDifference(Transform):
         super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         prev_target = self.get_state('prev_target', params=params) # initialized to 0
         difference = torch._foreach_sub(tensors, prev_target)
         for p, c in zip(prev_target, tensors): p.set_(c)
@@ -47,13 +47,13 @@ class LastGradDifference(Module):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, vars):
-        grad = vars.get_grad()
-        prev_grad = self.get_state('prev_grad', params=vars.params) # initialized to 0
+    def step(self, var):
+        grad = var.get_grad()
+        prev_grad = self.get_state('prev_grad', params=var.params) # initialized to 0
         difference = torch._foreach_sub(grad, prev_grad)
         for p, c in zip(prev_grad, grad): p.set_(c)
-        vars.update = list(difference)
-        return vars
+        var.update = list(difference)
+        return var
 
 
 class LastProduct(Transform):
@@ -62,7 +62,7 @@ class LastProduct(Transform):
         super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         prev_target = self.get_state('prev_target', params=params, init=torch.ones_like) # initialized to 1 for prod
         prod = torch._foreach_mul(tensors, prev_target)
         for p, c in zip(prev_target, tensors): p.set_(c)
@@ -75,7 +75,7 @@ class LastRatio(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to ones
         numerator = self.settings[params[0]]['numerator']
         if numerator == 'cur': ratio = torch._foreach_div(tensors, prev_target)
@@ -90,7 +90,7 @@ class LastAbsoluteRatio(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         prev_target = self.get_state('prev_target', params=params, init = torch.ones_like) # initialized to 0
         numerator = self.settings[params[0]]['numerator']
         eps = self.get_settings('eps', params=params, cls = NumberList)
@@ -109,7 +109,7 @@ class GradSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         return [t.copysign_(g) for t,g in zip(tensors, grads)]
 
@@ -119,7 +119,7 @@ class UpdateSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         return [g.copysign(t) for t,g in zip(tensors, grads)] # no in-place
 
@@ -130,7 +130,7 @@ class GraftToGrad(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
         return TensorList(tensors).graft_(grads, tensorwise=tensorwise, ord=ord, eps=eps)
@@ -142,7 +142,7 @@ class GraftGradToUpdate(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
         return TensorList(grads).graft(tensors, tensorwise=tensorwise, ord=ord, eps=eps)
@@ -155,7 +155,7 @@ class GraftToParams(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[params[0]])
         return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
@@ -166,7 +166,7 @@ class Relative(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         mul = TensorList(params).abs().clamp_(self.get_settings('min_value', params=params))
         torch._foreach_mul_(tensors, mul)
         return tensors
@@ -178,11 +178,11 @@ class FillLoss(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        alpha = self.get_settings('alpha', params=vars.params)
-        loss = vars.get_loss(backward=self.settings[vars.params[0]]['backward'])
-        vars.update = [torch.full_like(p, loss*a) for p,a in zip(vars.params, alpha)]
-        return vars
+    def step(self, var):
+        alpha = self.get_settings('alpha', params=var.params)
+        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
+        var.update = [torch.full_like(p, loss*a) for p,a in zip(var.params, alpha)]
+        return var
 
 class MulByLoss(Transform):
     """multiplies update by loss times alpha"""
@@ -191,9 +191,9 @@ class MulByLoss(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars): #vars used for loss
+    def apply(self, tensors, params, grads, loss, states, settings): #var used for loss
         alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
-        loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
+        loss = var.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_mul_(tensors, mul)
         return tensors
@@ -205,67 +205,67 @@ class DivByLoss(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars): #vars used for loss
+    def apply(self, tensors, params, grads, loss, states, settings): #var used for loss
         alpha, min_value = self.get_settings('alpha', 'min_value', params=params)
-        loss = vars.get_loss(backward=self.settings[params[0]]['backward'])
+        loss = var.get_loss(backward=self.settings[params[0]]['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_div_(tensors, mul)
         return tensors
 
 
 
-def _sequential_step(self: Module, vars: Vars, sequential: bool):
-    params = vars.params
+def _sequential_step(self: Module, var: Var, sequential: bool):
+    params = var.params
     steps = self.settings[params[0]]['steps']
 
     if sequential: modules = self.get_children_sequence()
     else: modules = [self.children['module']] * steps
 
-    if vars.closure is None and len(modules) > 1: raise ValueError('Multistep and Sequential require closure')
+    if var.closure is None and len(modules) > 1: raise ValueError('Multistep and Sequential require closure')
 
     # store original params unless this is last module and can update params directly
-    params_before_steps = None if (vars.is_last and vars.last_module_lrs is None) else [p.clone() for p in params]
+    params_before_steps = None if (var.is_last and var.last_module_lrs is None) else [p.clone() for p in params]
 
-    # first step - pass vars as usual
-    vars = modules[0].step(vars)
-    new_vars = vars
+    # first step - pass var as usual
+    var = modules[0].step(var)
+    new_var = var
 
-    # subsequent steps - update parameters and create new vars
+    # subsequent steps - update parameters and create new var
     if len(modules) > 1:
         for m in modules[1:]:
 
             # update params
-            if (not new_vars.skip_update):
-                if new_vars.last_module_lrs is not None:
-                    torch._foreach_mul_(new_vars.get_update(), new_vars.last_module_lrs)
+            if (not new_var.skip_update):
+                if new_var.last_module_lrs is not None:
+                    torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
-                torch._foreach_sub_(params, new_vars.get_update())
+                torch._foreach_sub_(params, new_var.get_update())
 
-            # create new vars since we are at a new point, that means grad, update and loss will be None
-            new_vars = Vars(params=new_vars.params, closure=new_vars.closure,
-                            model=new_vars.model, current_step=new_vars.current_step + 1)
+            # create new var since we are at a new point, that means grad, update and loss will be None
+            new_var = Var(params=new_var.params, closure=new_var.closure,
+                            model=new_var.model, current_step=new_var.current_step + 1)
 
             # step
-            new_vars = m.step(new_vars)
+            new_var = m.step(new_var)
 
         # final parameter update
-        if (not new_vars.skip_update):
-            if new_vars.last_module_lrs is not None:
-                torch._foreach_mul_(new_vars.get_update(), new_vars.last_module_lrs)
+        if (not new_var.skip_update):
+            if new_var.last_module_lrs is not None:
+                torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
-            torch._foreach_sub_(params, new_vars.get_update())
+            torch._foreach_sub_(params, new_var.get_update())
 
-    # if last module, update is applied so return new vars
+    # if last module, update is applied so return new var
     if params_before_steps is None:
-        new_vars.stop = True
-        new_vars.skip_update = True
-        return new_vars
+        new_var.stop = True
+        new_var.skip_update = True
+        return new_var
 
     # otherwise use parameter difference as update
-    vars.update = list(torch._foreach_sub(params_before_steps, params))
+    var.update = list(torch._foreach_sub(params_before_steps, params))
     for p, bef in zip(params, params_before_steps):
         p.set_(bef) # pyright:ignore[reportArgumentType]
-    return vars
+    return var
 
 class Multistep(Module):
     def __init__(self, module: Chainable, steps: int):
@@ -274,8 +274,8 @@ class Multistep(Module):
         self.set_child('module', module)
 
     @torch.no_grad
-    def step(self, vars):
-        return _sequential_step(self, vars, sequential=False)
+    def step(self, var):
+        return _sequential_step(self, var, sequential=False)
 
 class Sequential(Module):
     def __init__(self, modules: Iterable[Chainable], steps: int):
@@ -284,8 +284,8 @@ class Sequential(Module):
         self.set_children_sequence(modules)
 
     @torch.no_grad
-    def step(self, vars):
-        return _sequential_step(self, vars, sequential=True)
+    def step(self, var):
+        return _sequential_step(self, var, sequential=True)
 
 
 class GradientAccumulation(Module):
@@ -297,22 +297,22 @@ class GradientAccumulation(Module):
 
 
     @torch.no_grad
-    def step(self, vars):
-        accumulator = self.get_state('accumulator', params=vars.params)
-        settings = self.settings[vars.params[0]]
+    def step(self, var):
+        accumulator = self.get_state('accumulator', params=var.params)
+        settings = self.settings[var.params[0]]
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         # add update to accumulator
-        torch._foreach_add_(accumulator, vars.get_update())
+        torch._foreach_add_(accumulator, var.get_update())
 
         # step with accumulated updates
         if step % n == 0:
             if mean:
                 torch._foreach_div_(accumulator, n)
 
-            vars.update = [a.clone() for a in accumulator]
-            vars = self.children['modules'].step(vars)
+            var.update = [a.clone() for a in accumulator]
+            var = self.children['modules'].step(var)
 
             # zero accumulator
             torch._foreach_zero_(accumulator)
@@ -320,10 +320,10 @@ class GradientAccumulation(Module):
         else:
             # prevent update
             if stop:
-                vars.stop=True
-                vars.skip_update=True
+                var.stop=True
+                var.skip_update=True
 
-        return vars
+        return var
 
 
 class Dropout(Transform):
@@ -332,7 +332,7 @@ class Dropout(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         p = self.get_settings('p', params=params, cls=NumberList)
         graft = self.settings[params[0]]['graft']
@@ -351,10 +351,10 @@ class WeightDropout(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        closure = vars.closure
+    def step(self, var):
+        closure = var.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
-        params = TensorList(vars.params)
+        params = TensorList(var.params)
         p = self.get_settings('p', params=params)
         mask = params.rademacher_like(p).add_(1).div_(2).as_bool()
 
@@ -369,8 +369,8 @@ class WeightDropout(Module):
             params.copy_(orig_params)
             return loss
 
-        vars.closure = dropout_closure
-        return vars
+        var.closure = dropout_closure
+        return var
 
 class NoiseSign(Transform):
     """uses random vector with update sign"""
@@ -379,7 +379,7 @@ class NoiseSign(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         alpha = self.get_settings('alpha', params=params)
         distribution = self.settings[params[0]]['distribution']
         return TensorList(tensors).sample_like(alpha, distribution).copysign_(tensors)
@@ -391,29 +391,29 @@ class NegateOnLossIncrease(Module):
         super().__init__(defaults=defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        closure = vars.closure
+    def step(self, var):
+        closure = var.closure
         if closure is None: raise RuntimeError('NegateOnLossIncrease requires closure')
-        backtrack = self.settings[vars.params[0]]['backtrack']
+        backtrack = self.settings[var.params[0]]['backtrack']
 
-        update = vars.get_update()
-        f_0 = vars.get_loss(backward=False)
+        update = var.get_update()
+        f_0 = var.get_loss(backward=False)
 
-        torch._foreach_sub_(vars.params, update)
+        torch._foreach_sub_(var.params, update)
         f_1 = closure(False)
 
         if f_1 <= f_0:
-            if vars.is_last and vars.last_module_lrs is None:
-                vars.stop = True
-                vars.skip_update = True
-                return vars
+            if var.is_last and var.last_module_lrs is None:
+                var.stop = True
+                var.skip_update = True
+                return var
 
-            torch._foreach_add_(vars.params, update)
-            return vars
+            torch._foreach_add_(var.params, update)
+            return var
 
-        torch._foreach_add_(vars.params, update)
+        torch._foreach_add_(var.params, update)
         if backtrack:
-            torch._foreach_neg_(vars.update)
+            torch._foreach_neg_(var.update)
         else:
-            torch._foreach_zero_(vars.update)
-        return vars
+            torch._foreach_zero_(var.update)
+        return var

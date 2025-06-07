@@ -67,7 +67,7 @@ class LaplacianSmoothing(Transform):
             minimum number of elements in a parameter to apply laplacian smoothing to.
             Only has effect if `layerwise` is True. Defaults to 4.
         target (str, optional):
-            what to set on vars.
+            what to set on var.
 
     Reference:
         *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
@@ -82,7 +82,7 @@ class LaplacianSmoothing(Transform):
 
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         layerwise = self.settings[params[0]]['layerwise']
 
         # layerwise laplacian smoothing

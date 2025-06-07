@@ -24,8 +24,8 @@ class Wrap(Module):
         return super().set_param_groups(param_groups)
 
     @torch.no_grad
-    def step(self, vars):
-        params = vars.params
+    def step(self, var):
+        params = var.params
 
         # initialize opt on 1st step
         if self.optimizer is None:
@@ -35,18 +35,18 @@ class Wrap(Module):
 
         # set grad to update
         orig_grad = [p.grad for p in params]
-        for p, u in zip(params, vars.get_update()):
+        for p, u in zip(params, var.get_update()):
             p.grad = u
 
         # if this module is last, can step with _opt directly
         # direct step can't be applied if next module is LR but _opt doesn't support lr,
         # and if there are multiple different per-parameter lrs (would be annoying to support)
-        if vars.is_last and (
-            (vars.last_module_lrs is None)
+        if var.is_last and (
+            (var.last_module_lrs is None)
             or
-            (('lr' in self.optimizer.defaults) and (len(set(vars.last_module_lrs)) == 1))
+            (('lr' in self.optimizer.defaults) and (len(set(var.last_module_lrs)) == 1))
         ):
-            lr = 1 if vars.last_module_lrs is None else vars.last_module_lrs[0]
+            lr = 1 if var.last_module_lrs is None else var.last_module_lrs[0]
 
             # update optimizer lr with desired lr
             if lr != 1:
@@ -68,19 +68,19 @@ class Wrap(Module):
             for p, g in zip(params, orig_grad):
                 p.grad = g
 
-            vars.stop = True; vars.skip_update = True
-            return vars
+            var.stop = True; var.skip_update = True
+            return var
 
         # this is not the last module, meaning update is difference in parameters
         params_before_step = [p.clone() for p in params]
         self.optimizer.step() # step and update params
         for p, g in zip(params, orig_grad):
             p.grad = g
-        vars.update = list(torch._foreach_sub(params_before_step, params)) # set update to difference between params
+        var.update = list(torch._foreach_sub(params_before_step, params)) # set update to difference between params
         for p, o in zip(params, params_before_step):
             p.set_(o) # pyright: ignore[reportArgumentType]
 
-        return vars
+        return var
 
     def reset(self):
         super().reset()

@@ -45,8 +45,8 @@ class FFTProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
-        settings = self.settings[vars.params[0]]
+    def project(self, tensors, var, current):
+        settings = self.settings[var.params[0]]
         one_d = settings['one_d']
         norm = settings['norm']
 
@@ -60,14 +60,14 @@ class FFTProjection(Projection):
         return [torch.view_as_real(torch.fft.rfftn(t, norm=norm)) if t.numel() > 1 else t for t in tensors] # pylint:disable=not-callable
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
-        settings = self.settings[vars.params[0]]
+    def unproject(self, tensors, var, current):
+        settings = self.settings[var.params[0]]
         one_d = settings['one_d']
         norm = settings['norm']
 
         if one_d:
             vec = torch.view_as_complex(tensors[0])
             unprojected_vec = torch.fft.irfft(vec, n=self.global_state['length'], norm=norm) # pylint:disable=not-callable
-            return vec_to_tensors(unprojected_vec, reference=vars.params)
+            return vec_to_tensors(unprojected_vec, reference=var.params)
 
-        return [torch.fft.irfftn(torch.view_as_complex(t.contiguous()), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(tensors, vars.params)] # pylint:disable=not-callable
+        return [torch.fft.irfftn(torch.view_as_complex(t.contiguous()), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(tensors, var.params)] # pylint:disable=not-callable

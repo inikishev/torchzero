@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Modular, Module, Vars
+from ...core import Modular, Module, Var
 from ...utils import NumberList, TensorList
 from ...utils.derivatives import jacobian_wrt
 from ..grad_approximation import GradApproximator, GradTarget
@@ -17,24 +17,24 @@ class Reformulation(Module, ABC):
         super().__init__(defaults)
 
     @abstractmethod
-    def closure(self, backward: bool, closure: Callable, params:list[torch.Tensor], vars: Vars) -> tuple[float | torch.Tensor, Sequence[torch.Tensor] | None]:
+    def closure(self, backward: bool, closure: Callable, params:list[torch.Tensor], var: Var) -> tuple[float | torch.Tensor, Sequence[torch.Tensor] | None]:
         """returns loss and gradient, if backward is False then gradient can be None"""
 
-    def pre_step(self, vars: Vars) -> Vars | None:
+    def pre_step(self, var: Var) -> Var | None:
         """This runs once before each step, whereas `closure` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
-        return vars
+        return var
 
-    def step(self, vars):
-        ret = self.pre_step(vars)
-        if isinstance(ret, Vars): vars = ret
+    def step(self, var):
+        ret = self.pre_step(var)
+        if isinstance(ret, Var): var = ret
 
-        if vars.closure is None: raise RuntimeError("Reformulation requires closure")
-        params, closure = vars.params, vars.closure
+        if var.closure is None: raise RuntimeError("Reformulation requires closure")
+        params, closure = var.params, var.closure
 
 
         def modified_closure(backward=True):
-            loss, grad = self.closure(backward, closure, params, vars)
+            loss, grad = self.closure(backward, closure, params, var)
 
             if grad is not None:
                 for p,g in zip(params, grad):
@@ -42,8 +42,8 @@ class Reformulation(Module, ABC):
 
             return loss
 
-        vars.closure = modified_closure
-        return vars
+        var.closure = modified_closure
+        return var
 
 
 def _decay_sigma_(self: Module, params):
@@ -58,7 +58,7 @@ def _generate_perturbations_to_state_(self: Module, params: TensorList, n_sample
     for param, prt in zip(params, zip(*perturbations)):
         self.state[param]['perturbations'] = prt
 
-def _clear_state_hook(optimizer: Modular, vars: Vars, self: Module):
+def _clear_state_hook(optimizer: Modular, var: Var, self: Module):
     for m in optimizer.unrolled_modules:
         if m is not self:
             m.reset()
@@ -85,8 +85,8 @@ class GaussianHomotopy(Reformulation):
             else: self.global_state['generator'] = None
         return self.global_state['generator']
 
-    def pre_step(self, vars):
-        params = TensorList(vars.params)
+    def pre_step(self, var):
+        params = TensorList(var.params)
         settings = self.settings[params[0]]
         n_samples = settings['n_samples']
         init_sigma = self.get_settings('init_sigma', params=params)
@@ -124,10 +124,10 @@ class GaussianHomotopy(Reformulation):
             generator = self._get_generator(settings['seed'], params)
             _generate_perturbations_to_state_(self, params=params, n_samples=n_samples, sigmas=sigmas, generator=generator)
             if settings['clear_state']:
-                vars.post_step_hooks.append(partial(_clear_state_hook, self=self))
+                var.post_step_hooks.append(partial(_clear_state_hook, self=self))
 
     @torch.no_grad
-    def closure(self, backward, closure, params, vars):
+    def closure(self, backward, closure, params, var):
         params = TensorList(params)
 
         settings = self.settings[params[0]]

@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from ...core import Module, Target, Vars
+from ...core import Module, Target, Var
 from ...utils import tofloat
 
 
@@ -62,12 +62,12 @@ class LineSearch(Module, ABC):
         if any(a!=0 for a in alpha):
             torch._foreach_add_(params, torch._foreach_mul(update, alpha))
 
-    def _loss(self, step_size: float, vars: Vars, closure, params: list[torch.Tensor],
+    def _loss(self, step_size: float, var: Var, closure, params: list[torch.Tensor],
               update: list[torch.Tensor], backward:bool=False) -> float:
 
         # if step_size is 0, we might already know the loss
-        if (vars.loss is not None) and (step_size == 0):
-            return tofloat(vars.loss)
+        if (var.loss is not None) and (step_size == 0):
+            return tofloat(var.loss)
 
         # check max iter
         if self._maxiter is not None and self._current_iter >= self._maxiter: raise MaxLineSearchItersReached
@@ -85,23 +85,23 @@ class LineSearch(Module, ABC):
             self._lowest_loss = tofloat(loss)
             self._best_step_size = step_size
 
-        # if evaluated loss at step size 0, set it to vars.loss
+        # if evaluated loss at step size 0, set it to var.loss
         if step_size == 0:
-            vars.loss = loss
-            if backward: vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+            var.loss = loss
+            if backward: var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
         return tofloat(loss)
 
-    def _loss_derivative(self, step_size: float, vars: Vars, closure,
+    def _loss_derivative(self, step_size: float, var: Var, closure,
                          params: list[torch.Tensor], update: list[torch.Tensor]):
         # if step_size is 0, we might already know the derivative
-        if (vars.grad is not None) and (step_size == 0):
-            loss = self._loss(step_size=step_size,vars=vars,closure=closure,params=params,update=update,backward=False)
-            derivative = - sum(t.sum() for t in torch._foreach_mul(vars.grad, update))
+        if (var.grad is not None) and (step_size == 0):
+            loss = self._loss(step_size=step_size,var=var,closure=closure,params=params,update=update,backward=False)
+            derivative = - sum(t.sum() for t in torch._foreach_mul(var.grad, update))
 
         else:
             # loss with a backward pass sets params.grad
-            loss = self._loss(step_size=step_size,vars=vars,closure=closure,params=params,update=update,backward=True)
+            loss = self._loss(step_size=step_size,var=var,closure=closure,params=params,update=update,backward=True)
 
             # directional derivative
             derivative = - sum(t.sum() for t in torch._foreach_mul([p.grad if p.grad is not None
@@ -109,60 +109,60 @@ class LineSearch(Module, ABC):
 
         return loss, tofloat(derivative)
 
-    def evaluate_step_size(self, step_size: float, vars: Vars, backward:bool=False):
-        closure = vars.closure
+    def evaluate_step_size(self, step_size: float, var: Var, backward:bool=False):
+        closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return self._loss(step_size=step_size, vars=vars, closure=closure, params=vars.params,update=vars.get_update(),backward=backward)
+        return self._loss(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update(),backward=backward)
 
-    def evaluate_step_size_loss_and_derivative(self, step_size: float, vars: Vars):
-        closure = vars.closure
+    def evaluate_step_size_loss_and_derivative(self, step_size: float, var: Var):
+        closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return self._loss_derivative(step_size=step_size, vars=vars, closure=closure, params=vars.params,update=vars.get_update())
+        return self._loss_derivative(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update())
 
-    def make_objective(self, vars: Vars, backward:bool=False):
-        closure = vars.closure
+    def make_objective(self, var: Var, backward:bool=False):
+        closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return partial(self._loss, vars=vars, closure=closure, params=vars.params, update=vars.get_update(), backward=backward)
+        return partial(self._loss, var=var, closure=closure, params=var.params, update=var.get_update(), backward=backward)
 
-    def make_objective_with_derivative(self, vars: Vars):
-        closure = vars.closure
+    def make_objective_with_derivative(self, var: Var):
+        closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return partial(self._loss_derivative, vars=vars, closure=closure, params=vars.params, update=vars.get_update())
+        return partial(self._loss_derivative, var=var, closure=closure, params=var.params, update=var.get_update())
 
     @abstractmethod
-    def search(self, update: list[torch.Tensor], vars: Vars) -> float:
+    def search(self, update: list[torch.Tensor], var: Var) -> float:
         """Finds the step size to use"""
 
     @torch.no_grad
-    def step(self, vars: Vars) -> Vars:
+    def step(self, var: Var) -> Var:
         self._reset()
-        params = vars.params
-        update = vars.get_update()
+        params = var.params
+        update = var.get_update()
 
         try:
-            step_size = self.search(update=update, vars=vars)
+            step_size = self.search(update=update, var=var)
         except MaxLineSearchItersReached:
             step_size = self._best_step_size
 
         # set loss_approx
-        if vars.loss_approx is None: vars.loss_approx = self._lowest_loss
+        if var.loss_approx is None: var.loss_approx = self._lowest_loss
 
         # this is last module - set step size to found step_size times lr
-        if vars.is_last:
+        if var.is_last:
 
-            if vars.last_module_lrs is None:
+            if var.last_module_lrs is None:
                 self.set_step_size_(step_size, params=params, update=update)
 
             else:
-                self._set_per_parameter_step_size_([step_size*lr for lr in vars.last_module_lrs], params=params, update=update)
+                self._set_per_parameter_step_size_([step_size*lr for lr in var.last_module_lrs], params=params, update=update)
 
-            vars.stop = True; vars.skip_update = True
-            return vars
+            var.stop = True; var.skip_update = True
+            return var
 
         # revert parameters and multiply update by step size
         self.set_step_size_(0, params=params, update=update)
-        torch._foreach_mul_(vars.update, step_size)
-        return vars
+        torch._foreach_mul_(var.update, step_size)
+        return var
 
 
 class GridLineSearch(LineSearch):
@@ -172,10 +172,10 @@ class GridLineSearch(LineSearch):
         super().__init__(defaults)
 
     @torch.no_grad
-    def search(self, update, vars):
-        start,end,num=itemgetter('start','end','num')(self.settings[vars.params[0]])
+    def search(self, update, var):
+        start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
 
         for lr in torch.linspace(start,end,num):
-            self.evaluate_step_size(lr.item(), vars=vars, backward=False)
+            self.evaluate_step_size(lr.item(), var=var, backward=False)
 
         return self._best_step_size

@@ -4,7 +4,7 @@ from typing import Any
 
 import torch
 
-from ....core import Chainable, Module, Transform, Vars, apply, maybe_chain
+from ....core import Chainable, Module, Transform, Var, apply_transform, maybe_chain
 from ....utils import NumberList, TensorList, as_tensorlist
 
 
@@ -28,7 +28,7 @@ def _adaptive_damping(
 
 def lbfgs(
     tensors_: TensorList,
-    vars: Vars,
+    var: Var,
     s_history: deque[TensorList],
     y_history: deque[TensorList],
     sy_history: deque[torch.Tensor],
@@ -60,7 +60,7 @@ def lbfgs(
         z = q * (ys_k / (y_k.dot(y_k)))
 
         if z_tfm is not None:
-            z = TensorList(apply(z_tfm, tensors=z, params=vars.params, grads=vars.grad, vars=vars))
+            z = TensorList(apply_transform(z_tfm, tensors=z, params=var.params, grads=var.grad, var=var))
 
         # 2nd loop
         for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
@@ -73,28 +73,28 @@ def lbfgs(
 def _apply_tfms_into_history(
     self: Module,
     params: list[torch.Tensor],
-    vars: Vars,
+    var: Var,
     update: list[torch.Tensor],
 ):
     if 'params_history_tfm' in self.children:
-        params = apply(self.children['params_history_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=vars.grad, vars=vars)
+        params = apply_transform(self.children['params_history_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=var.grad, var=var)
 
     if 'grad_history_tfm' in self.children:
-        update = apply(self.children['grad_history_tfm'], tensors=as_tensorlist(update).clone(), params=params, grads=vars.grad, vars=vars)
+        update = apply_transform(self.children['grad_history_tfm'], tensors=as_tensorlist(update).clone(), params=params, grads=var.grad, var=var)
 
     return params, update
 
 def _apply_tfms_into_precond(
     self: Module,
     params: list[torch.Tensor],
-    vars: Vars,
+    var: Var,
     update: list[torch.Tensor],
 ):
     if 'params_precond_tfm' in self.children:
-        params = apply(self.children['params_precond_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=vars.grad, vars=vars)
+        params = apply_transform(self.children['params_precond_tfm'], tensors=as_tensorlist(params).clone(), params=params, grads=var.grad, var=var)
 
     if 'grad_precond_tfm' in self.children:
-        update = apply(self.children['grad_precond_tfm'], tensors=update, params=params, grads=vars.grad, vars=vars)
+        update = apply_transform(self.children['grad_precond_tfm'], tensors=update, params=params, grads=var.grad, var=var)
 
     return params, update
 
@@ -165,9 +165,9 @@ class ModularLBFGS(Module):
         self.global_state['sy_history'].clear()
 
     @torch.no_grad
-    def step(self, vars):
-        params = as_tensorlist(vars.params)
-        update = as_tensorlist(vars.get_update())
+    def step(self, var):
+        params = as_tensorlist(var.params)
+        update = as_tensorlist(var.get_update())
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -186,7 +186,7 @@ class ModularLBFGS(Module):
         params_h, update_h = _apply_tfms_into_history(
             self,
             params=params,
-            vars=vars,
+            var=var,
             update=update,
         )
 
@@ -217,15 +217,15 @@ class ModularLBFGS(Module):
         # step with inner module before applying preconditioner
         if 'update_precond_tfm' in self.children:
             update_precond_tfm = self.children['update_precond_tfm']
-            inner_vars = update_precond_tfm.step(vars.clone(clone_update=True))
-            vars.update_attrs_from_clone_(inner_vars)
-            tensors = inner_vars.update
+            inner_var = update_precond_tfm.step(var.clone(clone_update=True))
+            var.update_attrs_from_clone_(inner_var)
+            tensors = inner_var.update
             assert tensors is not None
         else:
             tensors = update.clone()
 
         # transforms into preconditioner
-        params_p, update_p = _apply_tfms_into_precond(self, params=params, vars=vars, update=update)
+        params_p, update_p = _apply_tfms_into_precond(self, params=params, var=var, update=update)
         prev_params_p, prev_grad_p = self.get_state('prev_params_p', 'prev_grad_p', params=params, cls=TensorList)
 
         if step == 0:
@@ -245,13 +245,13 @@ class ModularLBFGS(Module):
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
             if y_k_p is not None and y_k_p.abs().global_max() <= tol:
-                vars.update = update # may have been updated by inner module, probably makes sense to use it here?
-                return vars
+                var.update = update # may have been updated by inner module, probably makes sense to use it here?
+                return var
 
         # precondition
         dir = lbfgs(
             tensors_=as_tensorlist(tensors),
-            vars=vars,
+            var=var,
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
@@ -260,7 +260,7 @@ class ModularLBFGS(Module):
             z_tfm=self.children.get('z_tfm', None),
         )
 
-        vars.update = dir
+        var.update = dir
 
-        return vars
+        return var
 

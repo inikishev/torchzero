@@ -3,13 +3,13 @@ from typing import Any, Literal, overload
 
 import torch
 
-from ...core import Chainable, Module, apply, Modular
+from ...core import Chainable, Module, apply_transform, Modular
 from ...utils import TensorList, as_tensorlist
 from ...utils.derivatives import hvp
 from ..quasi_newton import LBFGS
 
 class NewtonSolver(Module):
-    """Matrix free newton via with any custom solver (in practice use NewtonCG or NystromPCG)"""
+    """Matrix free newton via with any custom solver (this is for testing, use NewtonCG or NystromPCG)"""
     def __init__(
         self,
         solver: Callable[[list[torch.Tensor]], Any] = lambda p: Modular(p, LBFGS()),
@@ -26,9 +26,9 @@ class NewtonSolver(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -39,7 +39,7 @@ class NewtonSolver(Module):
         warm_start = settings['warm_start']
 
         # ---------------------- Hessian vector product function --------------------- #
-        grad = vars.get_grad(create_graph=True)
+        grad = var.get_grad(create_graph=True)
 
         def H_mm(x):
             with torch.enable_grad():
@@ -50,11 +50,11 @@ class NewtonSolver(Module):
         # -------------------------------- inner step -------------------------------- #
         b = as_tensorlist(grad)
         if 'inner' in self.children:
-            b = as_tensorlist(apply(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, vars=vars))
+            b = as_tensorlist(apply_transform(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, var=var))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
-        if warm_start: x0 = self.get_state('prev_x', params=params, cls=TensorList) # initialized to 0 which is default anyway
+        if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
         if x0 is None: x = b.zeros_like().requires_grad_(True)
         else: x = x0.clone().requires_grad_(True)
 
@@ -82,7 +82,7 @@ class NewtonSolver(Module):
             assert x0 is not None
             x0.copy_(x)
 
-        vars.update = x.detach()
-        return vars
+        var.update = x.detach()
+        return var
 
 

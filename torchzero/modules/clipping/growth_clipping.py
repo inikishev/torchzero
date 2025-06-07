@@ -19,7 +19,7 @@ class ClipValueGrowth(TensorwiseTransform):
             bounds the tracked multiplicative clipping decay to prevent collapse to 0.
             Next update is at most :code:`max(previous update * mul, max_decay)`.
             Defaults to 2.
-        target (Target, optional): what to set on vars.. Defaults to "update".
+        target (Target, optional): what to set on var.. Defaults to "update".
     """
     def __init__(
         self,
@@ -33,11 +33,9 @@ class ClipValueGrowth(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, target=target)
 
 
-    def transform(self, tensor, param, grad, vars):
-        add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(self.settings[param])
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+        add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(settings)
         add: float | None
-
-        state = self.state[param]
 
         if add is None and mul is None:
             return tensor
@@ -133,7 +131,7 @@ class ClipNormGrowth(Transform):
         ord (float, optional): norm order. Defaults to 2.
         parameterwise (bool, optional):
             if True, norms are calculated parameter-wise, otherwise treats all parameters as single vector. Defaults to True.
-        target (Target, optional): what to set on vars. Defaults to "update".
+        target (Target, optional): what to set on var. Defaults to "update".
     """
     def __init__(
         self,
@@ -150,35 +148,35 @@ class ClipNormGrowth(Transform):
 
 
 
-    def transform(self, tensors, params, grads, vars):
-        parameterwise = self.settings[params[0]]['parameterwise']
+    def apply(self, tensors, params, grads, loss, states, settings):
+        parameterwise = settings[0]['parameterwise']
         tensors = TensorList(tensors)
 
         if parameterwise:
             ts = tensors
-            stts = [self.state[p] for p in params]
-            stns = [self.settings[p] for p in params]
+            stts = states
+            stns = settings
 
         else:
             ts = [tensors.to_vec()]
             stts = [self.global_state]
-            stns = [self.settings[params[0]]]
+            stns = [settings[0]]
 
 
-        for t,state, settings in zip(ts, stts, stns):
+        for t, state, setting in zip(ts, stts, stns):
             if 'prev_norm' not in state:
-                state['prev_norm'] = torch.linalg.vector_norm(t, ord=settings['ord']) # pylint:disable=not-callable
+                state['prev_norm'] = torch.linalg.vector_norm(t, ord=setting['ord']) # pylint:disable=not-callable
                 state['prev_denom'] = 1
                 continue
 
             _,  state['prev_norm'], state['prev_denom'] = norm_growth_clip_(
                 tensor_ = t,
                 prev_norm = state['prev_norm'],
-                add = settings['add'],
-                mul = settings['mul'],
-                min_value = settings['min_value'],
-                max_decay = settings['max_decay'],
-                ord = settings['ord'],
+                add = setting['add'],
+                mul = setting['mul'],
+                min_value = setting['min_value'],
+                max_decay = setting['max_decay'],
+                ord = setting['ord'],
             )
 
         if not parameterwise:

@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply
+from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
@@ -35,11 +35,11 @@ def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
 def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
     return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
 
-def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, negative_curvature: bool):
+def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_negative: bool):
     try:
         L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
         if tfm is not None: L = tfm(L)
-        if negative_curvature and L[0] < 0:
+        if search_negative and L[0] < 0:
             d = Q[0]
              # use eigvec or -eigvec depending on if it points in same direction as gradient
             return g.dot(d).sign() * d
@@ -99,9 +99,9 @@ class Newton(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -116,16 +116,16 @@ class Newton(Module):
         # ------------------------ calculate grad and hessian ------------------------ #
         if hessian_method == 'autograd':
             with torch.enable_grad():
-                loss = vars.loss = vars.loss_approx = closure(False)
+                loss = var.loss = var.loss_approx = closure(False)
                 g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                 g_list = [t[0] for t in g_list] # remove leading dim from loss
-                vars.grad = g_list
+                var.grad = g_list
                 H = hessian_list_to_mat(H_list)
 
         elif hessian_method in ('func', 'autograd.functional'):
             strat = 'forward-mode' if vectorize else 'reverse-mode'
             with torch.enable_grad():
-                g_list = vars.get_grad(retain_graph=True)
+                g_list = var.get_grad(retain_graph=True)
                 H: torch.Tensor = hessian_mat(partial(closure, backward=False), params,
                                 method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
 
@@ -133,9 +133,9 @@ class Newton(Module):
             raise ValueError(hessian_method)
 
         # -------------------------------- inner step -------------------------------- #
-        update = vars.get_update()
+        update = var.get_update()
         if 'inner' in self.children:
-            update = apply(self.children['inner'], update, params=params, grads=list(g_list), vars=vars)
+            update = apply_transform(self.children['inner'], update, params=params, grads=list(g_list), var=var)
         g = torch.cat([t.ravel() for t in update])
 
         # ------------------------------- regulazition ------------------------------- #
@@ -149,11 +149,11 @@ class Newton(Module):
             if is_inv: update = H @ g
 
         if search_negative or (eigval_tfm is not None):
-            update = eigh_solve(H, g, eigval_tfm, negative_curvature=search_negative)
+            update = eigh_solve(H, g, eigval_tfm, search_negative=search_negative)
 
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)
         if update is None: update = least_squares_solve(H, g)
 
-        vars.update = vec_to_tensors(update, params)
-        return vars
+        var.update = vec_to_tensors(update, params)
+        return var

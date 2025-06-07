@@ -10,19 +10,19 @@ import numpy as np
 import scipy.optimize
 import torch
 
-from torchzero.core import Chainable, Module, apply
-from torchzero.utils import TensorList, vec_to_tensors, vec_to_tensors_
-from torchzero.utils.derivatives import (
+from ...core import Chainable, Module, apply_transform
+from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
+from ...utils.derivatives import (
     hessian_list_to_mat,
     jacobian_wrt,
 )
 
-letters = 'abcdefghijklmnoprstuvwxyz'
+_LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 def _poly_eval(s: np.ndarray, c, derivatives):
     val = float(c)
     for i,T in enumerate(derivatives, 1):
-        s1 = ''.join(letters[:i]) # abcd
-        s2 = ',...'.join(letters[:i]) # a,b,c,d
+        s1 = ''.join(_LETTERS[:i]) # abcd
+        s2 = ',...'.join(_LETTERS[:i]) # a,b,c,d
         # this would make einsum('abcd,a,b,c,d', T, x, x, x, x)
         val += np.einsum(f"...{s1},...{s2}", T, *(s for _ in range(i))) / math.factorial(i)
     return val
@@ -40,8 +40,8 @@ def _proximal_poly_g(x: np.ndarray, c, prox, x0: np.ndarray, derivatives):
     g = derivatives[0].copy()
     if len(derivatives) > 1:
         for i, T in enumerate(derivatives[1:], 2):
-            s1 = ''.join(letters[:i]) # abcd
-            s2 = ','.join(letters[1:i]) # b,c,d
+            s1 = ''.join(_LETTERS[:i]) # abcd
+            s2 = ','.join(_LETTERS[1:i]) # b,c,d
             # this would make einsum('abcd,b,c,d->a', T, x, x, x)
             g += np.einsum(f"{s1},{s2}->a", T, *(s for _ in range(i-1))) / math.factorial(i - 1)
 
@@ -58,8 +58,8 @@ def _proximal_poly_H(x: np.ndarray, c, prox, x0: np.ndarray, derivatives):
         H = derivatives[1].copy()
         if len(derivatives) > 2:
             for i, T in enumerate(derivatives[2:], 3):
-                s1 = ''.join(letters[:i]) # abcd
-                s2 = ','.join(letters[2:i]) # c,d
+                s1 = ''.join(_LETTERS[:i]) # abcd
+                s2 = ','.join(_LETTERS[2:i]) # c,d
                 # this would make einsum('abcd,c,d->ab', T, x, x, x)
                 H += np.einsum(f"{s1},{s2}->ab", T, *(s for _ in range(i-2))) / math.factorial(i - 2)
 
@@ -145,21 +145,25 @@ class HigherOrderNewton(Module):
     def __init__(
         self,
         order: int = 4,
-        trust_init: float | None = None,
+        trust_method: Literal['bounds', 'proximal', 'none'] | None = 'bounds',
         increase: float = 1.5,
         decrease: float = 0.75,
+        trust_init: float | None = None,
         trust_tol: float = 2,
-        prox: float = 0,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
-        defaults = dict(order=order, increase=increase, decrease=decrease, trust_tol=trust_tol, trust_init=trust_init, prox=prox, vectorize=vectorize, de_iters=de_iters)
+        if trust_init is None:
+            if trust_method == 'bounds': trust_init = 1
+            else: trust_init = 0.1
+
+        defaults = dict(order=order, trust_method=trust_method, increase=increase, decrease=decrease, trust_tol=trust_tol, trust_init=trust_init, vectorize=vectorize, de_iters=de_iters)
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -168,19 +172,19 @@ class HigherOrderNewton(Module):
         decrease = settings['decrease']
         trust_tol = settings['trust_tol']
         trust_init = settings['trust_init']
-        prox = settings['prox']
+        trust_method = settings['trust_method']
         de_iters = settings['de_iters']
         vectorize = settings['vectorize']
 
-        trust_region = self.global_state.get('trust_region', trust_init)
+        trust_value = self.global_state.get('trust_value', trust_init)
 
 
         # ------------------------ calculate grad and hessian ------------------------ #
         with torch.enable_grad():
-            loss = vars.loss = vars.loss_approx = closure(False)
+            loss = var.loss = var.loss_approx = closure(False)
 
             g_list = torch.autograd.grad(loss, params, create_graph=True)
-            vars.grad = list(g_list)
+            var.grad = list(g_list)
 
             g = torch.cat([t.ravel() for t in g_list])
             n = g.numel()
@@ -198,6 +202,24 @@ class HigherOrderNewton(Module):
 
         x0 = torch.cat([p.ravel() for p in params])
 
+        if trust_method is None: trust_method = 'none'
+        else: trust_method = trust_method.lower()
+
+        if trust_method == 'none':
+            trust_region = None
+            prox = 0
+
+        elif trust_method == 'bounds':
+            trust_region = trust_value
+            prox = 0
+
+        elif trust_method == 'proximal':
+            trust_region = None
+            prox = 1 / trust_value
+
+        else:
+            raise ValueError(trust_method)
+
         x_star, expected_loss = _poly_minimize(
             trust_region=trust_region,
             prox=prox,
@@ -208,7 +230,7 @@ class HigherOrderNewton(Module):
         )
 
         # trust region
-        if trust_region is not None:
+        if trust_method != 'none':
             expected_reduction = loss - expected_loss
 
             vec_to_tensors_(x_star, params)
@@ -219,15 +241,13 @@ class HigherOrderNewton(Module):
             # failed step
             if reduction <= 0:
                 x_star = x0
-                self.global_state['trust_region'] = trust_region * decrease
+                self.global_state['trust_value'] = trust_value * decrease
 
             # very good step
             elif expected_reduction / reduction <= trust_tol:
-                self.global_state['trust_region'] = trust_region * increase
-
-
+                self.global_state['trust_value'] = trust_value * increase
 
         difference = vec_to_tensors(x0 - x_star, params)
-        vars.update = list(difference)
-        return vars
+        var.update = list(difference)
+        return var
 

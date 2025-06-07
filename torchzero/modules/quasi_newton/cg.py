@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from ...core import Chainable, Transform, apply, TensorwisePreconditioner
+from ...core import Chainable, Transform, apply_transform, TensorwisePreconditioner
 from ...utils import TensorList, as_tensorlist
 
 class ConguateGradientBase(Transform, ABC):
@@ -25,7 +25,7 @@ class ConguateGradientBase(Transform, ABC):
         """returns beta"""
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         params = as_tensorlist(params)
 
@@ -47,7 +47,7 @@ class ConguateGradientBase(Transform, ABC):
 
         # inner step
         if 'inner' in self.children:
-            tensors = as_tensorlist(apply(self.children['inner'], tensors, params, grads, vars))
+            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads, var))
 
         # calculate new direction with beta
         dir = tensors.add_(prev_dir.mul_(beta))
@@ -152,7 +152,7 @@ class ConjugateDescent(Transform):
 
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         g = as_tensorlist(tensors)
 
         prev_d = self.get_state('prev_dir', params=params, cls=TensorList, init = torch.zeros_like)
@@ -165,7 +165,7 @@ class ConjugateDescent(Transform):
 
         # inner step
         if 'inner' in self.children:
-            g = as_tensorlist(apply(self.children['inner'], g, params, grads, vars))
+            g = as_tensorlist(apply_transform(self.children['inner'], g, params, grads, var))
 
         dir = g.add_(prev_d.mul_(beta))
         prev_d.copy_(dir)

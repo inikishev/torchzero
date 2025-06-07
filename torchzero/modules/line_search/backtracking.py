@@ -86,14 +86,14 @@ class Backtracking(LineSearch):
         self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
-    def search(self, update, vars):
+    def search(self, update, var):
         init, beta, c, maxiter, min_alpha, adaptive, try_negative = itemgetter(
-            'init', 'beta', 'c', 'maxiter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[vars.params[0]])
+            'init', 'beta', 'c', 'maxiter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[var.params[0]])
 
-        objective = self.make_objective(vars=vars)
+        objective = self.make_objective(var=var)
 
         # # directional derivative
-        d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), vars.get_update()))
+        d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
         if adaptive: beta = beta * self.global_state['beta_scale']
@@ -138,15 +138,15 @@ class AdaptiveBacktracking(LineSearch):
         self.global_state['initial_scale'] = 1.0
 
     @torch.no_grad
-    def search(self, update, vars):
+    def search(self, update, var):
         init, beta, c, maxiter, min_alpha, target_iters, nplus, scale_beta, try_negative=itemgetter(
-            'init','beta','c','maxiter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[vars.params[0]])
+            'init','beta','c','maxiter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[var.params[0]])
 
-        objective = self.make_objective(vars=vars)
+        objective = self.make_objective(var=var)
 
         # directional derivative (0 if c = 0 because it is not needed)
         if c == 0: d = 0
-        else: d = -sum(t.sum() for t in torch._foreach_mul(vars.get_grad(), update))
+        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), update))
 
         # scale beta
         beta = beta * self.global_state['beta_scale']

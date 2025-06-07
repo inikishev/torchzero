@@ -5,7 +5,7 @@ import torch
 
 # import torchzero as tz
 
-from ...core import Transform, Chainable, apply
+from ...core import Transform, Chainable, apply_transform
 from ...utils.linalg import inv_sqrt_2x2, matrix_power_eigh, gram_schmidt
 from ...utils import TensorList, vec_to_tensors_
 
@@ -45,8 +45,8 @@ class RandomSubspacePreconditioning(Transform):
 
         if inner is not None: self.set_child('inner', inner)
 
-    def transform(self, tensors, params, grads, vars):
-        settings = self.settings[params[0]]
+    def apply(self, tensors, params, grads, loss, states, settings):
+        settings = settings[0]
         g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
         beta = settings['beta']
@@ -65,7 +65,7 @@ class RandomSubspacePreconditioning(Transform):
         update_subspace_preconditioner_(g, basis, accumulator, beta)
 
         if 'inner' in self.children:
-            tensors = apply(self.children['inner'], tensors, params, grads, vars)
+            tensors = apply_transform(self.children['inner'], tensors, params, grads)
             g = torch.cat([t.view(-1) for t in tensors])
 
         try:
@@ -91,8 +91,8 @@ class HistorySubspacePreconditioning(Transform):
 
         if inner is not None: self.set_child('inner', inner)
 
-    def transform(self, tensors, params, grads, vars):
-        settings = self.settings[params[0]]
+    def apply(self, tensors, params, grads, loss, states, settings):
+        settings = settings[0]
 
         g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
@@ -125,7 +125,7 @@ class HistorySubspacePreconditioning(Transform):
         update_subspace_preconditioner_(g, basis, accumulator, beta)
 
         if 'inner' in self.children:
-            tensors = apply(self.children['inner'], tensors, params, grads, vars)
+            tensors = apply_transform(self.children['inner'], tensors, params, grads)
             g = torch.cat([t.view(-1) for t in tensors])
 
         try:

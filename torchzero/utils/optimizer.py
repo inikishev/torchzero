@@ -282,3 +282,52 @@ def zero_grad_(params: Iterable[torch.Tensor], set_to_none):
                 grad.requires_grad_(False)
 
         torch._foreach_zero_(grads)
+
+
+@overload
+def unpack_states(states: Sequence[MutableMapping[str, Any]], tensors: Sequence[torch.Tensor],
+                   key: str, *,
+                   must_exist: bool = False, init: Init = torch.zeros_like,
+                   cls: type[ListLike] = list) -> ListLike: ...
+@overload
+def unpack_states(states: Sequence[MutableMapping[str, Any]], tensors: Sequence[torch.Tensor],
+                   key: list[str] | tuple[str,...], *,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   cls: type[ListLike] = list) -> list[ListLike]: ...
+@overload
+def unpack_states(states: Sequence[MutableMapping[str, Any]], tensors: Sequence[torch.Tensor],
+                   key: str,  key2: str, *keys: str,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   cls: type[ListLike] = list) -> list[ListLike]: ...
+
+def unpack_states(states: Sequence[MutableMapping[str, Any]], tensors: Sequence[torch.Tensor],
+                   key: str | list[str] | tuple[str,...], key2: str | None = None,  *keys: str,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+                   cls: type[ListLike] = list) -> ListLike | list[ListLike]:
+
+    # single key, return single cls
+    if isinstance(key, str) and key2 is None:
+        values = cls()
+        for i,s in enumerate(states):
+            if key not in s:
+                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(s.keys())}")
+                s[key] = _make_initial_state_value(tensors[0], init, i)
+            values.append(s[key])
+        return values
+
+    # multiple keys
+    k1 = (key,) if isinstance(key, str) else tuple(key)
+    k2 = () if key2 is None else (key2,)
+    keys = k1 + k2 + keys
+
+    values = [cls() for _ in keys]
+    for i,s in enumerate(states):
+        for k_i, key in enumerate(keys):
+            if key not in s:
+                if must_exist: raise KeyError(f"Key {key} doesn't exist in state with keys {tuple(s.keys())}")
+                k_init = init[k_i] if isinstance(init, (list,tuple)) else init
+                s[key] = _make_initial_state_value(tensors[i], k_init, i)
+            values[k_i].append(s[key])
+
+    return values
+

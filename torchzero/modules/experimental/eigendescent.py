@@ -7,7 +7,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply
+from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
@@ -49,9 +49,9 @@ class EigenDescent(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -62,16 +62,16 @@ class EigenDescent(Module):
         # ------------------------ calculate grad and hessian ------------------------ #
         if hessian_method == 'autograd':
             with torch.enable_grad():
-                loss = vars.loss = vars.loss_approx = closure(False)
+                loss = var.loss = var.loss_approx = closure(False)
                 g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                 g_list = [t[0] for t in g_list] # remove leading dim from loss
-                vars.grad = g_list
+                var.grad = g_list
                 H = hessian_list_to_mat(H_list)
 
         elif hessian_method in ('func', 'autograd.functional'):
             strat = 'forward-mode' if vectorize else 'reverse-mode'
             with torch.enable_grad():
-                g_list = vars.get_grad(retain_graph=True)
+                g_list = var.get_grad(retain_graph=True)
                 H: torch.Tensor = hessian_mat(partial(closure, backward=False), params,
                                 method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
 
@@ -112,6 +112,6 @@ class EigenDescent(Module):
         else:
             raise ValueError(mode)
 
-        vars.update = vec_to_tensors(g.dot(d).sign() * d, params)
-        return vars
+        var.update = vec_to_tensors(g.dot(d).sign() * d, params)
+        return var
 

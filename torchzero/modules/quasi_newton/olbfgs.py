@@ -5,17 +5,17 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Transform, Vars, apply
+from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
 from .lbfgs import _adaptive_damping, lbfgs
 
 
 @torch.no_grad
-def _store_sk_yk_after_step_hook(optimizer, vars: Vars, prev_params: TensorList, prev_grad: TensorList, damping, init_damping, eigval_bounds, s_history: deque[TensorList], y_history: deque[TensorList], sy_history: deque[torch.Tensor]):
-    assert vars.closure is not None
-    with torch.enable_grad(): vars.closure()
-    grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in vars.params]
-    s_k = vars.params - prev_params
+def _store_sk_yk_after_step_hook(optimizer, var: Var, prev_params: TensorList, prev_grad: TensorList, damping, init_damping, eigval_bounds, s_history: deque[TensorList], y_history: deque[TensorList], sy_history: deque[torch.Tensor]):
+    assert var.closure is not None
+    with torch.enable_grad(): var.closure()
+    grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in var.params]
+    s_k = var.params - prev_params
     y_k = grad - prev_grad
     ys_k = s_k.dot(y_k)
 
@@ -95,11 +95,11 @@ class OnlineLBFGS(Module):
         self.global_state['sy_history'].clear()
 
     @torch.no_grad
-    def step(self, vars):
-        assert vars.closure is not None
+    def step(self, var):
+        assert var.closure is not None
 
-        params = as_tensorlist(vars.params)
-        update = as_tensorlist(vars.get_update())
+        params = as_tensorlist(var.params)
+        update = as_tensorlist(var.get_update())
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -121,7 +121,7 @@ class OnlineLBFGS(Module):
 
                 current_params = params.clone()
                 params.set_(prev_params)
-                with torch.enable_grad(): vars.closure()
+                with torch.enable_grad(): var.closure()
                 y_k = update - params.grad
                 ys_k = s_k.dot(y_k)
                 params.set_(current_params)
@@ -146,7 +146,7 @@ class OnlineLBFGS(Module):
                 ys_k = s_k.dot(y_k)
 
             # this will run after params are updated by Modular after running all future modules
-            vars.post_step_hooks.append(
+            var.post_step_hooks.append(
                 partial(
                     _store_sk_yk_after_step_hook,
                     prev_params=params.clone(),
@@ -164,18 +164,18 @@ class OnlineLBFGS(Module):
 
         # step with inner module before applying preconditioner
         if self.children:
-            update = TensorList(apply(self.children['inner'], tensors=update, params=params, grads=vars.grad, vars=vars))
+            update = TensorList(apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var))
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
             if y_k is not None and y_k.abs().global_max() <= tol:
-                vars.update = update # may have been updated by inner module, probably makes sense to use it here?
-                return vars
+                var.update = update # may have been updated by inner module, probably makes sense to use it here?
+                return var
 
         # lerp initial H^-1 @ q guess
         z_ema = None
         if z_beta is not None:
-            z_ema = self.get_state('z_ema', params=vars.params, cls=TensorList)
+            z_ema = self.get_state('z_ema', params=var.params, cls=TensorList)
 
         # precondition
         dir = lbfgs(
@@ -190,7 +190,7 @@ class OnlineLBFGS(Module):
             step=step
         )
 
-        vars.update = dir
+        var.update = dir
 
-        return vars
+        return var
 

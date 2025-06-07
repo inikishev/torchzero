@@ -2,7 +2,7 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Transform, apply
+from ...core import Chainable, Transform, apply_transform
 from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
 
 @torch.no_grad
@@ -188,7 +188,7 @@ class SOAP(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         updates = []
         # update preconditioners
         for i,(p,t) in enumerate(zip(params, tensors)):

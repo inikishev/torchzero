@@ -6,7 +6,7 @@ import torch
 from ...utils import TensorList, as_tensorlist, generic_zeros_like, generic_vector_norm, generic_numel
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
-from ...core import Chainable, apply, Module
+from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import cg
 
 class NewtonCG(Module):
@@ -27,9 +27,9 @@ class NewtonCG(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -42,7 +42,7 @@ class NewtonCG(Module):
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
-            grad = vars.get_grad(create_graph=True)
+            grad = var.get_grad(create_graph=True)
 
             def H_mm(x):
                 with torch.enable_grad():
@@ -51,7 +51,7 @@ class NewtonCG(Module):
         else:
 
             with torch.enable_grad():
-                grad = vars.get_grad()
+                grad = var.get_grad()
 
             if hvp_method == 'forward':
                 def H_mm(x):
@@ -66,9 +66,9 @@ class NewtonCG(Module):
 
 
         # -------------------------------- inner step -------------------------------- #
-        b = vars.get_update()
+        b = var.get_update()
         if 'inner' in self.children:
-            b = as_tensorlist(apply(self.children['inner'], b, params=params, grads=grad, vars=vars))
+            b = as_tensorlist(apply_transform(self.children['inner'], b, params=params, grads=grad, var=var))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
@@ -79,7 +79,7 @@ class NewtonCG(Module):
             assert x0 is not None
             x0.copy_(x)
 
-        vars.update = x
-        return vars
+        var.update = x
+        return var
 
 

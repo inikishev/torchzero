@@ -2,17 +2,18 @@ from collections import deque
 
 import torch
 
-from ...core import Chainable, TensorwisePreconditioner
+from ...core import Chainable, TensorwiseTransform
 from ...utils.linalg import matrix_power_eigh
 
 
-class TAda(TensorwisePreconditioner):
+class TAda(TensorwiseTransform):
     """3rd order whitening (maybe normalizes skewness). Please note that this is experimental and isn't guaranteed to work."""
     def __init__(self, history_size: int = 100, reg: float = 1e-8, update_freq: int = 1, concat_params: bool = True, inner: Chainable | None = None):
         defaults = dict(history_size=history_size, reg=reg)
         super().__init__(defaults, uses_grad=False, update_freq=update_freq, inner=inner, concat_params=concat_params)
 
-    def update_tensor(self, tensor, param, grad, state, settings):
+    @torch.no_grad
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
         reg = settings['reg']
         if 'history' not in state:
             state['history'] = deque(maxlen=settings['history_size'])
@@ -30,7 +31,8 @@ class TAda(TensorwisePreconditioner):
 
         state['outer'] = outer.add_(I)
 
-    def apply_tensor(self, tensor, param, grad, state, settings):
+    @torch.no_grad
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         outer = state['outer']
         P = matrix_power_eigh(outer, -1/2)
         return (P @ tensor.ravel()).view_as(tensor)

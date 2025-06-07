@@ -6,15 +6,15 @@ from typing import Any, Literal
 import warnings
 import torch
 
-from ...core import Chainable, Module, Vars
+from ...core import Chainable, Module, Var
 from ...utils import vec_to_tensors
 
 
-def _make_projected_closure(closure, vars: Vars, projection: "Projection",
+def _make_projected_closure(closure, var: Var, projection: "Projection",
                            params: list[torch.Tensor], projected_params: list[torch.Tensor]):
 
     def projected_closure(backward=True):
-        unprojected_params = projection.unproject(projected_params, vars, current='params')
+        unprojected_params = projection.unproject(projected_params, var, current='params')
 
         with torch.no_grad():
             for p, new_p in zip(params, unprojected_params):
@@ -23,7 +23,7 @@ def _make_projected_closure(closure, vars: Vars, projection: "Projection",
         if backward:
             loss = closure()
             grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-            projected_grads = projection.project(grads, vars, current='grads')
+            projected_grads = projection.project(grads, var, current='grads')
             for p, g in zip(projected_params, projected_grads):
                 p.grad = g
 
@@ -38,15 +38,15 @@ def _projected_get_grad_override(
     retain_graph: bool | None = None,
     create_graph: bool = False,
     projection: Any = ...,
-    unprojected_vars: Any = ...,
+    unprojected_var: Any = ...,
     self: Any = ...,
 ):
     assert isinstance(projection, Projection)
-    assert isinstance(unprojected_vars, Vars)
-    assert isinstance(self, Vars)
+    assert isinstance(unprojected_var, Var)
+    assert isinstance(self, Var)
 
     if self.grad is not None: return self.grad
-    grads = unprojected_vars.get_grad(retain_graph, create_graph)
+    grads = unprojected_var.get_grad(retain_graph, create_graph)
     projected_grads = list(projection.project(grads, self, current='grads'))
     self.grad = projected_grads
     for p, g in zip(self.params, projected_grads):
@@ -85,56 +85,56 @@ class Projection(Module, ABC):
         self._projected_params = None
 
     @abstractmethod
-    def project(self, tensors: list[torch.Tensor], vars: Vars, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
+    def project(self, tensors: list[torch.Tensor], var: Var, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
         """projects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
 
     @abstractmethod
-    def unproject(self, tensors: list[torch.Tensor], vars: Vars, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
+    def unproject(self, tensors: list[torch.Tensor], var: Var, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
         """unprojects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
 
     @torch.no_grad
-    def step(self, vars: Vars):
-        projected_vars = vars.clone(clone_update=False)
+    def step(self, var: Var):
+        projected_var = var.clone(clone_update=False)
         update_is_grad = False
 
         # closure will calculate projected update and grad if needed
-        if self._project_params and vars.closure is not None:
-            if self._project_update and vars.update is not None: projected_vars.update = list(self.project(vars.update, vars=vars, current='update'))
+        if self._project_params and var.closure is not None:
+            if self._project_update and var.update is not None: projected_var.update = list(self.project(var.update, var=var, current='update'))
             else:
                 update_is_grad = True
-            if self._project_grad and vars.grad is not None: projected_vars.grad = list(self.project(vars.grad, vars=vars, current='grads'))
+            if self._project_grad and var.grad is not None: projected_var.grad = list(self.project(var.grad, var=var, current='grads'))
 
         # project update and grad, unprojected attributes are deleted
         else:
             if self._project_update:
-                if vars.update is None:
+                if var.update is None:
                     # update is None, meaning it will be set to `grad`.
                     # we can project grad and use it for update
-                    grad = vars.get_grad()
-                    projected_vars.grad = list(self.project(grad, vars=vars, current='grads'))
-                    if self._project_grad: projected_vars.update = [g.clone() for g in projected_vars.grad]
-                    else: projected_vars.update = projected_vars.grad.copy() # don't clone because grad shouldn't be used
-                    del vars.update
+                    grad = var.get_grad()
+                    projected_var.grad = list(self.project(grad, var=var, current='grads'))
+                    if self._project_grad: projected_var.update = [g.clone() for g in projected_var.grad]
+                    else: projected_var.update = projected_var.grad.copy() # don't clone because grad shouldn't be used
+                    del var.update
                     update_is_grad = True
 
                 else:
-                    update = vars.get_update()
-                    projected_vars.update = list(self.project(update, vars=vars, current='update'))
-                    del update, vars.update
+                    update = var.get_update()
+                    projected_var.update = list(self.project(update, var=var, current='update'))
+                    del update, var.update
 
-            if self._project_grad and projected_vars.grad is None:
-                grad = vars.get_grad()
-                projected_vars.grad = list(self.project(grad, vars=vars, current='grads'))
+            if self._project_grad and projected_var.grad is None:
+                grad = var.get_grad()
+                projected_var.grad = list(self.project(grad, var=var, current='grads'))
 
         original_params = None
         if self._project_params:
-            original_params = [p.clone() for p in vars.params]
-            projected_params = self.project(vars.params, vars=vars, current='params')
+            original_params = [p.clone() for p in var.params]
+            projected_params = self.project(var.params, var=var, current='params')
 
         else:
             # make fake params for correct shapes and state storage
             # they reuse update or grad storage for memory efficiency
-            projected_params = projected_vars.update if projected_vars.update is not None else projected_vars.grad
+            projected_params = projected_var.update if projected_var.update is not None else projected_var.grad
             assert projected_params is not None
 
         if self._projected_params is None:
@@ -148,22 +148,22 @@ class Projection(Module, ABC):
 
         # project closure
         if self._project_params:
-            closure = vars.closure; params = vars.params
-            projected_vars.closure = _make_projected_closure(closure, vars=vars, projection=self, params=params,
+            closure = var.closure; params = var.params
+            projected_var.closure = _make_projected_closure(closure, var=var, projection=self, params=params,
                                                              projected_params=self._projected_params)
 
         else:
-            projected_vars.closure = None
+            projected_var.closure = None
 
         # step
-        projected_vars.params = self._projected_params
-        projected_vars.get_grad = partial(
+        projected_var.params = self._projected_params
+        projected_var.get_grad = partial(
             _projected_get_grad_override,
             projection=self,
-            unprojected_vars=vars,
-            self=projected_vars,
+            unprojected_var=var,
+            self=projected_var,
         )
-        projected_vars = self.children['modules'].step(projected_vars)
+        projected_var = self.children['modules'].step(projected_var)
 
         # empty fake params storage
         # this doesn't affect update/grad because it is a different python object, set_ changes storage on an object
@@ -172,28 +172,28 @@ class Projection(Module, ABC):
                 p.set_(torch.empty(0, device=p.device, dtype=p.dtype)) # pyright: ignore[reportArgumentType]
 
         # unproject
-        unprojected_vars = projected_vars.clone(clone_update=False)
-        unprojected_vars.closure = vars.closure
-        unprojected_vars.params = vars.params
-        unprojected_vars.grad = vars.grad
+        unprojected_var = projected_var.clone(clone_update=False)
+        unprojected_var.closure = var.closure
+        unprojected_var.params = var.params
+        unprojected_var.grad = var.grad
 
         if self._project_update:
-            assert projected_vars.update is not None
-            unprojected_vars.update = list(self.unproject(projected_vars.update, vars=vars, current='grads' if update_is_grad else 'update'))
-            del projected_vars.update
+            assert projected_var.update is not None
+            unprojected_var.update = list(self.unproject(projected_var.update, var=var, current='grads' if update_is_grad else 'update'))
+            del projected_var.update
 
         # unprojecting grad doesn't make sense?
         # if self._project_grad:
-        #     assert projected_vars.grad is not None
-        #     unprojected_vars.grad = list(self.unproject(projected_vars.grad, vars=vars))
+        #     assert projected_var.grad is not None
+        #     unprojected_var.grad = list(self.unproject(projected_var.grad, var=var))
 
-        del projected_vars
+        del projected_var
 
         if original_params is not None:
-            for p, o in zip(unprojected_vars.params, original_params):
+            for p, o in zip(unprojected_var.params, original_params):
                 p.set_(o) # pyright: ignore[reportArgumentType]
 
-        return unprojected_vars
+        return unprojected_var
 
 
 
@@ -206,12 +206,12 @@ class FlipConcatProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
+    def project(self, tensors, var, current):
         return [torch.cat([u.view(-1) for u in tensors], dim=-1).flip(0)]
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
-        return vec_to_tensors(vec=tensors[0].flip(0), reference=vars.params)
+    def unproject(self, tensors, var, current):
+        return vec_to_tensors(vec=tensors[0].flip(0), reference=var.params)
 
 
 class NoopProjection(Projection):
@@ -221,11 +221,11 @@ class NoopProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
+    def project(self, tensors, var, current):
         return tensors
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
+    def unproject(self, tensors, var, current):
         return tensors
 
 class MultipyProjection(Projection):
@@ -235,10 +235,10 @@ class MultipyProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
+    def project(self, tensors, var, current):
         return torch._foreach_mul(tensors, 2)
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
+    def unproject(self, tensors, var, current):
         return torch._foreach_div(tensors, 2)
 

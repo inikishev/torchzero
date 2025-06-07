@@ -93,14 +93,14 @@ class FDM(GradApproximator):
     Args:
         h (float, optional): magnitude of parameter perturbation. Defaults to 1e-3.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
-        target (GradTarget, optional): what to set on vars. Defaults to 'closure'.
+        target (GradTarget, optional): what to set on var. Defaults to 'closure'.
     """
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, vars):
+    def approximate(self, closure, params, loss, var):
         grads = []
         loss_approx = None
 

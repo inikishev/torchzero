@@ -151,8 +151,8 @@ class ClipValue(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        value = self.get_settings('value', params=params)
+    def apply(self, tensors, params, grads, loss, states, settings):
+        value = [s['value'] for s in settings]
         return TensorList(tensors).clip_([-v for v in value], value)
 
 class ClipNorm(Transform):
@@ -186,9 +186,9 @@ class ClipNorm(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        max_norm = self.get_settings('max_norm', params=params, cls=NumberList)
-        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
+    def apply(self, tensors, params, grads, loss, states, settings):
+        max_norm = NumberList(s['max_norm'] for s in settings)
+        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
         _clip_norm_(
             tensors_ = TensorList(tensors),
             min = 0,
@@ -232,9 +232,9 @@ class Normalize(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        norm_value = self.get_settings('norm_value', params=params, cls=NumberList)
-        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
+    def apply(self, tensors, params, grads, loss, states, settings):
+        norm_value = NumberList(s['norm_value'] for s in settings)
+        ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
 
         _clip_norm_(
             tensors_ = TensorList(tensors),
@@ -311,8 +311,8 @@ class Centralize(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(self.settings[params[0]])
+    def apply(self, tensors, params, grads, loss, states, settings):
+        dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(settings[0])
 
         _centralize_(tensors_ = TensorList(tensors), dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 

@@ -24,10 +24,10 @@ class ScipyMinimizeScalar(LineSearch):
 
 
     @torch.no_grad
-    def search(self, update, vars):
-        objective = self.make_objective(vars=vars)
+    def search(self, update, var):
+        objective = self.make_objective(var=var)
         method, bracket, bounds, tol, options, maxiter = itemgetter(
-            'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.settings[vars.params[0]])
+            'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.settings[var.params[0]])
 
         if maxiter is not None:
             options = dict(options) if isinstance(options, Mapping) else {}

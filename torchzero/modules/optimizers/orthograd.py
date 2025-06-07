@@ -30,13 +30,13 @@ class OrthoGrad(Transform):
     Args:
         eps (float, optional): epsilon added to the denominator for numerical stability (default: 1e-30)
         renormalize (bool, optional): whether to graft projected gradient to original gradient norm. Defaults to True.
-        target (Target, optional): what to set on vars. Defaults to 'update'.
+        target (Target, optional): what to set on var. Defaults to 'update'.
     """
     def __init__(self, eps: float = 1e-8, renormalize=True, target: Target = 'update'):
         defaults = dict(eps=eps, renormalize=renormalize)
         super().__init__(defaults, uses_grad=False, target=target)
 
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         settings = self.settings[params[0]]
         eps = settings['eps']
         renormalize = settings['renormalize']

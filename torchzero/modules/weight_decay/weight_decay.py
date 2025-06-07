@@ -25,7 +25,7 @@ class WeightDecay(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         weight_decay = self.get_settings('weight_decay', params=params, cls=NumberList)
         ord = self.settings[params[0]]['ord']
 
@@ -44,9 +44,9 @@ class DirectWeightDecay(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        weight_decay = self.get_settings('weight_decay', params=vars.params, cls=NumberList)
-        ord = self.settings[vars.params[0]]['ord']
+    def step(self, var):
+        weight_decay = self.get_settings('weight_decay', params=var.params, cls=NumberList)
+        ord = self.settings[var.params[0]]['ord']
 
-        decay_weights_(vars.params, weight_decay, ord)
-        return vars
+        decay_weights_(var.params, weight_decay, ord)
+        return var

@@ -1,42 +1,25 @@
-from contextlib import nullcontext
+import itertools
 import warnings
 from collections.abc import Callable
+from contextlib import nullcontext
 from functools import partial
-import itertools
 from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply
+from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
     jacobian_wrt,
 )
+from ..second_order.newton import (
+    cholesky_solve,
+    eigh_solve,
+    least_squares_solve,
+    lu_solve,
+)
 
-
-def lu_solve(H: torch.Tensor, g: torch.Tensor):
-    x, info = torch.linalg.solve_ex(H, g) # pylint:disable=not-callable
-    if info == 0: return x
-    return None
-
-def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
-    x, info = torch.linalg.cholesky_ex(H) # pylint:disable=not-callable
-    if info == 0:
-        return torch.cholesky_solve(g.unsqueeze(1), x)
-    return None
-
-def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
-    return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
-
-def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None):
-    try:
-        L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
-        if tfm is not None: L = tfm(L)
-        L = L.reciprocal()
-        return torch.linalg.multi_dot([Q * L.unsqueeze(-2), Q.mH, g]) # pylint:disable=not-callable
-    except torch.linalg.LinAlgError:
-        return None
 
 class NewtonNewton(Module):
     """
@@ -56,29 +39,31 @@ class NewtonNewton(Module):
         self,
         reg: float = 1e-6,
         order: int = 3,
+        search_negative: bool = False,
         vectorize: bool = True,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(order=order, reg=reg, vectorize=vectorize, eigval_tfm=eigval_tfm)
+        defaults = dict(order=order, reg=reg, vectorize=vectorize, eigval_tfm=eigval_tfm, search_negative=search_negative)
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
-        closure = vars.closure
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
         reg = settings['reg']
         vectorize = settings['vectorize']
         order = settings['order']
+        search_negative = settings['search_negative']
         eigval_tfm = settings['eigval_tfm']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         with torch.enable_grad():
-            loss = vars.loss = vars.loss_approx = closure(False)
+            loss = var.loss = var.loss_approx = closure(False)
             g_list = torch.autograd.grad(loss, params, create_graph=True)
-            vars.grad = list(g_list)
+            var.grad = list(g_list)
 
             xp = torch.cat([t.ravel() for t in g_list])
             I = torch.eye(xp.numel(), dtype=xp.dtype, device=xp.device)
@@ -91,12 +76,13 @@ class NewtonNewton(Module):
                     if reg != 0: H = H + I * reg
 
                     x = None
-                    if is_last and eigval_tfm is not None: x = eigh_solve(H, xp, eigval_tfm)
+                    if search_negative or (is_last and eigval_tfm is not None):
+                        x = eigh_solve(H, xp, eigval_tfm, search_negative=search_negative)
                     if x is None: x = cholesky_solve(H, xp)
                     if x is None: x = lu_solve(H, xp)
                     if x is None: x = least_squares_solve(H, xp)
                     xp = x.squeeze()
 
-        vars.update = vec_to_tensors(xp, params)
-        return vars
+        var.update = vec_to_tensors(xp, params)
+        return var
 

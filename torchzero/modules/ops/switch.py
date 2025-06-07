@@ -23,16 +23,16 @@ class Alternate(Module):
         self.global_state['steps_to_next'] = steps[0] if isinstance(steps, list) else steps
 
     @torch.no_grad
-    def step(self, vars):
+    def step(self, var):
         # get current module
         current_module_idx = self.global_state.setdefault('current_module_idx', 0)
         module = self.children[f'module_{current_module_idx}']
 
         # step
-        vars = module.step(vars.clone(clone_update=False))
+        var = module.step(var.clone(clone_update=False))
 
         # number of steps until next module
-        steps = self.settings[vars.params[0]]['steps']
+        steps = self.settings[var.params[0]]['steps']
         if isinstance(steps, int): steps = [steps]*len(self.children)
 
         if 'steps_to_next' not in self.global_state:
@@ -51,7 +51,7 @@ class Alternate(Module):
 
             self.global_state['steps_to_next'] = steps[self.global_state['current_module_idx']]
 
-        return vars
+        return var
 
 class Switch(Alternate):
     """switch to next module after some steps"""

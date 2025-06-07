@@ -70,7 +70,7 @@ class Cautious(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[params[0]])
         return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
@@ -82,7 +82,7 @@ class UpdateGradientSignConsistency(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         normalize, eps = itemgetter('normalize', 'eps')(self.settings[params[0]])
 
@@ -107,26 +107,26 @@ class IntermoduleCautious(Module):
         self.set_child('compare', compare)
 
     @torch.no_grad
-    def step(self, vars):
+    def step(self, var):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_vars = main.step(vars.clone(clone_update=True))
-        vars.update_attrs_from_clone_(main_vars)
+        main_var = main.step(var.clone(clone_update=True))
+        var.update_attrs_from_clone_(main_var)
 
-        compare_vars = compare.step(vars.clone(clone_update=True))
-        vars.update_attrs_from_clone_(compare_vars)
+        compare_var = compare.step(var.clone(clone_update=True))
+        var.update_attrs_from_clone_(compare_var)
 
-        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[vars.params[0]])
-        vars.update = cautious_(
-            TensorList(main_vars.get_update()),
-            TensorList(compare_vars.get_update()),
+        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[var.params[0]])
+        var.update = cautious_(
+            TensorList(main_var.get_update()),
+            TensorList(compare_var.get_update()),
             normalize=normalize,
             mode=mode,
             eps=eps,
         )
 
-        return vars
+        return var
 
 class ScaleByGradCosineSimilarity(Transform):
     def __init__(
@@ -138,7 +138,7 @@ class ScaleByGradCosineSimilarity(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         eps = self.settings[params[0]]['eps']
         tensors = TensorList(tensors)
@@ -161,21 +161,21 @@ class ScaleModulesByCosineSimilarity(Module):
         self.set_child('compare', compare)
 
     @torch.no_grad
-    def step(self, vars):
+    def step(self, var):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_vars = main.step(vars.clone(clone_update=True))
-        vars.update_attrs_from_clone_(main_vars)
+        main_var = main.step(var.clone(clone_update=True))
+        var.update_attrs_from_clone_(main_var)
 
-        compare_vars = compare.step(vars.clone(clone_update=True))
-        vars.update_attrs_from_clone_(compare_vars)
+        compare_var = compare.step(var.clone(clone_update=True))
+        var.update_attrs_from_clone_(compare_var)
 
-        m = TensorList(main_vars.get_update())
-        c = TensorList(compare_vars.get_update())
-        eps = self.settings[vars.params[0]]['eps']
+        m = TensorList(main_var.get_update())
+        c = TensorList(compare_var.get_update())
+        eps = self.settings[var.params[0]]['eps']
 
         cos_sim = (m.dot(c)) / (m.global_vector_norm() * c.global_vector_norm()).clip(min=eps)
 
-        vars.update = m.mul_(cos_sim)
-        return vars
+        var.update = m.mul_(cos_sim)
+        return var

@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform, Chainable, Vars, apply
+from ...core import Module, Target, Transform, Chainable, Var, apply_transform
 from ...utils import NumberList, TensorList
 from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 
@@ -23,7 +23,7 @@ def rmsprop_(
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
     grads: list[torch.Tensor] | None = None,
-    vars: Vars | None = None,
+    var: Var | None = None,
 ):
     """returns `tensors_`"""
     if exp_avg_ is not None:
@@ -36,7 +36,7 @@ def rmsprop_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply(inner, tensors_, params=params, grads=grads, vars=vars))
+        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads, var=var))
 
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
@@ -70,7 +70,7 @@ class RMSprop(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         self.current_step += 1
 
         smoothing,eps = self.get_settings('smoothing', 'eps', params=params, cls=NumberList)
@@ -99,5 +99,5 @@ class RMSprop(Transform):
             inner=self.children.get("inner", None),
             params=params,
             grads=grads,
-            vars=vars,
+            var=var,
         )

@@ -34,8 +34,8 @@ class DCTProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
-        settings = self.settings[vars.params[0]]
+    def project(self, tensors, var, current):
+        settings = self.settings[var.params[0]]
         dims = settings['dims']
         norm = settings['norm']
 
@@ -54,8 +54,8 @@ class DCTProjection(Projection):
         return projected
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
-        settings = self.settings[vars.params[0]]
+    def unproject(self, tensors, var, current):
+        settings = self.settings[var.params[0]]
         dims = settings['dims']
         norm = settings['norm']
 

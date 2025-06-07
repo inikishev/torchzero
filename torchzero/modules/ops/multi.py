@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from ...core import Chainable, Module, Target, Vars, maybe_chain
+from ...core import Chainable, Module, Target, Var, maybe_chain
 from ...utils import TensorList, tensorlist
 
 
@@ -29,25 +29,25 @@ class MultiOperation(Module, ABC):
             raise ValueError('At least one operand must be a module')
 
     @abstractmethod
-    def transform(self, vars: Vars, **operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Var, **operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
         """applies the operation to operands"""
         raise NotImplementedError
 
     @torch.no_grad
-    def step(self, vars: Vars) -> Vars:
+    def step(self, var: Var) -> Var:
         # pass cloned update to all module operands
         processed_operands: dict[str, Any | list[torch.Tensor]] = self.operands.copy()
 
         for k,v in self.operands.items():
             if k in self.children:
                 v: Module
-                updated_vars = v.step(vars.clone(clone_update=True))
-                processed_operands[k] = updated_vars.get_update()
-                vars.update_attrs_from_clone_(updated_vars) # update loss, grad, etc if this module calculated them
+                updated_var = v.step(var.clone(clone_update=True))
+                processed_operands[k] = updated_var.get_update()
+                var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 
-        transformed = self.transform(vars, **processed_operands)
-        vars.update = transformed
-        return vars
+        transformed = self.transform(var, **processed_operands)
+        var.update = transformed
+        return var
 
 
 
@@ -57,8 +57,8 @@ class SubModules(MultiOperation):
         super().__init__(defaults, input=input, other=other)
 
     @torch.no_grad
-    def transform(self, vars: Vars, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
-        alpha = self.settings[vars.params[0]]['alpha']
+    def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
+        alpha = self.settings[var.params[0]]['alpha']
 
         if isinstance(input, (int,float)):
             assert isinstance(other, list)
@@ -74,7 +74,7 @@ class DivModules(MultiOperation):
         super().__init__(defaults, input=input, other=other)
 
     @torch.no_grad
-    def transform(self, vars: Vars, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
         if isinstance(input, (int,float)):
             assert isinstance(other, list)
             return input / TensorList(other)
@@ -88,7 +88,7 @@ class PowModules(MultiOperation):
         super().__init__(defaults, input=input, exponent=exponent)
 
     @torch.no_grad
-    def transform(self, vars: Vars, input: float | list[torch.Tensor], exponent: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Var, input: float | list[torch.Tensor], exponent: float | list[torch.Tensor]) -> list[torch.Tensor]:
         if isinstance(input, (int,float)):
             assert isinstance(exponent, list)
             return input ** TensorList(exponent)
@@ -102,8 +102,8 @@ class LerpModules(MultiOperation):
         super().__init__(defaults, input=input, end=end)
 
     @torch.no_grad
-    def transform(self, vars: Vars, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
-        torch._foreach_lerp_(input, end, weight=self.settings[vars.params[0]]['weight'])
+    def transform(self, var: Var, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
+        torch._foreach_lerp_(input, end, weight=self.settings[var.params[0]]['weight'])
         return input
 
 class ClipModules(MultiOperation):
@@ -112,7 +112,7 @@ class ClipModules(MultiOperation):
         super().__init__(defaults, input=input, min=min, max=max)
 
     @torch.no_grad
-    def transform(self, vars: Vars, input: list[torch.Tensor], min: float | list[torch.Tensor], max: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Var, input: list[torch.Tensor], min: float | list[torch.Tensor], max: float | list[torch.Tensor]) -> list[torch.Tensor]:
         return TensorList(input).clamp_(min=min, max=max)
 
 
@@ -122,8 +122,8 @@ class GraftModules(MultiOperation):
         super().__init__(defaults, direction=direction, magnitude=magnitude)
 
     @torch.no_grad
-    def transform(self, vars, magnitude: list[torch.Tensor], direction:list[torch.Tensor]):
-        tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[vars.params[0]])
+    def transform(self, var, magnitude: list[torch.Tensor], direction:list[torch.Tensor]):
+        tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[var.params[0]])
         return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
 
 
@@ -132,6 +132,6 @@ class Where(MultiOperation):
         super().__init__({}, condition=condition, input=input, other=other)
 
     @torch.no_grad
-    def transform(self, vars, condition: list[torch.Tensor], input: list[torch.Tensor] | float, other: list[torch.Tensor] | float):
+    def transform(self, var, condition: list[torch.Tensor], input: list[torch.Tensor] | float, other: list[torch.Tensor] | float):
         return tensorlist.where(TensorList(condition).as_bool(), input, other)
 

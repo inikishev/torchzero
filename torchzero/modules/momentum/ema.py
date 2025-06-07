@@ -24,7 +24,7 @@ class EMA(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         debiased, lerp, ema_init = itemgetter('debiased','lerp','ema_init')(self.settings[params[0]])
@@ -46,7 +46,7 @@ class EMASquared(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         amsgrad, pow = itemgetter('amsgrad', 'pow')(self.settings[params[0]])
         beta = self.get_settings('beta', params=params, cls=NumberList)
 
@@ -67,7 +67,7 @@ class SqrtEMASquared(Transform):
 
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])
@@ -96,7 +96,7 @@ class Debias(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         settings = self.settings[params[0]]
@@ -111,7 +111,7 @@ class Debias2(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         pow = self.settings[params[0]]['pow']
@@ -124,7 +124,7 @@ class CenteredEMASquared(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         amsgrad, pow = itemgetter('amsgrad', 'pow')(self.settings[params[0]])
         beta = self.get_settings('beta', params=params, cls=NumberList)
 
@@ -149,7 +149,7 @@ class CenteredSqrtEMASquared(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         amsgrad, pow, debiased = itemgetter('amsgrad', 'pow', 'debiased')(self.settings[params[0]])

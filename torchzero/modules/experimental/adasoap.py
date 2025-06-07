@@ -2,11 +2,18 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Transform, apply
+from ...core import Chainable, Transform
 from ...modules.optimizers.shampoo import _merge_small_dims, _unmerge_small_dims
+from ..optimizers.soap import (
+    get_orthogonal_matrix,
+    get_orthogonal_matrix_QR,
+    project,
+    project_back,
+)
+
 
 @torch.no_grad
-def update_soap_covariances_(
+def update_adasoap_covariances_(
     grad: torch.Tensor,
     GGs_: list[torch.Tensor | None],
     GG_sqs: list[torch.Tensor | None],
@@ -24,122 +31,6 @@ def update_soap_covariances_(
         if beta is None: GG.add_(torch.tensordot(grad, grad, (axes, axes))) # pyright:ignore[reportArgumentType]
         else: GG.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
 
-@torch.no_grad
-def project(tensors: torch.Tensor, Q: list[torch.Tensor | None]):
-    """
-    Projects the gradient to the eigenbases of the preconditioner.
-    """
-    for mat in Q:
-        if mat is None: continue
-        if len(mat) > 0:
-            tensors = torch.tensordot(tensors, mat, dims=[[0], [0]]) # pyright:ignore[reportArgumentType]
-        else:
-            # I don't understand this part but it is in https://github.com/nikhilvyas/SOAP/blob/main/soap.py
-            permute_order = list(range(1, len(tensors.shape))) + [0]
-            tensors = tensors.permute(permute_order)
-
-    return tensors
-
-@torch.no_grad
-def project_back(tensors: torch.Tensor, Q: list[torch.Tensor| None]):
-    """
-    Projects the gradient back to the original space.
-    """
-    for mat in Q:
-        if mat is None: continue
-        if len(mat) > 0:
-            tensors = torch.tensordot(tensors, mat,dims=[[0], [1]]) # pyright:ignore[reportArgumentType]
-        else:
-            permute_order = list(range(1, len(tensors.shape))) + [0]
-            tensors = tensors.permute(permute_order)
-
-    return tensors
-
-# function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
-@torch.no_grad
-def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
-    """
-    Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
-    """
-    matrix = []
-    float_data = False
-    original_type = original_device = None
-    for m in mat:
-        if m is None: continue
-        if len(m) == 0:
-            matrix.append([])
-            continue
-        if m.dtype != torch.float:
-            original_type = m.dtype
-            original_device = m.device
-            matrix.append(m.float())
-        else:
-            float_data = True
-            matrix.append(m)
-
-    final = []
-    for m in matrix:
-        if len(m) == 0:
-            final.append([])
-            continue
-        try:
-            _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-        except Exception:
-            _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-            Q = Q.to(m.dtype)
-        Q = torch.flip(Q, [1])
-
-        if not float_data:
-            Q = Q.to(original_device).type(original_type)
-        final.append(Q)
-    return final
-
-# function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py#L240
-@torch.no_grad
-def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | None], Q_list: list[torch.Tensor | None]):
-    """
-    Computes the eigenbases of the preconditioner using one round of power iteration
-    followed by torch.linalg.qr decomposition.
-    """
-    matrix = []
-    orth_matrix = []
-    float_data = False
-    original_type = original_device = None
-    for m,o in zip(GG, Q_list):
-        if m is None: continue
-        assert o is not None
-
-        if len(m) == 0:
-            matrix.append([])
-            orth_matrix.append([])
-            continue
-        if m.data.dtype != torch.float:
-            original_type = m.data.dtype
-            original_device = m.data.device
-            matrix.append(m.data.float())
-            orth_matrix.append(o.data.float())
-        else:
-            float_data = True
-            matrix.append(m.data.float())
-            orth_matrix.append(o.data.float())
-
-    final = []
-    for ind, (m,o) in enumerate(zip(matrix, orth_matrix)):
-        if len(m)==0:
-            final.append([])
-            continue
-        est_eig = torch.diag(o.T @ m @ o)
-        sort_idx = torch.argsort(est_eig, descending=True)
-        exp_avg_sq = exp_avg_sq.index_select(ind, sort_idx)
-        o = o[:,sort_idx]
-        power_iter = m @ o
-        Q, _ = torch.linalg.qr(power_iter) # pylint:disable=not-callable
-
-        if not float_data:
-            Q = Q.to(original_device).type(original_type)
-        final.append(Q)
-
-    return final, exp_avg_sq
 
 class AdaSOAP(Transform):
     """SOAP with diagonally preconditioned GG^Ts. Please note that this is experimental and isn't guaranteed to work.
@@ -180,15 +71,14 @@ class AdaSOAP(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         updates = []
         # update preconditioners
-        for i,(p,t) in enumerate(zip(params, tensors)):
-            state = self.state[p]
-            settings = self.settings[p]
+        for i,(p,t, state, setting) in enumerate(zip(params, tensors, states, settings)):
+
             beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps, unprojected_exp_avg,alpha = itemgetter(
-                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg','alpha')(settings)
-            precond_beta = settings['precond_beta']
+                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps', 'unprojected_exp_avg','alpha')(setting)
+            precond_beta = setting['precond_beta']
 
             if merge_small:
                 t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
@@ -213,7 +103,7 @@ class AdaSOAP(Transform):
 
                 if state['GG'] is not None:
                     assert state['GG_sq'] is not None
-                    update_soap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
+                    update_adasoap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
                     GG_precond = [GG / (GG_sq+1e-8) if GG is not None and GG_sq is not None else None for GG, GG_sq in zip(state['GG'], state['GG_sq'])]
                     state['Q'] = get_orthogonal_matrix(GG_precond)
 
@@ -259,7 +149,7 @@ class AdaSOAP(Transform):
             if t_projected is not None:
                 update = project_back(update, state["Q"])
 
-            if settings['bias_correction']:
+            if setting['bias_correction']:
                 bias_correction1 = 1.0 - beta1 ** (state["step"]+1)
                 bias_correction2 = 1.0 - beta2 ** (state["step"]+1)
                 update *= ((bias_correction2 ** .5) / bias_correction1) * alpha
@@ -274,9 +164,9 @@ class AdaSOAP(Transform):
 
             # Update is done after the gradient step to avoid using current gradients in the projection.
             if state['GG'] is not None:
-                update_soap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
+                update_adasoap_covariances_(t, GGs_=state['GG'], GG_sqs=state['GG_sq'], beta=shampoo_beta, precond_beta=precond_beta)
                 GG_precond = [GG / (GG_sq+1e-8) if GG is not None and GG_sq is not None else None for GG, GG_sq in zip(state['GG'], state['GG_sq'])]
-                if state['step'] % settings['precond_freq'] == 0:
+                if state['step'] % setting['precond_freq'] == 0:
                     state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, GG_precond, state['Q'])
 
         return updates

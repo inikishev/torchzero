@@ -1,10 +1,10 @@
 import random
 from typing import Any
-
+from operator import itemgetter
 import torch
 
 from ...core import Transform
-from ...utils import TensorList, NumberList
+from ...utils import TensorList, NumberList, unpack_dicts
 
 
 class PolyakStepSize(Transform):
@@ -28,17 +28,13 @@ class PolyakStepSize(Transform):
         super().__init__(defaults, uses_grad=use_grad)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        loss = vars.get_loss(False)
+    def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         tensors = TensorList(tensors)
         grads = TensorList(grads)
-        alpha = self.get_settings('alpha', params=params, cls=NumberList)
-        settings = self.settings[params[0]]
-        parameterwise = settings['parameterwise']
-        use_grad = settings['use_grad']
-        max = settings['max']
-        min_obj_value = settings['min_obj_value']
+        alpha = NumberList(s['alpha'] for s in settings)
+
+        parameterwise, use_grad, max, min_obj_value = itemgetter('parameterwise', 'use_grad', 'max', 'min_obj_value')(settings[0])
 
         if parameterwise:
             if use_grad: denom = (tensors * grads).sum()
@@ -50,7 +46,7 @@ class PolyakStepSize(Transform):
         else:
             if use_grad: denom = tensors.dot(grads)
             else: denom = tensors.dot(tensors)
-            if denom == 0: polyak_step_size = 0 # we converged
+            if denom.abs() <= torch.finfo(denom.dtype).eps: polyak_step_size = 0 # converged
             else: polyak_step_size = (loss - min_obj_value) / denom
 
             if max is not None:
@@ -76,21 +72,21 @@ class RandomStepSize(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        settings = self.settings[params[0]]
-        parameterwise = settings['parameterwise']
+    def apply(self, tensors, params, grads, loss, states, settings):
+        s = settings[0]
+        parameterwise = s['parameterwise']
 
-        seed = settings['seed']
+        seed = s['seed']
         if 'generator' not in self.global_state:
             self.global_state['generator'] = random.Random(seed)
         generator: random.Random = self.global_state['generator']
 
         if parameterwise:
-            low, high = self.get_settings('low', 'high', params=params)
+            low, high = unpack_dicts(settings, 'low', 'high')
             lr = [generator.uniform(l, h) for l, h in zip(low, high)]
         else:
-            low = settings['low']
-            high = settings['high']
+            low = s['low']
+            high = s['high']
             lr = generator.uniform(low, high)
 
         torch._foreach_mul_(tensors, lr)

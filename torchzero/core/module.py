@@ -29,8 +29,8 @@ def _closure_backward(closure, params, retain_graph, create_graph):
         return loss
 
 # region Vars
-# ----------------------------------- vars ----------------------------------- #
-class Vars:
+# ----------------------------------- var ----------------------------------- #
+class Var:
     """
     Holds the state and context passed between optimizer modules during a step.
 
@@ -74,13 +74,13 @@ class Vars:
         """loss at a point near current point. This can be useful as some modules only calculate loss at perturbed points,
         whereas some other modules require loss strictly at current point."""
 
-        self.post_step_hooks: list[Callable[[Modular, Vars]]] = []
+        self.post_step_hooks: list[Callable[[Modular, Var]]] = []
         """list of functions to be called after optimizer step.
         The signature is:
 
         .. code:: py
 
-            def hook(optimizer: Modular, vars: Vars): ...
+            def hook(optimizer: Modular, var: Vars): ...
 
         """
 
@@ -110,7 +110,7 @@ class Vars:
         """if True, the parameters will not be updated"""
 
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
-        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`vars.loss`.
+        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`var.loss`.
         Do not call this at perturbed parameters. Backward always zeroes grads before recomputing."""
 
         if self.loss is None:
@@ -143,7 +143,7 @@ class Vars:
 
     def get_grad(self, retain_graph: bool | None = None, create_graph: bool = False) -> list[torch.Tensor]:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
-        :code:`vars.grad` and potentially :code:`vars.loss`. Do not call this at perturbed parameters."""
+        :code:`var.grad` and potentially :code:`var.loss`. Do not call this at perturbed parameters."""
         if self.grad is None:
             if self.closure is None: raise RuntimeError("closure is None")
             self.get_loss(backward=True, retain_graph=retain_graph, create_graph=create_graph) # evaluate and set self.loss and self.grad
@@ -152,15 +152,15 @@ class Vars:
         return self.grad
 
     def get_update(self) -> list[torch.Tensor]:
-        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to :code:`vars.update`.
-        Computing the gradients may assign :code:`vars.grad` and :code:`vars.loss` if they haven't been computed.
+        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to :code:`var.update`.
+        Computing the gradients may assign :code:`var.grad` and :code:`var.loss` if they haven't been computed.
         Do not call this at perturbed parameters."""
         if self.update is None: self.update = [g.clone() for g in self.get_grad()]
         return self.update
 
     def clone(self, clone_update: bool):
         """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via :code:`torch.clone`)."""
-        copy = Vars(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step)
+        copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step)
 
         if clone_update and self.update is not None:
             copy.update = [u.clone() for u in self.update]
@@ -176,16 +176,16 @@ class Vars:
 
         return copy
 
-    def update_attrs_from_clone_(self, vars: "Vars"):
+    def update_attrs_from_clone_(self, var: "Var"):
         """Updates attributes of this `Vars` instance from a cloned instance.
         Typically called after a child module has processed a cloned `Vars`
         object. This propagates any newly computed loss or gradient values
         from the child's context back to the parent `Vars` if the parent
         didn't have them computed already.
         """
-        if self.loss is None: self.loss = vars.loss
-        if self.loss_approx is None: self.loss_approx = vars.loss_approx
-        if self.grad is None: self.grad = vars.grad
+        if self.loss is None: self.loss = var.loss
+        if self.loss_approx is None: self.loss_approx = var.loss_approx
+        if self.grad is None: self.grad = var.grad
 
     def zero_grad(self, set_to_none=True):
         if set_to_none:
@@ -269,36 +269,36 @@ class Module(ABC):
         return s
 
     @overload
-    def get_settings(self, key: str, *,
-                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> ListLike: ...
+    def get_settings(self, params: Sequence[torch.Tensor], key: str, *,
+                     cls: type[ListLike] = list) -> ListLike: ...
     @overload
-    def get_settings(self, key: list[str] | tuple[str,...], *,
-                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> list[ListLike]: ...
+    def get_settings(self, params: Sequence[torch.Tensor], key: list[str] | tuple[str,...], *,
+                     cls: type[ListLike] = list) -> list[ListLike]: ...
     @overload
-    def get_settings(self, key: str, key2: str, *keys: str,
-                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> list[ListLike]: ...
+    def get_settings(self, params: Sequence[torch.Tensor], key: str, key2: str, *keys: str,
+                     cls: type[ListLike] = list) -> list[ListLike]: ...
 
-    def get_settings(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                     params: Sequence[torch.Tensor], cls: type[ListLike] = list) -> ListLike | list[ListLike]:
+    def get_settings(self, params: Sequence[torch.Tensor], key: str | list[str] | tuple[str,...], key2: str | None = None,
+                     *keys: str, cls: type[ListLike] = list) -> ListLike | list[ListLike]:
         # if isinstance(params, Vars): params = params.params
         return get_state_vals(self.settings, params, key, key2, *keys, must_exist=True, cls=cls) # pyright:ignore[reportArgumentType]
 
 
     @overload
-    def get_state(self, key: str, *,
-                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init = torch.zeros_like,
+    def get_state(self, params: Sequence[torch.Tensor], key: str, *,
+                   must_exist: bool = False, init: Init = torch.zeros_like,
                    cls: type[ListLike] = list) -> ListLike: ...
     @overload
-    def get_state(self, key: list[str] | tuple[str,...], *,
-                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+    def get_state(self, params: Sequence[torch.Tensor], key: list[str] | tuple[str,...], *,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> list[ListLike]: ...
     @overload
-    def get_state(self, key: str, key2: str, *keys: str,
-                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+    def get_state(self, params: Sequence[torch.Tensor], key: str, key2: str, *keys: str,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> list[ListLike]: ...
 
-    def get_state(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                   params: Sequence[torch.Tensor], must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
+    def get_state(self, params: Sequence[torch.Tensor], key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
+                   must_exist: bool = False, init: Init | Sequence[Init] = torch.zeros_like,
                    cls: type[ListLike] = list) -> ListLike | list[ListLike]:
         """Returns values of per-parameter state for a given key.
         If key doesn't exist, create it with inits.
@@ -404,8 +404,8 @@ class Module(ABC):
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     @abstractmethod
-    def step(self, vars: Vars) -> Vars:
-        """performs a step, returns new vars but may update them in-place."""
+    def step(self, var: Var) -> Var:
+        """performs a step, returns new var but may update them in-place."""
 
     def reset(self):
         """Resets the internal state of the module (e.g. momentum)."""
@@ -556,13 +556,13 @@ class Modular(torch.optim.Optimizer):
                 if not p.requires_grad: continue
                 for map in self._per_parameter_global_settings[p]: map.update(settings)
 
-        # create vars
+        # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        vars = Vars(params=params, closure=closure, model=self.model, current_step=self.current_step)
+        var = Var(params=params, closure=closure, model=self.model, current_step=self.current_step)
 
         # if closure is None, assume backward has been called and gather grads
         if closure is None:
-            vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+            var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
         last_module = self.modules[-1]
         last_lr = last_module.defaults.get('lr', None)
@@ -570,27 +570,27 @@ class Modular(torch.optim.Optimizer):
 
         # step
         for i, module in enumerate(self.modules):
-            if i!=0: vars = vars.clone(clone_update=False)
+            if i!=0: var = var.clone(clone_update=False)
 
             # last module, or next to last module before lr
             if (i == n_modules - 1) or ((i == n_modules - 2) and (last_lr is not None)):
-                if module.children: vars.nested_is_last = True
-                else: vars.is_last = True
-                if last_lr is not None: vars.last_module_lrs = last_module.get_settings('lr', params=vars.params)
+                if module.children: var.nested_is_last = True
+                else: var.is_last = True
+                if last_lr is not None: var.last_module_lrs = [last_module.settings[p]['lr'] for p in var.params]
 
-            vars = module.step(vars)
-            if vars.stop: break
+            var = module.step(var)
+            if var.stop: break
 
         # apply update
-        if not vars.skip_update:
+        if not var.skip_update:
             with torch.no_grad():
-                torch._foreach_sub_(params, vars.get_update())
+                torch._foreach_sub_(params, var.get_update())
 
-        for hook in vars.post_step_hooks:
-            hook(self, vars)
+        for hook in var.post_step_hooks:
+            hook(self, var)
 
         self.current_step += 1
-        return vars.loss if vars.loss is not None else vars.loss_approx
+        return var.loss if var.loss is not None else var.loss_approx
 
     def __repr__(self):
         return f'Modular({", ".join(str(m) for m in self.modules)})'
@@ -606,11 +606,11 @@ class Chain(Module):
         for i, module in enumerate(flat_modules):
             self.set_child(f'module_{i}', module)
 
-    def step(self, vars):
+    def step(self, var):
         for i in range(len(self.children)):
-            vars = self.children[f'module_{i}'].step(vars)
-            if vars.stop: break
-        return vars
+            var = self.children[f'module_{i}'].step(var)
+            if var.stop: break
+        return var
 
     def __repr__(self):
         s = self.__class__.__name__

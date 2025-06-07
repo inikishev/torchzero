@@ -4,8 +4,8 @@ from collections.abc import Iterable, Sequence
 
 import torch
 
-from ...core import Module, Target, Transform, apply, Chainable
-from ...utils import NumberList, TensorList, generic_eq
+from ...core import Module, Target, Transform, apply_transform, Chainable
+from ...utils import NumberList, TensorList, generic_eq, unpack_dicts, unpack_states
 
 class ClipNormByEMA(Transform):
     """Clips norm to be no larger than the norm of an exponential moving average of past updates.
@@ -34,13 +34,13 @@ class ClipNormByEMA(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(self.settings[params[0]])
-
-        beta, eps = self.get_settings('beta', 'eps', params=params, cls=NumberList)
+    def apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
+        ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(settings[0])
 
-        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
+        beta, eps = unpack_dicts(settings, 'beta', 'eps', cls=TensorList)
+
+        ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
         ema.lerp_(tensors, 1-beta)
 
         if tensorwise:
@@ -48,7 +48,7 @@ class ClipNormByEMA(Transform):
 
             # clip ema norm growth
             if max_ema_growth is not None:
-                prev_ema_norm = self.get_state('prev_ema_norm', params=params, init=ema_norm, cls=TensorList)
+                prev_ema_norm = unpack_states(states, tensors, 'prev_ema_norm', init=ema_norm, cls=TensorList)
                 allowed_norm = (prev_ema_norm * max_ema_growth).clip(min=1e-6)
                 ema_denom = (ema_norm / allowed_norm).clip(min=1)
                 ema.div_(ema_denom)
@@ -119,17 +119,17 @@ class ClipValueByEMA(Transform):
             self.set_child('ema_tfm', ema_tfm)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
-        ema_init = itemgetter('ema_init')(self.settings[params[0]])
+    def apply(self, tensors, params, grads, loss, states, settings):
+        ema_init = itemgetter('ema_init')(settings[0])
 
-        beta = self.get_settings('beta', params=params, cls=NumberList)
+        beta = unpack_dicts(settings, 'beta', cls=NumberList)
         tensors = TensorList(tensors)
 
-        ema = self.get_state('ema', params=params, init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
+        ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
         ema.lerp_(tensors.abs(), 1-beta)
 
         if 'ema_tfm' in self.children:
-            ema = TensorList(apply(self.children['ema_tfm'], ema, params, vars.grad, vars))
+            ema = TensorList(apply_transform(self.children['ema_tfm'], ema, params, grads, loss))
 
         tensors.clip_(-ema, ema)
         return tensors

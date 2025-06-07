@@ -4,7 +4,7 @@ from collections import deque
 from typing import Literal, Any
 
 import torch
-from ...core import Chainable, TensorwisePreconditioner
+from ...core import Chainable, TensorwiseTransform
 from ...utils.linalg.matrix_funcs import matrix_power_eigh
 from ...utils.linalg.svd import randomized_svd
 from ...utils.linalg.qr import qr_householder
@@ -184,7 +184,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         if state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class SpectralPreconditioner(TensorwisePreconditioner):
+class SpectralPreconditioner(TensorwiseTransform):
     """Whitening preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences. Please note that this is experimental and isn't guaranteed to work.
 
     Args:
@@ -224,7 +224,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner, update_freq=interval)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
         order = settings['order']
         history_size = settings['history_size']
         update_freq = settings['update_freq']
@@ -240,7 +240,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
         else:
 
             # if order=2, history is of gradient differences, order 3 is differences between differences, etc
-            # normalized by parameter differences
+            # scaled by parameter differences
             cur_p = param.clone()
             cur_g = tensor.clone()
             for i in range(1, order):
@@ -270,7 +270,7 @@ class SpectralPreconditioner(TensorwisePreconditioner):
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
         history_size = settings['history_size']
         solver: _Solver = settings['solver']
 

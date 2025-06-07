@@ -1,7 +1,7 @@
 import torch
 
 from ...core import Target, Transform
-from ...utils import TensorList
+from ...utils import TensorList, unpack_states, unpack_dicts
 
 class ReduceOutwardLR(Transform):
     """
@@ -16,17 +16,18 @@ class ReduceOutwardLR(Transform):
         super().__init__(defaults, uses_grad=use_grad, target=target)
 
     @torch.no_grad
-    def transform(self, tensors, params, grads, vars):
+    def apply(self, tensors, params, grads, loss, states, settings):
         params = TensorList(params)
         tensors = TensorList(tensors)
 
-        mul = self.get_settings('mul', params=params)
-        s = self.settings[params[0]]
+        mul = [s['mul'] for s in settings]
+        s = settings[0]
         use_grad = s['use_grad']
         invert = s['invert']
 
-        if use_grad: cur = vars.get_grad()
+        if use_grad: cur = grads
         else: cur = tensors
+        assert cur is not None
 
         # mask of weights where sign matches with update sign (minus ascent sign), multiplied by `mul`.
         if invert: mask = (params * cur) > 0

@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Module, Vars
+from ...core import Module, Var
 
 GradTarget = Literal['update', 'grad', 'closure']
 _Scalar = torch.Tensor | float
@@ -17,50 +17,50 @@ class GradApproximator(Module, ABC):
     Args:
         defaults (dict[str, Any] | None, optional): dict with defaults. Defaults to None.
         target (str, optional):
-            whether to set `vars.grad`, `vars.update` or 'vars.closure`. Defaults to 'closure'.
+            whether to set `var.grad`, `var.update` or 'var.closure`. Defaults to 'closure'.
     """
     def __init__(self, defaults: dict[str, Any] | None = None, target: GradTarget = 'closure'):
         super().__init__(defaults)
         self._target: GradTarget = target
 
     @abstractmethod
-    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: _Scalar | None, vars: Vars) -> tuple[Iterable[torch.Tensor], _Scalar | None, _Scalar | None]:
+    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: _Scalar | None, var: Var) -> tuple[Iterable[torch.Tensor], _Scalar | None, _Scalar | None]:
         """Returns a tuple: (grad, loss, loss_approx), make sure this resets parameters to their original values!"""
 
-    def pre_step(self, vars: Vars) -> Vars | None:
+    def pre_step(self, var: Var) -> Var | None:
         """This runs once before each step, whereas `approximate` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
-        return vars
+        return var
 
     @torch.no_grad
-    def step(self, vars):
-        ret = self.pre_step(vars)
-        if isinstance(ret, Vars): vars = ret
+    def step(self, var):
+        ret = self.pre_step(var)
+        if isinstance(ret, Var): var = ret
 
-        if vars.closure is None: raise RuntimeError("Gradient approximation requires closure")
-        params, closure, loss = vars.params, vars.closure, vars.loss
+        if var.closure is None: raise RuntimeError("Gradient approximation requires closure")
+        params, closure, loss = var.params, var.closure, var.loss
 
         if self._target == 'closure':
 
             def approx_closure(backward=True):
                 if backward:
                     # set loss to None because closure might be evaluated at different points
-                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None, vars=vars)
+                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None, var=var)
                     for p, g in zip(params, grad): p.grad = g
                     return l if l is not None else l_approx
                 return closure(False)
 
-            vars.closure = approx_closure
-            return vars
+            var.closure = approx_closure
+            return var
 
-        # if vars.grad is not None:
-        #     warnings.warn('Using grad approximator when `vars.grad` is already set.')
-        grad,loss,loss_approx = self.approximate(closure=closure, params=params, loss=loss, vars=vars)
-        if loss_approx is not None: vars.loss_approx = loss_approx
-        if loss is not None: vars.loss = vars.loss_approx = loss
-        if self._target == 'grad': vars.grad = list(grad)
-        elif self._target == 'update': vars.update = list(grad)
+        # if var.grad is not None:
+        #     warnings.warn('Using grad approximator when `var.grad` is already set.')
+        grad,loss,loss_approx = self.approximate(closure=closure, params=params, loss=loss, var=var)
+        if loss_approx is not None: var.loss_approx = loss_approx
+        if loss is not None: var.loss = var.loss_approx = loss
+        if self._target == 'grad': var.grad = list(grad)
+        elif self._target == 'update': var.update = list(grad)
         else: raise ValueError(self._target)
-        return vars
+        return var
 
 _FD_Formula = Literal['forward2', 'backward2', 'forward3', 'backward3', 'central2', 'central4']

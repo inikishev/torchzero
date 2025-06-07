@@ -6,5 +6,5 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, Vars
+from ...core import Chainable, Module, Var
 from .projection import Projection

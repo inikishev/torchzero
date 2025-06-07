@@ -3,46 +3,46 @@ from typing import cast
 
 import torch
 
-from ...core import Chainable, Module, Vars
+from ...core import Chainable, Module, Var
 
 
 def _split(
     module: Module,
     idxs,
     params,
-    vars: Vars,
+    var: Var,
 ):
     split_params = [p for i,p in enumerate(params) if i in idxs]
 
     split_grad = None
-    if vars.grad is not None:
-        split_grad = [g for i,g in enumerate(vars.grad) if i in idxs]
+    if var.grad is not None:
+        split_grad = [g for i,g in enumerate(var.grad) if i in idxs]
 
     split_update = None
-    if vars.update is not None:
-        split_update = [u for i,u in enumerate(vars.update) if i in idxs]
+    if var.update is not None:
+        split_update = [u for i,u in enumerate(var.update) if i in idxs]
 
-    split_vars = vars.clone(clone_update=False)
-    split_vars.params = split_params
-    split_vars.grad = split_grad
-    split_vars.update = split_update
+    split_var = var.clone(clone_update=False)
+    split_var.params = split_params
+    split_var.grad = split_grad
+    split_var.update = split_update
 
-    split_vars = module.step(split_vars)
+    split_var = module.step(split_var)
 
-    if (vars.grad is None) and (split_vars.grad is not None):
-        vars.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+    if (var.grad is None) and (split_var.grad is not None):
+        var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
-    if split_vars.update is not None:
+    if split_var.update is not None:
 
-        if vars.update is None:
-            if vars.grad is None: vars.update = [cast(torch.Tensor, None) for _ in vars.params]
-            else: vars.update = [g.clone() for g in vars.grad]
+        if var.update is None:
+            if var.grad is None: var.update = [cast(torch.Tensor, None) for _ in var.params]
+            else: var.update = [g.clone() for g in var.grad]
 
-        for idx, u in zip(idxs, split_vars.update):
-            vars.update[idx] = u
+        for idx, u in zip(idxs, split_var.update):
+            var.update[idx] = u
 
-    vars.update_attrs_from_clone_(split_vars)
-    return vars
+    var.update_attrs_from_clone_(split_var)
+    return var
 
 class Split(Module):
     """Apply `true` modules to all parameters filtered by `filter`, apply `false` modules to all other parameters."""
@@ -53,9 +53,9 @@ class Split(Module):
         if true is not None: self.set_child('true', true)
         if false is not None: self.set_child('false', false)
 
-    def step(self, vars):
+    def step(self, var):
 
-        params = vars.params
+        params = var.params
         filter = self.settings[params[0]]['filter']
 
         true_idxs = []
@@ -66,10 +66,10 @@ class Split(Module):
 
         if 'true' in self.children:
             true = self.children['true']
-            vars = _split(true, idxs=true_idxs, params=params, vars=vars)
+            var = _split(true, idxs=true_idxs, params=params, var=var)
 
         if 'false' in self.children:
             false = self.children['false']
-            vars = _split(false, idxs=false_idxs, params=params, vars=vars)
+            var = _split(false, idxs=false_idxs, params=params, var=var)
 
-        return vars
+        return var

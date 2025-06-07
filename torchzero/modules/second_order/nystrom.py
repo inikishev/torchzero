@@ -6,7 +6,7 @@ import torch
 from ...utils import TensorList, as_tensorlist, generic_zeros_like, generic_vector_norm, generic_numel, vec_to_tensors
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
-from ...core import Chainable, apply, Module
+from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import nystrom_sketch_and_solve, nystrom_pcg
 
 class NystromSketchAndSolve(Module):
@@ -26,10 +26,10 @@ class NystromSketchAndSolve(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
+    def step(self, var):
+        params = TensorList(var.params)
 
-        closure = vars.closure
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -47,7 +47,7 @@ class NystromSketchAndSolve(Module):
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
-            grad = vars.get_grad(create_graph=True)
+            grad = var.get_grad(create_graph=True)
 
             def H_mm(x):
                 with torch.enable_grad():
@@ -57,7 +57,7 @@ class NystromSketchAndSolve(Module):
         else:
 
             with torch.enable_grad():
-                grad = vars.get_grad()
+                grad = var.get_grad()
 
             if hvp_method == 'forward':
                 def H_mm(x):
@@ -74,14 +74,14 @@ class NystromSketchAndSolve(Module):
 
 
         # -------------------------------- inner step -------------------------------- #
-        b = vars.get_update()
+        b = var.get_update()
         if 'inner' in self.children:
-            b = apply(self.children['inner'], b, params=params, grads=grad, vars=vars)
+            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
         x = nystrom_sketch_and_solve(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
-        vars.update = vec_to_tensors(x, reference=params)
-        return vars
+        var.update = vec_to_tensors(x, reference=params)
+        return var
 
 
 
@@ -104,10 +104,10 @@ class NystromPCG(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, vars):
-        params = TensorList(vars.params)
+    def step(self, var):
+        params = TensorList(var.params)
 
-        closure = vars.closure
+        closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -129,7 +129,7 @@ class NystromPCG(Module):
 
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
-            grad = vars.get_grad(create_graph=True)
+            grad = var.get_grad(create_graph=True)
 
             def H_mm(x):
                 with torch.enable_grad():
@@ -139,7 +139,7 @@ class NystromPCG(Module):
         else:
 
             with torch.enable_grad():
-                grad = vars.get_grad()
+                grad = var.get_grad()
 
             if hvp_method == 'forward':
                 def H_mm(x):
@@ -156,13 +156,13 @@ class NystromPCG(Module):
 
 
         # -------------------------------- inner step -------------------------------- #
-        b = vars.get_update()
+        b = var.get_update()
         if 'inner' in self.children:
-            b = apply(self.children['inner'], b, params=params, grads=grad, vars=vars)
+            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
         x = nystrom_pcg(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)
-        vars.update = vec_to_tensors(x, reference=params)
-        return vars
+        var.update = vec_to_tensors(x, reference=params)
+        return var
 
 

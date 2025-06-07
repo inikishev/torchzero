@@ -17,12 +17,12 @@ class VectorProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
+    def project(self, tensors, var, current):
         return [torch.cat([u.view(-1) for u in tensors], dim=-1)]
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
-        return vec_to_tensors(vec=tensors[0], reference=vars.params)
+    def unproject(self, tensors, var, current):
+        return vec_to_tensors(vec=tensors[0], reference=var.params)
 
 
 
@@ -33,8 +33,8 @@ class TensorizeProjection(Projection):
         super().__init__(modules, defaults=defaults, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
-        params = vars.params
+    def project(self, tensors, var, current):
+        params = var.params
         max_side = self.settings[params[0]]['max_side']
         num_elems = sum(t.numel() for t in tensors)
 
@@ -60,12 +60,12 @@ class TensorizeProjection(Projection):
         return [vec.view(dims)]
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
+    def unproject(self, tensors, var, current):
         remainder = self.global_state['remainder']
         # warnings.warn(f'{tensors[0].shape = }')
         vec = tensors[0].view(-1)
         if remainder > 0: vec = vec[:-remainder]
-        return vec_to_tensors(vec, vars.params)
+        return vec_to_tensors(vec, var.params)
 
 class BlockPartition(Projection):
     """splits parameters into blocks (for now flatttens them and chunks)"""
@@ -74,9 +74,9 @@ class BlockPartition(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
+    def project(self, tensors, var, current):
         partitioned = []
-        for p,t in zip(vars.params, tensors):
+        for p,t in zip(var.params, tensors):
             settings = self.settings[p]
             max_size = settings['max_size']
             n = t.numel()
@@ -101,10 +101,10 @@ class BlockPartition(Projection):
         return partitioned
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
+    def unproject(self, tensors, var, current):
         ti = iter(tensors)
         unprojected = []
-        for p in vars.params:
+        for p in var.params:
             settings = self.settings[p]
             n = p.numel()
 
@@ -130,19 +130,19 @@ class TensorNormsProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, vars, current):
-        orig = self.get_state(f'{current}_orig', params=vars.params)
+    def project(self, tensors, var, current):
+        orig = self.get_state(f'{current}_orig', params=var.params)
         torch._foreach_copy_(orig, tensors)
 
         norms = torch._foreach_norm(tensors)
-        self.get_state(f'{current}_orig_norms', params=vars.params, init=norms, cls=TensorList).set_(norms)
+        self.get_state(f'{current}_orig_norms', params=var.params, init=norms, cls=TensorList).set_(norms)
 
         return [torch.stack(norms)]
 
     @torch.no_grad
-    def unproject(self, tensors, vars, current):
-        orig = self.get_state(f'{current}_orig', params=vars.params)
-        orig_norms = torch.stack(self.get_state(f'{current}_orig_norms', params=vars.params))
+    def unproject(self, tensors, var, current):
+        orig = self.get_state(f'{current}_orig', params=var.params)
+        orig_norms = torch.stack(self.get_state(f'{current}_orig_norms', params=var.params))
         target_norms = tensors[0]
 
         orig_norms = torch.where(orig_norms == 0, 1, orig_norms)
