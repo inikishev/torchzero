@@ -3,7 +3,7 @@ from typing import Literal
 import torch
 
 from ...core import Target, Transform
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from .ema import EMA
 
 
@@ -36,8 +36,8 @@ class NAG(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        velocity = self.get_state('velocity', params=params, cls=TensorList)
+        velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
         lerp = self.settings[params[0]]['lerp']
 
-        momentum,dampening = self.get_settings('momentum','dampening', params=params, cls=NumberList)
+        momentum,dampening = unpack_dicts(settings, 'momentum','dampening', cls=NumberList)
         return nag_(TensorList(tensors), velocity_=velocity,momentum=momentum,dampening=dampening,lerp=lerp)

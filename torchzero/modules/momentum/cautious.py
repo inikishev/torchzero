@@ -5,7 +5,7 @@ from typing import Literal
 import torch
 
 from ...core import Target, Transform, Module, Chainable
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_dicts
 
 
 def cautious_(
@@ -72,7 +72,7 @@ class Cautious(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
-        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.settings[params[0]])
+        mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(settings[0])
         return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
 
 class UpdateGradientSignConsistency(Transform):
@@ -84,7 +84,7 @@ class UpdateGradientSignConsistency(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
-        normalize, eps = itemgetter('normalize', 'eps')(self.settings[params[0]])
+        normalize, eps = itemgetter('normalize', 'eps')(settings[0])
 
         mask = (TensorList(tensors).mul_(grads)).gt_(0)
         if normalize: mask = mask / mask.global_mean().clip(min = eps) # pyright: ignore[reportOperatorIssue]
@@ -140,7 +140,7 @@ class ScaleByGradCosineSimilarity(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
-        eps = self.settings[params[0]]['eps']
+        eps = settings[0]['eps']
         tensors = TensorList(tensors)
         grads = TensorList(grads)
         cos_sim = (tensors.dot(grads)) / (tensors.global_vector_norm() * grads.global_vector_norm()).clip(min=eps)

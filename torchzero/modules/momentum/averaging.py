@@ -9,7 +9,7 @@ from ...utils import tolist
 
 
 class Averaging(TensorwiseTransform):
-    """Average of past n updates.
+    """Average of past :code:`history_size` updates.
 
     Args:
         history_size (int): Number of past updates to average
@@ -21,8 +21,7 @@ class Averaging(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        history_size = self.settings[param]['history_size']
-        state = self.state[param]
+        history_size = settings['history_size']
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)
             state['average'] = torch.zeros_like(tensor)
@@ -35,7 +34,7 @@ class Averaging(TensorwiseTransform):
         return average / len(history)
 
 class WeightedAveraging(TensorwiseTransform):
-    """Weighted average of past n updates.
+    """Weighted average of past :code:`len(weights)` updates.
 
     Args:
         weights (Sequence[float]): a sequence of weights from oldest to newest.
@@ -47,8 +46,7 @@ class WeightedAveraging(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        weights = self.settings[param]['weights']
-        state = self.state[param]
+        weights = settings['weights']
 
         if 'history' not in state:
             state['history'] = deque(maxlen=len(weights))
@@ -70,7 +68,7 @@ class WeightedAveraging(TensorwiseTransform):
 
 
 class MedianAveraging(TensorwiseTransform):
-    """Median of past n updates.
+    """Median of past :code:`history_size` updates.
 
     Args:
         history_size (int): Number of past updates to average
@@ -82,8 +80,7 @@ class MedianAveraging(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        history_size = self.settings[param]['history_size']
-        state = self.state[param]
+        history_size = settings['history_size']
 
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)

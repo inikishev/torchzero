@@ -25,11 +25,11 @@ class MatrixMomentum(Module):
     @torch.no_grad
     def step(self, var):
         assert var.closure is not None
-        prev_update = self.get_state('prev_update', params=var.params, cls=TensorList)
+        prev_update = self.get_state(var.params, 'prev_update', cls=TensorList)
         hvp_method = self.settings[var.params[0]]['hvp_method']
         h = self.settings[var.params[0]]['h']
 
-        mu,beta = self.get_settings('mu','beta', params=var.params, cls=NumberList)
+        mu,beta = self.get_settings(var.params, 'mu','beta', cls=NumberList)
 
         if hvp_method == 'autograd':
             with torch.enable_grad():
@@ -74,14 +74,14 @@ class AdaptiveMatrixMomentum(Module):
     @torch.no_grad
     def step(self, var):
         assert var.closure is not None
-        prev_update, prev_params, prev_grad = self.get_state('prev_update', 'prev_params', 'prev_grad', params=var.params, cls=TensorList)
+        prev_update, prev_params, prev_grad = self.get_state(var.params, 'prev_update', 'prev_params', 'prev_grad', cls=TensorList)
 
         settings = self.settings[var.params[0]]
         hvp_method = settings['hvp_method']
         h = settings['h']
         eps = settings['eps']
 
-        mu_mul, beta = self.get_settings('mu_mul','beta', params=var.params, cls=NumberList)
+        mu_mul, beta = self.get_settings(var.params, 'mu_mul','beta', cls=NumberList)
 
         if hvp_method == 'autograd':
             with torch.enable_grad():

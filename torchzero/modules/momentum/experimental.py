@@ -6,7 +6,7 @@ from typing import Literal
 import torch
 
 from ...core import Target, Transform
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, unpack_states, unpack_dicts
 from ..functional import ema_, ema_sq_, sqrt_ema_sq_
 from .ema import EMASquared, SqrtEMASquared
 from .momentum import nag_
@@ -46,19 +46,18 @@ class PrecenteredEMASquared(Transform):
     def __init__(self, beta1:float=0.99, beta2=0.99, min_step: int = 2, amsgrad=False, pow:float=2, target: Target = 'update'):
         defaults = dict(beta1=beta1,beta2=beta2,pow=pow,amsgrad=amsgrad, min_step=min_step)
         super().__init__(defaults, uses_grad=False, target=target)
-        self.current_step = 0
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        self.current_step += 1
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        beta1, beta2 = self.get_settings('beta1','beta2', params=params, cls=NumberList)
-        amsgrad, pow, min_step = itemgetter('amsgrad', 'pow', 'min_step')(self.settings[params[0]])
+        beta1, beta2 = unpack_dicts(settings, 'beta1','beta2', cls=NumberList)
+        amsgrad, pow, min_step = itemgetter('amsgrad', 'pow', 'min_step')(settings[0])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', params=params, cls=TensorList)
+            exp_avg, exp_avg_sq, max_exp_avg_sq = unpack_states(states, tensors, 'exp_avg', 'exp_avg_sq', 'max_exp_avg_sq', cls=TensorList)
         else:
-            exp_avg, exp_avg_sq = self.get_state('exp_avg', 'exp_avg_sq', params=params, cls=TensorList)
+            exp_avg, exp_avg_sq = unpack_states(states, tensors, 'exp_avg', 'exp_avg_sq', cls=TensorList)
             max_exp_avg_sq = None
 
         return precentered_ema_sq_(
@@ -67,7 +66,7 @@ class PrecenteredEMASquared(Transform):
             exp_avg_sq_=exp_avg_sq,
             beta1=beta1,
             beta2=beta2,
-            step = self.current_step,
+            step = step,
             min_step=min_step,
             pow=pow,
             max_exp_avg_sq_=max_exp_avg_sq,
@@ -147,8 +146,8 @@ class CoordinateMomentum(Transform):
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
-        p = self.get_settings('p', params=params, cls=NumberList)
-        velocity = self.get_state('velocity', params=params, cls=TensorList)
+        p = NumberList(s['p'] for s in settings)
+        velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
         return coordinate_momentum_(TensorList(tensors), velocity_=velocity, p=p).clone()
 
 
