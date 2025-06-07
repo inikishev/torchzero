@@ -118,13 +118,14 @@ for epoch in range(100):
   * `NewtonCG`: Matrix-free newton's method with conjugate gradient solver.
   * `NystromSketchAndSolve`: Nyström sketch-and-solve method.
   * `NystromPCG`: NewtonCG with Nyström preconditioning (usually beats NewtonCG).
+  * `HigherOrderNewton`: Higher order Newton's method with trust region.
 
 * **Quasi-Newton**: Approximate second-order optimization methods.
   * `LBFGS`: Limited-memory BFGS.
   * `LSR1`: Limited-memory SR1.
   * `OnlineLBFGS`: Online LBFGS.
-  * `BFGS`, `SR1`, `DFP`, `BroydenGood`, `BroydenBad`, `Greenstadt1`, `Greenstadt2`, `ColumnUpdatingMethod`, `ThomasOptimalMethod`, `PSB`, `Pearson2`, `SSVM`: Classic full-matrix quasi-newton methods.
-  * `PolakRibiere`, `FletcherReeves`, `HestenesStiefel`, `DaiYuan`, `LiuStorey`, `ConjugateDescent`, `HagerZhang`, `HybridHS_DY`: Conjugate gradient methods.
+  * `BFGS`, `DFP`, `PSB`, `SR1`, `SSVM`, `BroydenBad`, `BroydenGood`, `ColumnUpdatingMethod`, `FletcherVMM`, `GradientCorrection`, `Greenstadt1`, `Greenstadt2`, `Horisho`, `McCormick`, `Pearson`, `ProjectedNewtonRaphson`, `ThomasOptimalMethod`: Classic full-matrix quasi-newton methods.
+  * `PolakRibiere`, `FletcherReeves`, `HestenesStiefel`, `DaiYuan`, `LiuStorey`, `ConjugateDescent`, `HagerZhang`, `HybridHS_DY`, `ProjectedGradientMethod`: Conjugate gradient methods.
 
 * **Line Search**:
   * `Backtracking`, `AdaptiveBacktracking`: Backtracking line searches (adaptive is my own).
@@ -273,16 +274,16 @@ not in the module itself. Also both per-parameter settings and state are stored 
 
 ```python
 import torch
-from torchzero.core import Module, Vars
+from torchzero.core import Module, Var
 
 class HeavyBall(Module):
     def __init__(self, momentum: float = 0.9, dampening: float = 0):
         defaults = dict(momentum=momentum, dampening=dampening)
         super().__init__(defaults)
 
-    def step(self, var: Vars):
-        # a module takes a Vars object, modifies it or creates a new one, and returns it
-        # Vars has a bunch of attributes, including parameters, gradients, update, closure, loss
+    def step(self, var: Var):
+        # a module takes a Var object, modifies it or creates a new one, and returns it
+        # Var has a bunch of attributes, including parameters, gradients, update, closure, loss
         # for now we are only interested in update, and we will apply the heavyball rule to it.
 
         params = var.params
@@ -316,7 +317,6 @@ There are a some specialized base modules that make it much easier to implement 
 
 * `GradApproximator` for gradient approximations
 * `LineSearch` for line searches
-* `Preconditioner` for preconditioners
 * `Projection` for projections like GaLore or into fourier domain.
 * `QuasiNewtonH` for full-matrix quasi-newton methods that update hessian inverse approximation (because they are all very similar)
 * `ConguateGradientBase` for conjugate gradient methods, basically the only difference is how beta is calculated.
@@ -337,4 +337,4 @@ There are also wrappers providing `torch.optim.Optimizer` interface for for `sci
 
 They are in `torchzero.optim.wrappers.scipy.ScipyMinimize`, `torchzero.optim.wrappers.nlopt.NLOptOptimizer`, and `torchzero.optim.wrappers.nevergrad.NevergradOptimizer`. Make sure closure has `backward` argument as described in **Advanced Usage**.
 
-Apparently https://github.com/avaneev/biteopt is diabolical so I will add a wrapper for it too very soon.
+Apparently <https://github.com/avaneev/biteopt> is diabolical so I will add a wrapper for it too very soon.

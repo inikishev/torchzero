@@ -71,8 +71,8 @@ class RMSprop(Transform):
 
     def apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
-        smoothing,eps = unpack_dicts(settings, 'smoothing', 'eps', cls=NumberList)
-        centered,debiased,amsgrad,pow,init = itemgetter('centered','debiased','amsgrad','pow','init')(settings[0])
+        smoothing, eps = unpack_dicts(settings, 'smoothing', 'eps', cls=NumberList)
+        centered, debiased, amsgrad, pow, init = itemgetter('centered','debiased','amsgrad','pow','init')(settings[0])
 
         exp_avg_sq = unpack_states(states, tensors, 'exp_avg_sq', cls=TensorList)
         exp_avg = unpack_states(states, tensors, 'exp_avg', cls=TensorList) if centered else None
