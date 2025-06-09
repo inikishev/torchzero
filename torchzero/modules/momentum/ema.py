@@ -17,6 +17,7 @@ class EMA(Transform):
         dampening (float, optional): momentum dampening. Defaults to 0.
         debiased (bool, optional): whether to debias the EMA like in Adam. Defaults to False.
         lerp (bool, optional): whether to use linear interpolation. Defaults to True.
+        ema_init (str, optional): initial values for the EMA, "zeros" or "update".
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
     def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros', target: Target = 'update'):

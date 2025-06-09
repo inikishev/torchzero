@@ -8,6 +8,17 @@ from .ema import EMA
 
 
 class HeavyBall(EMA):
+    """Polyak's momentum (heavy-ball method).
+
+    Args:
+        momentum (float, optional): momentum (beta). Defaults to 0.9.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        debiased (bool, optional): whether to debias the EMA like in Adam. Defaults to False.
+        lerp (bool, optional):
+            whether to use linear interpolation, if True, this becomes exponential moving average. Defaults to False.
+        ema_init (str, optional): initial values for the EMA, "zeros" or "update".
+        target (Target, optional): target to apply EMA to. Defaults to 'update'.
+    """
     def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=False, ema_init: Literal['zeros', 'update'] = 'update', target: Target = 'update'):
         super().__init__(momentum=momentum, dampening=dampening, debiased=debiased, lerp=lerp, ema_init=ema_init, target=target)
 
@@ -30,6 +41,15 @@ def nag_(
 
 
 class NAG(Transform):
+    """Nesterov accelerated gradient method (nesterov momentum).
+
+    Args:
+        momentum (float, optional): momentum (beta). Defaults to 0.9.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        lerp (bool, optional):
+            whether to use linear interpolation, if True, this becomes similar to exponential moving average. Defaults to False.
+        target (Target, optional): target to apply EMA to. Defaults to 'update'.
+    """
     def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False, target: Target = 'update'):
         defaults = dict(momentum=momentum,dampening=dampening, lerp=lerp)
         super().__init__(defaults, uses_grad=False, target=target)
