@@ -8,6 +8,12 @@ from ...core import Target, Transform
 from ...utils import TensorList, NumberList, unpack_states, unpack_dicts
 
 class AccumulateSum(Transform):
+    """Accumulates sum of all past updates.
+
+    Args:
+        decay (float, optional): decays the accumulator. Defaults to 0.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, decay: float = 0, target: Target = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -19,6 +25,12 @@ class AccumulateSum(Transform):
         return sum.add_(tensors).lazy_mul(decay, clone=True)
 
 class AccumulateMean(Transform):
+    """Accumulates mean of all past updates.
+
+    Args:
+        decay (float, optional): decays the accumulator. Defaults to 0.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, decay: float = 0, target: Target = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -31,6 +43,12 @@ class AccumulateMean(Transform):
         return mean.add_(tensors).lazy_mul(decay, clone=True).div_(step)
 
 class AccumulateProduct(Transform):
+    """Accumulates product of all past updates.
+
+    Args:
+        decay (float, optional): decays the accumulator. Defaults to 0.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, decay: float = 0, target: Target = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -42,6 +60,12 @@ class AccumulateProduct(Transform):
         return prod.mul_(tensors).lazy_mul(decay, clone=True)
 
 class AccumulateMaximum(Transform):
+    """Accumulates maximum of all past updates.
+
+    Args:
+        decay (float, optional): decays the accumulator. Defaults to 0.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, decay: float = 0, target: Target = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -53,6 +77,12 @@ class AccumulateMaximum(Transform):
         return maximum.maximum_(tensors).lazy_mul(decay, clone=True)
 
 class AccumulateMinimum(Transform):
+    """Accumulates minimum of all past updates.
+
+    Args:
+        decay (float, optional): decays the accumulator. Defaults to 0.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, decay: float = 0, target: Target = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
