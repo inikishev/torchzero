@@ -1,3 +1,4 @@
+"""Learning rate"""
 import torch
 
 from ...core import Transform

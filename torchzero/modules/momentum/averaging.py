@@ -1,3 +1,4 @@
+"""Modules that perform averaging over a history of past updates."""
 from collections import deque
 from collections.abc import Sequence
 from typing import Any, Literal, cast

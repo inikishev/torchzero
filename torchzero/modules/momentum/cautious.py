@@ -1,3 +1,4 @@
+"""Cautioning related modules"""
 from collections import deque
 from operator import itemgetter
 from typing import Literal
@@ -64,10 +65,9 @@ class Cautious(Transform):
         normalize=False,
         eps=1e-6,
         mode: Literal["zero", "grad", "backtrack"] = "zero",
-        target: Target = "update",
     ):
         defaults = dict(normalize=normalize, eps=eps, mode=mode)
-        super().__init__(defaults, uses_grad=True, target=target)
+        super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -76,10 +76,17 @@ class Cautious(Transform):
         return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
 
 class UpdateGradientSignConsistency(Transform):
-    """1 where signs match 0 otherwise"""
-    def __init__(self, normalize = False, eps=1e-6, target: Target = 'update'):
+    """Compares update and gradient signs. Output will have 1s where signs match, and 0s where they don't.
+
+    Args:
+        normalize (bool, optional):
+            renormalize update after masking. Defaults to False.
+        eps (float, optional): epsilon for normalization. Defaults to 1e-6.
+    """
+    def __init__(self, normalize = False, eps=1e-6):
+
         defaults = dict(normalize=normalize, eps=eps)
-        super().__init__(defaults, uses_grad=True, target=target)
+        super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -92,6 +99,23 @@ class UpdateGradientSignConsistency(Transform):
         return mask
 
 class IntermoduleCautious(Module):
+    """Negaties update on :code:`main` module where it's sign doesn't match with output of :code:`compare` module.
+
+    Args:
+        main (Chainable): main module or sequence of modules whose update will be cautioned.
+        compare (Chainable): modules or sequence of modules to compare the sign to.
+        normalize (bool, optional):
+            renormalize update after masking. Defaults to False.
+        eps (float, optional): epsilon for normalization. Defaults to 1e-6.
+        mode (str, optional):
+            what to do with updates with inconsistent signs.
+
+            "zero" - set them to zero (as in paper)
+
+            "grad" - set them to the gradient
+
+            "backtrack" - negate them (same as using update magnitude and gradient sign)
+    """
     def __init__(
         self,
         main: Chainable,
@@ -100,6 +124,7 @@ class IntermoduleCautious(Module):
         eps=1e-6,
         mode: Literal["zero", "grad", "backtrack"] = "zero",
     ):
+
         defaults = dict(normalize=normalize, eps=eps, mode=mode)
         super().__init__(defaults)
 
@@ -129,13 +154,18 @@ class IntermoduleCautious(Module):
         return var
 
 class ScaleByGradCosineSimilarity(Transform):
+    """Multiplies the update by cosine similarity with gradient.
+    If cosine similarity is negative, naturally the update will be negated as well.
+
+    Args:
+        eps (float, optional): epsilon for division. Defaults to 1e-6.
+    """
     def __init__(
         self,
-        eps=1e-6,
-        target: Target = "update",
+        eps: float = 1e-6,
     ):
         defaults = dict(eps=eps)
-        super().__init__(defaults, uses_grad=True, target=target)
+        super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -148,6 +178,14 @@ class ScaleByGradCosineSimilarity(Transform):
         return tensors.mul_(cos_sim)
 
 class ScaleModulesByCosineSimilarity(Module):
+    """Scales the output of :code:`main` module by it's cosine similarity to the output
+    of :code:`compare` module.
+
+    Args:
+        main (Chainable): main module or sequence of modules whose update will be scaled.
+        compare (Chainable): module or sequence of modules to compare to
+        eps (float, optional): epsilon for division. Defaults to 1e-6.
+    """
     def __init__(
         self,
         main: Chainable,

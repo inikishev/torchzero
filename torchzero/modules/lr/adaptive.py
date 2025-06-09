@@ -1,3 +1,4 @@
+"""Various step size strategies"""
 import random
 from typing import Any
 from operator import itemgetter
