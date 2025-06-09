@@ -14,7 +14,6 @@ def backtracking_line_search(
     beta: float = 0.5,
     c: float = 1e-4,
     maxiter: int = 10,
-    a_min: float | None = None,
     try_negative: bool = False,
 ) -> float | None:
     """
@@ -26,7 +25,6 @@ def backtracking_line_search(
         beta: The factor by which to decrease alpha in each iteration
         c: The constant for the Armijo sufficient decrease condition
         max_iter: Maximum number of backtracking iterations (default: 10).
-        min_alpha: Minimum allowable step size to prevent near-zero values (default: 1e-16).
 
     Returns:
         step size
@@ -45,10 +43,6 @@ def backtracking_line_search(
         # decrease alpha
         a *= beta
 
-        # alpha too small
-        if a_min is not None and a < a_min:
-            return a_min
-
     # fail
     if try_negative:
         def inv_objective(alpha): return f(-alpha)
@@ -59,7 +53,6 @@ def backtracking_line_search(
             beta=beta,
             c=c,
             maxiter=maxiter,
-            a_min=a_min,
             try_negative=False,
         )
         if v is not None: return -v
@@ -67,17 +60,28 @@ def backtracking_line_search(
     return None
 
 class Backtracking(LineSearch):
+    """Backtracking line search satisfying the Armijo condition.
+
+    Args:
+        init (float, optional): initial step size. Defaults to 1.0.
+        beta (float, optional): multiplies each consecutive step size by this value. Defaults to 0.5.
+        c (float, optional): acceptance value for Armijo condition. Defaults to 1e-4.
+        maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
+        adaptive (bool, optional):
+            when enabled, if line search failed, initial step size is reduced.
+            Otherwise it is reset to initial value. Defaults to True.
+        try_negative (bool, optional): Whether to perform line search in opposite direction on fail. Defaults to False.
+    """
     def __init__(
         self,
         init: float = 1.0,
         beta: float = 0.5,
         c: float = 1e-4,
         maxiter: int = 10,
-        min_alpha: float | None = None,
         adaptive=True,
         try_negative: bool = False,
     ):
-        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,adaptive=adaptive, try_negative=try_negative)
+        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,adaptive=adaptive, try_negative=try_negative)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
@@ -87,8 +91,8 @@ class Backtracking(LineSearch):
 
     @torch.no_grad
     def search(self, update, var):
-        init, beta, c, maxiter, min_alpha, adaptive, try_negative = itemgetter(
-            'init', 'beta', 'c', 'maxiter', 'min_alpha', 'adaptive', 'try_negative')(self.settings[var.params[0]])
+        init, beta, c, maxiter, adaptive, try_negative = itemgetter(
+            'init', 'beta', 'c', 'maxiter', 'adaptive', 'try_negative')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
@@ -99,7 +103,7 @@ class Backtracking(LineSearch):
         if adaptive: beta = beta * self.global_state['beta_scale']
 
         step_size = backtracking_line_search(objective, d, init=init,beta=beta,
-                                        c=c,maxiter=maxiter,a_min=min_alpha, try_negative=try_negative)
+                                        c=c,maxiter=maxiter, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:
@@ -114,19 +118,34 @@ def _lerp(start,end,weight):
     return start + weight * (end - start)
 
 class AdaptiveBacktracking(LineSearch):
+    """Adaptive backtracking line search. After each line search procedure, a new initial step size is set
+    such that optimal step size in the procedure would be found on the second line search iteration.
+
+    Args:
+        init (float, optional): step size for the first step. Defaults to 1.0.
+        beta (float, optional): multiplies each consecutive step size by this value. Defaults to 0.5.
+        c (float, optional): acceptance value for Armijo condition. Defaults to 1e-4.
+        maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
+        target_iters (int, optional):
+            target number of iterations that would be performed until optimal step size is found. Defaults to 1.
+        nplus (float, optional):
+            Multiplier to initial step size if it was found to be the optimal step size. Defaults to 2.0.
+        scale_beta (float, optional):
+            Momentum for initial step size, at 0 disables momentum. Defaults to 0.0.
+        try_negative (bool, optional): Whether to perform line search in opposite direction on fail. Defaults to False.
+    """
     def __init__(
         self,
         init: float = 1.0,
         beta: float = 0.5,
         c: float = 1e-4,
         maxiter: int = 20,
-        min_alpha: float | None = None,
         target_iters = 1,
         nplus = 2.0,
         scale_beta = 0.0,
         try_negative: bool = False,
     ):
-        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,min_alpha=min_alpha,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
+        defaults=dict(init=init,beta=beta,c=c,maxiter=maxiter,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta, try_negative=try_negative)
         super().__init__(defaults=defaults)
 
         self.global_state['beta_scale'] = 1.0
@@ -139,8 +158,8 @@ class AdaptiveBacktracking(LineSearch):
 
     @torch.no_grad
     def search(self, update, var):
-        init, beta, c, maxiter, min_alpha, target_iters, nplus, scale_beta, try_negative=itemgetter(
-            'init','beta','c','maxiter','min_alpha','target_iters','nplus','scale_beta', 'try_negative')(self.settings[var.params[0]])
+        init, beta, c, maxiter, target_iters, nplus, scale_beta, try_negative=itemgetter(
+            'init','beta','c','maxiter','target_iters','nplus','scale_beta', 'try_negative')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
@@ -155,7 +174,7 @@ class AdaptiveBacktracking(LineSearch):
         init = init * self.global_state['initial_scale']
 
         step_size = backtracking_line_search(objective, d, init=init, beta=beta,
-                                        c=c,maxiter=maxiter,a_min=min_alpha, try_negative=try_negative)
+                                        c=c,maxiter=maxiter, try_negative=try_negative)
 
         # found an alpha that reduces loss
         if step_size is not None:

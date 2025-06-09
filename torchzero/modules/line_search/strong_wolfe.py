@@ -183,6 +183,21 @@ def _notfinite(x):
     return not math.isfinite(x)
 
 class StrongWolfe(LineSearch):
+    """Cubic interpolation line search satisfying Strong Wolfe condition.
+
+    Args:
+        init (float, optional): Initial step size. Defaults to 1.0.
+        c1 (float, optional): Acceptance value for weak wolfe condition. Defaults to 1e-4.
+        c2 (float, optional): Acceptance value for strong wolfe condition (set to 0.1 for conjugate gradient). Defaults to 0.9.
+        maxiter (int, optional): Maximum number of line search iterations. Defaults to 25.
+        maxzoom (int, optional): Maximum number of zoom iterations. Defaults to 10.
+        expand (float, optional): Expansion factor (multipler to step size when weak condition not satisfied). Defaults to 2.0.
+        adaptive (bool, optional):
+            when enabled, if line search failed, initial step size is reduced.
+            Otherwise it is reset to initial value. Defaults to True.
+        plus_minus (bool, optional):
+            If enabled and the direction is not descent direction, performs line search in opposite direction. Defaults to False.
+    """
     def __init__(
         self,
         init: float = 1.0,
@@ -193,11 +208,10 @@ class StrongWolfe(LineSearch):
         # a_max: float = 1e10,
         expand: float = 2.0,
         adaptive = True,
-        fallback = False,
         plus_minus = False,
     ):
         defaults=dict(init=init,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom,
-                      expand=expand, adaptive=adaptive, fallback=fallback, plus_minus=plus_minus)
+                      expand=expand, adaptive=adaptive, plus_minus=plus_minus)
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
@@ -207,9 +221,9 @@ class StrongWolfe(LineSearch):
     def search(self, update, var):
         objective = self.make_objective_with_derivative(var=var)
 
-        init, c1, c2, maxiter, maxzoom, expand, adaptive, fallback, plus_minus = itemgetter(
+        init, c1, c2, maxiter, maxzoom, expand, adaptive, plus_minus = itemgetter(
             'init', 'c1', 'c2', 'maxiter', 'maxzoom',
-            'expand', 'adaptive', 'fallback', 'plus_minus')(self.settings[var.params[0]])
+            'expand', 'adaptive', 'plus_minus')(self.settings[var.params[0]])
 
         f_0, g_0 = objective(0)
 
@@ -232,29 +246,4 @@ class StrongWolfe(LineSearch):
 
         # fallback to backtracking on fail
         if adaptive: self.global_state['initial_scale'] *= 0.5
-        if not fallback: return 0
-
-        objective = self.make_objective(var=var)
-
-        # # directional derivative
-        g_0 = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
-
-        step_size = backtracking_line_search(
-            objective,
-            g_0,
-            init=init * self.global_state["initial_scale"],
-            beta=0.5 * self.global_state["beta_scale"],
-            c=c1,
-            maxiter=maxiter * 2,
-            a_min=None,
-            try_negative=plus_minus,
-        )
-
-        # found an alpha that reduces loss
-        if step_size is not None:
-            self.global_state['beta_scale'] = min(1.0, self.global_state.get('beta_scale', 1) * math.sqrt(1.5))
-            return step_size
-
-        # on fail reduce beta scale value
-        self.global_state['beta_scale'] /= 1.5
         return 0

@@ -7,6 +7,21 @@ from .line_search import LineSearch
 
 
 class ScipyMinimizeScalar(LineSearch):
+    """Line search via :code:`scipy.optimize.minimize_scalar` which implements brent, golden search and bounded brent methods.
+
+    Args:
+        method (str | None, optional): "brent", "golden" or "bounded". Defaults to None.
+        maxiter (int | None, optional): maximum number of function evaluations the line search is allowed to perform. Defaults to None.
+        bracket (Sequence | None, optional):
+            Either a triple (xa, xb, xc) satisfying xa < xb < xc and func(xb) < func(xa) and  func(xb) < func(xc), or a pair (xa, xb) to be used as initial points for a downhill bracket search. Defaults to None.
+        bounds (Sequence | None, optional):
+            For method ‘bounded’, bounds is mandatory and must have two finite items corresponding to the optimization bounds. Defaults to None.
+        tol (float | None, optional): Tolerance for termination. Defaults to None.
+        options (dict | None, optional): A dictionary of solver options. Defaults to None.
+
+    For more details on methods and arguments refer to https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize_scalar.html
+
+    """
     def __init__(
         self,
         method: str | None = None,

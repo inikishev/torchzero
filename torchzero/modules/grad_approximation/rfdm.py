@@ -90,6 +90,19 @@ _RFD_FUNCS = {
 
 
 class RandomizedFDM(GradApproximator):
+    """_summary_
+
+    Args:
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        distribution (Distributions, optional): distribution. Defaults to "rademacher".
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        pre_generate (bool, optional):
+            whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
+        seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
+    """
     PRE_MULTIPLY_BY_H = True
     def __init__(
         self,
@@ -99,8 +112,8 @@ class RandomizedFDM(GradApproximator):
         distribution: Distributions = "rademacher",
         beta: float = 0,
         pre_generate = True,
-        target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
+        target: GradTarget = "closure",
     ):
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta, pre_generate=pre_generate, seed=seed)
         super().__init__(defaults, target=target)

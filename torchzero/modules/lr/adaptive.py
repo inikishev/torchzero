@@ -8,11 +8,12 @@ from ...utils import TensorList, NumberList, unpack_dicts
 
 
 class PolyakStepSize(Transform):
-    """Polyak step-size.
+    """Polyak's step-size method.
 
     Args:
         max (float | None, optional): maximum possible step size. Defaults to None.
-        min_obj_value (int, optional): (estimated) minimal possible value of the objective function (lowest possible loss). Defaults to 0.
+        min_obj_value (int, optional):
+            (estimated) minimal possible value of the objective function (lowest possible loss). Defaults to 0.
         use_grad (bool, optional):
             if True, uses dot product of update and gradient to compute the step size.
             Otherwise, dot product of update with itself is used, which has no geometric meaning so it probably won't work well.
@@ -56,7 +57,7 @@ class PolyakStepSize(Transform):
 
 
 class RandomStepSize(Transform):
-    """Uses random global step size from `low` to `high`.
+    """Uses random global or layer-wise step size from `low` to `high`.
 
     Args:
         low (float, optional): minimum learning rate. Defaults to 0.

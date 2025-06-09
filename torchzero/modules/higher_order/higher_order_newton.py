@@ -123,24 +123,27 @@ class HigherOrderNewton(Module):
     significantly more complex.
 
     Args:
-        order (int, optional): order of the method. Defaults to 4.
-        trust_init (float | None, optional):
-            initial trust region size. If None, disables trust region.
-            Defaults to None.
+
+        order (int, optional):
+            Order of the method, number of taylor series terms (orders of derivatives) used to approximate the function. Defaults to 4.
+        trust_method (str | None, optional):
+            Method used for trust region.
+            - "bounds" - the model is minimized within bounds defined by trust region.
+            - "proximal" - the model is minimized with penalty for going too far from current point.
+            - "none" - disables trust region.
+
+            Defaults to 'bounds'.
         increase (float, optional): trust region multiplier on good steps. Defaults to 1.5.
         decrease (float, optional): trust region multiplier on bad steps. Defaults to 0.75.
+        trust_init (float | None, optional):
+            initial trust region size. If none, defaults to 1 on :code:`trust_method="bounds"` and 0.1 on :code:`"proximal"`. Defaults to None.
         trust_tol (float, optional):
             Maximum ratio of expected loss reduction to actual reduction for trust region increase.
             Should 1 or higer. Defaults to 2.
-        prox (float, optional):
-            proximal penalty weight. Penalizes points too far from current point when minimizing the polynomial.
-            Defaults to 0.
         de_iters (int | None, optional):
-            If this is specified, taylor approximation is minimized via differential evolution first,
-            then it is passed to scipy.optimize.minimize which could get stuck in local minima. Defaults to None.
-        vectorize (bool, optional):
-            whether to enable vectorized jacobians. Defaults to True.
-
+            If this is specified, the model is minimized via differential evolution first to possibly escape local minima,
+            then it is passed to scipy.optimize.minimize. Defaults to None.
+        vectorize (bool, optional): whether to enable vectorized jacobians (usually faster). Defaults to True.
     """
     def __init__(
         self,

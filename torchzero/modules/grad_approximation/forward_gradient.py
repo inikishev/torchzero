@@ -17,9 +17,9 @@ class ForwardGradient(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         distribution (Distributions, optional): distribution for random gradient samples. Defaults to "gaussian".
         beta (float, optional):
-            if not 0, acts as momentum on gradient samples, making the subspace spanned by them change slowly. Defaults to 0.
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
         pre_generate (bool, optional):
-            whether to pre-generate gradient samples before each step. Defaults to True.
+            whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         jvp_method (str, optional):
             how to calculate jacobian vector product, note that with `forward` and 'central' this is equivalent to randomized finite difference. Defaults to 'autograd'.
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.

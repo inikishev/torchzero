@@ -6,7 +6,19 @@ from .line_search import LineSearch
 
 
 class TrustRegion(LineSearch):
-    """Basic first order trust region, re-evaluates closure with updated parameters and scales step size based on function value change, very prone to collapsing"""
+    """Basic first order trust region method. Re-evaluates the function after stepping, if value decreased sufficiently,
+    step size is increased. If value increased, step size is decreased. This is prone to collapsing.
+
+    Args:
+        nplus (float, optional): multiplier to step size on successful steps. Defaults to 1.5.
+        nminus (float, optional): multiplier to step size on unsuccessful steps. Defaults to 0.75.
+        c (float, optional): descent condition. Defaults to 1e-4.
+        init (float, optional): initial step size. Defaults to 1.
+        backtrack (bool, optional): whether to undo the step if value increased. Defaults to True.
+        adaptive (bool, optional):
+            If enabled, when multiple consecutive steps have been successful or unsuccessful,
+            the corresponding multipliers are increased, otherwise they are reset. Defaults to True.
+    """
     def __init__(self, nplus: float=1.5, nminus: float=0.75, c: float=1e-4, init: float = 1, backtrack: bool = True, adaptive: bool = True):
         defaults = dict(nplus=nplus, nminus=nminus, c=c, init=init, backtrack=backtrack, adaptive=adaptive)
         super().__init__(defaults)
