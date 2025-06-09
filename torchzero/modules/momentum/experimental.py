@@ -43,6 +43,7 @@ def precentered_ema_sq_(
     return exp_avg_sq_
 
 class PrecenteredEMASquared(Transform):
+    """Maintains un-squared EMA, the updates are centered by it before being fed into squared EMA."""
     def __init__(self, beta1:float=0.99, beta2=0.99, min_step: int = 2, amsgrad=False, pow:float=2, target: Target = 'update'):
         defaults = dict(beta1=beta1,beta2=beta2,pow=pow,amsgrad=amsgrad, min_step=min_step)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -118,9 +119,11 @@ def sqrt_nag_ema_sq_(
                         pow=pow,debiased=debiased,step=step,ema_sq_fn=partial(nag_ema_sq_,lerp=lerp))
 
 class NesterovEMASquared(EMASquared):
+    """squared momentum with nesterov momentum rule"""
     EMA_SQ_FN = staticmethod(nag_ema_sq_)
 
 class SqrtNesterovEMASquared(SqrtEMASquared):
+    """square root of squared momentum with nesterov momentum rule"""
     SQRT_EMA_SQ_FN = staticmethod(sqrt_nag_ema_sq_)
 
 
@@ -140,6 +143,12 @@ def coordinate_momentum_(
 
 
 class CoordinateMomentum(Transform):
+    """Maintains a momentum buffer, on each step each value in the buffer has :code:`p` chance to be updated with the new value.
+
+    Args:
+        p (float, optional): _description_. Defaults to 0.1.
+        target (Target, optional): _description_. Defaults to 'update'.
+    """
     def __init__(self, p: float = 0.1, target: Target = 'update'):
         defaults = dict(p=p)
         super().__init__(defaults, uses_grad=False, target=target)

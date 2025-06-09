@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, apply_transform
+from ...core import Module, apply_transform, Chainable
 from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
@@ -13,9 +13,27 @@ class MatrixMomentum(Module):
 
     `mu` is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable.
 
-    Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
+    Args:
+        mu (float, optional): this has a similar role to (1 - beta) in normal momentum. Defaults to 0.1.
+        beta (float, optional): decay for the buffer, this is not part of the original update rule. Defaults to 1.
+        hvp_method (str, optional):
+            How to calculate hessian-vector products.
+            Exact - "autograd", or finite difference - "forward", "central". Defaults to 'forward'.
+        h (float, optional): finite difference step size if hvp_method is set to finite difference. Defaults to 1e-3.
+        hvp_tfm (Chainable | None, optional): optional module applied to hessian-vector products. Defaults to None.
+
+    Reference:
+        Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
     """
-    def __init__(self, mu=0.1, beta:float=1, hvp_method: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+
+    def __init__(
+        self,
+        mu=0.1,
+        beta: float = 1,
+        hvp_method: Literal["autograd", "forward", "central"] = "forward",
+        h: float = 1e-3,
+        hvp_tfm: Chainable | None = None,
+    ):
         defaults = dict(mu=mu, beta=beta, hvp_method=hvp_method, h=h)
         super().__init__(defaults)
 
@@ -62,9 +80,33 @@ class MatrixMomentum(Module):
 
 class AdaptiveMatrixMomentum(Module):
     """
-    Mu here is estimated as ||s_k||/||y_k||.
+    May be useful for ill conditioned stochastic quadratic objectives but I need to test this.
+    Evaluates hessian vector product on each step (via finite difference or autograd).
+
+    This version estimates mu via a simple heuristic: ||s||/||y||, where s is parameter difference, y is gradient difference.
+
+    Args:
+        mu_mul (float, optional): multiplier to the estimated mu. Defaults to 1.
+        beta (float, optional): decay for the buffer, this is not part of the original update rule. Defaults to 1.
+        hvp_method (str, optional):
+            How to calculate hessian-vector products.
+            Exact - "autograd", or finite difference - "forward", "central". Defaults to 'forward'.
+        h (float, optional): finite difference step size if hvp_method is set to finite difference. Defaults to 1e-3.
+        hvp_tfm (Chainable | None, optional): optional module applied to hessian-vector products. Defaults to None.
+
+    Reference:
+        Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
     """
-    def __init__(self, mu_mul:float=1, beta:float=1, eps=1e-4, hvp_method: Literal['autograd', 'forward', 'central'] = 'forward', h=1e-3, hvp_tfm=None):
+
+    def __init__(
+        self,
+        mu_mul: float = 1,
+        beta: float = 1,
+        eps=1e-4,
+        hvp_method: Literal["autograd", "forward", "central"] = "forward",
+        h: float = 1e-3,
+        hvp_tfm: Chainable | None = None,
+    ):
         defaults = dict(mu_mul=mu_mul, beta=beta, hvp_method=hvp_method, h=h, eps=eps)
         super().__init__(defaults)
 
