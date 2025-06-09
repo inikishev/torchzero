@@ -10,7 +10,7 @@ from ..functional import debias, ema_, ema_sq_, sqrt_ema_sq_, centered_ema_sq_, 
 
 
 class EMA(Transform):
-    """Maintains EMA of update.
+    """Maintains an exponential moving average of update.
 
     Args:
         momentum (float, optional): momentum (beta). Defaults to 0.9.
@@ -40,11 +40,18 @@ class EMA(Transform):
 
 
 class EMASquared(Transform):
+    """Maintains an exponential moving average of squared updates.
+
+    Args:
+        beta (float, optional): momentum value. Defaults to 0.999.
+        amsgrad (bool, optional): whether to maintain maximum of the exponential moving average. Defaults to False.
+        pow (float, optional): power, absolute value is always used. Defaults to 2.
+    """
     EMA_SQ_FN: staticmethod = staticmethod(ema_sq_)
 
-    def __init__(self, beta:float=0.999, amsgrad=False, pow:float=2, target: Target = 'update'):
+    def __init__(self, beta:float=0.999, amsgrad=False, pow:float=2):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -60,11 +67,18 @@ class EMASquared(Transform):
         return self.EMA_SQ_FN(TensorList(tensors), exp_avg_sq_=exp_avg_sq, beta=beta, max_exp_avg_sq_=max_exp_avg_sq, pow=pow).clone()
 
 class SqrtEMASquared(Transform):
-    SQRT_EMA_SQ_FN: staticmethod = staticmethod(sqrt_ema_sq_)
+    """Maintains an exponential moving average of squared updates, outputs optionally debiased square root.
 
-    def __init__(self, beta:float=0.999, amsgrad=False, debiased: bool = False, pow:float=2, target: Target = 'update',):
+    Args:
+        beta (float, optional): momentum value. Defaults to 0.999.
+        amsgrad (bool, optional): whether to maintain maximum of the exponential moving average. Defaults to False.
+        debiased (bool, optional): whether to multiply the output by a debiasing term from the Adam method. Defaults to False.
+        pow (float, optional): power, absolute value is always used. Defaults to 2.
+    """
+    SQRT_EMA_SQ_FN: staticmethod = staticmethod(sqrt_ema_sq_)
+    def __init__(self, beta:float=0.999, amsgrad=False, debiased: bool = False, pow:float=2,):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad,debiased=debiased)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
 
     @torch.no_grad
@@ -92,6 +106,17 @@ class SqrtEMASquared(Transform):
 
 
 class Debias(Transform):
+    """Multiplies the update by an Adam debiasing term based first and/or second momentum.
+
+    Args:
+        beta1 (float | None, optional):
+            first momentum, should be the same as first momentum used in modules before. Defaults to None.
+        beta2 (float | None, optional):
+            second (squared) momentum, should be the same as second momentum used in modules before. Defaults to None.
+        alpha (float, optional): learning rate. Defaults to 1.
+        pow (float, optional): power, assumes absolute value is used. Defaults to 2.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, beta1: float | None = None, beta2: float | None = None, alpha: float = 1, pow:float=2, target: Target = 'update',):
         defaults = dict(beta1=beta1, beta2=beta2, alpha=alpha, pow=pow)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -106,6 +131,14 @@ class Debias(Transform):
         return debias(TensorList(tensors), step=step, beta1=beta1, beta2=beta2, alpha=alpha, pow=pow, inplace=True)
 
 class Debias2(Transform):
+    """Multiplies the update by an Adam debiasing term based on the second momentum.
+
+    Args:
+        beta (float | None, optional):
+            second (squared) momentum, should be the same as second momentum used in modules before. Defaults to None.
+        pow (float, optional): power, assumes absolute value is used. Defaults to 2.
+        target (Target, optional): target. Defaults to 'update'.
+    """
     def __init__(self, beta: float = 0.999, pow: float = 2, target: Target = 'update',):
         defaults = dict(beta=beta, pow=pow)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -119,9 +152,17 @@ class Debias2(Transform):
         return debias_second_momentum(TensorList(tensors), step=step, beta=beta, pow=pow, inplace=True)
 
 class CenteredEMASquared(Transform):
-    def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2, target: Target = 'update'):
+    """Maintains a centered exponential moving average of squared updates. This also maintains an additional
+    exponential moving average of un-squared updates, square of which is subtracted from the EMA.
+
+    Args:
+        beta (float, optional): momentum value. Defaults to 0.999.
+        amsgrad (bool, optional): whether to maintain maximum of the exponential moving average. Defaults to False.
+        pow (float, optional): power, absolute value is always used. Defaults to 2.
+    """
+    def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2):
         defaults = dict(beta=beta, amsgrad=amsgrad, pow=pow)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -144,9 +185,18 @@ class CenteredEMASquared(Transform):
         ).clone()
 
 class CenteredSqrtEMASquared(Transform):
-    def __init__(self, beta: float = 0.99, amsgrad=False, debiased: bool = False, pow:float=2, target: Target = 'update'):
+    """Maintains a centered exponential moving average of squared updates, outputs optionally debiased square root.
+    This also maintains an additional exponential moving average of un-squared updates, square of which is subtracted from the EMA.
+
+    Args:
+        beta (float, optional): momentum value. Defaults to 0.999.
+        amsgrad (bool, optional): whether to maintain maximum of the exponential moving average. Defaults to False.
+        debiased (bool, optional): whether to multiply the output by a debiasing term from the Adam method. Defaults to False.
+        pow (float, optional): power, absolute value is always used. Defaults to 2.
+    """
+    def __init__(self, beta: float = 0.99, amsgrad=False, debiased: bool = False, pow:float=2):
         defaults = dict(beta=beta, amsgrad=amsgrad, debiased=debiased, pow=pow)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
