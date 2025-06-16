@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, MutableSequence, Sequence, MutableMapping
 from typing import Any, Literal, TypeVar, overload
 
@@ -132,65 +133,7 @@ def get_state_vals(state: Mapping[torch.Tensor, MutableMapping[str, Any]], param
     return values
 
 
-
-def loss_at_params(closure, params: Iterable[torch.Tensor],
-                   new_params: Sequence[torch.Tensor] | Any, backward: bool, restore=False):
-    params = TensorList(params)
-
-    old_params = params.clone() if restore else None
-
-    if isinstance(new_params, Sequence) and isinstance(new_params[0], torch.Tensor):
-        # when not restoring, copy new_params to params to avoid unexpected bugs due to shared storage
-        # when restoring params will be set back to old_params so its fine
-        if restore: params.set_(new_params)
-        else: params.copy_(new_params) # type:ignore
-
-    else:
-        new_params = totensor(new_params)
-        params.from_vec_(new_params)
-
-    if backward: loss = closure()
-    else: loss = closure(False)
-
-    if restore:
-        assert old_params is not None
-        params.set_(old_params)
-
-    return tofloat(loss)
-
-def loss_grad_at_params(closure, params: Iterable[torch.Tensor], new_params: Sequence[torch.Tensor], restore=False):
-    params = TensorList(params)
-    old_params = params.clone() if restore else None
-    loss = loss_at_params(closure, params, new_params, backward=True, restore=False)
-    grad = params.ensure_grad_().grad
-
-    if restore:
-        assert old_params is not None
-        params.set_(old_params)
-
-    return loss, grad
-
-def grad_at_params(closure, params: Iterable[torch.Tensor], new_params: Sequence[torch.Tensor], restore=False):
-    return loss_grad_at_params(closure=closure,params=params,new_params=new_params,restore=restore)[1]
-
-def loss_grad_vec_at_params(closure, params: Iterable[torch.Tensor], new_params: Any, restore=False):
-    params = TensorList(params)
-    old_params = params.clone() if restore else None
-    loss = loss_at_params(closure, params, new_params, backward=True, restore=False)
-    grad = params.ensure_grad_().grad.to_vec()
-
-    if restore:
-        assert old_params is not None
-        params.set_(old_params)
-
-    return loss, grad
-
-def grad_vec_at_params(closure, params: Iterable[torch.Tensor], new_params: Any, restore=False):
-    return loss_grad_vec_at_params(closure=closure,params=params,new_params=new_params,restore=restore)[1]
-
-
-
-class Optimizer(torch.optim.Optimizer):
+class Optimizer(torch.optim.Optimizer, ABC):
     """subclass of torch.optim.Optimizer with some helper methods for fast experimentation, it's not used anywhere in torchzero.
 
     Args:
@@ -251,21 +194,10 @@ class Optimizer(torch.optim.Optimizer):
 
         return get_state_vals(self.state, params, key, key2, *keys, init = init, cls = cls) # type:ignore[reportArgumentType]
 
-    def loss_at_params(self, closure, params: Sequence[torch.Tensor] | Any, backward: bool, restore=False):
-        return loss_at_params(closure=closure,params=self.get_params(),new_params=params,backward=backward,restore=restore)
 
-    def loss_grad_at_params(self, closure, params: Sequence[torch.Tensor] | Any, restore=False):
-        return loss_grad_at_params(closure=closure,params=self.get_params(),new_params=params,restore=restore)
-
-    def grad_at_params(self, closure, new_params: Sequence[torch.Tensor], restore=False):
-        return self.loss_grad_at_params(closure=closure,params=new_params,restore=restore)[1]
-
-    def loss_grad_vec_at_params(self, closure, params: Any, restore=False):
-        return loss_grad_vec_at_params(closure=closure,params=self.get_params(),new_params=params,restore=restore)
-
-    def grad_vec_at_params(self, closure, params: Any, restore=False):
-        return self.loss_grad_vec_at_params(closure=closure,params=params,restore=restore)[1]
-
+    # shut up pylance
+    @abstractmethod
+    def step(self, closure) -> Any: ... # pylint:disable=signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
 
 def zero_grad_(params: Iterable[torch.Tensor], set_to_none):
     if set_to_none:

@@ -11,9 +11,9 @@ from ...utils import Optimizer, TensorList
 from ...utils.derivatives import jacobian_and_hessian_mat_wrt, jacobian_wrt
 from ...modules.second_order.newton import tikhonov_
 
-def _ensure_float(x):
+def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return x.item()
+    if isinstance(x, np.ndarray): return float(x.item())
     return float(x)
 
 def _ensure_numpy(x):
@@ -265,7 +265,8 @@ class ScipyDE(Optimizer):
     def __init__(
         self,
         params,
-        bounds: tuple[float,float],
+        lb: float,
+        ub: float,
         strategy: Literal['best1bin', 'best1exp', 'rand1bin', 'rand1exp', 'rand2bin', 'rand2exp',
             'randtobest1bin', 'randtobest1exp', 'currenttobest1bin', 'currenttobest1exp',
             'best2exp', 'best2bin'] = 'best1bin',
@@ -287,12 +288,11 @@ class ScipyDE(Optimizer):
         integrality = None,
 
     ):
-        super().__init__(params, {})
+        super().__init__(params, lb=lb, ub=ub)
 
         kwargs = locals().copy()
-        del kwargs['self'], kwargs['params'], kwargs['bounds'], kwargs['__class__']
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
         self._kwargs = kwargs
-        self._lb, self._ub = bounds
 
     def _objective(self, x: np.ndarray, params: TensorList, closure):
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
@@ -303,7 +303,11 @@ class ScipyDE(Optimizer):
         params = self.get_params()
 
         x0 = params.to_vec().detach().cpu().numpy()
-        bounds = [(self._lb, self._ub)] * len(x0)
+
+        lb, ub = self.group_vals('lb', 'ub', cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
 
         res = scipy.optimize.differential_evolution(
             partial(self._objective, params = params, closure = closure),
@@ -321,7 +325,8 @@ class ScipyDualAnnealing(Optimizer):
     def __init__(
         self,
         params,
-        bounds: tuple[float, float],
+        lb: float,
+        ub: float,
         maxiter=1000,
         minimizer_kwargs=None,
         initial_temp=5230.0,
@@ -332,23 +337,25 @@ class ScipyDualAnnealing(Optimizer):
         rng=None,
         no_local_search=False,
     ):
-        super().__init__(params, {})
+        super().__init__(params, lb=lb, ub=ub)
 
         kwargs = locals().copy()
-        del kwargs['self'], kwargs['params'], kwargs['bounds'], kwargs['__class__']
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
         self._kwargs = kwargs
-        self._lb, self._ub = bounds
 
     def _objective(self, x: np.ndarray, params: TensorList, closure):
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         return _ensure_float(closure(False))
 
     @torch.no_grad
-    def step(self, closure: Closure):# pylint:disable = signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
+    def step(self, closure: Closure):
         params = self.get_params()
 
         x0 = params.to_vec().detach().cpu().numpy()
-        bounds = [(self._lb, self._ub)] * len(x0)
+        lb, ub = self.group_vals('lb', 'ub', cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
 
         res = scipy.optimize.dual_annealing(
             partial(self._objective, params = params, closure = closure),
@@ -360,3 +367,145 @@ class ScipyDualAnnealing(Optimizer):
         params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         return res.fun
 
+
+
+class ScipySHGO(Optimizer):
+    def __init__(
+        self,
+        params,
+        lb: float,
+        ub: float,
+        constraints = None,
+        n: int = 100,
+        iters: int = 1,
+        callback = None,
+        minimizer_kwargs = None,
+        options = None,
+        sampling_method: str = 'simplicial',
+    ):
+        super().__init__(params, lb=lb, ub=ub)
+
+        kwargs = locals().copy()
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
+        self._kwargs = kwargs
+
+    def _objective(self, x: np.ndarray, params: TensorList, closure):
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return _ensure_float(closure(False))
+
+    @torch.no_grad
+    def step(self, closure: Closure):
+        params = self.get_params()
+
+        lb, ub = self.group_vals('lb', 'ub', cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
+
+        res = scipy.optimize.shgo(
+            partial(self._objective, params = params, closure = closure),
+            bounds=bounds,
+            **self._kwargs
+        )
+
+        params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return res.fun
+
+
+class ScipyDIRECT(Optimizer):
+    def __init__(
+        self,
+        params,
+        lb: float,
+        ub: float,
+        maxfun: int | None = 1000,
+        maxiter: int = 1000,
+        eps: float = 0.0001,
+        locally_biased: bool = True,
+        f_min: float = -np.inf,
+        f_min_rtol: float = 0.0001,
+        vol_tol: float = 1e-16,
+        len_tol: float = 0.000001,
+        callback = None,
+    ):
+        super().__init__(params, lb=lb, ub=ub)
+
+        kwargs = locals().copy()
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
+        self._kwargs = kwargs
+
+    def _objective(self, x: np.ndarray, params: TensorList, closure) -> float:
+        if self.raised: return np.inf
+        try:
+            params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+            return _ensure_float(closure(False))
+        except Exception as e:
+            # he he he ha, I found a way to make exceptions work in fcmaes and scipy direct
+            self.e = e
+            self.raised = True
+            return np.inf
+
+    @torch.no_grad
+    def step(self, closure: Closure):
+        self.raised = False
+        self.e = None
+
+        params = self.get_params()
+
+        lb, ub = self.group_vals('lb', 'ub', cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
+
+        res = scipy.optimize.direct(
+            partial(self._objective, params=params, closure=closure),
+            bounds=bounds,
+            **self._kwargs
+        )
+
+        params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+
+        if self.e is not None: raise self.e from None
+        return res.fun
+
+
+
+
+class ScipyBrute(Optimizer):
+    def __init__(
+        self,
+        params,
+        lb: float,
+        ub: float,
+        Ns: int = 20,
+        full_output: int = 0,
+        finish = scipy.optimize.fmin,
+        disp: bool = False,
+        workers: int = 1
+    ):
+        super().__init__(params, lb=lb, ub=ub)
+
+        kwargs = locals().copy()
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
+        self._kwargs = kwargs
+
+    def _objective(self, x: np.ndarray, params: TensorList, closure):
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return _ensure_float(closure(False))
+
+    @torch.no_grad
+    def step(self, closure: Closure):
+        params = self.get_params()
+
+        lb, ub = self.group_vals('lb', 'ub', cls=list)
+        bounds = []
+        for p, l, u in zip(params, lb, ub):
+            bounds.extend([(l, u)] * p.numel())
+
+        x0 = scipy.optimize.brute(
+            partial(self._objective, params = params, closure = closure),
+            ranges=bounds,
+            **self._kwargs
+        )
+        params.from_vec_(torch.from_numpy(x0).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return None

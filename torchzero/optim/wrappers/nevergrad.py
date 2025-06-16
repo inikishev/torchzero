@@ -9,12 +9,12 @@ import nevergrad as ng
 from ...utils import Optimizer
 
 
-def _ensure_float(x):
+def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return x.item()
+    if isinstance(x, np.ndarray): return float(x.item())
     return float(x)
 
-class NevergradOptimizer(Optimizer):
+class NevergradWrapper(Optimizer):
     """Use nevergrad optimizer as pytorch optimizer.
     Note that it is recommended to specify `budget` to the number of iterations you expect to run,
     as some nevergrad optimizers will error without it.
@@ -56,7 +56,7 @@ class NevergradOptimizer(Optimizer):
         self.budget = budget
 
     @torch.no_grad
-    def step(self, closure): # type:ignore # pylint:disable=signature-differs
+    def step(self, closure): # pylint:disable=signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
         params = self.get_params()
         if self.opt is None:
             ng_params = []

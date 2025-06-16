@@ -69,7 +69,7 @@ def _ensure_tensor(x):
 inf = float('inf')
 Closure = Callable[[bool], Any]
 
-class NLOptOptimizer(Optimizer):
+class NLOptWrapper(Optimizer):
     """Use nlopt as pytorch optimizer, with gradient supplied by pytorch autograd.
     Note that this performs full minimization on each step,
     so usually you would want to perform a single step, although performing multiple steps will refine the
@@ -96,9 +96,9 @@ class NLOptOptimizer(Optimizer):
         self,
         params,
         algorithm: int | _ALGOS_LITERAL,
-        maxeval: int | None,
         lb: float | None = None,
         ub: float | None = None,
+        maxeval: int | None = 10000, # None can stall on some algos and because they are threaded C you can't even interrupt them
         stopval: float | None = None,
         ftol_rel: float | None = None,
         ftol_abs: float | None = None,
@@ -122,22 +122,33 @@ class NLOptOptimizer(Optimizer):
         self._last_loss = None
 
     def _f(self, x: np.ndarray, grad: np.ndarray, closure, params: TensorList):
-        t = _ensure_tensor(x)
-        if t is None:
+        if self.raised:
             if self.opt is not None: self.opt.force_stop()
-            return None
-        params.from_vec_(t.to(params[0], copy=False))
-        if grad.size > 0:
-            with torch.enable_grad(): loss = closure()
-            self._last_loss = _ensure_float(loss)
-            grad[:] = params.ensure_grad_().grad.to_vec().reshape(grad.shape).detach().cpu().numpy()
-            return self._last_loss
+            return np.inf
+        try:
+            t = _ensure_tensor(x)
+            if t is None:
+                if self.opt is not None: self.opt.force_stop()
+                return None
+            params.from_vec_(t.to(params[0], copy=False))
+            if grad.size > 0:
+                with torch.enable_grad(): loss = closure()
+                self._last_loss = _ensure_float(loss)
+                grad[:] = params.ensure_grad_().grad.to_vec().reshape(grad.shape).detach().cpu().numpy()
+                return self._last_loss
 
-        self._last_loss = _ensure_float(closure(False))
-        return self._last_loss
+            self._last_loss = _ensure_float(closure(False))
+            return self._last_loss
+        except Exception as e:
+            self.e = e
+            self.raised = True
+            if self.opt is not None: self.opt.force_stop()
+            return np.inf
 
     @torch.no_grad
     def step(self, closure: Closure): # pylint: disable = signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
+        self.e = None
+        self.raised = False
         params = self.get_params()
 
         # make bounds
@@ -175,6 +186,9 @@ class NLOptOptimizer(Optimizer):
         except Exception as e:
             raise e from None
 
+        if x is not None: params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        if self.e is not None: raise self.e from None
+
         if self._last_loss is None or x is None: return closure(False)
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+
         return self._last_loss

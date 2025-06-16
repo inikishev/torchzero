@@ -9,11 +9,6 @@ from .optimizer import (
     get_group_vals,
     get_params,
     get_state_vals,
-    grad_at_params,
-    grad_vec_at_params,
-    loss_at_params,
-    loss_grad_at_params,
-    loss_grad_vec_at_params,
     unpack_states,
 )
 from .params import (
