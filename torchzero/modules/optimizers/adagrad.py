@@ -1,7 +1,7 @@
 from operator import itemgetter
+from typing import Literal
 
 import torch
-
 from ...core import (
     Chainable,
     Module,
@@ -110,8 +110,8 @@ class Adagrad(Transform):
 
 
 class FullMatrixAdagrad(TensorwiseTransform):
-    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=False, update_freq=1, inner: Chainable | None = None):
-        defaults = dict(beta=beta, decay=decay, sqrt=sqrt)
+    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=False, update_freq=1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', inner: Chainable | None = None):
+        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, init=init)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -120,8 +120,14 @@ class FullMatrixAdagrad(TensorwiseTransform):
         GG = torch.outer(G, G)
         decay = settings['decay']
         beta = settings['beta']
+        init = settings['init']
 
-        if 'GG' not in state: state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
+        if 'GG' not in state:
+            if init == 'identity': state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
+            elif init == 'zeros': state['GG'] =  torch.zeros_like(GG)
+            elif init == 'ones': state['GG'] = torch.ones_like(GG)
+            elif init == 'GGT': state['GG'] = GG.clone()
+            else: raise ValueError(init)
         if decay is not None: state['GG'].mul_(decay)
 
         if beta is not None: state['GG'].lerp_(GG, 1-beta)

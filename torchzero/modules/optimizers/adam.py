@@ -3,7 +3,7 @@ from functools import partial
 
 import torch
 
-from ...core import Module, Target, Transform, apply_transform
+from ...core import Module, Target, Transform, apply_transform, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     debias, debiased_step_size,
@@ -67,9 +67,12 @@ class Adam(Transform):
         alpha: float = 1.,
         pow: float = 2,
         debiased: bool = True,
+        inner: Chainable | None = None
     ):
         defaults=dict(beta1=beta1,beta2=beta2,eps=eps,alpha=alpha,amsgrad=amsgrad,pow=pow,debiased=debiased)
         super().__init__(defaults, uses_grad=False)
+
+        if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):

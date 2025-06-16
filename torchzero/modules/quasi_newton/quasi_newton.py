@@ -84,10 +84,12 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
                 else: M *= init_scale
 
             state[M_key] = M
+            state['f_prev'] = loss
             state['p_prev'] = p.clone()
             state['g_prev'] = g.clone()
             return
 
+        state['f'] = loss
         p_prev = state['p_prev']
         g_prev = state['g_prev']
         s: torch.Tensor = p - p_prev
@@ -119,6 +121,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         else:
             B_new = self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings)
             _maybe_lerp_(state, 'B', B_new, beta)
+
+        state['f_prev'] = loss
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
@@ -613,5 +617,67 @@ class FletcherVMM(HUpdateStrategy):
     """Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317"""
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return fletcher_vmm_H_(H=H, s=s, y=y, tol=settings['tol'])
+
+
+# Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U.
+def new_ssm1(H: torch.Tensor, s: torch.Tensor, y: torch.Tensor, f, f_prev, tol: float, type:int):
+    sy = s.dot(y)
+    if sy < tol: return H
+
+    term1 = (H @ y.outer(s) + s.outer(y) @ H) / sy
+
+    if type == 1:
+        pba = (2*sy + 2*(f-f_prev)) / sy
+
+    elif type == 2:
+        pba = (f_prev - f + 1/(2*sy)) / sy
+
+    else:
+        raise RuntimeError(type)
+
+    term3 = 1/pba + y.dot(H@y) / sy
+    term4 = s.outer(s) / sy
+
+    H.sub_(term1)
+    H.add_(term4.mul_(term3))
+    return H
+
+
+class NewSSM(HessianUpdateStrategy):
+    """Self-scaling method, requires a line search.
+
+    Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U."""
+    def __init__(
+        self,
+        type: Literal[1, 2] = 1,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-10,
+        tol_reset: bool = True,
+        reset_interval: int | None = None,
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        scale_second: bool = False,
+        concat_params: bool = True,
+        inner: Chainable | None = None,
+    ):
+        super().__init__(
+            defaults=dict(type=type),
+            init_scale=init_scale,
+            tol=tol,
+            tol_reset=tol_reset,
+            reset_interval=reset_interval,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=True,
+            inner=inner,
+        )
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        f = state['f']
+        f_prev = state['f_prev']
+        return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=settings['type'], tol=settings['tol'])
 
 

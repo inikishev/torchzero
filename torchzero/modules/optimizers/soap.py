@@ -152,9 +152,8 @@ class SOAP(Transform):
             epsilon for dividing first momentum by second. Defaults to 1e-8.
         decay (float | None, optional):
             Decays covariance matrix accumulators, this may be useful if `shampoo_beta` is None. Defaults to None.
-        unprojected_exp_avg (bool, optional):
-            whether to update first momentum in unprojected space. Both true and false work and lead to different
-            results but True usually works better. Defaults to True.
+        alpha (float, optional):
+            learning rate. Defaults to 1.
         bias_correction (bool, optional):
             enables adam bias correction. Defaults to True.
     """

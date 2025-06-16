@@ -81,13 +81,13 @@ class AdamY(Module):
     def step(self, var):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
-        beta1,beta2,eps,alpha=self.get_settings('beta1','beta2','eps','alpha', params=var.params, cls=NumberList)
+        beta1,beta2,eps,alpha=self.get_settings(var.params, 'beta1','beta2','eps','alpha', cls=NumberList)
         amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state('exp_avg','exp_avg_sq','max_exp_avg_sq', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state(var.params,'exp_avg','exp_avg_sq','max_exp_avg_sq', cls=TensorList)
         else:
-            exp_avg, exp_avg_sq = self.get_state('exp_avg','exp_avg_sq', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq = self.get_state(var.params, 'exp_avg','exp_avg_sq', cls=TensorList)
             max_exp_avg_sq = None
 
         # if this is last module, update parameters in-place with slightly more efficient addcdiv_
@@ -100,8 +100,8 @@ class AdamY(Module):
         else:
             passed_params = None
 
-        p_prev = self.get_state('p_prev', params=var.params, cls=TensorList)
-        g_prev = self.get_state('g_prev', params=var.params, cls=TensorList)
+        p_prev = self.get_state(var.params, 'p_prev', cls=TensorList)
+        g_prev = self.get_state(var.params, 'g_prev', cls=TensorList)
 
 
         var.update = adamy_(

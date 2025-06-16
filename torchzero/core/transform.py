@@ -106,8 +106,8 @@ class Transform(Module, ABC):
             self.update(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
 
         # step with inner
-        if 'inner' in self.children:
-            tensors = apply_transform(self.children['inner'], tensors=un_tensors, params=un_params, grads=un_grads)
+        if self._inner is not None:
+            tensors = apply_transform(self._inner, tensors=un_tensors, params=un_params, grads=un_grads)
             if self._concat_params:
                 tensors = [torch.cat([t.ravel() for t in tensors])]
 
@@ -150,34 +150,36 @@ class Transform(Module, ABC):
     def step(self, var: Var) -> Var:
         # var may change, therefore current params and grads have to be extracted and passed explicitly
         if self._uses_grad: var.get_grad()
-        params=var.params; grad = var.grad; loss = var.loss
+        params=var.params
 
         # ---------------------------------- update ---------------------------------- #
         if self._target == 'update':
-            var.update = list(self.keyed_transform(var.get_update(), params, grad, loss))
+            update = var.get_update()
+            var.update = list(self.keyed_transform(update, params, var.grad, var.loss))
             return var
 
         # ----------------------------------- grad ----------------------------------- #
         if self._target == 'grad':
-            var.grad = list(self.keyed_transform(var.get_grad(), params, grad, loss))
+            grad = var.get_grad()
+            var.grad = list(self.keyed_transform(grad, params, grad, var.loss))
             return var
 
         # ------------------------------- params_direct ------------------------------ #
         if self._target == 'params_direct':
-            new_params = self.keyed_transform(var.params, params, grad, loss)
+            new_params = self.keyed_transform(var.params, params, var.grad, var.loss)
             for p, new_p in zip(var.params, new_params): set_storage_(p, new_p)
             return var
 
         # ----------------------------- params_differnce ----------------------------- #
         if self._target == 'params_difference':
-            new_params = tuple(self.keyed_transform([p.clone() for p in var.params], params, grad, loss))
+            new_params = tuple(self.keyed_transform([p.clone() for p in var.params], params, var.grad, var.loss))
             var.update = list(torch._foreach_sub(var.params, new_params))
             return var
 
         # ----------------------------- update_difference ---------------------------- #
         if self._target == 'update_difference':
             update = var.get_update()
-            new_update = tuple(self.keyed_transform([u.clone() for u in update], params, grad, loss))
+            new_update = tuple(self.keyed_transform([u.clone() for u in update], params, var.grad, var.loss))
             var.update = list(torch._foreach_sub(update, new_update))
             return var
 
@@ -191,7 +193,7 @@ class Transform(Module, ABC):
                 if backward:
                     loss = original_closure()
                     current_grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-                    transformed_grad = list(self.keyed_transform(current_grad, params, grad, loss))
+                    transformed_grad = list(self.keyed_transform(current_grad, params, var.grad, var.loss))
                     for p, g in zip(params, transformed_grad):
                         p.grad = g
 

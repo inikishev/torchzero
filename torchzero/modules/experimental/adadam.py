@@ -69,14 +69,15 @@ class Adadam(Module):
     @torch.no_grad
     def step(self, var):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+        params = var.params
 
-        beta1,beta2,precond_beta,eps,alpha=self.get_settings('beta1','beta2','precond_beta','eps','alpha', params=var.params, cls=NumberList)
+        beta1,beta2,precond_beta,eps,alpha=self.get_settings(params, 'beta1','beta2','precond_beta','eps','alpha', cls=NumberList)
         amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
 
         if amsgrad:
-            exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state(params, 'exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', cls=TensorList)
         else:
-            exp_avg, exp_avg_sq, exp_avg_qu = self.get_state('exp_avg','exp_avg_sq', 'exp_avg_qu', params=var.params, cls=TensorList)
+            exp_avg, exp_avg_sq, exp_avg_qu = self.get_state(params, 'exp_avg','exp_avg_sq', 'exp_avg_qu', cls=TensorList)
             max_exp_avg_sq = None
             max_exp_avg_qu = None
 

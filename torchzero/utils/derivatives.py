@@ -2,6 +2,7 @@ from collections.abc import Iterable, Sequence
 
 import torch
 import torch.autograd.forward_ad as fwAD
+from typing import Literal
 
 from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
 

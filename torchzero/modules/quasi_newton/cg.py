@@ -230,7 +230,7 @@ def projected_gradient_(H:torch.Tensor, y:torch.Tensor, tol: float):
 class ProjectedGradientMethod(TensorwiseTransform):
     """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
 
-    The matrix denoted by H is not an estimate for inverse hessian.
+    (This is not the same as projected gradient descent)
     """
 
     def __init__(

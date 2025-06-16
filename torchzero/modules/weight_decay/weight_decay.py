@@ -1,9 +1,11 @@
 from collections.abc import Iterable, Sequence
+from typing import Literal
 
 import torch
 
 from ...core import Module, Target, Transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+
 
 @torch.no_grad
 def weight_decay_(
@@ -30,6 +32,38 @@ class WeightDecay(Transform):
         ord = settings[0]['ord']
 
         return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
+
+class NormalizedWeightDecay(Transform):
+    def __init__(
+        self,
+        weight_decay: float = 0.1,
+        ord: int = 2,
+        norm_input: Literal["update", "grad", "params"] = "update",
+        target: Target = "update",
+    ):
+        defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input)
+        super().__init__(defaults, uses_grad=norm_input == 'grad', target=target)
+
+    @torch.no_grad
+    def apply(self, tensors, params, grads, loss, states, settings):
+        weight_decay = NumberList(s['weight_decay'] for s in settings)
+
+        ord = settings[0]['ord']
+        norm_input = settings[0]['norm_input']
+
+        if norm_input == 'update': src = TensorList(tensors)
+        elif norm_input == 'grad':
+            assert grads is not None
+            src = TensorList(grads)
+        elif norm_input == 'params':
+            src = TensorList(params)
+        else:
+            raise ValueError(norm_input)
+
+        norm = src.global_vector_norm(ord)
+
+        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * norm, ord)
+
 
 @torch.no_grad
 def decay_weights_(params: Iterable[torch.Tensor], weight_decay: float | NumberList, ord:int=2):

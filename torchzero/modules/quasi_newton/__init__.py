@@ -29,6 +29,7 @@ from .quasi_newton import (
     Greenstadt2,
     Horisho,
     McCormick,
+    NewSSM,
     Pearson,
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,

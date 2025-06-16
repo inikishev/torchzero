@@ -1,4 +1,9 @@
-"""snity tests to make sure everything works and converges on basic functions"""
+"""
+Sanity tests to make sure everything works.
+
+This will show major convergence regressions, but that is not the main purpose. Mainly this makes sure modules
+don't error or become unhinged with different parameter shapes.
+"""
 from collections.abc import Callable
 from functools import partial
 

@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import math
 from collections import deque
 from typing import Literal, Any
+import itertools
 
 import torch
 from ...core import Chainable, TensorwiseTransform
@@ -9,174 +10,33 @@ from ...utils.linalg.matrix_funcs import matrix_power_eigh
 from ...utils.linalg.svd import randomized_svd
 from ...utils.linalg.qr import qr_householder
 
+def spectral_update(history, damping, rdamping, true_damping: bool):
+    M_hist = torch.stack(tuple(history), dim=1)
+    device = M_hist.device
+    M_hist = M_hist.cuda()
 
-class _Solver:
-    @abstractmethod
-    def update(self, history: deque[torch.Tensor], damping: float | None) -> tuple[Any, Any]:
-        """returns stuff for apply"""
-    @abstractmethod
-    def apply(self, __g: torch.Tensor, __A:torch.Tensor, __B:torch.Tensor) -> torch.Tensor:
-        """apply preconditioning to tensor"""
+    try:
+        U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
+        U = U.to(device); S = S.to(device)
 
-class _SVDSolver(_Solver):
-    def __init__(self, driver=None): self.driver=driver
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        device = None # driver is CUDA only
-        if self.driver is not None:
-            device = M_hist.device
-            M_hist = M_hist.cuda()
+        if damping != 0 or rdamping != 0:
+            if rdamping != 0: rdamping *= torch.linalg.vector_norm(S) # pylint:disable=not-callable
+            Iu = damping + rdamping
+            if true_damping:
+                S.pow_(2)
+                Iu **= 2
+            S.add_(Iu)
+            if true_damping: S.sqrt_()
 
-        try:
-            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver=self.driver) # pylint:disable=not-callable
+        return U, 1/S
 
-            if self.driver is not None:
-                U = U.to(device); S = S.to(device)
+    except torch.linalg.LinAlgError:
+        return None, None
 
-            if damping is not None and damping != 0: S.add_(damping)
-            return U, S
+def spectral_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
+    Utg = (U.T @ g)*S_inv
+    return U @ Utg
 
-        except torch.linalg.LinAlgError:
-            return None, None
-
-    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
-        Utg = (U.T @ g).div_(S)
-        return U @ Utg
-
-class _SVDLowRankSolver(_Solver):
-    def __init__(self, q: int = 6, niter: int = 2): self.q, self.niter = q, niter
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        try:
-            U, S, _ = torch.svd_lowrank(M_hist, q=self.q, niter=self.niter)
-            if damping is not None and damping != 0: S.add_(damping)
-            return U, S
-        except torch.linalg.LinAlgError:
-            return None, None
-
-    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
-        Utg = (U.T @ g).div_(S)
-        return U @ Utg
-
-class _RandomizedSVDSolver(_Solver):
-    def __init__(self, k: int = 3, driver: str | None = 'gesvda'):
-        self.driver = driver
-        self.k = k
-
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        device = None # driver is CUDA only
-        if self.driver is not None:
-            device = M_hist.device
-            M_hist = M_hist.cuda()
-
-        try:
-            U, S, _ = randomized_svd(M_hist, k=self.k, driver=self.driver)
-
-            if self.driver is not None:
-                U = U.to(device); S = S.to(device)
-
-            if damping is not None and damping != 0: S.add_(damping)
-            return U, S
-
-        except torch.linalg.LinAlgError:
-            return None, None
-
-    def apply(self, g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
-        Utg = (U.T @ g).div_(S)
-        return U @ Utg
-
-class _QRDiagonalSolver(_Solver):
-    def __init__(self, sqrt=True): self.sqrt = sqrt
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        try:
-            Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
-            R_diag = R.diag().abs()
-            if damping is not None and damping != 0: R_diag.add_(damping)
-            if self.sqrt: R_diag.sqrt_()
-            return Q, R_diag
-        except torch.linalg.LinAlgError:
-            return None, None
-
-    def apply(self, g: torch.Tensor, Q: torch.Tensor, R_diag: torch.Tensor):
-        Qtg = (Q.T @ g).div_(R_diag)
-        return Q @ Qtg
-
-class _QRSolver(_Solver):
-    def __init__(self, sqrt=True): self.sqrt = sqrt
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        try:
-            # Q: d x k, R: k x k
-            Q, R = torch.linalg.qr(M_hist, mode='reduced') # pylint:disable=not-callable
-            A = R @ R.T
-            if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_eigh(A, 0.5)
-            return Q, A
-        except (torch.linalg.LinAlgError):
-            return None,None
-
-    def apply(self, g: torch.Tensor, Q: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
-        g_proj = Q.T @ g
-        y, _ = torch.linalg.solve_ex(A, g_proj) # pylint:disable=not-callable
-        return Q @ y
-
-class _QRHouseholderSolver(_Solver):
-    def __init__(self, sqrt=True): self.sqrt = sqrt
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        try:
-            # Q: d x k, R: k x k
-            Q, R = qr_householder(M_hist, mode='reduced') # pylint:disable=not-callable
-            A = R @ R.T
-            if damping is not None and damping != 0: A.diagonal(dim1=-2, dim2=-1).add_(damping)
-            if self.sqrt: A = matrix_power_eigh(A, 0.5)
-            return Q, A
-        except (torch.linalg.LinAlgError):
-            return None,None
-
-    def apply(self, g: torch.Tensor, Q: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
-        g_proj = Q.T @ g
-        y, _ = torch.linalg.solve_ex(A, g_proj) # pylint:disable=not-callable
-        return Q @ y
-
-
-class _EighSolver(_Solver):
-    def __init__(self, sqrt=True):
-        self.sqrt = sqrt
-
-    def update(self, history, damping):
-        M_hist = torch.stack(tuple(history), dim=1)
-        grams = M_hist @ M_hist.T # (d, d)
-        if damping is not None and damping != 0: grams.diagonal(dim1=-2, dim2=-1).add_(damping)
-        try:
-            L, Q = torch.linalg.eigh(grams) # L: (d,), Q: (d, d) # pylint:disable=not-callable
-            L = L.abs().clamp_(min=1e-12)
-            if self.sqrt: L = L.sqrt()
-            return Q, L
-        except torch.linalg.LinAlgError:
-            return None, None
-
-    def apply(self, g: torch.Tensor, Q: torch.Tensor, L: torch.Tensor) -> torch.Tensor:
-        Qtg = (Q.T @ g).div_(L)
-        return Q @ Qtg
-
-
-SOLVERS = {
-    "svd": _SVDSolver(), # fallbacks on "gesvd" which basically takes ages or just hangs completely
-    "svd_gesvdj": _SVDSolver("gesvdj"), # no fallback on slow "gesvd"
-    "svd_gesvda": _SVDSolver("gesvda"), # approximate method for wide matrices, sometimes better sometimes worse but faster
-    "svd_lowrank": _SVDLowRankSolver(), # maybe need to tune parameters for this, with current ones its slower and worse
-    "randomized_svd2": _RandomizedSVDSolver(2),
-    "randomized_svd3": _RandomizedSVDSolver(3),
-    "randomized_svd4": _RandomizedSVDSolver(4),
-    "randomized_svd5": _RandomizedSVDSolver(5),
-    "eigh": _EighSolver(), # this is O(n**2) storage, but is this more accurate?
-    "qr": _QRSolver(),
-    "qr_householder": _QRHouseholderSolver(), # this is slower... but maybe it won't freeze? I think svd_gesvda is better
-    "qrdiag": _QRDiagonalSolver(),
-}
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
     if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
@@ -185,43 +45,49 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         else: state_[key].lerp_(value, 1-beta)
 
 class SpectralPreconditioner(TensorwiseTransform):
-    """Whitening preconditioner via SVD on history of past gradients or gradient differences scaled by parameter differences. Please note that this is experimental and isn't guaranteed to work.
+    """
+    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate U (Uᵀg)/S.
+    This is equivalent to full matrix Adagrad with accumulator initialized to zeros,
+    except only recent :code:`history_size` gradients are used.
+    However this doesn't require N^2 memory and is computationally less expensive than Shampoo.
 
     Args:
-        history_size (int, optional): number of past gradients to store for preconditioning. Defaults to 10.
-        update_freq (int, optional): how often to re-compute the preconditioner. Defaults to 1.
-        damping (float, optional): damping term, makes it closer to GD. Defaults to 1e-7.
+        history_size (int, optional): number of past gradients to store. Defaults to 10.
+        update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
+        damping (float, optional): damping value. Defaults to 1e-4.
+        rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
         order (int, optional):
-            whitening order, 1 approximates FIM (maybe), 2 - hessian (maybe), 3+ - god knows what.
-        solver (str, optional): what to use for whitening. Defaults to 'svd'.
-        A_beta (float | None, optional):
-            beta for U (in SVD and other letters in other solvers) (probably a bad idea). Defaults to None.
-        B_beta (float | None, optional):
-            beta for S (in SVD and other letters in other solvers) (probably a bad idea). Defaults to None.
-        interval (int, optional): How often to update history. Defaults to 1 (every step).
-        concat_params (bool, optional):
-            whether to apply preconditioning to each tensor (False, default) or to all tensors concatenated into a vector (True). Latter will be slower but captures interactions between layers. Defaults to True.
-        scale_first (bool, optional): makes first step small, usually not needed. Defaults to False.
-        inner (Chainable | None, optional): Inner modules applied after updating preconditioner and before applying it. Defaults to None.
+            order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
+        true_damping (bool, optional):
+            If True, damping is added to squared singular values to mimic Adagrad. Defaults to True.
+        U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
+        S_beta (float | None, optional): momentum for 1/S (too unstable, don't use). Defaults to None.
+        interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
+        concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to False.
+        normalize (bool, optional): whether to normalize gradients, this doesn't work well so don't use it. Defaults to False.
+        centralize (bool, optional): whether to centralize gradients, this doesn't work well so don't use it. Defaults to False.
+        inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
     """
+
     def __init__(
         self,
         history_size: int = 10,
         update_freq: int = 1,
-        damping: float = 1e-12,
+        damping: float = 1e-4,
+        rdamping: float = 0,
         order: int = 1,
-        solver: Literal['svd', 'svd_gesvdj', 'svd_gesvda', 'svd_lowrank', 'eigh', 'qr', 'qrdiag', 'qr_householder'] | _Solver | str = 'svd_gesvda',
-        A_beta: float | None = None,
-        B_beta: float | None = None,
+        true_damping: bool = True,
+        U_beta: float | None = None,
+        S_beta: float | None = None,
         interval: int = 1,
         concat_params: bool = False,
-        scale_first: bool = False,
+        normalize: bool=False,
+        centralize:bool = False,
         inner: Chainable | None = None,
     ):
-        if isinstance(solver, str): solver = SOLVERS[solver]
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, order=order, A_beta=A_beta, B_beta=B_beta, solver=solver)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, inner=inner, update_freq=interval)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta, normalize=normalize, centralize=centralize)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, loss, state, settings):
@@ -229,14 +95,21 @@ class SpectralPreconditioner(TensorwiseTransform):
         history_size = settings['history_size']
         update_freq = settings['update_freq']
         damping = settings['damping']
-        A_beta = settings['A_beta']
-        B_beta = settings['B_beta']
-        solver: _Solver = settings['solver']
+        rdamping = settings['rdamping']
+        true_damping = settings['true_damping']
+        U_beta = settings['U_beta']
+        S_beta = settings['S_beta']
+        normalize = settings['normalize']
+        centralize = settings['centralize']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
 
-        if order == 1: history.append(tensor.clone().view(-1))
+        if order == 1:
+            t = tensor.clone().view(-1)
+            if centralize: t -= t.mean()
+            if normalize: t /= torch.linalg.vector_norm(t).clip(min=1e-8) # pylint:disable=not-callable
+            history.append(t)
         else:
 
             # if order=2, history is of gradient differences, order 3 is differences between differences, etc
@@ -257,14 +130,16 @@ class SpectralPreconditioner(TensorwiseTransform):
                 cur_g = y_k
 
                 if i == order - 1:
-                    cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
+                    if centralize: cur_g = cur_g - cur_g.mean()
+                    if normalize: cur_g = cur_g / torch.linalg.vector_norm(cur_g).clip(min=1e-8) # pylint:disable=not-callable
+                    else: cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
                     history.append(cur_g.view(-1))
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            A, B = solver.update(history, damping=damping)
-            maybe_lerp_(state, A_beta, 'A', A)
-            maybe_lerp_(state, B_beta, 'B', B)
+            U, S_inv = spectral_update(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
+            maybe_lerp_(state, U_beta, 'U', U)
+            maybe_lerp_(state, S_beta, 'S_inv', S_inv)
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
@@ -272,17 +147,17 @@ class SpectralPreconditioner(TensorwiseTransform):
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         history_size = settings['history_size']
-        solver: _Solver = settings['solver']
 
-        A = state.get('A', None)
-        if A is None:
+        U = state.get('U', None)
+        if U is None:
             # make a conservative step to avoid issues due to different GD scaling
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
-        B = state['B']
-        update = solver.apply(tensor.view(-1), A, B).view_as(tensor)
+        S_inv = state['S_inv']
+        update = spectral_apply(tensor.view(-1), U, S_inv).view_as(tensor)
 
         n = len(state['history'])
-        if n != history_size: update.mul_(n/history_size)
+        mh = min(history_size, 10)
+        if n <= mh: update.mul_(n/mh)
         return update
 
