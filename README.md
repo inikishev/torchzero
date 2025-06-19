@@ -79,7 +79,7 @@ for epoch in range(100):
   * `SOAP` (my current recommendation).
   * `Muon`.
   * `SophiaH`.
-  * `Adagrad` and `FullMatrixAdagrad`.
+  * `Adagrad`, `FullMatrixAdagrad`, and `LAdagrad` (limited-memory Adagrad).
   * `Lion`.
   * `RMSprop`.
   * `OrthoGrad`.
@@ -89,7 +89,7 @@ for epoch in range(100):
   * Grams: `[tz.m.Adam(), tz.m.GradSign()]`
   * LaProp: `[tz.m.RMSprop(), tz.m.EMA(0.9)]`
   * Signum: `[tz.m.HeavyBall(), tz.m.Sign()]`
-  * Full matrix version of any diagonal optimizer, like Adam: `tz.m.FullMatrixAdagrad(beta=0.999, inner=tz.m.EMA(0.9))`
+  * Efficient matrix version of any diagonal optimizer, like Adam: `tz.m.LAdagrad(beta=0.999, inner=tz.m.EMA(0.9))`
   * Cautious version of any optimizer, like SOAP: `[tz.m.SOAP(), tz.m.Cautious()]`
 
 * **Momentum**:
@@ -117,7 +117,7 @@ for epoch in range(100):
   * `Newton`: Classic Newton's method.
   * `NewtonCG`: Matrix-free newton's method with conjugate gradient solver.
   * `NystromSketchAndSolve`: Nyström sketch-and-solve method.
-  * `NystromPCG`: NewtonCG with Nyström preconditioning (usually beats NewtonCG).
+  * `NystromPCG`: NewtonCG with Nyström preconditioning (with tuning beats NewtonCG).
   * `HigherOrderNewton`: Higher order Newton's method with trust region.
 
 * **Quasi-Newton**: Approximate second-order optimization methods.
