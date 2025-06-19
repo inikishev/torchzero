@@ -4,7 +4,7 @@ from typing import Literal, Any
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def l_adagrad_update_preconditioner(history, damping, rdamping, true_damping: bool):
+def l_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool):
     M_hist = torch.stack(tuple(history), dim=1)
     device = M_hist.device
     M_hist = M_hist.cuda()
