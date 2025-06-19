@@ -115,7 +115,7 @@ class FDM(GradApproximator):
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, var):
+    def approximate(self, closure, params, loss):
         grads = []
         loss_approx = None
 

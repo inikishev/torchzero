@@ -29,7 +29,7 @@ class GradApproximator(Module, ABC):
             super().__init__(defaults)
 
         @torch.no_grad
-        def approximate(self, closure, params, loss, var):
+        def approximate(self, closure, params, loss):
             perturbation = [rademacher_like(p) * self.settings[p]['h'] for p in params]
 
             # evaluate params + perturbation
@@ -62,7 +62,7 @@ class GradApproximator(Module, ABC):
         self._target: GradTarget = target
 
     @abstractmethod
-    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: _Scalar | None, var: Var) -> tuple[Iterable[torch.Tensor], _Scalar | None, _Scalar | None]:
+    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: _Scalar | None) -> tuple[Iterable[torch.Tensor], _Scalar | None, _Scalar | None]:
         """Returns a tuple: (grad, loss, loss_approx), make sure this resets parameters to their original values!"""
 
     def pre_step(self, var: Var) -> Var | None:
@@ -83,7 +83,7 @@ class GradApproximator(Module, ABC):
             def approx_closure(backward=True):
                 if backward:
                     # set loss to None because closure might be evaluated at different points
-                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None, var=var)
+                    grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None)
                     for p, g in zip(params, grad): p.grad = g
                     return l if l is not None else l_approx
                 return closure(False)
@@ -93,7 +93,7 @@ class GradApproximator(Module, ABC):
 
         # if var.grad is not None:
         #     warnings.warn('Using grad approximator when `var.grad` is already set.')
-        grad,loss,loss_approx = self.approximate(closure=closure, params=params, loss=loss, var=var)
+        grad,loss,loss_approx = self.approximate(closure=closure, params=params, loss=loss)
         if loss_approx is not None: var.loss_approx = loss_approx
         if loss is not None: var.loss = var.loss_approx = loss
         if self._target == 'grad': var.grad = list(grad)

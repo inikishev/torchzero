@@ -6,7 +6,6 @@ import torch
 from ...utils import TensorList, Distributions, NumberList, generic_eq
 from .grad_approximator import GradApproximator, GradTarget, _FD_Formula
 
-
 def _rforward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
     """p_fn is a function that returns the perturbation.
     It may return pre-generated one or generate one deterministically from a seed as in MeZO.
@@ -235,7 +234,7 @@ class RandomizedFDM(GradApproximator):
                 torch._foreach_lerp_(cur_flat, new_flat, betas)
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, var):
+    def approximate(self, closure, params, loss):
         params = TensorList(params)
         loss_approx = None
 
@@ -321,7 +320,7 @@ class MeZO(GradApproximator):
         self.global_state['prt_fns'] = prt_fns
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, var):
+    def approximate(self, closure, params, loss):
         params = TensorList(params)
         loss_approx = None
 

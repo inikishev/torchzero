@@ -11,7 +11,13 @@ from .rfdm import RandomizedFDM
 
 
 class ForwardGradient(RandomizedFDM):
-    """Forward gradient method, same as randomized finite difference but directional derivative is estimated via autograd (as jacobian vector product)
+    """Forward gradient method.
+
+    This method samples one or more directional derivatives evaluated via autograd jacobian-vector products. This is very similar to randomized finite difference.
+
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
 
     Args:
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
@@ -24,6 +30,9 @@ class ForwardGradient(RandomizedFDM):
             how to calculate jacobian vector product, note that with `forward` and 'central' this is equivalent to randomized finite difference. Defaults to 'autograd'.
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
         target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+    References:
+        - Baydin, A. G., Pearlmutter, B. A., Syme, D., Wood, F., & Torr, P. (2022). Gradients without backpropagation. arXiv preprint arXiv:2202.08587.
     """
     PRE_MULTIPLY_BY_H = False
     def __init__(
@@ -41,7 +50,7 @@ class ForwardGradient(RandomizedFDM):
         self.defaults['jvp_method'] = jvp_method
 
     @torch.no_grad
-    def approximate(self, closure, params, loss, var):
+    def approximate(self, closure, params, loss):
         params = TensorList(params)
         loss_approx = None
 

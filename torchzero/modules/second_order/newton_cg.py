@@ -32,30 +32,6 @@ class NewtonCG(Module):
             whether to warm-start conjugate gradient from previous solution. This can help if step size is small or maxiter is set to a small value. Defaults to False.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
 
-    Examples:
-    NewtonCG with backtracking line search
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.NewtonCG(),
-            tz.m.Backtracking()
-        )
-
-    Truncated newton
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.NewtonCG(maxiter=10, warm_start=True),
-            tz.m.Backtracking()
-        )
-
-    Newton preconditioning applied to momentum via CG (in practice this is likely going to be unstable)
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.NewtonCG(inner=tz.m.EMA(0.9)),
-            tz.m.LR(0.1)
-        )
     """
     def __init__(
         self,
