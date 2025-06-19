@@ -99,12 +99,16 @@ class FDM(GradApproximator):
     ## Examples:
     plain FDM:
     .. code:: py
-    fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
+        fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
 
-    NewtonCG with FDM - any gradient-based method can use FDM-estimated gradients seamlessly.
-    In NewtonCG hessian-vector product should be set to be estimated from gradient difference, as by default
-    it uses autograd.
-    fdm_ncg = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.NewtonCG(hvp_method="forward"), tz.m.Backtracking())
+    Any gradient-based method can use FDM-estimated gradients seamlessly.
+    .. code:: py
+        fdm_ncg = tz.Modular(
+            model.parameters(),
+            tz.m.FDM(),
+            tz.m.NewtonCG(hvp_method="forward"),
+            tz.m.Backtracking()
+        )
     """
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)

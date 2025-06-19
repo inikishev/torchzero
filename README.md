@@ -75,6 +75,7 @@ for epoch in range(100):
 
 * **Optimizers**: Optimization algorithms.
   * `Adam`.
+  * `Adan`.
   * `Shampoo`.
   * `SOAP` (my current recommendation).
   * `Muon`.
