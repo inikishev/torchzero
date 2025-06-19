@@ -1,5 +1,6 @@
 from collections import deque
 from typing import Literal, Any
+import warnings
 
 import torch
 from ...core import Chainable, TensorwiseTransform
@@ -7,10 +8,15 @@ from ...core import Chainable, TensorwiseTransform
 def l_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool):
     M_hist = torch.stack(tuple(history), dim=1)
     device = M_hist.device
-    M_hist = M_hist.cuda()
+    if torch.cuda.is_available(): M_hist = M_hist.cuda()
 
     try:
-        U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
+        if torch.cuda.is_available():
+            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
+        else:
+            warnings.warn("CUDA is not available, cuSOLVER's \"gesvda\" can't be used so LAdagrad may be significantly slower.")
+            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
+
         U = U.to(device); S = S.to(device)
 
         if damping != 0 or rdamping != 0:

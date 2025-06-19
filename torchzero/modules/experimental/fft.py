@@ -2,12 +2,12 @@ import torch
 
 from ...core import Chainable
 from ...utils import vec_to_tensors
-from .projection import Projection
+from ..projections import Projection
 
 
 class FFTProjection(Projection):
     # norm description copied from pytorch docstring
-    """Project update into Fourrier space of real-valued inputs.
+    """Project update into Fourier space of real-valued inputs.
 
     Args:
         modules (Chainable): modules that will optimize the projected update.
@@ -45,8 +45,8 @@ class FFTProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
-        settings = self.settings[var.params[0]]
+    def project(self, tensors, params, grads, loss, states, settings, current):
+        settings = settings[0]
         one_d = settings['one_d']
         norm = settings['norm']
 
@@ -60,14 +60,14 @@ class FFTProjection(Projection):
         return [torch.view_as_real(torch.fft.rfftn(t, norm=norm)) if t.numel() > 1 else t for t in tensors] # pylint:disable=not-callable
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
-        settings = self.settings[var.params[0]]
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+        settings = projected_settings[0]
         one_d = settings['one_d']
         norm = settings['norm']
 
         if one_d:
-            vec = torch.view_as_complex(tensors[0])
+            vec = torch.view_as_complex(projected_tensors[0])
             unprojected_vec = torch.fft.irfft(vec, n=self.global_state['length'], norm=norm) # pylint:disable=not-callable
-            return vec_to_tensors(unprojected_vec, reference=var.params)
+            return vec_to_tensors(unprojected_vec, reference=params)
 
-        return [torch.fft.irfftn(torch.view_as_complex(t.contiguous()), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(tensors, var.params)] # pylint:disable=not-callable
+        return [torch.fft.irfftn(torch.view_as_complex(t.contiguous()), s=p.shape, norm=norm) if t.numel() > 1 else t for t, p in zip(projected_tensors, params)] # pylint:disable=not-callable

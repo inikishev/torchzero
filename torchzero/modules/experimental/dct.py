@@ -1,7 +1,7 @@
 from typing import Literal
 import torch
 import torch_dct
-from .projection import Projection
+from ..projections import Projection
 from ...core import Chainable
 
 def reverse_dims(t:torch.Tensor):
@@ -34,8 +34,8 @@ class DCTProjection(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
-        settings = self.settings[var.params[0]]
+    def project(self, tensors, params, grads, loss, states, settings, current):
+        settings = settings[0]
         dims = settings['dims']
         norm = settings['norm']
 
@@ -54,18 +54,18 @@ class DCTProjection(Projection):
         return projected
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
-        settings = self.settings[var.params[0]]
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+        settings = projected_settings[0]
         dims = settings['dims']
         norm = settings['norm']
 
         unprojected = []
-        for u in tensors:
-            dim = min(u.ndim, dims)
+        for t in projected_tensors:
+            dim = min(t.ndim, dims)
 
-            if dim == 1: idct = torch_dct.idct(u, norm = norm)
-            elif dim == 2: idct = torch_dct.idct_2d(u, norm=norm)
-            elif dim == 3: idct = torch_dct.idct_3d(u, norm=norm)
+            if dim == 1: idct = torch_dct.idct(t, norm = norm)
+            elif dim == 2: idct = torch_dct.idct_2d(t, norm=norm)
+            elif dim == 3: idct = torch_dct.idct_3d(t, norm=norm)
             else: raise ValueError(f"Unsupported number of dimensions {dim}")
 
             unprojected.append(reverse_dims(idct))

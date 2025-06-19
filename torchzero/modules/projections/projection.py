@@ -1,29 +1,35 @@
 import math
-from functools import partial
-from abc import ABC, abstractmethod
-from collections.abc import Iterable
-from typing import Any, Literal
 import warnings
+from abc import ABC, abstractmethod
+from collections import defaultdict, ChainMap
+from collections.abc import Iterable, Mapping, Sequence
+from functools import partial
+from typing import Any, Literal
+
 import torch
 
 from ...core import Chainable, Module, Var
-from ...utils import vec_to_tensors
+from ...utils import vec_to_tensors, set_storage_
 
 
-def _make_projected_closure(closure, var: Var, projection: "Projection",
+def _make_projected_closure(closure, project_fn, unproject_fn,
                            params: list[torch.Tensor], projected_params: list[torch.Tensor]):
-
     def projected_closure(backward=True):
-        unprojected_params = projection.unproject(projected_params, var, current='params')
+        # unproject projected params
+        unprojected_params = unproject_fn(projected_tensors=projected_params, current='params')
 
+        # set actual model parameters to suggested parameters
         with torch.no_grad():
             for p, new_p in zip(params, unprojected_params):
                 p.set_(new_p) # pyright: ignore[reportArgumentType]
 
+        # evaluate closure with suggested parameters
         if backward:
             loss = closure()
             grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-            projected_grads = projection.project(grads, var, current='grads')
+
+            # project gradients on backward and set to projected parameter .grad attributes
+            projected_grads = project_fn(grads, current='grads')
             for p, g in zip(projected_params, projected_grads):
                 p.grad = g
 
@@ -34,24 +40,41 @@ def _make_projected_closure(closure, var: Var, projection: "Projection",
 
     return projected_closure
 
-def _projected_get_grad_override(
-    retain_graph: bool | None = None,
-    create_graph: bool = False,
-    projection: Any = ...,
-    unprojected_var: Any = ...,
-    self: Any = ...,
-):
-    assert isinstance(projection, Projection)
-    assert isinstance(unprojected_var, Var)
-    assert isinstance(self, Var)
+class _FakeProjectedClosure:
+    """This is used when project_params is False. Then the closure is meant to only be used to evaluate the initial gradient.
+    It should just evaluate original closure, project the gradients, and set them to fake params.
 
-    if self.grad is not None: return self.grad
-    grads = unprojected_var.get_grad(retain_graph, create_graph)
-    projected_grads = list(projection.project(grads, self, current='grads'))
-    self.grad = projected_grads
-    for p, g in zip(self.params, projected_grads):
-        p.grad = g
-    return self.grad
+    I made it into a class so that it can know and raise when it evaluates closure more than once.
+    """
+    __slots__ = ('closure', 'project_fn', 'params', 'fake_params', 'evaluated')
+    def __init__(self, closure, project_fn, params: list[torch.Tensor], fake_params: list[torch.Tensor]):
+        self.closure = closure
+        self.project_fn = project_fn
+        self.params = params
+        self.fake_params = fake_params
+        self.evaluated = False
+
+    def __call__(self, backward: bool = True):
+        if self.evaluated:
+            raise RuntimeError("set project_params to True if projected modules require closure.")
+        self.evaluated = True
+
+        # evaluate closure with suggested parameters
+        if backward:
+
+            loss = self.closure()
+            grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
+
+            # project gradients on backward and set to projected parameter .grad attributes
+            projected_grads = self.project_fn(grads, current='grads')
+            for p, g in zip(self.fake_params, projected_grads):
+                p.grad = g
+
+        else:
+            loss = self.closure(False)
+
+        return loss
+
 
 
 class Projection(Module, ABC):
@@ -84,52 +107,120 @@ class Projection(Module, ABC):
         self._project_grad = project_grad
         self._projected_params = None
 
+        self._states: dict[str, list[dict[str, Any]]] = {}
+        """per-parameter states for each projection target"""
+
     @abstractmethod
-    def project(self, tensors: list[torch.Tensor], var: Var, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
+    def project(
+        self,
+        tensors: list[torch.Tensor],
+        params: list[torch.Tensor],
+        grads: list[torch.Tensor] | None,
+        loss: torch.Tensor | None,
+        states: list[dict[str, Any]],
+        settings: list[ChainMap[str, Any]],
+        current: str,
+    ) -> Iterable[torch.Tensor]:
         """projects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
 
     @abstractmethod
-    def unproject(self, tensors: list[torch.Tensor], var: Var, current: Literal['params', 'grads', 'update']) -> Iterable[torch.Tensor]:
-        """unprojects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`."""
+    def unproject(
+        self,
+        projected_tensors: list[torch.Tensor],
+        params: list[torch.Tensor],
+        grads: list[torch.Tensor] | None,
+        loss: torch.Tensor | None,
+        projected_states: list[dict[str, Any]],
+        projected_settings: list[ChainMap[str, Any]],
+        current: str,
+    ) -> Iterable[torch.Tensor]:
+        """unprojects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`.
+
+        Args:
+            projected_tensors (list[torch.Tensor]): projected tensors to unproject.
+            params (list[torch.Tensor]): original, unprojected parameters.
+            grads (list[torch.Tensor] | None): original, unprojected gradients
+            loss (torch.Tensor | None): loss at initial point.
+            projected_states (list[dict[str, Any]]): list of state dictionaries per each projected tensor.
+            projected_settings (list[ChainMap[str, Any]]): list of setting dictionaries per each projected tensor.
+            current (str): string representing what is being unprojected, e.g. "params", "grads" or "update".
+
+        Returns:
+            Iterable[torch.Tensor]: unprojected tensors of the same shape as params
+        """
 
     @torch.no_grad
     def step(self, var: Var):
+        params = var.params
+        settings = [self.settings[p] for p in params]
+
+        def _project(tensors: list[torch.Tensor], current: Literal['params', 'grads', 'update']):
+            states = self._states.setdefault(current, [{} for _ in tensors])
+            return list(self.project(
+                tensors=tensors,
+                params=params,
+                grads=var.grad,
+                loss=var.loss,
+                states=states,
+                settings=settings,
+                current=current,
+            ))
+
         projected_var = var.clone(clone_update=False)
+
+        closure = var.closure
+
+        # if this is True, update and grad were projected simultaneously under current="grads"
+        # so update will have to be unprojected with current="grads"
         update_is_grad = False
 
-        # closure will calculate projected update and grad if needed
-        if self._project_params and var.closure is not None:
-            if self._project_update and var.update is not None: projected_var.update = list(self.project(var.update, var=var, current='update'))
-            else:
-                update_is_grad = True
-            if self._project_grad and var.grad is not None: projected_var.grad = list(self.project(var.grad, var=var, current='grads'))
+        # if closure is provided and project_params=True, make new closure that evaluates projected params
+        # that also means projected modules can evaluate grad/update at will, it shouldn't be computed here
+        # but if it has already been computed, it should be projected
+        if self._project_params and closure is not None:
 
-        # project update and grad, unprojected attributes are deleted
+            if self._project_update and var.update is not None:
+                # project update only if it already exists
+                projected_var.update = _project(var.update, current='update')
+
+            else:
+                # update will be set to gradients on var.get_grad()
+                # therefore projection will happen with current="grads"
+                update_is_grad = True
+
+            # project grad only if it already exists
+            if self._project_grad and var.grad is not None:
+                projected_var.grad = _project(var.grad, current='grads')
+
+        # otherwise update/grad needs to be calculated and projected here
         else:
             if self._project_update:
                 if var.update is None:
                     # update is None, meaning it will be set to `grad`.
                     # we can project grad and use it for update
                     grad = var.get_grad()
-                    projected_var.grad = list(self.project(grad, var=var, current='grads'))
-                    if self._project_grad: projected_var.update = [g.clone() for g in projected_var.grad]
-                    else: projected_var.update = projected_var.grad.copy() # don't clone because grad shouldn't be used
+                    projected_var.grad = _project(grad, current='grads')
+                    projected_var.update = [g.clone() for g in projected_var.grad]
                     del var.update
                     update_is_grad = True
 
                 else:
+                    # update exists so it needs to be projected
                     update = var.get_update()
-                    projected_var.update = list(self.project(update, var=var, current='update'))
+                    projected_var.update = _project(update, current='update')
                     del update, var.update
 
             if self._project_grad and projected_var.grad is None:
+                # projected_vars.grad may have been projected simultaneously with update
+                # but if that didn't happen, it is projected here
                 grad = var.get_grad()
-                projected_var.grad = list(self.project(grad, var=var, current='grads'))
+                projected_var.grad = _project(grad, current='grads')
+
 
         original_params = None
         if self._project_params:
             original_params = [p.clone() for p in var.params]
-            projected_params = self.project(var.params, var=var, current='params')
+            projected_params = _project(var.params, current='params')
 
         else:
             # make fake params for correct shapes and state storage
@@ -146,32 +237,45 @@ class Projection(Module, ABC):
             for empty_p, new_p in zip(self._projected_params, projected_params):
                 empty_p.set_(new_p.view_as(new_p).requires_grad_()) # pyright: ignore[reportArgumentType]
 
+        projected_params = self._projected_params
+        projected_settings = [self.settings[p] for p in projected_params]
+
+        def _unproject(projected_tensors: list[torch.Tensor], current: Literal['params', 'grads', 'update']):
+            projected_states = self._states.setdefault(f'projected_{current}', [{} for _ in projected_tensors])
+            return list(self.unproject(
+                projected_tensors=projected_tensors,
+                params=params,
+                grads=var.grad,
+                loss=var.loss,
+                projected_states=projected_states,
+                projected_settings=projected_settings,
+                current=current,
+            ))
+
         # project closure
         if self._project_params:
-            closure = var.closure; params = var.params
-            projected_var.closure = _make_projected_closure(closure, var=var, projection=self, params=params,
-                                                             projected_params=self._projected_params)
+            projected_var.closure = _make_projected_closure(closure, project_fn=_project, unproject_fn=_unproject,
+                                                            params=params, projected_params=projected_params)
+
+        elif closure is not None:
+            projected_var.closure = _FakeProjectedClosure(closure, project_fn=_project,
+                                                          params=params, fake_params=projected_params)
+
 
         else:
             projected_var.closure = None
 
-        # step
-        projected_var.params = self._projected_params
-        projected_var.get_grad = partial(
-            _projected_get_grad_override,
-            projection=self,
-            unprojected_var=var,
-            self=projected_var,
-        )
+        # ----------------------------------- step ----------------------------------- #
+        projected_var.params = projected_params
         projected_var = self.children['modules'].step(projected_var)
 
         # empty fake params storage
         # this doesn't affect update/grad because it is a different python object, set_ changes storage on an object
         if not self._project_params:
             for p in self._projected_params:
-                p.set_(torch.empty(0, device=p.device, dtype=p.dtype)) # pyright: ignore[reportArgumentType]
+                set_storage_(p, torch.empty(0, device=p.device, dtype=p.dtype))
 
-        # unproject
+        # --------------------------------- unproject -------------------------------- #
         unprojected_var = projected_var.clone(clone_update=False)
         unprojected_var.closure = var.closure
         unprojected_var.params = var.params
@@ -179,16 +283,12 @@ class Projection(Module, ABC):
 
         if self._project_update:
             assert projected_var.update is not None
-            unprojected_var.update = list(self.unproject(projected_var.update, var=var, current='grads' if update_is_grad else 'update'))
+            unprojected_var.update = _unproject(projected_var.update, current='grads' if update_is_grad else 'update')
             del projected_var.update
-
-        # unprojecting grad doesn't make sense?
-        # if self._project_grad:
-        #     assert projected_var.grad is not None
-        #     unprojected_var.grad = list(self.unproject(projected_var.grad, var=var))
 
         del projected_var
 
+        # original params are stored if params are projected
         if original_params is not None:
             for p, o in zip(unprojected_var.params, original_params):
                 p.set_(o) # pyright: ignore[reportArgumentType]
@@ -197,48 +297,43 @@ class Projection(Module, ABC):
 
 
 
-class FlipConcatProjection(Projection):
-    """
-    for testing
-    """
-
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
+# basic examples
+class VectorProjection(Projection):
+    """projection that concatenates all parameters into a vector"""
+    def __init__(
+        self,
+        modules: Chainable,
+        project_update=True,
+        project_params=True,
+        project_grad=True,
+    ):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
-        return [torch.cat([u.view(-1) for u in tensors], dim=-1).flip(0)]
+    def project(self, tensors, params, grads, loss, states, settings, current):
+        return [torch.cat([t.ravel() for t in tensors])]
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
-        return vec_to_tensors(vec=tensors[0].flip(0), reference=var.params)
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+        return vec_to_tensors(vec=projected_tensors[0], reference=params)
 
 
-class NoopProjection(Projection):
-    """an example projection which doesn't do anything for testing"""
-
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
+class ScalarProjection(Projection):
+    """projetion that splits all parameters into individual scalars"""
+    def __init__(
+        self,
+        modules: Chainable,
+        project_update=True,
+        project_params=True,
+        project_grad=True,
+    ):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
-        return tensors
+    def project(self, tensors, params, grads, loss, states, settings, current):
+        return [s for t in tensors for s in t.ravel().unbind(0)]
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
-        return tensors
-
-class MultipyProjection(Projection):
-    """an example projection which multiplies everything by 2"""
-
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
-        super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
-
-    @torch.no_grad
-    def project(self, tensors, var, current):
-        return torch._foreach_mul(tensors, 2)
-
-    @torch.no_grad
-    def unproject(self, tensors, var, current):
-        return torch._foreach_div(tensors, 2)
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+        return vec_to_tensors(vec=torch.stack(projected_tensors), reference=params)
 

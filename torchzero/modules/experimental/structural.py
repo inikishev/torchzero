@@ -6,23 +6,7 @@ import torch
 from ...core import Chainable
 from ...utils import vec_to_tensors, TensorList
 from ..optimizers.shampoo import _merge_small_dims
-from .projection import Projection
-
-
-class VectorProjection(Projection):
-    """
-    flattens and concatenates all parameters into a vector
-    """
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
-        super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
-
-    @torch.no_grad
-    def project(self, tensors, var, current):
-        return [torch.cat([u.view(-1) for u in tensors], dim=-1)]
-
-    @torch.no_grad
-    def unproject(self, tensors, var, current):
-        return vec_to_tensors(vec=tensors[0], reference=var.params)
+from ..projections import Projection
 
 
 
@@ -33,8 +17,7 @@ class TensorizeProjection(Projection):
         super().__init__(modules, defaults=defaults, project_update=project_update, project_params=project_params, project_grad=project_grad)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
-        params = var.params
+    def project(self, tensors, params, grads, loss, states, settings, current):
         max_side = self.settings[params[0]]['max_side']
         num_elems = sum(t.numel() for t in tensors)
 
@@ -60,12 +43,12 @@ class TensorizeProjection(Projection):
         return [vec.view(dims)]
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
         remainder = self.global_state['remainder']
         # warnings.warn(f'{tensors[0].shape = }')
-        vec = tensors[0].view(-1)
+        vec = projected_tensors[0].view(-1)
         if remainder > 0: vec = vec[:-remainder]
-        return vec_to_tensors(vec, var.params)
+        return vec_to_tensors(vec, params)
 
 class BlockPartition(Projection):
     """splits parameters into blocks (for now flatttens them and chunks)"""
@@ -74,9 +57,9 @@ class BlockPartition(Projection):
         super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad, defaults=defaults)
 
     @torch.no_grad
-    def project(self, tensors, var, current):
+    def project(self, tensors, params, grads, loss, states, settings, current):
         partitioned = []
-        for p,t in zip(var.params, tensors):
+        for p,t in zip(params, tensors):
             settings = self.settings[p]
             max_size = settings['max_size']
             n = t.numel()
@@ -101,10 +84,10 @@ class BlockPartition(Projection):
         return partitioned
 
     @torch.no_grad
-    def unproject(self, tensors, var, current):
-        ti = iter(tensors)
+    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+        ti = iter(projected_tensors)
         unprojected = []
-        for p in var.params:
+        for p in params:
             settings = self.settings[p]
             n = p.numel()
 
@@ -124,28 +107,3 @@ class BlockPartition(Projection):
 
         return unprojected
 
-
-class TensorNormsProjection(Projection):
-    def __init__(self, modules: Chainable, project_update=True, project_params=False, project_grad=False):
-        super().__init__(modules, project_update=project_update, project_params=project_params, project_grad=project_grad)
-
-    @torch.no_grad
-    def project(self, tensors, var, current):
-        orig = self.get_state(var.params, f'{current}_orig')
-        torch._foreach_copy_(orig, tensors)
-
-        norms = torch._foreach_norm(tensors)
-        self.get_state(var.params, f'{current}_orig_norms', cls=TensorList).set_(norms)
-
-        return [torch.stack(norms)]
-
-    @torch.no_grad
-    def unproject(self, tensors, var, current):
-        orig = self.get_state(var.params, f'{current}_orig')
-        orig_norms = torch.stack(self.get_state(var.params, f'{current}_orig_norms'))
-        target_norms = tensors[0]
-
-        orig_norms = torch.where(orig_norms == 0, 1, orig_norms)
-
-        torch._foreach_mul_(orig, (target_norms/orig_norms).detach().cpu().tolist())
-        return orig

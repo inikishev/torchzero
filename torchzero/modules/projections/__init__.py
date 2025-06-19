@@ -1,5 +1,3 @@
-from .projection import Projection
-from .fft import FFTProjection
-from .structural import VectorProjection, TensorizeProjection, BlockPartition, TensorNormsProjection
+from .projection import Projection, VectorProjection, ScalarProjection
 
 # from .galore import GaLore
