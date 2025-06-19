@@ -1,1 +1,1 @@
-from .weight_decay import WeightDecay, DirectWeightDecay, decay_weights_, NormalizedWeightDecay
+from .weight_decay import WeightDecay, DirectWeightDecay, decay_weights_, RelativeWeightDecay

@@ -64,6 +64,30 @@ def _clear_state_hook(optimizer: Modular, var: Var, self: Module):
             m.reset()
 
 class GaussianHomotopy(Reformulation):
+    """Approximately smoothes the function with a gaussian kernel by sampling it at random perturbed points around current point. Both function values and gradients are averaged over all samples. The perturbed points are generated before each
+    step and remain the same throughout the step.
+
+    Args:
+        n_samples (int): number of points to sample, larger values lead to a more accurate smoothing.
+        init_sigma (float): initial scale of perturbations.
+        tol (float | None, optional):
+            if maximal parameters change value is smaller than this, sigma is reduced by :code:`decay`. Defaults to 1e-4.
+        decay (float, optional): multiplier to sigma when converged on a smoothed function. Defaults to 0.5.
+        max_steps (int | None, optional): maximum number of steps before decaying sigma. Defaults to None.
+        clear_state (bool, optional):
+            whether to clear all other module states when sigma is decayed, because the objective function changes. Defaults to True.
+        seed (int | None, optional): seed for random perturbationss. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # smoothed NewtonCG
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.GaussianHomotopy(100),
+            tz.m.NewtonCG(maxiter=20),
+            tz.m.AdaptiveBacktracking(),
+        )
+    """
     def __init__(
         self,
         n_samples: int,

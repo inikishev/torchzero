@@ -59,18 +59,20 @@ def eig_tikhonov_(H: torch.Tensor, reg: float):
 
 
 class Newton(Module):
-    """Exact newton via autograd.
+    """Exact newton's method via autograd.
 
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
-        eig_reg (bool, optional): whether to use largest negative eigenvalue as regularizer. Defaults to False.
+        eig_reg (bool, optional):
+            whether to use largest negative eigenvalue as regularizer. Defaults to False.
         search_negative (bool, Optional):
-            if True, whenever a negative eigenvalue is detected, the direction is taken along an eigenvector corresponding to a negative eigenvalue.
+            if True, whenever a negative eigenvalue is detected,
+            search direction is proposed along an eigenvector corresponding to a negative eigenvalue.
         hessian_method (str):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
             whether to enable vectorized hessian. Defaults to True.
-        inner (Chainable | None, optional): inner modules. Defaults to None.
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
@@ -78,8 +80,20 @@ class Newton(Module):
             which must be True if transform inverted the hessian and False otherwise. Defaults to None.
         eigval_tfm (Callable | None, optional):
             optional eigenvalues transform, for example :code:`torch.abs` or :code:`lambda L: torch.clip(L, min=1e-8)`.
-            If this is specified, eigendecomposition will be used to solve Hx = g.
+            If this is specified, eigendecomposition will be used to invert the hessian.
 
+    Examples:
+    .. code:: py
+        # Newton's method with backtracking line search
+        opt = tz.Modular(model.parameters(), tz.m.Newton(), tz.m.Backtracking())
+
+        # Adam with Newton preconditioner instead of square root of squared gradients momentum
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Newton(maxiter=10, warm_start=True, inner=tz.m.EMA(0.9)),
+            tz.m.Debias(0.9, 0.999), # 0.999 is arbitrary here
+            tz.m.LR(0.1)
+        )
     """
     def __init__(
         self,

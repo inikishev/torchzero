@@ -22,7 +22,44 @@ def weight_decay_(
 
 
 class WeightDecay(Transform):
+    """Weight decay.
+
+    Args:
+        weight_decay (float): weight decay scale.
+        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+        target (Target, optional): what to set on var. Defaults to 'update'.
+
+    Examples:
+    .. code:: py
+        # Adam with non-decoupled weight decay
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.WeightDecay(1e-3),
+            tz.m.Adam(),
+            tz.m.LR(1e-3)
+        )
+
+        # Adam with decoupled weight decay
+        # that still scales with learning rate
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Adam(),
+            tz.m.WeightDecay(1e-3),
+            tz.m.LR(1e-3)
+        )
+
+        # Adam with fully decoupled weight decay
+        # that doesn't scale with learning rate
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Adam(),
+            tz.m.LR(1e-3),
+            tz.m.WeightDecay(1e-6)
+        )
+
+    """
     def __init__(self, weight_decay: float, ord: int = 2, target: Target = 'update'):
+
         defaults = dict(weight_decay=weight_decay, ord=ord)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -33,7 +70,36 @@ class WeightDecay(Transform):
 
         return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
 
-class NormalizedWeightDecay(Transform):
+class RelativeWeightDecay(Transform):
+    """Weight decay relative to the norm of update, gradient or parameters depending on value of :code:`norm_input` argument.
+
+    Args:
+        weight_decay (float): relative weight decay scale.
+        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+        norm_input (str, optional):
+            determines what should weight decay be relative to. "update", "grad" or "params".
+            Defaults to "update".
+        target (Target, optional): what to set on var. Defaults to 'update'.
+
+    Examples:
+    .. code:: py
+        # Adam with non-decoupled relative weight decay
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.RelativeWeightDecay(1e-3),
+            tz.m.Adam(),
+            tz.m.LR(1e-3)
+        )
+
+        # Adam with decoupled relative weight decay
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Adam(),
+            tz.m.RelativeWeightDecay(1e-3),
+            tz.m.LR(1e-3)
+        )
+
+    """
     def __init__(
         self,
         weight_decay: float = 0.1,
@@ -72,7 +138,12 @@ def decay_weights_(params: Iterable[torch.Tensor], weight_decay: float | NumberL
     weight_decay_(params, params, -weight_decay, ord)
 
 class DirectWeightDecay(Module):
-    """directly decays weights in-place"""
+    """Directly applies weight decay to parameters.
+
+    Args:
+        weight_decay (float): weight decay scale.
+        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+    """
     def __init__(self, weight_decay: float, ord: int = 2,):
         defaults = dict(weight_decay=weight_decay, ord=ord)
         super().__init__(defaults)

@@ -7,7 +7,27 @@ from ...utils import Params, _copy_param_groups, _make_param_groups
 
 
 class Wrap(Module):
-    """Custom param groups are supported only by `set_param_groups`. Settings passed to Modular will be ignored."""
+    """
+    Wraps a pytorch optimizer to use it as a module.
+
+    Note:
+        Custom param groups are supported only by `set_param_groups`, settings passed to Modular will be ignored.
+
+    Args:
+        opt_fn (Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer):
+            function that takes in parameters and returns the optimizer, for example :code:`torch.optim.Adam`
+            or :code:`lambda parameters: torch.optim.Adam(parameters, lr=1e-3)`
+        *args:
+        **kwargs:
+            Extra args to be passed to opt_fn. The function is called as :code:`opt_fn(parameters, *args, **kwargs)`.
+
+    Example:
+    .. code:: py
+        from pytorch_optimizer import StableAdamW
+        opt = tz.Modular(model.parameters(), tz.m.Wrap(StableAdamW), tz.m.LR(1e-2))
+
+
+    """
     def __init__(self, opt_fn: Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer, *args, **kwargs):
         super().__init__()
         self._opt_fn = opt_fn

@@ -10,12 +10,38 @@ from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import nystrom_sketch_and_solve, nystrom_pcg
 
 class NystromSketchAndSolve(Module):
+    """Newton's method with a Nyström sketch-and-solve solver.
+
+    If this is unstable, increase the :code:`reg` parameter.
+
+    Note: :code:`tz.m.NystromPCG` usually outperforms this.
+
+    Args:
+        rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
+        reg (float, optional): regularization parameter. Defaults to 1e-3.
+        hvp_method (str, optional):
+            - "autograd" - use pytorch autograd to calculate hessian-vector products.
+            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
+            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            Defaults to "autograd".
+        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
+        seed (int | None, optional): seed for random generator. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # NystromSketchAndSolve with backtracking line search
+        opt = tz.Modular(model.parameters(), tz.m.NystromSketchAndSolve(10), tz.m.Backtracking())
+
+    Reference:
+        https://arxiv.org/abs/2110.02820
+    """
     def __init__(
         self,
         rank: int,
         reg: float = 1e-3,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
-        h=1e-3,
+        h: float = 1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -86,6 +112,40 @@ class NystromSketchAndSolve(Module):
 
 
 class NystromPCG(Module):
+    """Newton's method with a Nyström-preconditioned conjugate gradient solver.
+    This tends to outperform NewtonCG but requires tuning sketch size.
+    An adaptive version exists in https://arxiv.org/abs/2110.02820, I might implement it too at some point.
+
+    Args:
+        sketch_size (int):
+            size of the sketch for preconditioning, this many hessian-vector products will be evaluated before
+            running the conjugate gradient solver. Larger value improves the preconditioning and speeds up
+            conjugate gradient.
+        maxiter (int | None, optional):
+            maximum number of iterations. By default this is set to the number of dimensions
+            in the objective function, which is supposed to be enough for conjugate gradient
+            to have guaranteed convergence. Setting this to a small value can still generate good enough directions.
+            Defaults to None.
+        tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
+        reg (float, optional): regularization parameter. Defaults to 1e-8.
+        hvp_method (str, optional):
+            - "autograd" - use pytorch autograd to calculate hessian-vector products.
+            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
+            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            Defaults to "autograd".
+        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
+        seed (int | None, optional): seed for random generator. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # NewtonCG with backtracking line search
+        opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
+
+    Reference:
+        https://arxiv.org/abs/2110.02820
+
+    """
     def __init__(
         self,
         sketch_size: int,

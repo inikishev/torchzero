@@ -10,13 +10,49 @@ from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import cg
 
 class NewtonCG(Module):
+    """Newton's method with a matrix-free conjugate gradient solver. This doesn't require the hessian but it calculates hessian-vector products. Those can be obtained with autograd or finite difference method depending on the value of the :coed:`hvp_method` argument.
+
+    Args:
+        maxiter (int | None, optional):
+            maximum number of iterations. By default this is set to the number of dimensions
+            in the objective function, which is supposed to be enough for conjugate gradient
+            to have guaranteed convergence. Setting this to a small value can still generate good enough directions.
+            Defaults to None.
+        tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
+        reg (float, optional): regularization parameter. Defaults to 1e-8.
+        hvp_method (str, optional):
+            - "autograd" - use pytorch autograd to calculate hessian-vector products.
+            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
+            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            Defaults to "autograd".
+        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        warm_start (bool, optional):
+            whether to warm-start conjugate gradient from previous solution. This can help if step size is small or maxiter is set to a small value. Defaults to False.
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # NewtonCG with backtracking line search
+        opt = tz.Modular(model.parameters(), tz.m.NewtonCG(), tz.m.Backtracking())
+
+        # Truncated newton
+        opt = tz.Modular(model.parameters(), tz.m.NewtonCG(maxiter=10, warm_start=True), tz.m.Backtracking())
+
+        # Adam with NewtonCG instead of square root of squared gradients momentum
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.NewtonCG(maxiter=10, warm_start=True, inner=tz.m.EMA(0.9)),
+            tz.m.Debias(0.9, 0.999), # 0.999 is arbitrary here
+            tz.m.LR(0.1)
+        )
+    """
     def __init__(
         self,
-        maxiter=None,
-        tol=1e-4,
+        maxiter: int | None = None,
+        tol: float = 1e-4,
         reg: float = 1e-8,
-        hvp_method: Literal["forward", "central", "autograd"] = "forward",
-        h=1e-3,
+        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        h: float = 1e-3,
         warm_start=False,
         inner: Chainable | None = None,
     ):

@@ -56,8 +56,7 @@ def _precompute_denominator(tensor: torch.Tensor, sigma) -> torch.Tensor:
     return 1 - sigma * torch.fft.fft(v) # pylint: disable = not-callable
 
 class LaplacianSmoothing(Transform):
-    """Applies laplacian smoothing via a fast Fourier transform solver.
-
+    """Applies laplacian smoothing via a fast Fourier transform solver which is claimed to help SGD.
     Args:
         sigma (float, optional): controls the amount of smoothing. Defaults to 1.
         layerwise (bool, optional):
@@ -69,6 +68,14 @@ class LaplacianSmoothing(Transform):
         target (str, optional):
             what to set on var.
 
+    Examples:
+    .. code:: py
+        #  Laplacian Smoothing Gradient Descent optimizer as in the paper
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.LaplacianSmoothing(),
+            tz.m.LR(1e-2),
+        )
     Reference:
         *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
         Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
