@@ -323,18 +323,50 @@ There are a some specialized base modules that make it much easier to implement 
 
 The documentation on how to actually use them is to write itself in the near future.
 
-## License
+## Other stuff
+
+There are also wrappers providing `torch.optim.Optimizer` interface for various other libraries. When using those, make sure closure has `backward` argument as described in **Advanced Usage**.
+
+---
+
+### Scipy
+
+#### torchzero.optim.wrappers.scipy.ScipyMinimize
+
+A wrapper for `scipy.optimize.minimize` with gradients and hessians supplied by pytorch autograd. Scipy provides implementations of the following methods: `'nelder-mead', 'powell', 'cg', 'bfgs', 'newton-cg', 'l-bfgs-b', 'tnc', 'cobyla', 'cobyqa', 'slsqp', 'trust-constr', 'dogleg', 'trust-ncg', 'trust-exact', 'trust-krylov'`.
+
+#### torchzero.optim.wrappers.scipy.ScipyDE, ScipyDualAnnealing, ScipySHGO, ScipyDIRECT, ScipyBrute
+
+Equivalent wrappers for other derivative free solvers available in `scipy.optimize`
+
+---
+
+### NLOpt
+
+#### torchzero.optim.wrappers.nlopt.NLOptWrapper
+
+A wrapper for [NLOpt](https://github.com/stevengj/nlopt) with gradients supplied by pytorch autograd. NLOpt is another popular library with many gradient based and gradient free [algorithms](https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/)
+
+---
+
+### Nevergrad
+
+#### torchzero.optim.wrappers.nevergrad.NevergradWrapper
+
+A wrapper for [nevergrad](https://facebookresearch.github.io/nevergrad/) which has a huge library if gradient free [algorithms](https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers)
+
+---
+
+### fast-cma-es
+
+#### torchzero.optim.wrappers.fcmaes.FcmaesWrapper
+
+A wrapper for [fast-cma-es](https://github.com/dietmarwo/fast-cma-es), which implements various gradient free algorithms. Notably it includes [BITEOPT](https://github.com/avaneev/biteopt) which seems to have very good performance in benchmarks.
+
+# License
 
 This project is licensed under the MIT License
 
-## Project Links
+# Project Links
 
-TODO (there are docs but from very old version)
-
-## Other stuff
-
-There are also wrappers providing `torch.optim.Optimizer` interface for for `scipy.optimize`, NLOpt and Nevergrad.
-
-They are in `torchzero.optim.wrappers.scipy.ScipyMinimize`, `torchzero.optim.wrappers.nlopt.NLOptOptimizer`, and `torchzero.optim.wrappers.nevergrad.NevergradOptimizer`. Make sure closure has `backward` argument as described in **Advanced Usage**.
-
-Apparently <https://github.com/avaneev/biteopt> is diabolical so I will add a wrapper for it too very soon.
+TODO (there are docs but from very old version), I AM WORKING ON IT
