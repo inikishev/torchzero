@@ -54,10 +54,38 @@ class Warmup(Transform):
         num_steps = settings[0]['steps']
         step = self.global_state.get('step', 0)
 
-        target = lazy_lr(
+        tensors = lazy_lr(
             TensorList(tensors),
             lr=_warmup_lr(step=step, start_lr=start_lr, end_lr=end_lr, steps=num_steps),
             inplace=True
         )
         self.global_state['step'] = step + 1
-        return target
+        return tensors
+
+class WarmupNormClip(Transform):
+    """Warmup via clipping of the update norm.
+
+    Args:
+        start_norm (_type_, optional): maximal norm on the first step. Defaults to 1e-5.
+        end_norm (float, optional): maximal norm on the last step. After that, norm clipping is disabled. Defaults to 1.
+        steps (int, optional): number of steps to perform warmup for. Defaults to 100.
+    """
+    def __init__(self, start_norm = 1e-5, end_norm:float = 1, steps = 100):
+        defaults = dict(start_norm=start_norm,end_norm=end_norm, steps=steps)
+        super().__init__(defaults, uses_grad=False)
+
+    @torch.no_grad
+    def apply(self, tensors, params, grads, loss, states, settings):
+        start_norm, end_norm = unpack_dicts(settings, 'start_norm', 'end_norm', cls = NumberList)
+        num_steps = settings[0]['steps']
+        step = self.global_state.get('step', 0)
+        if step > num_steps: return tensors
+
+        tensors = TensorList(tensors)
+        norm = tensors.global_vector_norm()
+        current_max_norm = _warmup_lr(step, start_norm[0], end_norm[0], num_steps)
+        if norm > current_max_norm:
+            tensors.mul_(current_max_norm / norm)
+
+        self.global_state['step'] = step + 1
+        return tensors

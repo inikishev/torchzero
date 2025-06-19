@@ -1,4 +1,5 @@
 from .adagrad import Adagrad, FullMatrixAdagrad
+from .ladagrad import LAdagrad
 from .adam import Adam
 from .lion import Lion
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_

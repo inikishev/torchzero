@@ -1,16 +1,10 @@
-from abc import ABC, abstractmethod
-import math
 from collections import deque
 from typing import Literal, Any
-import itertools
 
 import torch
 from ...core import Chainable, TensorwiseTransform
-from ...utils.linalg.matrix_funcs import matrix_power_eigh
-from ...utils.linalg.svd import randomized_svd
-from ...utils.linalg.qr import qr_householder
 
-def spectral_update(history, damping, rdamping, true_damping: bool):
+def ladagrad_update_preconditioner(history, damping, rdamping, true_damping: bool):
     M_hist = torch.stack(tuple(history), dim=1)
     device = M_hist.device
     M_hist = M_hist.cuda()
@@ -33,7 +27,7 @@ def spectral_update(history, damping, rdamping, true_damping: bool):
     except torch.linalg.LinAlgError:
         return None, None
 
-def spectral_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
+def ladagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
     Utg = (U.T @ g)*S_inv
     return U @ Utg
 
@@ -44,12 +38,13 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         if state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class SpectralPreconditioner(TensorwiseTransform):
+class LAdagrad(TensorwiseTransform):
     """
-    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate U (Uᵀg)/S.
-    This is equivalent to full matrix Adagrad with accumulator initialized to zeros,
-    except only recent :code:`history_size` gradients are used.
-    However this doesn't require N^2 memory and is computationally less expensive than Shampoo.
+    Limited-memory full matrix Adagrad.
+
+    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U ((Uᵀg)/S).
+
+    This is equivalent to full-matrix Adagrad on recent gradients, but way more feasible.
 
     Args:
         history_size (int, optional): number of past gradients to store. Defaults to 10.
@@ -63,10 +58,29 @@ class SpectralPreconditioner(TensorwiseTransform):
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
         S_beta (float | None, optional): momentum for 1/S (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
-        concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to False.
+        concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
         normalize (bool, optional): whether to normalize gradients, this doesn't work well so don't use it. Defaults to False.
         centralize (bool, optional): whether to centralize gradients, this doesn't work well so don't use it. Defaults to False.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
+
+    Examples:
+
+    .. code:: py
+
+        # limited-memory Adagrad
+        ladagrad = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
+
+        # Adam with LAdagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
+        ladam = tz.Modular(model.parameters(), tz.m.LAdagrad(inner=tz.m.EMA()), tz.m.Debias(0.9, 0.999), tz.m.LR(0.01))
+
+        # Stable Adam with LAdagrad preconditioner (this is what I would recommend)
+        stable_ladam = tz.Modular(
+            model.parameters(),
+            tz.m.LAdagrad(inner=tz.m.EMA()),
+            tz.m.Debias(0.9, 0.999),
+            tz.m.ClipNormByEMA(max_ema_growth=1.2),
+            tz.m.LR(0.01)
+        )
     """
 
     def __init__(
@@ -80,7 +94,7 @@ class SpectralPreconditioner(TensorwiseTransform):
         U_beta: float | None = None,
         S_beta: float | None = None,
         interval: int = 1,
-        concat_params: bool = False,
+        concat_params: bool = True,
         normalize: bool=False,
         centralize:bool = False,
         inner: Chainable | None = None,
@@ -137,7 +151,7 @@ class SpectralPreconditioner(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S_inv = spectral_update(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
+            U, S_inv = ladagrad_update_preconditioner(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, S_beta, 'S_inv', S_inv)
 
@@ -154,7 +168,7 @@ class SpectralPreconditioner(TensorwiseTransform):
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
         S_inv = state['S_inv']
-        update = spectral_apply(tensor.view(-1), U, S_inv).view_as(tensor)
+        update = ladagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
 
         n = len(state['history'])
         mh = min(history_size, 10)

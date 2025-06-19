@@ -60,7 +60,7 @@ class RMSprop(Transform):
         debiased: bool = False,
         amsgrad: bool = False,
         pow: float = 2,
-        init: Literal["zeros", "update"] = "update",
+        init: Literal["zeros", "update"] = "zeros",
         inner: Chainable | None = None,
     ):
         defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
