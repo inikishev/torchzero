@@ -315,15 +315,7 @@ class HeavyBall(Module):
         return var
 ```
 
-There are a some specialized base modules that make it much easier to implement some specific things.
-
-* `GradApproximator` for gradient approximations
-* `LineSearch` for line searches
-* `Projection` for projections like GaLore or into fourier domain.
-* `QuasiNewtonH` for full-matrix quasi-newton methods that update hessian inverse approximation (because they are all very similar)
-* `ConguateGradientBase` for conjugate gradient methods, basically the only difference is how beta is calculated.
-
-The documentation on how to actually use them is to write itself in the near future.
+More in-depth guide will be available in the documentation in the future.
 
 ## Other stuff
 
