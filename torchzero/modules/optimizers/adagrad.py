@@ -48,7 +48,9 @@ def adagrad_(
 
 
 class Adagrad(Transform):
-    """Adagrad, divides by sum of past squares of gradients, matches pytorch Adagrad.
+    """Adagrad, divides by sum of past squares of gradients.
+
+    This implementation is identical to :code:`torch.optim.Adagrad`.
 
     Args:
         lr_decay (float, optional): learning rate decay. Defaults to 0.

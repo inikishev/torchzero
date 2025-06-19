@@ -43,11 +43,12 @@ def adam_(
 
     exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
-    return (exp_avg_ / sqrt_exp_avg_sq.add_(eps)).lazy_mul(alpha)
+    return (exp_avg_.lazy_mul(alpha) / sqrt_exp_avg_sq.add_(eps))
 
 class Adam(Transform):
-    """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size. This implementation is slightly different from
-    pytorch in that debiasing is applied after adding epsilon.
+    """Adam. Divides gradient EMA by EMA of gradient squares with debiased step size.
+
+    This implementation is identical to :code:`torch.optim.Adam`.
 
     Args:
         beta1 (float, optional): momentum. Defaults to 0.9.

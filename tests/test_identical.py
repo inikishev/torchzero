@@ -96,8 +96,7 @@ def _assert_identical_device(opt_fn: Callable, merge: bool, use_closure: bool, s
 
 @pytest.mark.parametrize('amsgrad', [True, False])
 def test_adam(amsgrad):
-    # torch_fn = lambda p: torch.optim.Adam(p, lr=1, amsgrad=amsgrad)
-    # pytorch applies debiasing separately so it is applied before epsilo
+    torch_fn = lambda p: torch.optim.Adam(p, lr=1, amsgrad=amsgrad)
     tz_fn = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad))
     tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1)) # test LR fusing
     tz_fn3 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1), tz.m.Add(1), tz.m.Sub(1))
@@ -133,7 +132,7 @@ def test_adam(amsgrad):
                 tz.m.Debias2(beta=0.999),
                 tz.m.Add(1e-8)]
         ))
-    tz_fns = (tz_fn, tz_fn2, tz_fn3, tz_fn4, tz_fn5, tz_fn_ops, tz_fn_ops2, tz_fn_ops3, tz_fn_ops4)
+    tz_fns = (torch_fn, tz_fn, tz_fn2, tz_fn3, tz_fn4, tz_fn5, tz_fn_ops, tz_fn_ops2, tz_fn_ops3, tz_fn_ops4)
 
     _assert_identical_opts(tz_fns, merge=True, use_closure=True, device='cpu', steps=10)
     for fn in tz_fns:

@@ -693,7 +693,7 @@ NegateOnLossIncrease = Run(
 # -------------------------------- misc/switch ------------------------------- #
 Alternate = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1, merge_invariant=True,
     sphere_steps=20, sphere_loss=20,

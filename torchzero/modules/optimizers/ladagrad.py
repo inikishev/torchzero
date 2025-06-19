@@ -44,7 +44,7 @@ class LAdagrad(TensorwiseTransform):
 
     The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U ((Uᵀg)/S).
 
-    This is equivalent to full-matrix Adagrad on recent gradients, but way more feasible.
+    This is equivalent to full-matrix Adagrad on recent gradients.
 
     Args:
         history_size (int, optional): number of past gradients to store. Defaults to 10.
