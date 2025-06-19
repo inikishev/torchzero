@@ -878,6 +878,15 @@ LAdagrad = Run(
     sphere_steps=20, sphere_loss=1 if torch.cuda.is_available() else 50,
 )
 
+# ------------------------------ optimizers/adan ----------------------------- #
+Adan = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.Adan(), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.Adan(), tz.m.LR(0.1)),
+    needs_closure=False,
+    func='booth', steps=50, loss=60, merge_invariant=True,
+    sphere_steps=20, sphere_loss=60,
+)
+
 # ------------------------------------ CGs ----------------------------------- #
 for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.DaiYuan, tz.m.LiuStorey, tz.m.ConjugateDescent, tz.m.HagerZhang, tz.m.HybridHS_DY, tz.m.ProjectedGradientMethod):
     for func_steps,sphere_steps_ in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
