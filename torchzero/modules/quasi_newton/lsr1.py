@@ -93,7 +93,7 @@ class LSR1(Module):
             if not None, EMA of gradients is used for
             preconditioner update (y_k vector). Defaults to None.
         update_freq (int, optional): How often to update L-SR1 history. Defaults to 1.
-        scale_second (bool, optional): downscales second update which tends to be large.
+        scale_second (bool, optional): downscales second update which tends to be large. Defaults to False.
         inner (Chainable | None, optional):
             Optional inner modules applied after updating
             L-SR1 history and before preconditioning. Defaults to None.
