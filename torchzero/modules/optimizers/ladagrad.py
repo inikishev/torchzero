@@ -71,7 +71,12 @@ class LAdagrad(TensorwiseTransform):
         ladagrad = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
 
         # Adam with LAdagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
-        ladam = tz.Modular(model.parameters(), tz.m.LAdagrad(inner=tz.m.EMA()), tz.m.Debias(0.9, 0.999), tz.m.LR(0.01))
+        ladam = tz.Modular(
+            model.parameters(),
+            tz.m.LAdagrad(inner=tz.m.EMA()),
+            tz.m.Debias(0.9, 0.999),
+            tz.m.LR(0.01)
+        )
 
         # Stable Adam with LAdagrad preconditioner (this is what I would recommend)
         stable_ladam = tz.Modular(
