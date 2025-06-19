@@ -35,6 +35,33 @@ def sophia_H(
 
 
 class SophiaH(Module):
+    """SophiaH optimizer from https://arxiv.org/abs/2305.14342
+
+    Args:
+        beta1 (float, optional): first momentum. Defaults to 0.96.
+        beta2 (float, optional): momentum for hessian diagonal estimate. Defaults to 0.99.
+        update_freq (int, optional):
+            frequency of updating hessian diagonal estimate via a hessian-vector product. Defaults to 10.
+        precond_scale (float, optional):
+            scale of the preconditioner. Defaults to 1.
+        clip (float, optional):
+            clips update to (-clip, clip). Defaults to 1.
+        eps (float, optional):
+            clips hessian diagonal esimate to be no less than this value. Defaults to 1e-12.
+        hvp_method (str, optional):
+            determines how hessian-vector products are evaluated.
+
+            - "autograd" - use pytorch autograd to calculate hessian-vector products.
+            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
+            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            Defaults to "autograd".
+        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        n_samples (int, optional):
+            number of hessian-vector products with random vectors to evaluate each time when updating
+            the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.
+        seed (int | None, optional): seed for random vectors. Defaults to None.
+        inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
+    """
     def __init__(
         self,
         beta1: float = 0.96,

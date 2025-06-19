@@ -59,7 +59,7 @@ def _merge_small_dims(tensor: torch.Tensor, max_dim: int):
     if tensor.shape[sort_idxs[0]] > max_dim:
         return tensor, None, None
 
-    tensor = tensor.permute(*sort_idxs)
+    tensor = tensor.permute(*sort_idxs.tolist())
     flatten_end_idx = 0
     flat_sizes = []
     flat_numel = 1
@@ -80,7 +80,7 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
     if flat_sizes is None: return tensor
     assert sort_idxs is not None
     tensor = tensor.unflatten(0, flat_sizes)
-    return tensor.permute(*np.argsort(sort_idxs))
+    return tensor.permute(*np.argsort(sort_idxs).tolist())
 
 
 class Shampoo(Transform):
@@ -92,7 +92,7 @@ class Shampoo(Transform):
             if None calculates sum as in standard shampoo, otherwise uses EMA of preconditioners. Defaults to None.
         matrix_eps (float, optional): epsilon for matrix operations. Defaults to 1e-10.
         update_freq (int, optional): preconditioner update frequency. Defaults to 10.
-        exp_override (int | None, optional): matrix exponent override, if not set, uses 2*ndim. Defaults to None.
+        exp_override (int | None, optional): matrix exponent override, if not set, uses 2*ndim. Defaults to 2.
         merge_small (bool, optional): whether to merge small dims on tensors. Defaults to True.
         max_dim (int, optional): maximum dimension size for preconditioning. Defaults to 2_000.
         precondition_1d (bool, optional): whether to precondition 1d tensors. Defaults to True.
@@ -101,13 +101,33 @@ class Shampoo(Transform):
             module applied after updating preconditioners and before applying preconditioning.
             For example if beta≈0.999 and `inner=tz.m.EMA(0.9)`, this becomes Adam with shampoo preconditioner (ignoring debiasing).
             Defaults to None.
+
+    Examples:
+    Shampoo grafted to Adam
+    .. code:: py
+        opt = tz.Modular(
+            model.parameters(), tz.m.GraftModules(
+                direction = tz.m.Shampoo(),
+                magnitude = tz.m.Adam(),
+            ),
+            tz.m.LR(1e-3)
+        )
+
+    Adam with Shampoo preconditioner
+    .. code:: py
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
+            tz.m.Debias(0.9, 0.999),
+            tz.m.LR(1e-3)
+        )
     """
     def __init__(
         self,
         decay: float | None = None,
         beta: float | None = None,
         update_freq: int = 10,
-        exp_override: int | None = None,
+        exp_override: int | None = 2,
         merge_small: bool = True,
         max_dim: int = 2_000,
         precondition_1d: bool = True,

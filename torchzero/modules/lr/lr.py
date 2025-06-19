@@ -43,6 +43,18 @@ class Warmup(Transform):
         start_lr (_type_, optional): initial learning rate multiplier on first step. Defaults to 1e-5.
         end_lr (float, optional): learning rate multiplier at the end and after warmup. Defaults to 1.
         steps (int, optional): number of steps to perform warmup for. Defaults to 100.
+
+    Example:
+    .. code:: py
+    ```
+    # adam with 1000 steps warmup
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.LR(1e-2),
+        tz.m.Warmup(steps=1000)
+    )
+    ```
     """
     def __init__(self, start_lr = 1e-5, end_lr:float = 1, steps = 100):
         defaults = dict(start_lr=start_lr,end_lr=end_lr, steps=steps)
@@ -69,6 +81,18 @@ class WarmupNormClip(Transform):
         start_norm (_type_, optional): maximal norm on the first step. Defaults to 1e-5.
         end_norm (float, optional): maximal norm on the last step. After that, norm clipping is disabled. Defaults to 1.
         steps (int, optional): number of steps to perform warmup for. Defaults to 100.
+
+    Example:
+    .. code:: py
+    ```
+    # adam with 1000 steps norm clip warmup
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.LR(1e-2),
+        tz.m.WarmupNormClip(steps=1000)
+    )
+    ```
     """
     def __init__(self, start_norm = 1e-5, end_norm:float = 1, steps = 100):
         defaults = dict(start_norm=start_norm,end_norm=end_norm, steps=steps)

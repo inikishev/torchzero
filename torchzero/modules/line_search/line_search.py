@@ -17,6 +17,7 @@ class MaxLineSearchItersReached(Exception): pass
 
 class LineSearch(Module, ABC):
     """Base class for line searches.
+
     This is an abstract class, to use it, subclass it and override `search`.
 
     Args:
@@ -26,6 +27,52 @@ class LineSearch(Module, ABC):
             the objective this many times, and step size with the lowest loss value will be used.
             This is useful when passing `make_objective` to an external library which
             doesn't have a maxiter option. Defaults to None.
+
+    ## Other useful methods:
+        * `evaluate_step_size` - returns loss with a given scalar step size
+        * `evaluate_step_size_loss_and_derivative` - returns loss and directional derivative with a given scalar step size
+        * `make_objective` - creates a function that accepts a scalar step size and returns loss. This can be passed to a scalar solver, such as scipy.optimize.minimize_scalar.
+        * `make_objective_with_derivative` - creates a function that accepts a scalar step size and returns a tuple with loss and directional derivative. This can be passed to a scalar solver.
+
+    Examples:
+    .. code:: py
+    ```
+    # example of defining a basic grid line search which evaluates all step sizes in a range.
+    # by using self.evaluate_step_size
+    class GridLineSearch(LineSearch):
+        def __init__(self, start, end, num):
+            defaults = dict(start=start,end=end,num=num)
+            super().__init__(defaults)
+
+        @torch.no_grad
+        def search(self, update, var):
+            start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
+
+            lowest_loss = float("inf")
+            best_step_size = best_step_size
+
+            for step_size in torch.linspace(start,end,num):
+                loss = self.evaluate_step_size(step_size.item(), var=var, backward=False)
+                if loss < lowest_loss:
+                    lowest_loss = loss
+                    best_step_size = step_size
+
+            return best_step_size
+
+    # example of passing self.make_objective to scipy.optimize.minimize_scalar solver
+    class ScipyMinimizeScalar(LineSearch):
+        def __init__(self, method: str | None = None):
+            defaults = dict(method=method)
+            super().__init__(defaults)
+
+        @torch.no_grad
+        def search(self, update, var):
+            objective = self.make_objective(var=var)
+            method = self.settings[var.params[0]]["method"]
+
+            res = self.scopt.minimize_scalar(objective, method=method)
+            return res.x
+    ```
     """
     def __init__(self, defaults: dict[str, Any] | None, maxiter: int | None = None):
         super().__init__(defaults)

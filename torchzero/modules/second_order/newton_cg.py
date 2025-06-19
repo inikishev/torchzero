@@ -21,6 +21,8 @@ class NewtonCG(Module):
         tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
         reg (float, optional): regularization parameter. Defaults to 1e-8.
         hvp_method (str, optional):
+            determines how hessian-vector products are evaluated.
+
             - "autograd" - use pytorch autograd to calculate hessian-vector products.
             - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
             - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
@@ -31,22 +33,29 @@ class NewtonCG(Module):
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
 
     Examples:
+    NewtonCG with backtracking line search
     .. code:: py
-        ```
-        # NewtonCG with backtracking line search
-        opt = tz.Modular(model.parameters(), tz.m.NewtonCG(), tz.m.Backtracking())
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.NewtonCG(),
+            tz.m.Backtracking()
+        )
 
-        # Truncated newton
-        opt = tz.Modular(model.parameters(), tz.m.NewtonCG(maxiter=10, warm_start=True), tz.m.Backtracking())
+    Truncated newton
+    .. code:: py
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.NewtonCG(maxiter=10, warm_start=True),
+            tz.m.Backtracking()
+        )
 
-        # Newton preconditioning applied to momentum via CG
-        # (in practice this is likely going to be unstable)
+    Newton preconditioning applied to momentum via CG (in practice this is likely going to be unstable)
+    .. code:: py
         opt = tz.Modular(
             model.parameters(),
             tz.m.NewtonCG(inner=tz.m.EMA(0.9)),
             tz.m.LR(0.1)
         )
-        ```
     """
     def __init__(
         self,

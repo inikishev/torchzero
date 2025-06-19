@@ -9,7 +9,7 @@ from ...utils import TensorList, NumberList, unpack_dicts
 
 
 class PolyakStepSize(Transform):
-    """Polyak's step-size method.
+    """Polyak's subgradient method.
 
     Args:
         max (float | None, optional): maximum possible step size. Defaults to None.

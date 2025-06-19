@@ -79,8 +79,8 @@ class GaussianHomotopy(Reformulation):
         seed (int | None, optional): seed for random perturbationss. Defaults to None.
 
     Examples:
+    smoothed NewtonCG
     .. code:: py
-        # smoothed NewtonCG
         opt = tz.Modular(
             model.parameters(),
             tz.m.GaussianHomotopy(100),

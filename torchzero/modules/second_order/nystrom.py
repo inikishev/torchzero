@@ -20,6 +20,8 @@ class NystromSketchAndSolve(Module):
         rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
         reg (float, optional): regularization parameter. Defaults to 1e-3.
         hvp_method (str, optional):
+            determines how hessian-vector products are evaluated.
+
             - "autograd" - use pytorch autograd to calculate hessian-vector products.
             - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
             - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
@@ -29,11 +31,13 @@ class NystromSketchAndSolve(Module):
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
+    NystromSketchAndSolve with backtracking line search
     .. code:: py
-        ```
-        # NystromSketchAndSolve with backtracking line search
-        opt = tz.Modular(model.parameters(), tz.m.NystromSketchAndSolve(10), tz.m.Backtracking())
-        ```
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.NystromSketchAndSolve(10),
+            tz.m.Backtracking()
+        )
 
     Reference:
         https://arxiv.org/abs/2110.02820
@@ -131,6 +135,8 @@ class NystromPCG(Module):
         tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
         reg (float, optional): regularization parameter. Defaults to 1e-8.
         hvp_method (str, optional):
+            determines how hessian-vector products are evaluated.
+
             - "autograd" - use pytorch autograd to calculate hessian-vector products.
             - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
             - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
@@ -140,8 +146,8 @@ class NystromPCG(Module):
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
+    NystromPCG with backtracking line search
     .. code:: py
-        # NewtonCG with backtracking line search
         opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
 
     Reference:

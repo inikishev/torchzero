@@ -82,7 +82,9 @@ def _rcentral4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[
 _RFD_FUNCS = {
     "forward2": _rforward2,
     "backward2": _rbackward2,
+    "central": _rcentral2,
     "central2": _rcentral2,
+    "central3": _rcentral2,
     "forward3": _rforward3,
     "backward3": _rbackward3,
     "central4": _rcentral4,
@@ -90,7 +92,7 @@ _RFD_FUNCS = {
 
 
 class RandomizedFDM(GradApproximator):
-    """_summary_
+    """Gradient approximation via a randomized finite-difference method.
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
@@ -102,13 +104,89 @@ class RandomizedFDM(GradApproximator):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
         target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+    Examples:
+    #### Simultaneous perturbation stochastic approximation (SPSA) method:
+    SPSA is randomized finite differnce with rademacher distribution and central formula.
+    .. code:: py
+    ```
+    spsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
+        tz.m.LR(1e-2)
+    )
+    ```
+    #### Random-direction stochastic approximation (RDSA) method:
+    RDSA is randomized finite differnce with usually gaussian distribution and central formula.
+    .. code:: py
+    ```
+    rdsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
+        tz.m.LR(1e-2)
+    )
+    ```
+    #### RandomizedFDM with momentum:
+    .. code:: py
+    ```
+    momentum_spsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(),
+        tz.m.HeavyBall(0.9),
+        tz.m.LR(1e-3)
+    )
+    ```
+    #### Gaussian smoothing method
+    GS uses many gaussian samples with possibly a larger finite difference step size.
+    .. code:: py
+    ```
+    gs = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
+        tz.m.NewtonCG(hvp_method="forward"),
+        tz.m.Backtracking()
+    )
+    ```
+    #### SPSA-NewtonCG.
+    NewtonCG with hessian-vector product estimated via gradient difference
+    calls closure multiple times per step. If each closure call generated
+    a new perturbation, NewtonCG would produce bogus directions. B
+
+    By pre_generate to True, perturbations are generated once before each step,
+    and each closure call estimates gradients using the same pre-generated perturbations.
+    .. code:: py
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(n_samples=10),
+        tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
+        tz.m.Backtracking()
+    )
+    ```
+    #### SPSA-BFGS
+    L-BFGS uses a memory of past parameter and gradient differences, and if gradients
+    are estimated with different perturbations, it would not work.
+
+    To alleviate this momentum can be added to random perturbations to make sure they only
+    change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
+
+    Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
+    .. code:: py
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99),
+        tz.m.BFGS(reset_interval=100),
+        tz.m.Backtracking()
+    )
+    ```
     """
     PRE_MULTIPLY_BY_H = True
     def __init__(
         self,
         h: float = 1e-3,
         n_samples: int = 1,
-        formula: _FD_Formula = "central2",
+        formula: _FD_Formula = "central",
         distribution: Distributions = "rademacher",
         beta: float = 0,
         pre_generate = True,

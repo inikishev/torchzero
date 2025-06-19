@@ -79,6 +79,7 @@ def _central4(closure: Callable[..., float], param:torch.Tensor, idx: int, h, v_
 _FD_FUNCS = {
     "forward2": _forward2,
     "backward2": _backward2,
+    "central": _central2,
     "central2": _central2,
     "central3": _central2, # they are the same
     "forward3": _forward3,

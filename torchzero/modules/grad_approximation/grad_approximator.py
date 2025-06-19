@@ -18,7 +18,45 @@ class GradApproximator(Module, ABC):
         defaults (dict[str, Any] | None, optional): dict with defaults. Defaults to None.
         target (str, optional):
             whether to set `var.grad`, `var.update` or 'var.closure`. Defaults to 'closure'.
-    """
+
+    Example:
+    .. code:: py
+    ```
+    # example of defining the SPSA method
+    class SPSA(GradApproximator):
+        def __init__(self, h=1e-3):
+            defaults = dict(h=h)
+            super().__init__(defaults)
+
+        @torch.no_grad
+        def approximate(self, closure, params, loss, var):
+            perturbation = [rademacher_like(p) * self.settings[p]['h'] for p in params]
+
+            # evaluate params + perturbation
+            torch._foreach_add_(params, perturbation)
+            loss_plus = closure(False)
+
+            # evaluate params - perturbation
+            torch._foreach_sub_(params, perturbation)
+            torch._foreach_sub_(params, perturbation)
+            loss_minus = closure(False)
+
+            # restore original params
+            torch._foreach_add_(params, perturbation)
+
+            spsa_grads = []
+            for p, pert in zip(params, perturbation):
+                settings = self.settings[p]
+                h = settings['h']
+                d = (loss_plus - loss_minus) / (2*(h**2))
+                spsa_grads.append(pert * d)
+
+            # returns tuple: (grads, loss, loss_approx)
+            # loss must be with initial parameters
+            # since we only evaluated loss with perturbed parameters
+            # we only have loss_approx
+            return spsa_grads, None, loss_plus
+        """
     def __init__(self, defaults: dict[str, Any] | None = None, target: GradTarget = 'closure'):
         super().__init__(defaults)
         self._target: GradTarget = target
@@ -63,4 +101,4 @@ class GradApproximator(Module, ABC):
         else: raise ValueError(self._target)
         return var
 
-_FD_Formula = Literal['forward2', 'backward2', 'forward3', 'backward3', 'central2', 'central4']
+_FD_Formula = Literal['forward2', 'backward2', 'forward3', 'backward3', 'central', 'central2', 'central3', 'central4']

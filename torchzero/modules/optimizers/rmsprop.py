@@ -40,7 +40,9 @@ def rmsprop_(
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 
 class RMSprop(Transform):
-    """Divides graient by EMA of gradient squares. Matches pytorch RMSprop if "init" is set to "zeros".
+    """Divides graient by EMA of gradient squares.
+
+    This implementation is identical to :code:`torch.optim.RMSprop`.
 
     Args:
         smoothing (float, optional): beta for exponential moving average of gradient squares. Defaults to 0.99.
@@ -50,7 +52,8 @@ class RMSprop(Transform):
         amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
         pow (float, optional): power used in second momentum power and root. Defaults to 2.
         init (str, optional): how to initialize EMA, either "update" to use first update or "zeros". Defaults to "update".
-        inner (Chainable | None, optional): Inner modules that are applied after updating EMA and before preconditioning. Defaults to None.
+        inner (Chainable | None, optional):
+            Inner modules that are applied after updating EMA and before preconditioning. Defaults to None.
     """
     def __init__(
         self,

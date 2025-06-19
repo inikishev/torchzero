@@ -124,14 +124,16 @@ class LBFGS(Module):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
     Examples:
+    L-BFGS with strong-wolfe line search
     .. code:: py
-        # L-BFGS with strong-wolfe line search
         opt = tz.Modular(model.parameters(), tz.m.LBFGS(100), tz.m.StrongWolfe())
 
-        # Dampened L-BFGS
+    Dampened L-BFGS
+    .. code:: py
         opt = tz.Modular(model.parameters(), tz.m.LBFGS(damping=True), tz.m.StrongWolfe())
 
-        # L-BFGS preconditioning applied to momentum
+    L-BFGS preconditioning applied to momentum
+    .. code:: py
         opt = tz.Modular(
             model.parameters(),
             tz.m.LBFGS(inner=tz.m.EMA(0.9)),

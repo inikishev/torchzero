@@ -24,7 +24,12 @@ class Wrap(Module):
     Example:
     .. code:: py
         from pytorch_optimizer import StableAdamW
-        opt = tz.Modular(model.parameters(), tz.m.Wrap(StableAdamW), tz.m.LR(1e-2))
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.Wrap(StableAdamW),
+            tz.m.Cautious(),
+            tz.m.LR(1e-2)
+        )
 
 
     """

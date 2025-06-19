@@ -165,6 +165,26 @@ class Orthogonalize(TensorwiseTransform):
             Newton-Schulz is very fast, SVD is extremely slow but can be slighly more precise.
         target (str, optional):
             what to set on var.
+
+
+    Example:
+    .. code:: py
+    ```
+    # standard Muon with adam fallback
+    opt = tz.Modular(
+        model.head.parameters(),
+        tz.m.Split(
+            # apply muon only to 2D+ parameters
+            filter = lambda t: t.ndim >= 2,
+            true = [
+                tz.m.HeavyBall(),
+                tz.m.Orthogonalize(),
+                tz.m.LR(1e-2),
+            ],
+            false = tz.m.Adam()
+        ),
+        tz.m.LR(1e-2)
+    )
     """
     def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
                  method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):

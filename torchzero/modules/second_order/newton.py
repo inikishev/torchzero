@@ -83,19 +83,20 @@ class Newton(Module):
             If this is specified, eigendecomposition will be used to invert the hessian.
 
     Examples:
+    Newton's method with backtracking line search
     .. code:: py
-        # Newton's method with backtracking line search
         opt = tz.Modular(model.parameters(), tz.m.Newton(), tz.m.Backtracking())
 
-        # Newton's method modified for non-convex functions
-        # by taking matrix absolute value of the hessian
+    Newton's method modified for non-convex functions by taking matrix absolute value of the hessian
+    .. code:: py
         opt = tz.Modular(model.parameters(), tz.m.Newton(eigval_tfm=torch.abs), tz.m.Backtracking())
 
-        # Newton's method modified for non-convex functions
-        # by searching along negative curvature directions
+    Newton's method modified for non-convex functions by searching along negative curvature directions
+    .. code:: py
         opt = tz.Modular(model.parameters(), tz.m.Newton(search_negative=True), tz.m.Backtracking())
 
-        # Newton preconditioning applied to momentum.
+    Newton preconditioning applied to momentum
+    .. code:: py
         opt = tz.Modular(
             model.parameters(),
             tz.m.Newton(inner=tz.m.EMA(0.9)),

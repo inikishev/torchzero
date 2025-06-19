@@ -63,11 +63,12 @@ class OnlineLBFGS(Module):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
     Examples:
+    O-LBFGS
     .. code:: py
-        # O-LBFGS
         opt = tz.Modular(model.parameters(), tz.m.OLBFGS(), tz.m.Backtracking())
 
-        # Dampened O-LBFGS
+    Dampened O-LBFGS
+    .. code:: py
         opt = tz.Modular(model.parameters(), tz.m.OLBFGS(damping=True), tz.m.Backtracking())
 
     """

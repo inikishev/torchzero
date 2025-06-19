@@ -156,6 +156,20 @@ class SOAP(Transform):
             learning rate. Defaults to 1.
         bias_correction (bool, optional):
             enables adam bias correction. Defaults to True.
+
+    Example:
+    SOAP
+    .. code:: py
+        opt = tz.Modular(model.parameters(), tz.m.SOAP(), tz.m.LR(1e-3))
+
+    Stabilized SOAP
+    .. code:: py
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.SOAP(),
+            tz.m.NormalizeByEMA(max_ema_growth=1.2),
+            tz.m.LR(1e-2)
+        )
     """
     def __init__(
         self,
