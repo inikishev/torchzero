@@ -12,7 +12,7 @@ from ...utils.linalg.solve import nystrom_sketch_and_solve, nystrom_pcg
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
 
-    If this is unstable, increase the :code:`reg` parameter.
+    If this is unstable, increase the :code:`reg` parameter and tune the rank.
 
     Note: :code:`tz.m.NystromPCG` usually outperforms this.
 
@@ -30,8 +30,10 @@ class NystromSketchAndSolve(Module):
 
     Examples:
     .. code:: py
+        ```
         # NystromSketchAndSolve with backtracking line search
         opt = tz.Modular(model.parameters(), tz.m.NystromSketchAndSolve(10), tz.m.Backtracking())
+        ```
 
     Reference:
         https://arxiv.org/abs/2110.02820

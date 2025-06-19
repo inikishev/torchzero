@@ -87,11 +87,18 @@ class Newton(Module):
         # Newton's method with backtracking line search
         opt = tz.Modular(model.parameters(), tz.m.Newton(), tz.m.Backtracking())
 
-        # Adam with Newton preconditioner instead of square root of squared gradients momentum
+        # Newton's method modified for non-convex functions
+        # by taking matrix absolute value of the hessian
+        opt = tz.Modular(model.parameters(), tz.m.Newton(eigval_tfm=torch.abs), tz.m.Backtracking())
+
+        # Newton's method modified for non-convex functions
+        # by searching along negative curvature directions
+        opt = tz.Modular(model.parameters(), tz.m.Newton(search_negative=True), tz.m.Backtracking())
+
+        # Newton preconditioning applied to momentum.
         opt = tz.Modular(
             model.parameters(),
-            tz.m.Newton(maxiter=10, warm_start=True, inner=tz.m.EMA(0.9)),
-            tz.m.Debias(0.9, 0.999), # 0.999 is arbitrary here
+            tz.m.Newton(inner=tz.m.EMA(0.9)),
             tz.m.LR(0.1)
         )
     """

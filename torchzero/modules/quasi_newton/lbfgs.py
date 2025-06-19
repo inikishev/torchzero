@@ -97,12 +97,13 @@ def _lerp_params_update_(
     return TensorList(params), TensorList(update)
 
 class LBFGS(Module):
-    """L-BFGS
+    """Limited-memory BFGS algorithm. A line search is recommended, although L-BFGS is reasonably stable without it.
 
     Args:
-        history_size (int, optional): number of past parameter differences and gradient differences to store. Defaults to 10.
+        history_size (int, optional):
+            number of past parameter differences and gradient differences to store. Defaults to 10.
         tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability after converging to minima. Defaults to 1e-10.
+            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
         damping (bool, optional):
             whether to use adaptive damping. Learning rate might need to be lowered with this enabled. Defaults to False.
         init_damping (float, optional):
@@ -121,6 +122,21 @@ class LBFGS(Module):
             If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # L-BFGS with strong-wolfe line search
+        opt = tz.Modular(model.parameters(), tz.m.LBFGS(100), tz.m.StrongWolfe())
+
+        # Dampened L-BFGS
+        opt = tz.Modular(model.parameters(), tz.m.LBFGS(damping=True), tz.m.StrongWolfe())
+
+        # L-BFGS preconditioning applied to momentum
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.LBFGS(inner=tz.m.EMA(0.9)),
+            tz.m.LR(1e-2)
+        )
     """
     def __init__(
         self,

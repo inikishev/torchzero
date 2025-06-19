@@ -32,19 +32,21 @@ class NewtonCG(Module):
 
     Examples:
     .. code:: py
+        ```
         # NewtonCG with backtracking line search
         opt = tz.Modular(model.parameters(), tz.m.NewtonCG(), tz.m.Backtracking())
 
         # Truncated newton
         opt = tz.Modular(model.parameters(), tz.m.NewtonCG(maxiter=10, warm_start=True), tz.m.Backtracking())
 
-        # Adam with NewtonCG instead of square root of squared gradients momentum
+        # Newton preconditioning applied to momentum via CG
+        # (in practice this is likely going to be unstable)
         opt = tz.Modular(
             model.parameters(),
-            tz.m.NewtonCG(maxiter=10, warm_start=True, inner=tz.m.EMA(0.9)),
-            tz.m.Debias(0.9, 0.999), # 0.999 is arbitrary here
+            tz.m.NewtonCG(inner=tz.m.EMA(0.9)),
             tz.m.LR(0.1)
         )
+        ```
     """
     def __init__(
         self,

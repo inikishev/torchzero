@@ -73,24 +73,35 @@ def lsr1_(
 
 
 class LSR1(Module):
-    """Limited Memory SR1 (L-SR1)
+    """Limited Memory SR1 algorithm. A line search is recommended.
+
+    Notes:
+        - L-SR1 provides a better estimate of true hessian, however it is significantly more unstable compared to L-BFGS.
+        - L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `n!` (n factorial). On small problems BFGS and SR1 may be faster than limited-memory versions.
+        - directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,
+        for example using :code:`tz.m.StrongWolfe(plus_minus=True)` line search, or modifying the direction with :code:`tz.m.Cautious` or :code:`tz.m.ScaleByGradCosineSimilarity`.
+
     Args:
-        history_size (int, optional): Number of past parameter differences (s)
-            and gradient differences (y) to store. Defaults to 10.
-        skip_R_val (float, optional): Tolerance R for the SR1 update skip condition
-            |w_k^T y_k| >= R * ||w_k|| * ||y_k||. Defaults to 1e-8.
-            Updates where this condition is not met are skipped during history accumulation
-            and matrix-vector products.
-        params_beta (float | None, optional): If not None, EMA of parameters is used for
+        history_size (int, optional):
+            number of past parameter differences and gradient differences to store. Defaults to 10.
+        tol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
+        params_beta (float | None, optional):
+            if not None, EMA of parameters is used for
             preconditioner update (s_k vector). Defaults to None.
-        grads_beta (float | None, optional): If not None, EMA of gradients is used for
+        grads_beta (float | None, optional):
+            if not None, EMA of gradients is used for
             preconditioner update (y_k vector). Defaults to None.
         update_freq (int, optional): How often to update L-SR1 history. Defaults to 1.
-        conv_tol (float | None, optional): Tolerance for y_k norm. If max abs value of y_k
-            is below this, the preconditioning step might be skipped, assuming convergence.
-            Defaults to 1e-10.
-        inner (Chainable | None, optional): Optional inner modules applied after updating
+        scale_second (bool, optional): downscales second update which tends to be large.
+        inner (Chainable | None, optional):
+            Optional inner modules applied after updating
             L-SR1 history and before preconditioning. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # L-SR1 with strong-wolfe line search
+        opt = tz.Modular(model.parameters(), tz.m.LSR1(100), tz.m.StrongWolfe())
     """
     def __init__(
         self,
@@ -99,7 +110,7 @@ class LSR1(Module):
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq: int = 1,
-        scale_second: bool = True,
+        scale_second: bool = False,
         inner: Chainable | None = None,
     ):
         defaults = dict(

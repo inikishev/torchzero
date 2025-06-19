@@ -8,7 +8,37 @@ from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 
 
 class ConguateGradientBase(Transform, ABC):
-    """all CGs are the same except beta calculation"""
+    """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.
+
+    This is an abstract class, to use it, subclass it and override `get_beta`.
+
+
+    Args:
+        defaults (dict | None, optional): dictionary of settings defaults. Defaults to None.
+        clip_beta (bool, optional): whether to clip beta to be no less than 0. Defaults to False.
+        reset_interval (int | None | Literal["auto"], optional):
+            interval between resetting the search direction.
+            "auto" means number of dimensions + 1, None means no reset. Defaults to None.
+        inner (Chainable | None, optional): previous direction is added to the output of this module. Defaults to None.
+
+    Example:
+    .. code:: py
+    ```
+    class PolakRibiere(ConguateGradientBase):
+        def __init__(
+            self,
+            clip_beta=True,
+            reset_interval: int | None = None,
+            inner: Chainable | None = None
+        ):
+            super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+
+        def get_beta(self, p, g, prev_g, prev_d):
+            denom = prev_g.dot(prev_g)
+            if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
+            return g.dot(g - prev_g) / denom
+    ```
+    """
     def __init__(self, defaults = None, clip_beta: bool = False, reset_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None):
         if defaults is None: defaults = {}
         defaults['reset_interval'] = reset_interval
@@ -70,7 +100,11 @@ def polak_ribiere_beta(g: TensorList, prev_g: TensorList):
     return g.dot(g - prev_g) / denom
 
 class PolakRibiere(ConguateGradientBase):
-    """Polak-Ribière-Polyak nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this."""
+    """Polak-Ribière-Polyak nonlinear conjugate gradient method.
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, clip_beta=True, reset_interval: int | None = None, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -83,7 +117,11 @@ def fletcher_reeves_beta(gg: torch.Tensor, prev_gg: torch.Tensor):
     return gg / prev_gg
 
 class FletcherReeves(ConguateGradientBase):
-    """Fletcher–Reeves nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+    """Fletcher–Reeves nonlinear conjugate gradient method.
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -105,7 +143,11 @@ def hestenes_stiefel_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 
 
 class HestenesStiefel(ConguateGradientBase):
-    """Hestenes–Stiefel nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+    """Hestenes–Stiefel nonlinear conjugate gradient method.
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -120,7 +162,11 @@ def dai_yuan_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     return (g.dot(g) / denom).neg()
 
 class DaiYuan(ConguateGradientBase):
-    """Dai–Yuan nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+    """Dai–Yuan nonlinear conjugate gradient method.
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this. Although Dai–Yuan formula provides an automatic step size scaling so it is technically possible to omit line search and instead use a small step size.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -135,7 +181,11 @@ def liu_storey_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList, ):
     return g.dot(g - prev_g) / denom
 
 class LiuStorey(ConguateGradientBase):
-    """Liu-Storey nonlinear conjugate gradient method. This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+    """Liu-Storey nonlinear conjugate gradient method.
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -144,7 +194,11 @@ class LiuStorey(ConguateGradientBase):
 
 # ----------------------------- Conjugate Descent ---------------------------- #
 class ConjugateDescent(Transform):
-    """Conjugate Descent (CD). This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+    """Conjugate Descent (CD).
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, inner: Chainable | None = None):
         super().__init__(defaults={}, uses_grad=False)
 
@@ -188,7 +242,10 @@ def hager_zhang_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList,):
 
 class HagerZhang(ConguateGradientBase):
     """Hager-Zhang nonlinear conjugate gradient method,
-    This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -212,7 +269,10 @@ def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 
 class HybridHS_DY(ConguateGradientBase):
     """HS-DY hybrid conjugate gradient method.
-    This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe` after this."""
+
+    Note:
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+    """
     def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
@@ -228,9 +288,16 @@ def projected_gradient_(H:torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class ProjectedGradientMethod(TensorwiseTransform):
-    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+    """Projected gradient method.
 
-    (This is not the same as projected gradient descent)
+    Notes:
+        - This method uses N^2 memory.
+        - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
+        - This is not the same as projected gradient descent.
+
+    Reference:
+        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
     """
 
     def __init__(

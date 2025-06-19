@@ -20,6 +20,87 @@ def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     else: state[key].lerp_(value, 1-beta)
 
 class HessianUpdateStrategy(TensorwiseTransform, ABC):
+    """Base class for quasi-newton methods that store and update hessian approximation H or inverse B.
+
+    This is an abstract class, to use it, subclass it and override `update_H` and/or `update_B`.
+
+    Args:
+        defaults (dict | None, optional): defaults. Defaults to None.
+        init_scale (float | Literal["auto"], optional):
+            initial hessian matrix is set to identity times this.
+
+            "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
+
+            Defaults to "auto".
+        tol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
+        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        reset_interval (int | None | Literal["auto"], optional):
+            interval between resetting the hessian approximation.
+
+            "auto" corresponds to number of decision variables + 1.
+
+            None - no resets.
+
+            Defaults to None.
+        beta (float | None, optional): momentum on H or B. Defaults to None.
+        update_freq (int, optional): frequency of updating H or B. Defaults to 1.
+        scale_first (bool, optional):
+            whether to downscale first step before hessian approximation becomes available. Defaults to True.
+        scale_second (bool, optional): whether to downscale second step. Defaults to False.
+        concat_params (bool, optional):
+            If true, all parameters are treated as a single vector.
+            If False, the update rule is applied to each parameter separately. Defaults to True.
+        inverse (bool, optional):
+            set to True if this method uses hessian inverse approximation H and has `update_H` method.
+            set to False if this maintains hessian approximation B and has `update_B method`.
+            Defaults to True.
+        inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
+
+    Example:
+    .. code:: py
+    ```
+    class BFGS(HessianUpdateStrategy):
+        def __init__(
+            self,
+            init_scale: float | Literal["auto"] = "auto",
+            tol: float = 1e-10,
+            tol_reset: bool = True,
+            reset_interval: int | None = None,
+            beta: float | None = None,
+            update_freq: int = 1,
+            scale_first: bool = True,
+            scale_second: bool = False,
+            concat_params: bool = True,
+            inner: Chainable | None = None,
+        ):
+            super().__init__(
+                defaults=None,
+                init_scale=init_scale,
+                tol=tol,
+                tol_reset=tol_reset,
+                reset_interval=reset_interval,
+                beta=beta,
+                update_freq=update_freq,
+                scale_first=scale_first,
+                scale_second=scale_second,
+                concat_params=concat_params,
+                inverse=True,
+                inner=inner,
+            )
+
+        def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+            tol = settings["tol"]
+            sy = torch.dot(s, y)
+            if sy <= tol: return H
+            num1 = (sy + (y @ H @ y)) * s.outer(s)
+            term1 = num1.div_(sy**2)
+            num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+            term2 = num2.div_(sy)
+            H += term1.sub_(term2)
+            return H
+    ```
+    """
     def __init__(
         self,
         defaults: dict | None = None,
@@ -142,8 +223,29 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
 
-# to avoid typing all arguments for each method
 class HUpdateStrategy(HessianUpdateStrategy):
+    '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
+    Refer to :code:`HessianUpdateStrategy` documentation.
+
+    Example:
+    .. code:: py
+    ```
+    class BFGS(HUpdateStrategy):
+        """Broyden–Fletcher–Goldfarb–Shanno algorithm"""
+        def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+            tol = settings["tol"]
+            sy = torch.dot(s, y)
+            if sy <= tol: return H
+            num1 = (sy + (y @ H @ y)) * s.outer(s)
+            term1 = num1.div_(sy**2)
+            num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+            term2 = num2.div_(sy)
+            H += term1.sub_(term2)
+            return H
+    ```
+
+    Make sure to put at least a basic class level docstring to overwrite this.
+    '''
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
@@ -183,6 +285,52 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class BFGS(HUpdateStrategy):
+    """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
+
+    Note:
+        - a line search such as :code:`tz.m.StrongWolfe()` is recommended, although this can be stable without a line search. Alternatively warmup :code:`tz.m.Warmup` can stabilize quasi-newton methods without line search.
+
+    Args:
+        init_scale (float | Literal["auto"], optional):
+            initial hessian matrix is set to identity times this.
+
+            "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
+
+            Defaults to "auto".
+        tol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
+        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        reset_interval (int | None | Literal["auto"], optional):
+            interval between resetting the hessian approximation.
+
+            "auto" corresponds to number of decision variables + 1.
+
+            None - no resets.
+
+            Defaults to None.
+        beta (float | None, optional): momentum on H or B. Defaults to None.
+        update_freq (int, optional): frequency of updating H or B. Defaults to 1.
+        scale_first (bool, optional):
+            whether to downscale first step before hessian approximation becomes available. Defaults to True.
+        scale_second (bool, optional): whether to downscale second step. Defaults to False.
+        concat_params (bool, optional):
+            If true, all parameters are treated as a single vector.
+            If False, the update rule is applied to each parameter separately. Defaults to True.
+        inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # BFGS with strong-wolfe line search
+        opt = tz.Modular(model.parameters(), tz.m.BFGS(), tz.m.StrongWolfe())
+
+        # BFGS preconditioning applied to momentum
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.BFGS(inner=tz.m.EMA(0.9)),
+            tz.m.LR(1e-2)
+        )
+    """
+
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -202,6 +350,54 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     return H
 
 class SR1(HUpdateStrategy):
+    """Symmetric Rank 1 Quasi-Newton method.
+
+    Note:
+        - a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+        - approximate Hessians generated by the SR1 method show faster progress towards the true Hessian than other methods, but it is more unstable.
+        - SR1 doesn't enforce the hessian estimate to be positive definite, therefore it can generate directions that are not descent directions.
+
+    Args:
+        init_scale (float | Literal["auto"], optional):
+            initial hessian matrix is set to identity times this.
+
+            "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
+
+            Defaults to "auto".
+        tol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
+        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        reset_interval (int | None | Literal["auto"], optional):
+            interval between resetting the hessian approximation.
+
+            "auto" corresponds to number of decision variables + 1.
+
+            None - no resets.
+
+            Defaults to None.
+        beta (float | None, optional): momentum on H or B. Defaults to None.
+        update_freq (int, optional): frequency of updating H or B. Defaults to 1.
+        scale_first (bool, optional):
+            whether to downscale first step before hessian approximation becomes available. Defaults to True.
+        scale_second (bool, optional): whether to downscale second step. Defaults to False.
+        concat_params (bool, optional):
+            If true, all parameters are treated as a single vector.
+            If False, the update rule is applied to each parameter separately. Defaults to True.
+        inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
+
+    Examples:
+    .. code:: py
+        # BFGS with strong-wolfe line search
+        opt = tz.Modular(model.parameters(), tz.m.BFGS(), tz.m.StrongWolfe())
+
+        # BFGS preconditioning applied to momentum
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.BFGS(inner=tz.m.EMA(0.9)),
+            tz.m.LR(1e-2)
+        )
+    """
+
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -218,6 +414,12 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class DFP(HUpdateStrategy):
+    """Davidon–Fletcher–Powell Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+        - BFGS usually outperforms this.
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return dfp_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -260,18 +462,55 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class BroydenGood(HUpdateStrategy):
+    """Broyden's "good" Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 class BroydenBad(HUpdateStrategy):
+    """Broyden's "bad" Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
 
 class Greenstadt1(HUpdateStrategy):
+    """Greenstadt's first Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev, tol=settings['tol'])
 
 class Greenstadt2(HUpdateStrategy):
+    """Greenstadt's second Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
+
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt2_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -289,7 +528,16 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float
     return H
 
 class ColumnUpdatingMethod(HUpdateStrategy):
-    """Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf"""
+    """
+    Column-updating Quasi-Newton method. This is computationally cheaper than other Quasi-Newton methods
+    due to only updating one column of the inverse hessian approximation per step.
+
+    Note:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+
+    Reference:
+        Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return column_updating_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -309,7 +557,16 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor,
     return H, R
 
 class ThomasOptimalMethod(HUpdateStrategy):
-    """Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975."""
+    """
+    Thomas's "optimal" Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975.
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
         H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
@@ -333,6 +590,15 @@ def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
 
 # I couldn't find formula for H
 class PSB(HessianUpdateStrategy):
+    """Powell's Symmetric Broyden Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
+    """
     def __init__(
         self,
         init_scale: float | Literal["auto"] = 'auto',
@@ -375,9 +641,16 @@ def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class Pearson(HUpdateStrategy):
-    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+    """
+    Pearson's Quasi-Newton method.
 
-    This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method."""
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return pearson_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -389,9 +662,17 @@ def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 class McCormick(HUpdateStrategy):
-    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+    """McCormicks's Quasi-Newton method.
 
-    This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method."""
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+        This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method in other sources.
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return mccormick_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -404,9 +685,18 @@ def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor
     return H, R
 
 class ProjectedNewtonRaphson(HessianUpdateStrategy):
-    """Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+    """
+    Projected Newton Raphson method.
 
-    Algorithm 7"""
+    Notes:
+        - a line search is required, use :code:`tz.m.StrongWolfe()`.
+        - This is an experimental method.
+
+    Reference:
+        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+
+        This one is Algorithm 7.
+    """
     def __init__(
         self,
         init_scale: float | Literal["auto"] = 'auto',
@@ -514,7 +804,15 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
 
 
 class SSVM(HessianUpdateStrategy):
-    """This one is from Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
+    """
+    Self-scaling variable metric Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
     """
     def __init__(
         self,
@@ -575,9 +873,26 @@ def gradient_correction(g: TensorList, s: TensorList, y: TensorList):
 
 
 class GradientCorrection(Transform):
-    """estimates gradient at minima along search direction assuming function is quadratic as proposed in HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
+    """
+    Estimates gradient at minima along search direction assuming function is quadratic.
 
-    This can useful as inner module for second order methods."""
+    This can useful as inner module for second order methods with inexact line search.
+
+    Example:
+    .. code ::
+    ```
+    # L-BFGS with gradient correction
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(inner=tz.m.GradientCorrection()),
+        tz.m.Backtracking()
+    )
+    ```
+
+    Reference:
+        HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
+
+    """
     def __init__(self):
         super().__init__(None, uses_grad=False)
 
@@ -595,7 +910,17 @@ class GradientCorrection(Transform):
         return g_hat
 
 class Horisho(HUpdateStrategy):
-    """HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394"""
+    """
+    Horisho's variable metric Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
+    """
+
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return hoshino_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -614,7 +939,16 @@ def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float)
     return H
 
 class FletcherVMM(HUpdateStrategy):
-    """Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317"""
+    """
+    Fletcher's variable metric Quasi-Newton method.
+
+    Notes:
+        - a line search such as :code:`tz.m.StrongWolfe` is highly recommended.
+        - BFGS usually outperforms this.
+
+    Reference:
+        Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
+    """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return fletcher_vmm_H_(H=H, s=s, y=y, tol=settings['tol'])
 
@@ -644,9 +978,14 @@ def new_ssm1(H: torch.Tensor, s: torch.Tensor, y: torch.Tensor, f, f_prev, tol: 
 
 
 class NewSSM(HessianUpdateStrategy):
-    """Self-scaling method, requires a line search.
+    """Self-scaling Quasi-Newton method.
 
-    Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U."""
+    Notes:
+        - this requires a line search such as :code:`tz.m.StrongWolfe`.
+
+    Reference:
+        Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U.
+    """
     def __init__(
         self,
         type: Literal[1, 2] = 1,
