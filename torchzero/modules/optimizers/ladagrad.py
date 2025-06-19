@@ -4,7 +4,7 @@ from typing import Literal, Any
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def ladagrad_update_preconditioner(history, damping, rdamping, true_damping: bool):
+def l_adagrad_update_preconditioner(history, damping, rdamping, true_damping: bool):
     M_hist = torch.stack(tuple(history), dim=1)
     device = M_hist.device
     M_hist = M_hist.cuda()
@@ -27,7 +27,7 @@ def ladagrad_update_preconditioner(history, damping, rdamping, true_damping: boo
     except torch.linalg.LinAlgError:
         return None, None
 
-def ladagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
+def l_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
     Utg = (U.T @ g)*S_inv
     return U @ Utg
 
@@ -156,7 +156,7 @@ class LAdagrad(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S_inv = ladagrad_update_preconditioner(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
+            U, S_inv = l_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, S_beta, 'S_inv', S_inv)
 
@@ -173,7 +173,7 @@ class LAdagrad(TensorwiseTransform):
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
         S_inv = state['S_inv']
-        update = ladagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
+        update = l_adagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
 
         n = len(state['history'])
         mh = min(history_size, 10)
