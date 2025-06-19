@@ -860,13 +860,22 @@ SophiaH = Run(
     sphere_steps=10, sphere_loss=40,
 )
 
-# -------------------------- optimizers/higher_order ------------------------- #
+# -------------------------- higher_order ------------------------- #
 HigherOrderNewton = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(trust_method=None)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(2, trust_method=None)),
     needs_closure=True,
     func='rosen', steps=1, loss=2e-10, merge_invariant=True,
     sphere_steps=1, sphere_loss=1e-10,
+)
+
+# ---------------------------- optimizers/ladagrad --------------------------- #
+LAdagrad = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.LAdagrad(), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.LAdagrad(), tz.m.LR(5)),
+    needs_closure=False,
+    func='booth', steps=50, loss=0.001, merge_invariant=True,
+    sphere_steps=20, sphere_loss=1,
 )
 
 # ------------------------------------ CGs ----------------------------------- #
