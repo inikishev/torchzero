@@ -3,7 +3,7 @@ FAQ
 
 How to construct modular optimizers?
 =====================================
-A modular optimizer can be created using the :py:class:`tz.Modular<torchzero.optim.Modular>` class. It can be constructed as :code:`tz.Modular(params, *modules)`, or as :code:`tz.Modular(params, [modules])`.
+A modular optimizer can be created using the :py:class:`tz.Modular<torchzero.core.Modular>` class.
 
 All modules are available in :py:mod:`tz.m<torchzero.modular>` namespace, e.g. :py:class:`tz.m.Adam<torchzero.modules.Adam>`.
 
@@ -14,26 +14,26 @@ All modules are available in :py:mod:`tz.m<torchzero.modular>` namespace, e.g. :
         model.parameters(),
         tz.m.Adam(),
         tz.m.Cautious(),
+        tz.m.WeightDecay(1e-3),
         tz.m.LR(1e-3),
-        tz.m.WeightDecay(),
     )
 
 In this examples, we're constructing an optimizer with four modules:
 
 * Adam: applies the Adam update rule to the gradients an passes to the :code:`Cautious` module.
 * Cautious: Applies "cautioning" to the update and passes it to :code:`LR`.
+* WeightDecay: Adds a weight decay penalty to the update. Since this is applied after :code:`Adam`, it is decoupled.
 * LR(1e-3): Scales the update by 1e-3 and passes it to :code:`WeightDecay`.
-* WeightDecay: Adds a weight decay penalty to the update. Since this is applied after :code:`Adam` and :code:`LR`, weight decay is fully decoupled.
 
 The resulting update is subtracted from model parameters.
 
-It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates (see :ref:`how do we handle learning rates?`).
+It is recommended to always add an :py:class:`tz.m.LR<torchzero.modules.LR>` module to support lr schedulers and per-layer learning rates.
 
-Most modules perform gradient transformations, so they take in an ascent direction, which is initially the gradient, transform it in some way, and pass to the next module. The first module in the chain usually uses the gradient as the initial ascent direction.
+Most modules perform gradient transformations, so they take in input tensors, which is initially the gradient, transform them in some way, and pass to the next module. The first module in the chain usually uses the gradient as the initial update.
 
-Certain modules, such as gradient-approximation ones or :py:class:`tz.m.ExactNewton<torchzero.modules.ExactNewton>`, create an ascent direction "from scratch", so they should be placed first in the chain.
+Certain modules, such as gradient-approximation ones or :py:class:`tz.m.Newton<torchzero.modules.Newton>`, create an ascent direction "from scratch", so they should be placed first in the chain.
 
-Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>` and :py:class:`tz.m.WrapClosure<torchzero.modules.WrapClosure>` (see :ref:`How to use external PyTorch optimizers as chainable modules?`).
+Any external PyTorch optimizer can also be used as a chainable module by using :py:class:`tz.m.Wrap<torchzero.modules.Wrap>`.
 
 A list of all modules is available at https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html
 
@@ -47,7 +47,9 @@ Using torchzero optimizers is generally similar to using built-in PyTorch optimi
 
     opt = tz.Modular(
         model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
+        tz.m.Adam(),
+        tz.m.WeightDecay(1e-3),
+        tz.m.LR(1e-3),
     )
 
     for inputs, targets in dataloader:
@@ -68,7 +70,10 @@ Here's how a training loop with a closure looks:
 
     opt = tz.Modular(
         model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
+        tz.m.Adam(),
+        tz.m.WeightDecay(1e-3)
+        tz.m.LR(1e-3),
+
     )
 
     for inputs, targets in dataloader:
@@ -89,36 +94,7 @@ If you intend to use gradient-free methods, :code:`backward` argument is still r
 
 How to use learning rate schedulers?
 =============================================
-There are two primary methods for using learning rate schedulers.
-
-You can directly pass a learning rate scheduler class or constructor to the scheduler_cls argument of the :py:class:`tz.m.LR<torchzero.modules.LR>` module:
-
-.. code:: python
-
-    from torch.optim.lr_scheduler import OneCycleLR
-
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Adam(),
-        tz.m.LR(1e-1, scheduler_cls = lambda opt: OneCycleLR(opt, max_lr = 1e-1, total_steps = 60_000)),
-        tz.m.WeightDecay(),
-    )
-
-This method has the advantage of supporting momentum cycling. Some schedulers, like :code:`OneCycleLR`, not only adjust the learning rate but also cycle momentum parameters. When using scheduler_cls with tz.m.LR, momentum cycling will be automatically applied to all modules in your optimizer chain that have :code:`momentum` or :code:`beta1` parameters.
-
-Alternatively, learning rate scheduler can be created separately by passing it the LR module, which can be accessed with :py:meth:`get_lr_module<torchzero.optim.Modular.get_lr_module>` method like this:
-
-.. code:: python
-
-    opt = tz.Modular(
-        model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
-    )
-
-    scheduler = OneCycleLR(opt.get_lr_module(), max_lr = 1e-1, total_steps=60_000)
-
-Here :code:`get_lr_module` returns the :py:class:`tz.m.LR<torchzero.modules.LR>`, even if it is nested somewhere. You can then call :code:`scheduler.step()` as usual. This method does not support cycling momentum.
-
+TODO
 
 How to specify per-parameter options?
 =============================================
@@ -135,7 +111,9 @@ You can define parameter groups as a list of dictionaries, just like in PyTorch.
 
     optimizer = tz.Modular(
         param_groups,
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
+        tz.m.Adam(),
+        tz.m.WeightDecay(1e-3)
+        tz.m.LR(1e-3),
     )
 
 In this example:
@@ -149,7 +127,7 @@ When you specify a parameter like eps in the parameter groups, it will be applie
 
 For instance, both :py:class:`tz.m.Adam<torchzero.modules.Adam>` and :py:class:`tz.m.RandomizedFDM<torchzero.modules.RandomizedFDM>` modules have an eps parameter, but they have completely different meanings and value ranges in each module. Applying an eps setting intended for Adam to RandomizedFDM could cause unexpected behavior.
 
-To avoid this issue and ensure settings are applied to the intended modules, use the :code:`set_params` method. This allows you to pass parameter groups specifically to a particular module.
+To avoid this issue and ensure settings are applied to the intended modules, use the :code:`set_param_groups` method. This allows you to pass parameter groups specifically to a particular module.
 
 .. code:: python
 
@@ -162,38 +140,24 @@ To avoid this issue and ensure settings are applied to the intended modules, use
     adam = tz.m.Adam()
 
     # 2. Apply custom parameter groups to the Adam module using set_params
-    adam.set_params(adam_param_groups)
+    adam.set_param_groups(adam_param_groups)
 
     # 3. Create the modular optimizer, passing the configured Adam module
     optimizer = tz.Modular(
         model.parameters(),
-        [adam, tz.m.LR(1e-3), tz.m.WeightDecay()]
+        adam,
+        tz.m.WeightDecay(1e-3),
+        tz.m.LR(1e-3),
     )
 
 
-You don't have to worry about this if you are only setting per-layer lr, because the only module that has an :code:`lr` setting is :py:class:`tz.m.LR<torchzero.modules.LR>` (see :ref:`How do we handle learning rates?`).
+You don't have to worry about this if you are only setting per-layer lr, because the only module that has an :code:`lr` setting is :py:class:`tz.m.LR<torchzero.modules.LR>`.
 
 How do we handle learning rates?
 =================================
 Certain optimisers, like Adam, have learning rate built into the update rule. Using multiple such modules can result in unintended compounding of learning rate modifications.
 
 To avoid this, learning rate should be applied by a singular :py:class:`tz.m.LR<torchzero.modules.LR>` module. All other modules with a learning rate, such as :py:class:`tz.m.Adam<torchzero.modules.Adam>`, have `lr` renamed to `alpha` with the default value of 1 to avoid rescaling the update.
-
-For example:
-
-.. code:: python
-
-    tz.Modular(
-        model.parameters(),
-        [tz.m.Adam(), tz.m.LR(1e-3), tz.m.WeightDecay()]
-    )
-
-Here, instead of using Adam's `alpha` setting, we added an :code:`LR` module. This allows this modular optimizer to support per-parameter `lr` setting and learning rate schedulers, without having to worry about learning rate compounding.
-
-See also:
-
-* :ref:`how to use learning rate schedulers?`
-* :ref:`How to specify per-parameter options?`
 
 How to use external PyTorch optimizers as chainable modules?
 ============================================================
@@ -215,13 +179,8 @@ Here is an example of converting :code:`LaProp` optimizer from `pytorch_optimize
 
 Most pytorch optimizers update model parameters by using their :code:`.grad` attibute. Wrap puts the current update into the :code:`.grad`, making the wrapped optimizer use it instead.
 
-Note that since the wrapped optimizer updates model parameters directly, if :class:`Wrap` is not the last module, it stores model parameters before the step, then performs a step with the wrapped optimizer, calculates the update as difference between model parameters before and after the step, undoes the step, and passes the update to the next module. That may introduce additional overhead compared to using modules.
-
-However when :py:class:`Wrap` is the last module in the chain, it simply makes a step with the wrapped optimizer, so no overhead is introduced.
-
 Also notice how I set `lr` to 1 in LaProp, and instead used an :py:class:`tz.m.LR<torchzero.modules.LR>` module. As usual, to make the optimizer support lr scheduling and per-layer learning rates, use the :py:class:`LR` module to set the learning rate. Alternatively pass per-layer parameters or apply scheduling directly to LaProp optimizer, before wrapping it.
 
-There is also a :py:class:`tz.m.WrapClosure<torczhero.modules.WrapClosure>` for optimizers that require closure, such as :code:`torch.optim.LBFGS`. It modifies the closure to set :code:`.grad` attribute on each closure evaluation. So you can use LBFGS with FDM or gradient smoothing methods.
 
 How to save/serialize a modular optimizer?
 ============================================
@@ -245,30 +204,3 @@ So you can use the standard code for saving and loading:
     checkpoint = torch.load(PATH, weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-
-How much overhead does a torchzero modular optimizer have compared to a normal optimizer?
-==========================================================================================
-Since some optimizers, like Adam, have learning rate baked into the update rule, but we use LR module instead, that requires an extra add operation. Currently if :code:`tz.m.Adam` or :code:`tz.m.Wrap` are directly followed by a :code:`tz.m.LR`, they will be automatically fused (:code:`Wrap` fuses only when wrapped optimizer has an :code:`lr` parameter) to mitigate that. However adding LR fusing to all modules with a learning rate is not a priority. From what I can tell this overhead is negligible.
-
-Whenever possible I used `_foreach_xxx <https://pytorch.org/docs/stable/torch.html#foreach-operations>`_ operations. Those operate on all parameters at once instead of using a slow python for-loops. This makes the optimizers way quicker, especially with a lot of different parameter tensors. Also all modules change the update in-place whenever possible.
-
-Is there support for complex-valued parameters?
-=================================================
-Pass :code:`[i.view_as_real() for i in model.parameters()]` as parameters.
-
-Is there support for optimized parameters being on different devices?
-======================================================================
-Maybe, I need to test this.
-
-Is there support for FSDP (FullyShardedDataParallel)?
-======================================================
-There is no support for FDSP. It may be possible to add some FDSP module, I will look into it at some point. Currently I don't think I can even use FDSP because I only have one laptop.
-
-Is there support for differentiable optimizers?
-======================================================
-There is no support for differentiable optimizers.
-
-In PyTorch most optimizers have a :code:`differentiable` argument runs autograd through optimizer step, for example :code:`torch.optim.Adam(params, 1e-3, differentiable=True)`.
-
-I have not looked into this yet, adding support may or may not be as easy as switching :code:`@torch.no_grad` decorator to :code:`@_use_grad_for_differentiable`.

@@ -283,6 +283,7 @@ class HeavyBall(Module):
         super().__init__(defaults)
 
     def step(self, var: Var):
+        # Var object holds all attributes used for optimization - parameters, gradient, update, etc.
         # a module takes a Var object, modifies it or creates a new one, and returns it
         # Var has a bunch of attributes, including parameters, gradients, update, closure, loss
         # for now we are only interested in update, and we will apply the heavyball rule to it.

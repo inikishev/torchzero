@@ -9,7 +9,7 @@ Modules are not limited to gradient transformations. They can perform other oper
 
 There are over 100 modules, all accessible within the :py:mod:`tz.m<torchzero.modular>` namespace. For example, the Adam update rule is available as :py:class:`tz.m.Adam<torchzero.modules.Adam>`. Complete list of modules is available in [documentation](https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html).
 
-Modules can be chained with :py:class:`tz.Modular<torchzero.optim.Modular>` and used as any other pytorch optimizer. Here’s an example of how to define a Cautious Adam optimizer with gradient clipping and decoupled weight decay:
+Modules can be chained with :py:class:`tz.Modular<torchzero.core.Modular>` and used as any other pytorch optimizer. Here’s an example of how to define a Cautious Adam optimizer with gradient clipping and decoupled weight decay:
 
 .. code:: python
 
@@ -28,9 +28,9 @@ Modules can be chained with :py:class:`tz.Modular<torchzero.optim.Modular>` and 
         model.parameters(),
         tz.m.ClipValue(1),
         tz.m.Adam(),
-        tz.m.LR(1e-1),
         tz.m.Cautious(),
         tz.m.WeightDecay(1e-4),
+        tz.m.LR(1e-1),
     )
 
     # standard training loop

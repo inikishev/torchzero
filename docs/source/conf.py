@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import sys, os
-#sys.path.insert(0, os.path.abspath('.../src'))  
+#sys.path.insert(0, os.path.abspath('.../src'))
 
 project = 'torchzero'
 copyright = '2024, Ivan Nikishev'
@@ -27,7 +27,7 @@ extensions = [
     # 'sphinx_rtd_theme',
 ]
 autosummary_generate = True
-autoapi_dirs = ['../../src']
+autoapi_dirs = ['../../torchzero']
 autoapi_type = "python"
 # autoapi_ignore = ["*/tensorlist.py"]
 
