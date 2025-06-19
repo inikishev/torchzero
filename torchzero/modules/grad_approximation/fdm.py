@@ -89,12 +89,22 @@ _FD_FUNCS = {
 
 
 class FDM(GradApproximator):
-    """Approximate gradients via finite difference method
+    """Approximate gradients via finite difference method.
 
     Args:
         h (float, optional): magnitude of parameter perturbation. Defaults to 1e-3.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         target (GradTarget, optional): what to set on var. Defaults to 'closure'.
+
+    ## Examples:
+    plain FDM:
+    .. code:: py
+    fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
+
+    NewtonCG with FDM - any gradient-based method can use FDM-estimated gradients seamlessly.
+    In NewtonCG hessian-vector product should be set to be estimated from gradient difference, as by default
+    it uses autograd.
+    fdm_ncg = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.NewtonCG(hvp_method="forward"), tz.m.Backtracking())
     """
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)

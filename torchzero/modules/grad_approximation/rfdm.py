@@ -148,6 +148,7 @@ class RandomizedFDM(GradApproximator):
 
     By setting pre_generate to True, perturbations are generated once before each step,
     and each closure call estimates gradients using the same pre-generated perturbations.
+    This way closure-based algorithms are able to use gradients estimated in a consistent way.
     .. code:: py
         opt = tz.Modular(
             model.parameters(),
@@ -161,6 +162,7 @@ class RandomizedFDM(GradApproximator):
 
     To alleviate this momentum can be added to random perturbations to make sure they only
     change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
+    The disadvantage is that the subspace the algorithm is able to explore changes slowly.
 
     Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
     .. code:: py

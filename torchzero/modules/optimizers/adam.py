@@ -33,7 +33,7 @@ def adam_(
     params: list[torch.Tensor] | None = None,
     grads: list[torch.Tensor] | None = None,
 ):
-    """Returns new tensors or updates params in-place."""
+    """Returns new tensors."""
     sqrt_exp_avg_sq = sqrt_ema_sq_(tensors, exp_avg_sq_=exp_avg_sq_, beta=beta2, max_exp_avg_sq_=max_exp_avg_sq_,
                                    debiased=False,step=step,pow=pow)
 
