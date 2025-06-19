@@ -353,7 +353,7 @@ A wrapper for [NLOpt](https://github.com/stevengj/nlopt) with gradients supplied
 
 #### torchzero.optim.wrappers.nevergrad.NevergradWrapper
 
-A wrapper for [nevergrad](https://facebookresearch.github.io/nevergrad/) which has a huge library if gradient free [algorithms](https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers)
+A wrapper for [nevergrad](https://facebookresearch.github.io/nevergrad/) which has a huge library of gradient free [algorithms](https://facebookresearch.github.io/nevergrad/optimizers_ref.html#optimizers)
 
 ---
 
