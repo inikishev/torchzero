@@ -23,7 +23,7 @@ class OptunaSampler(Optimizer):
     Note - optuna is surprisingly scalable to large number of parameters (up to 10,000), despite literally requiring a for-loop because it only supports scalars. Default TPESampler is good for BBO. Maybe not for NNs...
 
     Args:
-        params (_type_): parameters
+        params: iterable of parameters to optimize or dicts defining parameter groups.
         lb (float): lower bounds.
         ub (float): upper bounds.
         sampler (optuna.samplers.BaseSampler | type[optuna.samplers.BaseSampler] | None, optional): sampler. Defaults to None.

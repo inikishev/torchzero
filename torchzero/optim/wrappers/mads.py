@@ -31,16 +31,15 @@ class MADS(Optimizer):
     solution.
 
     Args:
-        params (params): params
-        lb (float): lower bounds
-        ub (float): upper bounds
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        lb (float): lower bounds, this can also be specified in param_groups.
+        ub (float): upper bounds, this can also be specified in param_groups.
         dp (float, optional): Initial poll size as percent of bounds. Defaults to 0.1.
         dm (float, optional): Initial mesh size as percent of bounds. Defaults to 0.01.
-        dp_tol (_type_, optional): Minimum poll size stopping criteria. Defaults to -float('inf').
-        nitermax (_type_, optional): Maximum objective function evaluations. Defaults to float('inf').
+        dp_tol (float, optional): Minimum poll size stopping criteria. Defaults to -float('inf').
+        nitermax (float, optional): Maximum objective function evaluations. Defaults to float('inf').
         displog (bool, optional): whether to show log. Defaults to False.
         savelog (bool, optional): whether to save log. Defaults to False.
-
     """
     def __init__(
         self,

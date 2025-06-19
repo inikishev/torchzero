@@ -33,8 +33,45 @@ class DirectSearch(Optimizer):
     solution.
 
     Args:
-        params (_type_): _description_
-        maxevals (_type_, optional): _description_. Defaults to DEFAULT_PARAMS['maxevals'].
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+
+        rho: Choice of the forcing function.
+
+        sketch_dim: Reduced dimension to generate polling directions in.
+
+        sketch_type: Sketching technique to be used.
+
+        maxevals: Maximum number of calls to f performed by the algorithm.
+
+        poll_type: Type of polling directions generated in the reduced spaces.
+
+        alpha0: Initial value for the stepsize parameter.
+
+        alpha_max: Maximum value for the stepsize parameter.
+
+        alpha_min: Minimum value for the stepsize parameter.
+
+        gamma_inc: Increase factor for the stepsize update.
+
+        gamma_dec: Decrease factor for the stepsize update.
+
+        verbose:
+            Boolean indicating whether information should be displayed during an algorithmic run.
+
+        print_freq:
+            Value indicating how frequently information should be displayed.
+
+        use_stochastic_three_points:
+            Boolean indicating whether the specific stochastic three points method should be used.
+
+        poll_scale_prob: Probability of scaling the polling directions.
+
+        poll_scale_factor: Factor used to scale the polling directions.
+
+        rho_uses_normd:
+            Boolean indicating whether the forcing function should account for the norm of the direction.
+
+
     """
     def __init__(
         self,

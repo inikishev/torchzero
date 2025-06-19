@@ -27,18 +27,25 @@ class FcmaesWrapper(Optimizer):
     Note that this performs full minimization on each step, so only perform one step with this.
 
     Args:
-        params (_type_): _description_
-        lb (float): _description_
-        ub (float): _description_
-        optimizer (fcmaes.optimizer.Optimizer | None, optional): _description_. Defaults to None.
-        max_evaluations (int | None, optional): _description_. Defaults to 50000.
-        value_limit (float | None, optional): _description_. Defaults to np.inf.
-        num_retries (int | None, optional): _description_. Defaults to 1.
-        workers (int, optional): _description_. Defaults to 1.
-        popsize (int | None, optional): _description_. Defaults to 31.
-        capacity (int | None, optional): _description_. Defaults to 500.
-        stop_fitness (float | None, optional): _description_. Defaults to -np.inf.
-        statistic_num (int | None, optional): _description_. Defaults to 0.
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        lb (float): lower bounds, this can also be specified in param_groups.
+        ub (float): upper bounds, this can also be specified in param_groups.
+        optimizer (fcmaes.optimizer.Optimizer | None, optional):
+            optimizer to use. Default is a sequence of differential evolution and CMA-ES.
+        max_evaluations (int | None, optional):
+            Forced termination of all optimization runs after `max_evaluations` function evaluations.
+            Only used if optimizer is undefined, otherwise this setting is defined in the optimizer. Defaults to 50000.
+        value_limit (float | None, optional): Upper limit for optimized function values to be stored. Defaults to np.inf.
+        num_retries (int | None, optional): Number of optimization retries. Defaults to 1.
+        popsize (int | None, optional):
+            CMA-ES population size used for all CMA-ES runs.
+            Not used for differential evolution.
+            Ignored if parameter optimizer is defined. Defaults to 31.
+        capacity (int | None, optional): capacity of the evaluation store.. Defaults to 500.
+        stop_fitness (float | None, optional):
+            Limit for fitness value. optimization runs terminate if this value is reached. Defaults to -np.inf.
+        statistic_num (int | None, optional):
+            if > 0 stores the progress of the optimization. Defines the size of this store. Defaults to 0.
     """
     def __init__(
         self,
@@ -49,7 +56,7 @@ class FcmaesWrapper(Optimizer):
         max_evaluations: int | None = 50000,
         value_limit: float | None = np.inf,
         num_retries: int | None = 1,
-        workers: int = 1,
+        # workers: int = 1,
         popsize: int | None = 31,
         capacity: int | None = 500,
         stop_fitness: float | None = -np.inf,
@@ -60,6 +67,7 @@ class FcmaesWrapper(Optimizer):
         kwargs = locals().copy()
         del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
         self._kwargs = kwargs
+        self._kwargs['workers'] = 1
 
     def _objective(self, x: np.ndarray, params: TensorList, closure) -> float:
         if self.raised: return np.inf

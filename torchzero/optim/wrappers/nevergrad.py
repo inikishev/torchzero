@@ -29,6 +29,12 @@ class NevergradWrapper(Optimizer):
             use certain rule for first 50% of the steps, and then switch to another rule.
             This parameter doesn't actually limit the maximum number of steps!
             But it doesn't have to be exact. Defaults to None.
+        lb (float | None, optional):
+            lower bounds, this can also be specified in param_groups. Bounds are optional, however
+            some nevergrad algorithms will raise an exception of bounds are not specified.
+        ub (float, optional):
+            upper bounds, this can also be specified in param_groups. Bounds are optional, however
+            some nevergrad algorithms will raise an exception of bounds are not specified.
         mutable_sigma (bool, optional):
             nevergrad parameter, sets whether the mutation standard deviation must mutate as well
             (for mutation based algorithms). Defaults to False.
@@ -44,11 +50,20 @@ class NevergradWrapper(Optimizer):
         params,
         opt_cls:"type[ng.optimizers.base.Optimizer] | abc.Callable[..., ng.optimizers.base.Optimizer]",
         budget: int | None = None,
-        mutable_sigma = False,
         lb: float | None = None,
         ub: float | None = None,
+        mutable_sigma = False,
         use_init = True,
     ):
+        """_summary_
+
+        Args:
+            params (_type_): _description_
+            opt_cls (type[ng.optimizers.base.Optimizer] | abc.Callable[..., ng.optimizers.base.Optimizer]): _description_
+            budget (int | None, optional): _description_. Defaults to None.
+            mutable_sigma (bool, optional): _description_. Defaults to False.
+            use_init (bool, optional): _description_. Defaults to True.
+        """
         defaults = dict(lb=lb, ub=ub, use_init=use_init, mutable_sigma=mutable_sigma)
         super().__init__(params, defaults)
         self.opt_cls = opt_cls
