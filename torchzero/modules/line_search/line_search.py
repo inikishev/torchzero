@@ -34,11 +34,10 @@ class LineSearch(Module, ABC):
         * `make_objective` - creates a function that accepts a scalar step size and returns loss. This can be passed to a scalar solver, such as scipy.optimize.minimize_scalar.
         * `make_objective_with_derivative` - creates a function that accepts a scalar step size and returns a tuple with loss and directional derivative. This can be passed to a scalar solver.
 
-    Examples:
-    .. code:: py
+    ## Examples:
+    #### Basic line search
+    This evaluates all step sizes in a range by using the :code:`self.evaluate_step_size` method.
     ```
-    # example of defining a basic grid line search which evaluates all step sizes in a range.
-    # by using self.evaluate_step_size
     class GridLineSearch(LineSearch):
         def __init__(self, start, end, num):
             defaults = dict(start=start,end=end,num=num)
@@ -46,7 +45,10 @@ class LineSearch(Module, ABC):
 
         @torch.no_grad
         def search(self, update, var):
-            start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
+            settings = self.settings[var.params[0]]
+            start = settings["start"]
+            end = settings["end"]
+            num = settings["num"]
 
             lowest_loss = float("inf")
             best_step_size = best_step_size
@@ -58,8 +60,10 @@ class LineSearch(Module, ABC):
                     best_step_size = step_size
 
             return best_step_size
-
-    # example of passing self.make_objective to scipy.optimize.minimize_scalar solver
+    ```
+    #### Using external solver via self.make_objective
+    Here we let :code:`scipy.optimize.minimize_scalar` solver find the best step size via :code:`self.make_objective`
+    ```
     class ScipyMinimizeScalar(LineSearch):
         def __init__(self, method: str | None = None):
             defaults = dict(method=method)
@@ -212,17 +216,17 @@ class LineSearch(Module, ABC):
         return var
 
 
-class GridLineSearch(LineSearch):
-    """Mostly for testing, this is not practical"""
-    def __init__(self, start, end, num):
-        defaults = dict(start=start,end=end,num=num)
-        super().__init__(defaults)
+# class GridLineSearch(LineSearch):
+#     """Mostly for testing, this is not practical"""
+#     def __init__(self, start, end, num):
+#         defaults = dict(start=start,end=end,num=num)
+#         super().__init__(defaults)
 
-    @torch.no_grad
-    def search(self, update, var):
-        start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
+#     @torch.no_grad
+#     def search(self, update, var):
+#         start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
 
-        for lr in torch.linspace(start,end,num):
-            self.evaluate_step_size(lr.item(), var=var, backward=False)
+#         for lr in torch.linspace(start,end,num):
+#             self.evaluate_step_size(lr.item(), var=var, backward=False)
 
-        return self._best_step_size
+#         return self._best_step_size
