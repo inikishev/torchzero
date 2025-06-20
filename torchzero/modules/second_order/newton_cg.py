@@ -19,8 +19,12 @@ class NewtonCG(Module):
     differentiation or approximated using finite differences.
 
     .. note::
+        In most cases NewtonCG should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+
+    .. note::
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
     .. warning::
         CG may fail if hessian is not positive-definite.

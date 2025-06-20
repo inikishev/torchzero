@@ -61,6 +61,17 @@ def eig_tikhonov_(H: torch.Tensor, reg: float):
 class Newton(Module):
     """Exact newton's method via autograd.
 
+    .. note::
+        In most cases Newton should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating the hessian.
+        The closure must accept a ``backward`` argument (refer to documentation).
+
+    .. warning::
+        this uses roughly O(N^2) memory.
+
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
         eig_reg (bool, optional):
@@ -84,7 +95,9 @@ class Newton(Module):
 
     Examples:
         Newton's method with backtracking line search
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Newton(),
@@ -92,7 +105,9 @@ class Newton(Module):
             )
 
         Newton's method modified for non-convex functions by taking matrix absolute value of the hessian
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Newton(eigval_tfm=torch.abs),
@@ -100,7 +115,9 @@ class Newton(Module):
             )
 
         Newton's method modified for non-convex functions by searching along negative curvature directions
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Newton(search_negative=True),
@@ -108,7 +125,9 @@ class Newton(Module):
             )
 
         Newton preconditioning applied to momentum
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Newton(inner=tz.m.EMA(0.9)),

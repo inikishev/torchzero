@@ -17,7 +17,8 @@ class ForwardGradient(RandomizedFDM):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
+
 
     Args:
         n_samples (int, optional): number of random gradient samples. Defaults to 1.

@@ -159,11 +159,15 @@ class SOAP(Transform):
 
     Examples:
         SOAP:
+
         .. code-block:: python
+
             opt = tz.Modular(model.parameters(), tz.m.SOAP(), tz.m.LR(1e-3))
 
         Stabilized SOAP:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.SOAP(),

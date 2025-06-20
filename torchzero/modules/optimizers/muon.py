@@ -152,7 +152,7 @@ class Orthogonalize(TensorwiseTransform):
     The Muon page says that embeddings and classifier heads should not be orthogonalized.
     Usually only matrix parameters that are directly used in matmuls should be orthogonalized.
 
-    To make Muon, use Split with Adam on 1d params: TODO code example.
+    To make Muon, use Split with Adam on 1d params
 
     Args:
         ns_steps (int, optional):
@@ -167,24 +167,25 @@ class Orthogonalize(TensorwiseTransform):
             what to set on var.
 
 
-    Example:
-    .. code:: py
-    ```
-    # standard Muon with adam fallback
-    opt = tz.Modular(
-        model.head.parameters(),
-        tz.m.Split(
-            # apply muon only to 2D+ parameters
-            filter = lambda t: t.ndim >= 2,
-            true = [
-                tz.m.HeavyBall(),
-                tz.m.Orthogonalize(),
-                tz.m.LR(1e-2),
-            ],
-            false = tz.m.Adam()
-        ),
-        tz.m.LR(1e-2)
-    )
+    Examples:
+        standard Muon with Adam fallback
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.head.parameters(),
+                tz.m.Split(
+                    # apply muon only to 2D+ parameters
+                    filter = lambda t: t.ndim >= 2,
+                    true = [
+                        tz.m.HeavyBall(),
+                        tz.m.Orthogonalize(),
+                        tz.m.LR(1e-2),
+                    ],
+                    false = tz.m.Adam()
+                ),
+                tz.m.LR(1e-2)
+            )
     """
     def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
                  method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):

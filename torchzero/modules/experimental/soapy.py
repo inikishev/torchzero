@@ -13,7 +13,10 @@ from ..optimizers.soap import (
 )
 
 class SOAPY(Transform):
-    """Adam but uses scaled gradient differences for GGᵀ. Please note that this is experimental and isn't guaranteed to work.
+    """Adam but uses scaled gradient differences for GGᵀ.
+
+    .. warning::
+        Experimental.
 
     New args:
         scale_by_s - whether to scale gradient differences by parameter differences

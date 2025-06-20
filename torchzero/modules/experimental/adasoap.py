@@ -33,7 +33,10 @@ def update_adasoap_covariances_(
 
 
 class AdaSOAP(Transform):
-    """SOAP with diagonally preconditioned GG^Ts. Please note that this is experimental and isn't guaranteed to work.
+    """SOAP with diagonally preconditioned GG^Ts.
+
+    .. warning::
+        Experimental.
 
     precond_beta - beta for GG^T squares
     """

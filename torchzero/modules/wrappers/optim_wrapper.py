@@ -23,7 +23,9 @@ class Wrap(Module):
 
     Example:
         wrapping pytorch_optimizer.StableAdamW
+
         .. code-block:: py
+
             from pytorch_optimizer import StableAdamW
             opt = tz.Modular(
                 model.parameters(),

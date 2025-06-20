@@ -304,12 +304,13 @@ class SignConsistencyMask(Transform):
 
         GD that skips update for weights where gradient sign changed compared to previous gradient.
 
-        .. code-block:: py
+        .. code-block:: python
 
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Mul(tz.m.SignConsistencyMask()),
-                tz.m.LR(1e-2))
+                tz.m.LR(1e-2)
+            )
 
     """
     def __init__(self,target: Target = 'update'):
@@ -332,11 +333,14 @@ class SignConsistencyLRs(Transform):
 
         GD scaled by consecutive gradient sign consistency
 
-        .. code:: py
+        .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Mul(tz.m.SignConsistencyLRs()),
-                tz.m.LR(1e-2))
+                tz.m.LR(1e-2)
+            )
+
     """
     def __init__(
         self,

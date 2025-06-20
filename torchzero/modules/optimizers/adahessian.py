@@ -119,6 +119,7 @@ class AdaHessian(Module):
         Using AdaHessian:
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.AdaHessian(),
@@ -130,6 +131,7 @@ class AdaHessian(Module):
         AdaHessian preconditioning to nesterov momentum (:code:`tz.m.NAG`):
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),

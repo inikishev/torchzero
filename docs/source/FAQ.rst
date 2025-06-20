@@ -204,7 +204,7 @@ How to save/serialize a modular optimizer?
 ============================================
 Please refer to pytorch docs https://pytorch.org/tutorials/beginner/saving_loading_models.html.
 
-Like pytorch optimizers, torchzero modular optimizers and modules support :code:`opt.state_dict()` and :code:`opt.load_state_dict()`, which saves and loads state dicts of all modules, including nested ones.
+Like pytorch optimizers, torchzero modular optimizers support :code:`opt.state_dict()` and :code:`opt.load_state_dict()`, which saves and loads state dicts of all modules, including nested ones.
 
 So you can use the standard code for saving and loading:
 

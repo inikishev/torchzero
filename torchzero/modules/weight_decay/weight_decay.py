@@ -31,7 +31,9 @@ class WeightDecay(Transform):
 
     Examples:
         Adam with non-decoupled weight decay
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.WeightDecay(1e-3),
@@ -40,7 +42,9 @@ class WeightDecay(Transform):
             )
 
         Adam with decoupled weight decay that still scales with learning rate
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
@@ -49,7 +53,9 @@ class WeightDecay(Transform):
             )
 
         Adam with fully decoupled weight decay that doesn't scale with learning rate
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
@@ -83,7 +89,9 @@ class RelativeWeightDecay(Transform):
 
     Examples:
         Adam with non-decoupled relative weight decay
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.RelativeWeightDecay(1e-3),
@@ -92,7 +100,9 @@ class RelativeWeightDecay(Transform):
             )
 
         Adam with decoupled relative weight decay
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),

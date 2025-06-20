@@ -113,7 +113,9 @@ class Shampoo(Transform):
 
     Examples:
         Shampoo grafted to Adam
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(), tz.m.GraftModules(
                     direction = tz.m.Shampoo(),
@@ -123,7 +125,9 @@ class Shampoo(Transform):
             )
 
         Adam with Shampoo preconditioner
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),

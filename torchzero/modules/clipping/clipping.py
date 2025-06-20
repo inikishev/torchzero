@@ -152,8 +152,11 @@ class ClipValue(Transform):
         target (str): refer to :ref:`target argument` in documentation.
 
     Examples:
+
         Gradient clipping:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.ClipValue(1),
@@ -162,13 +165,16 @@ class ClipValue(Transform):
             )
 
         Update clipping:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
                 tz.m.ClipValue(1),
                 tz.m.LR(1e-2),
             )
+
     """
     def __init__(self, value: float, target: Target = 'update'):
         defaults = dict(value=value)
@@ -198,8 +204,11 @@ class ClipNorm(Transform):
             what this affects.
 
     Examples:
+
         Gradient norm clipping:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.ClipNorm(1),
@@ -208,7 +217,9 @@ class ClipNorm(Transform):
             )
 
         Update norm clipping:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
@@ -263,8 +274,11 @@ class Normalize(Transform):
             what this affects.
 
     Examples:
+
         Gradient normalization:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Normalize(1),
@@ -273,7 +287,9 @@ class Normalize(Transform):
             )
 
         Update normalization:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
@@ -363,8 +379,11 @@ class Centralize(Transform):
             minimal size of a dimension to normalize along it. Defaults to 1.
 
     Examples:
+
         Standard gradient centralization:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Centralize(dim=0),

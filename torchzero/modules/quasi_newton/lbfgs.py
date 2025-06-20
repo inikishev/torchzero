@@ -125,7 +125,9 @@ class LBFGS(Module):
 
     Examples:
         L-BFGS with strong-wolfe line search
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(100),
@@ -133,7 +135,9 @@ class LBFGS(Module):
             )
 
         Dampened L-BFGS
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(damping=True),
@@ -141,7 +145,9 @@ class LBFGS(Module):
             )
 
         L-BFGS preconditioning applied to momentum
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(inner=tz.m.EMA(0.9)),

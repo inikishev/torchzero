@@ -12,9 +12,19 @@ from ...utils.linalg.solve import nystrom_sketch_and_solve, nystrom_pcg
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
 
-    If this is unstable, increase the :code:`reg` parameter and tune the rank.
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
-    Note: :code:`tz.m.NystromPCG` usually outperforms this.
+    .. note::
+        In most cases NystromSketchAndSolve should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+
+    .. note::
+        If this is unstable, increase the :code:`reg` parameter and tune the rank.
+
+    .. note:
+        :code:`tz.m.NystromPCG` usually outperforms this.
 
     Args:
         rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
@@ -36,7 +46,9 @@ class NystromSketchAndSolve(Module):
 
     Examples:
         NystromSketchAndSolve with backtracking line search
+
         .. code-block:: python
+
         opt = tz.Modular(
             model.parameters(),
             tz.m.NystromSketchAndSolve(10),
@@ -126,6 +138,14 @@ class NystromPCG(Module):
     This tends to outperform NewtonCG but requires tuning sketch size.
     An adaptive version exists in https://arxiv.org/abs/2110.02820, I might implement it too at some point.
 
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
+
+    .. note::
+        In most cases NystromPCG should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+
     Args:
         sketch_size (int):
             size of the sketch for preconditioning, this many hessian-vector products will be evaluated before
@@ -154,8 +174,11 @@ class NystromPCG(Module):
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
+
         NystromPCG with backtracking line search
+
         .. code-block:: python
+
             opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
 
     Reference:

@@ -49,6 +49,7 @@ class GradApproximator(Module, ABC):
                     # restore original params
                     torch._foreach_add_(params, perturbation)
 
+                    # calculate SPSA gradients
                     spsa_grads = []
                     for p, pert in zip(params, perturbation):
                         settings = self.settings[p]

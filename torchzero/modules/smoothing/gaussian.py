@@ -67,6 +67,13 @@ class GaussianHomotopy(Reformulation):
     """Approximately smoothes the function with a gaussian kernel by sampling it at random perturbed points around current point. Both function values and gradients are averaged over all samples. The perturbed points are generated before each
     step and remain the same throughout the step.
 
+    .. note::
+        This module reformulates the objective, it modifies the closure to evaluate value and gradients of a smoothed function. All modules after this will operate on the modified objective.
+
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients at perturbed points.
+
     Args:
         n_samples (int): number of points to sample, larger values lead to a more accurate smoothing.
         init_sigma (float): initial scale of perturbations.
@@ -79,14 +86,17 @@ class GaussianHomotopy(Reformulation):
         seed (int | None, optional): seed for random perturbationss. Defaults to None.
 
     Examples:
-        smoothed NewtonCG
+        Gaussian-smoothed NewtonCG
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.GaussianHomotopy(100),
                 tz.m.NewtonCG(maxiter=20),
                 tz.m.AdaptiveBacktracking(),
             )
+
     """
     def __init__(
         self,

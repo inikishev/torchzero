@@ -7,7 +7,11 @@ from ...utils.linalg import matrix_power_eigh
 
 
 class TensorAdagrad(TensorwiseTransform):
-    """3rd order whitening (maybe normalizes skewness). Please note that this is experimental and isn't guaranteed to work."""
+    """3rd order whitening (maybe normalizes skewness, but don't quote me on it).
+
+    .. warning::
+        Experimental.
+    """
     def __init__(self, history_size: int = 100, reg: float = 1e-8, update_freq: int = 1, concat_params: bool = True, inner: Chainable | None = None):
         defaults = dict(history_size=history_size, reg=reg)
         super().__init__(defaults, uses_grad=False, update_freq=update_freq, inner=inner, concat_params=concat_params)

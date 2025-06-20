@@ -19,7 +19,9 @@ from ...utils.derivatives import (
 
 
 class StructuredNewton(Module):
-    """Please note that this is experimental and isn't guaranteed to work.
+    """
+    .. warning::
+        Experimental and this is a barebones implementation.
 
     Args:
         structure (str, optional): structure.

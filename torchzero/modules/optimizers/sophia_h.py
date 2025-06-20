@@ -82,6 +82,7 @@ class SophiaH(Module):
         Using SophiaH:
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.SophiaH(),
@@ -93,6 +94,7 @@ class SophiaH(Module):
         SophiaH preconditioning to nesterov momentum (:code:`tz.m.NAG`):
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.SophiaH(beta1=0, inner=tz.m.NAG(0.96)),

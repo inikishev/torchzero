@@ -62,7 +62,11 @@ def adamy_(
     return None
 
 class AdamY(Module):
-    """Adam but uses scaled gradient differences for second momentum. Please note that this is experimental and isn't guaranteed to work."""
+    """Adam but uses scaled gradient differences for second momentum.
+
+    .. warning::
+        Experimental.
+    """
     def __init__(
         self,
         beta1: float = 0.9,

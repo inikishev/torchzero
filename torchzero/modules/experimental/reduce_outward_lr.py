@@ -4,13 +4,12 @@ from ...core import Target, Transform
 from ...utils import TensorList, unpack_states, unpack_dicts
 
 class ReduceOutwardLR(Transform):
-    """
-    When update sign matches weight sign, the learning rate for that weight is multiplied by `mul`.
+    """When update sign matches weight sign, the learning rate for that weight is multiplied by `mul`.
 
     This means updates that move weights towards zero have higher learning rates.
 
-    .. note::
-        this sounded good, but it sucks.
+    .. warning::
+        This sounded good but after testing turns out it sucks.
     """
     def __init__(self, mul = 0.5, use_grad=False, invert=False, target: Target = 'update'):
         defaults = dict(mul=mul, use_grad=use_grad, invert=invert)

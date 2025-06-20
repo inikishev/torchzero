@@ -70,13 +70,16 @@ class LAdagrad(TensorwiseTransform):
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
 
     Examples:
-
         Limited-memory Adagrad
+
         .. code-block:: python
+
             optimizer = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
 
         Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
+
         .. code-block:: python
+
             optimizer = tz.Modular(
                 model.parameters(),
                 tz.m.LAdagrad(inner=tz.m.EMA()),
@@ -85,7 +88,9 @@ class LAdagrad(TensorwiseTransform):
             )
 
         Stable Adam with L-Adagrad preconditioner (this is what I would recommend)
+
         .. code-block:: python
+
             optimizer = tz.Modular(
                 model.parameters(),
                 tz.m.LAdagrad(inner=tz.m.EMA()),

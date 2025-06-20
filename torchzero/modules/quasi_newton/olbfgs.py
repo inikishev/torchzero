@@ -64,7 +64,9 @@ class OnlineLBFGS(Module):
 
     Examples:
         O-LBFGS
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.OLBFGS(),
@@ -72,7 +74,9 @@ class OnlineLBFGS(Module):
             )
 
         Dampened O-LBFGS
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.OLBFGS(damping=True),

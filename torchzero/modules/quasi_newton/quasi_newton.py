@@ -959,10 +959,10 @@ class GradientCorrection(Transform):
     This can useful as inner module for second order methods with inexact line search.
 
     Example:
-
         L-BFGS with gradient correction
 
         .. code-block :: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(inner=tz.m.GradientCorrection()),

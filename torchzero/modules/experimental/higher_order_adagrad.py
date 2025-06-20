@@ -20,13 +20,13 @@ _LETTERS = 'abcdefghijklmnopqrstuvwxy'
 
 class HigherOrderAdagrad(Module):
     """
-    .. note::
-        Conceptual.
+    .. warning::
+        Experimental.
 
-    .. note::
+    .. warning::
         Extremely expensive.
 
-    .. note::
+    .. warning::
         Doesn't work.
     """
     def __init__(

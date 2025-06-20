@@ -24,7 +24,10 @@ def update_absoap_covariances_(
 
 Source=Literal['p','g','s','y', 'gy', 'sy', 'sn', 'yn', 'gys', 'sys']
 class ABSOAP(Transform):
-    """SOAP but with some extra options for testing. Please note that this is experimental and isn't guaranteed to work.
+    """SOAP but with some extra options for testing.
+
+    .. warning::
+        This module is just for testing my stupid ideas.
 
     Args:
         scale_by_s - whether to scale y by s

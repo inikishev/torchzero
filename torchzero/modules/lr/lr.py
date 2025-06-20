@@ -46,7 +46,9 @@ class Warmup(Transform):
 
     Example:
         Adam with 1000 steps warmup
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
@@ -83,7 +85,9 @@ class WarmupNormClip(Transform):
 
     Example:
         Adam with 1000 steps norm clip warmup
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),

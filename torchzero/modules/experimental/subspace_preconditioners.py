@@ -38,7 +38,12 @@ def apply_subspace_preconditioner(
     return basis @ update_projected # d
 
 class RandomSubspacePreconditioning(Transform):
-    """Whitens in random slowly changing subspace. Please note that this is experimental and isn't guaranteed to work."""
+    """Whitens in random slowly changing subspace.
+
+    .. warning::
+        Experimental and this is a barebones implementation.
+
+    """
     def __init__(self, k: int, beta: float | None = 0.99, basis_beta: float | None = 0.99, inner: Chainable | None = None):
         defaults = dict(k=k, beta=beta, basis_beta=basis_beta)
         super().__init__(defaults, uses_grad=False)
@@ -79,7 +84,9 @@ class RandomSubspacePreconditioning(Transform):
 
 class HistorySubspacePreconditioning(Transform):
     """Whitens in subspace spanned by history of gradient differences.
-    Please note that this is experimental and isn't guaranteed to work.
+
+    .. warning::
+        Experimental and this is a barebones implementation.
 
     Args:
         beta - for preconditioner itself in the basis.

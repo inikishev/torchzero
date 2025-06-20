@@ -8,7 +8,11 @@ from ...utils import vec_to_tensors, vec_to_tensors_
 
 
 class ExponentialTrajectoryFit(Module):
-    """A method. Please note that this is experimental and isn't guaranteed to work."""
+    """A method.
+
+    .. warning::
+        Experimental.
+    """
     def __init__(self, step_size=1e-3):
         defaults = dict(step_size = step_size)
         super().__init__(defaults)
@@ -67,7 +71,12 @@ class ExponentialTrajectoryFit(Module):
 
 
 class ExponentialTrajectoryFitV2(Module):
-    """Should be better than one above, except it isn't. Please note that this is experimental and isn't guaranteed to work."""
+    """Should be better than one above, except it isn't.
+
+    .. warning::
+        Experimental.
+
+    """
     def __init__(self, step_size=1e-3, num_steps: int= 4):
         defaults = dict(step_size = step_size, num_steps=num_steps)
         super().__init__(defaults)
@@ -132,7 +141,11 @@ def _fit_exponential(y0, y1, y2):
     return A, B, r
 
 class PointwiseExponential(Module):
-    """A stupid method (for my youtube channel). Please note that this is experimental and isn't guaranteed to work."""
+    """A stupid method (for my youtube channel).
+
+    .. warning::
+        Experimental.
+    """
     def __init__(self, step_size: float = 1e-3, reg: float = 1e-2, steps = 10000):
         defaults = dict(reg=reg, steps=steps, step_size=step_size)
         super().__init__(defaults)

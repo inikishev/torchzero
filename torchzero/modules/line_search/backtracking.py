@@ -74,14 +74,18 @@ class Backtracking(LineSearch):
 
     Examples:
         Gradient descent with backtracking line search:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Backtracking()
             )
 
         LBFGS with backtracking line search:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(),

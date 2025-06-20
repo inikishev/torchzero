@@ -93,7 +93,7 @@ class FDM(GradApproximator):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
         h (float, optional): magnitude of parameter perturbation. Defaults to 1e-3.

@@ -200,8 +200,10 @@ class StrongWolfe(LineSearch):
 
 
     Examples:
-        Conjugate gradient method with strong wolfe line search. Nocedal and Wright recommend setting c2 to 0.1 for CG.
+        Conjugate gradient method with strong wolfe line search. Nocedal, Wright recommend setting c2 to 0.1 for CG.
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.PolakRibiere(),
@@ -209,7 +211,9 @@ class StrongWolfe(LineSearch):
             )
 
         LBFGS strong wolfe line search:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(),

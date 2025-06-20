@@ -70,7 +70,9 @@ class LaplacianSmoothing(Transform):
 
     Examples:
         Laplacian Smoothing Gradient Descent optimizer as in the paper
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LaplacianSmoothing(),
@@ -78,8 +80,7 @@ class LaplacianSmoothing(Transform):
             )
 
     Reference:
-        *Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022).
-        Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.*
+        Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.
 
     """
     def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: Target = 'update'):

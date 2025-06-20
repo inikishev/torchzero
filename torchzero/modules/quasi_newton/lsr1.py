@@ -100,7 +100,9 @@ class LSR1(Module):
 
     Examples:
         L-SR1 with Strong-Wolfe+- line search
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LSR1(100),

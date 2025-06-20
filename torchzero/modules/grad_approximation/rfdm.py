@@ -95,7 +95,7 @@ class RandomizedFDM(GradApproximator):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
@@ -277,7 +277,7 @@ class SPSA(RandomizedFDM):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
 
     Args:
@@ -302,7 +302,7 @@ class RDSA(RandomizedFDM):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
@@ -339,7 +339,7 @@ class GaussianSmoothing(RandomizedFDM):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
@@ -375,7 +375,7 @@ class MeZO(GradApproximator):
 
     .. note::
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-        and further closure-based modules will use the modified closure.
+        and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
