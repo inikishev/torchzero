@@ -10,6 +10,7 @@ from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 
 def _block_average(x: torch.Tensor, block_size: int | None, enable: bool):
+    """averages x over first dimension in blocks"""
     if enable and x.ndim >= 2:
         if math.prod(x.shape[1:]) <= 1: return x
         size = x.size(0)
@@ -65,19 +66,29 @@ def adahessian(
 
 
 class AdaHessian(Module):
-    """AdaHessian optimizer from https://arxiv.org/pdf/2006.00719#page=6.93
+    """AdaHessian: An Adaptive Second Order Optimizer for Machine Learning (https://arxiv.org/abs/2006.00719)
+
+    This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of squared randomized hessian diagonal estimates.
+
+    .. note::
+        Because AdaHessian relies on extra autograd, in most cases it should be the first module in the chain. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output. If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+
+    .. note::
+        This module requires a closure with a :code:`backward` argument to compute hessian-vector products.
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.9.
-        beta2 (float, optional): momentum for hessian diagonal estimate. Defaults to 0.999.
+        beta2 (float, optional): second momentum for squared hessian diagonal estimates. Defaults to 0.999.
+        averaging (bool, optional):
+            whether to enable block diagonal averaging over 1st dimension on parameters that have 2+ dimensions.
+            This can be set per-parameter in param groups.
+        block_size (int, optional):
+            size of block in the block-diagonal averaging.
         update_freq (int, optional):
-            frequency of updating hessian diagonal estimate via a hessian-vector product. Defaults to 10.
-        precond_scale (float, optional):
-            scale of the preconditioner. Defaults to 1.
-        clip (float, optional):
-            clips update to (-clip, clip). Defaults to 1.
+            frequency of updating hessian diagonal estimate via a hessian-vector product.
+            This value can be increased to reduce computational cost. Defaults to 1.
         eps (float, optional):
-            clips hessian diagonal esimate to be no less than this value. Defaults to 1e-12.
+            division stability epsilon. Defaults to 1e-8.
         hvp_method (str, optional):
             determines how hessian-vector products are evaluated.
 
@@ -90,7 +101,34 @@ class AdaHessian(Module):
             number of hessian-vector products with random vectors to evaluate each time when updating
             the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.
         seed (int | None, optional): seed for random vectors. Defaults to None.
-        inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
+        inner (Chainable | None, optional):
+            Inner module. If this is specified, operations are performed in the following order.
+            1. compute hessian diagonal estimate.
+            2. pass inputs to :code:`inner`.
+            3. momentum and preconditioning are applied to the ouputs of :code:`inner`.
+
+    Examples:
+        Using AdaHessian:
+
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.AdaHessian(),
+                tz.m.LR(0.1)
+            )
+
+        AdaHessian preconditioner can be applied to any other module by passing it to the :code:`inner` argument.
+        Turn off AdaHessian's first momentum to get just the preconditioning. Here is an example of applying
+        AdaHessian preconditioning to nesterov momentum (:code:`tz.m.NAG`):
+
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),
+                tz.m.LR(0.1)
+            )
+
+
     """
     def __init__(
         self,
@@ -99,7 +137,7 @@ class AdaHessian(Module):
         averaging: bool = True,
         block_size: int | None = 9,
         update_freq: int = 1,
-        eps: float = 1e-12,
+        eps: float = 1e-8,
         hvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
         fd_h: float = 1e-3,
         n_samples = 1,
