@@ -1,5 +1,4 @@
 #pyright: reportIncompatibleMethodOverride=false
-""""""
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from operator import itemgetter
@@ -48,6 +47,10 @@ class BinaryOperation(Module, ABC):
 
 
 class Add(BinaryOperation):
+    """Add :code:`other` to tensors. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`tensors + other(tensors)`
+    """
     def __init__(self, other: Chainable | float, alpha: float = 1):
         defaults = dict(alpha=alpha)
         super().__init__(defaults, other=other)
@@ -59,6 +62,10 @@ class Add(BinaryOperation):
         return update
 
 class Sub(BinaryOperation):
+    """Subtract :code:`other` from tensors. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`tensors - other(tensors)`
+    """
     def __init__(self, other: Chainable | float, alpha: float = 1):
         defaults = dict(alpha=alpha)
         super().__init__(defaults, other=other)
@@ -70,6 +77,10 @@ class Sub(BinaryOperation):
         return update
 
 class RSub(BinaryOperation):
+    """Subtract tensors from :code:`other`. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`other(tensors) - tensors`
+    """
     def __init__(self, other: Chainable | float):
         super().__init__({}, other=other)
 
@@ -78,6 +89,10 @@ class RSub(BinaryOperation):
         return other - TensorList(update)
 
 class Mul(BinaryOperation):
+    """Multiply tensors by :code:`other`. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`tensors * other(tensors)`
+    """
     def __init__(self, other: Chainable | float):
         super().__init__({}, other=other)
 
@@ -87,6 +102,10 @@ class Mul(BinaryOperation):
         return update
 
 class Div(BinaryOperation):
+    """Divide tensors by :code:`other`. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`tensors / other(tensors)`
+    """
     def __init__(self, other: Chainable | float):
         super().__init__({}, other=other)
 
@@ -96,6 +115,10 @@ class Div(BinaryOperation):
         return update
 
 class RDiv(BinaryOperation):
+    """Divide :code:`other` by tensors. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`other(tensors) / tensors`
+    """
     def __init__(self, other: Chainable | float):
         super().__init__({}, other=other)
 
@@ -104,6 +127,10 @@ class RDiv(BinaryOperation):
         return other / TensorList(update)
 
 class Pow(BinaryOperation):
+    """Take tensors to the power of :code:`exponent`. :code:`exponent` can be a number or a module.
+
+    If :code:`exponent` is a module, this calculates :code:`tensors ^ exponent(tensors)`
+    """
     def __init__(self, exponent: Chainable | float):
         super().__init__({}, exponent=exponent)
 
@@ -113,6 +140,10 @@ class Pow(BinaryOperation):
         return update
 
 class RPow(BinaryOperation):
+    """Take :code:`other` to the power of tensors. :code:`other` can be a number or a module.
+
+    If :code:`other` is a module, this calculates :code:`other(tensors) ^ tensors`
+    """
     def __init__(self, other: Chainable | float):
         super().__init__({}, other=other)
 
@@ -123,6 +154,10 @@ class RPow(BinaryOperation):
         return other
 
 class Lerp(BinaryOperation):
+    """Does a linear interpolation of tensors and :code:`end` module based on a scalar :code:`weight`.
+
+    The output is given by :code:`output = tensors + weight * (end(tensors) - tensors)`
+    """
     def __init__(self, end: Chainable, weight: float):
         defaults = dict(weight=weight)
         super().__init__(defaults, end=end)
@@ -133,6 +168,7 @@ class Lerp(BinaryOperation):
         return update
 
 class CopySign(BinaryOperation):
+    """Returns tensors with sign copied from :code:`other(tensors)`."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
 
@@ -141,6 +177,7 @@ class CopySign(BinaryOperation):
         return [u.copysign_(o) for u, o in zip(update, other)]
 
 class RCopySign(BinaryOperation):
+    """Returns :code:`other(tensors)` with sign copied from tensors."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
 
@@ -150,6 +187,10 @@ class RCopySign(BinaryOperation):
 CopyMagnitude = RCopySign
 
 class Clip(BinaryOperation):
+    """clip tensors to be in  :code:`(min, max)` range. :code:`min` and :code:`max: can be None, numbers or modules.
+
+    If code:`min` and :code:`max`:  are modules, this calculates :code:`tensors.clip(min(tensors), max(tensors))`.
+    """
     def __init__(self, min: float | Chainable | None = None, max: float | Chainable | None = None):
         super().__init__({}, min=min, max=max)
 
@@ -158,7 +199,10 @@ class Clip(BinaryOperation):
         return TensorList(update).clamp_(min=min,  max=max)
 
 class MirroredClip(BinaryOperation):
-    """clip by -value, value"""
+    """clip tensors to be in  :code:`(-value, value)` range. :code:`value` can be a number or a module.
+
+    If :code:`value` is a module, this calculates :code:`tensors.clip(-value(tensors), value(tensors))`
+    """
     def __init__(self, value: float | Chainable):
         super().__init__({}, value=value)
 
@@ -168,7 +212,7 @@ class MirroredClip(BinaryOperation):
         return TensorList(update).clamp_(min=min,  max=value)
 
 class Graft(BinaryOperation):
-    """use direction from update and magnitude from `magnitude` module"""
+    """Outputs tensors rescaled to have the same norm as :code:`magnitude(tensors)`."""
     def __init__(self, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, magnitude=magnitude)
@@ -179,7 +223,7 @@ class Graft(BinaryOperation):
         return TensorList(update).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class RGraft(BinaryOperation):
-    """use direction from `direction` module and magnitude from update"""
+    """Outputs :code:`magnitude(tensors)` rescaled to have the same norm as tensors"""
 
     def __init__(self, direction: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
@@ -193,6 +237,7 @@ class RGraft(BinaryOperation):
 GraftToUpdate = RGraft
 
 class Maximum(BinaryOperation):
+    """Outputs :code:`maximum(tensors, other(tensors))`"""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
 
@@ -202,6 +247,7 @@ class Maximum(BinaryOperation):
         return update
 
 class Minimum(BinaryOperation):
+    """Outputs :code:`minimum(tensors, other(tensors))`"""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
 
@@ -212,7 +258,7 @@ class Minimum(BinaryOperation):
 
 
 class GramSchimdt(BinaryOperation):
-    """makes update orthonormal to `other`"""
+    """outputs tensors made orthogonal to `other(tensors)` via Gram-Schmidt."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
 
@@ -223,7 +269,7 @@ class GramSchimdt(BinaryOperation):
 
 
 class Threshold(BinaryOperation):
-    """update above/below threshold, value at and below"""
+    """Outputs tensors thresholded such that values above :code:`threshold` are set to :code:`value`."""
     def __init__(self, threshold: Chainable | float, value: Chainable | float, update_above: bool):
         defaults = dict(update_above=update_above)
         super().__init__(defaults, threshold=threshold, value=value)

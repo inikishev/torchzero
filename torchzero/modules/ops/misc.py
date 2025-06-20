@@ -29,7 +29,7 @@ class Previous(TensorwiseTransform):
 
 
 class LastDifference(Transform):
-    """Difference between past two updates."""
+    """Outputs difference between past two updates."""
     def __init__(self,target: Target = 'update'):
         super().__init__({}, uses_grad=False, target=target)
 
@@ -41,7 +41,7 @@ class LastDifference(Transform):
         return difference
 
 class LastGradDifference(Module):
-    """Difference between past two grads."""
+    """Outputs difference between past two gradients."""
     def __init__(self):
         super().__init__({})
 
@@ -56,7 +56,7 @@ class LastGradDifference(Module):
 
 
 class LastProduct(Transform):
-    """Difference between past two updates."""
+    """Outputs difference between past two updates."""
     def __init__(self,target: Target = 'update'):
         super().__init__({}, uses_grad=False, target=target)
 
@@ -68,7 +68,7 @@ class LastProduct(Transform):
         return prod
 
 class LastRatio(Transform):
-    """Ratio between past two updates."""
+    """Outputs ratio between past two updates, the numerator is determined by :code:`numerator` argument."""
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', target: Target = 'update'):
         defaults = dict(numerator=numerator)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -83,7 +83,7 @@ class LastRatio(Transform):
         return ratio
 
 class LastAbsoluteRatio(Transform):
-    """Ratio between absolute values of past two updates."""
+    """Outputs ratio between absolute values of past two updates the numerator is determined by :code:`numerator` argument."""
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8, target: Target = 'update'):
         defaults = dict(numerator=numerator, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -103,7 +103,7 @@ class LastAbsoluteRatio(Transform):
         return ratio
 
 class GradSign(Transform):
-    """copy gradient sign to update."""
+    """Copies gradient sign to update."""
     def __init__(self, target: Target = 'update'):
         super().__init__({}, uses_grad=True, target=target)
 
@@ -113,7 +113,7 @@ class GradSign(Transform):
         return [t.copysign_(g) for t,g in zip(tensors, grads)]
 
 class UpdateSign(Transform):
-    """use per-weight magnitudes from grad while using sign from update."""
+    """Outputs gradient with sign copied from the update."""
     def __init__(self, target: Target = 'update'):
         super().__init__({}, uses_grad=True, target=target)
 
@@ -123,7 +123,7 @@ class UpdateSign(Transform):
         return [g.copysign(t) for t,g in zip(tensors, grads)] # no in-place
 
 class GraftToGrad(Transform):
-    """use gradient norm and update direction."""
+    """Grafts update to the gradient, that is update is rescaled to have the same norm as the gradient."""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
@@ -135,7 +135,7 @@ class GraftToGrad(Transform):
         return TensorList(tensors).graft_(grads, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class GraftGradToUpdate(Transform):
-    """use update norm and gradient direction."""
+    """Outputs gradient grafted to update, that is gradient rescaled to have the same norm as the update."""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
@@ -148,7 +148,7 @@ class GraftGradToUpdate(Transform):
 
 
 class GraftToParams(Transform):
-    """makes update norm be set to parameter norm, but norm won't go below eps"""
+    """Grafts update to the parameters, that is update is rescaled to have the same norm as the parameters, but no smaller than :code:`eps`."""
     def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-4, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -159,7 +159,7 @@ class GraftToParams(Transform):
         return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(Transform):
-    """multiplies update by absolute parameter values to make it relative to their magnitude, min_value is minimum value to avoid getting stuck at 0"""
+    """Multiplies update by absolute parameter values to make it relative to their magnitude, :code:`min_value` is minimum allowed value to avoid getting stuck at 0."""
     def __init__(self, min_value:float = 1e-4, target: Target = 'update'):
         defaults = dict(min_value=min_value)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -171,7 +171,7 @@ class Relative(Transform):
         return tensors
 
 class FillLoss(Module):
-    """makes tensors filled with loss value times alpha"""
+    """Outputs tensors filled with loss value times :code:`alpha`"""
     def __init__(self, alpha: float = 1, backward: bool = True):
         defaults = dict(alpha=alpha, backward=backward)
         super().__init__(defaults)
@@ -184,7 +184,7 @@ class FillLoss(Module):
         return var
 
 class MulByLoss(Module):
-    """multiplies update by loss times alpha"""
+    """Multiplies update by loss times :code:`alpha`"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
         super().__init__(defaults)
@@ -198,7 +198,7 @@ class MulByLoss(Module):
         return var
 
 class DivByLoss(Module):
-    """divides update by loss times alpha"""
+    """Divides update by loss times :code:`alpha`"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-8, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
         super().__init__(defaults)
@@ -217,7 +217,7 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
     params = var.params
     steps = self.settings[params[0]]['steps']
 
-    if sequential: modules = self.get_children_sequence()
+    if sequential: modules = self.get_children_sequence() * steps
     else: modules = [self.children['module']] * steps
 
     if var.closure is None and len(modules) > 1: raise ValueError('Multistep and Sequential require closure')
@@ -267,6 +267,9 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
     return var
 
 class Multistep(Module):
+    """Performs :code:`steps` inner steps with :code:`module` per each step.
+
+    The update is taken to be the parameter difference between parameters before and after the inner loop."""
     def __init__(self, module: Chainable, steps: int):
         defaults = dict(steps=steps)
         super().__init__(defaults)
@@ -277,7 +280,10 @@ class Multistep(Module):
         return _sequential_step(self, var, sequential=False)
 
 class Sequential(Module):
-    def __init__(self, modules: Iterable[Chainable], steps: int):
+    """On each step, this sequentially steps with :code:`modules` :code:`steps` times.
+
+    The update is taken to be the parameter difference between parameters before and after the inner loop."""
+    def __init__(self, modules: Iterable[Chainable], steps: int=1):
         defaults = dict(steps=steps)
         super().__init__(defaults)
         self.set_children_sequence(modules)
@@ -288,7 +294,35 @@ class Sequential(Module):
 
 
 class GradientAccumulation(Module):
-    """gradient accumulation"""
+    """Uses :code:`n` steps to accumulate gradients, after :code:`n` gradients have been accumulated, they are passed to :code:`modules` and parameters are updates.
+
+    Accumulating gradients for :code:`n` steps is equivalent to increasing batch size by :code:`n`. Increasing the batch size
+    is more computationally efficient, but sometimes it is not feasible due to memory constraints.
+
+    .. note::
+        Technically this can accumulate any inputs, including updates generated by previous modules. As long as this module is first, it will accumulate the gradients.
+
+    Args:
+        modules (Chainable): modules that perform a step every :code:`n` steps using the accumulated gradients.
+        n (int): number of gradients to accumulate.
+        mean (bool, optional): if True, uses mean of accumulated gradients, otherwise uses sum. Defaults to True.
+        stop (bool, optional):
+            this module prevents next modules from stepping unless :code:`n` gradients have been accumulate. Setting this argument to False disables that. Defaults to True.
+
+    Examples:
+        Adam with gradients accumulated for 16 batches.
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.GradientAccumulation(
+                    modules=[tz.m.Adam(), tz.m.LR(1e-2)],
+                    n=16
+                )
+            )
+
+    """
     def __init__(self, modules: Chainable, n: int, mean=True, stop=True):
         defaults = dict(n=n, mean=mean, stop=stop)
         super().__init__(defaults)
@@ -326,6 +360,42 @@ class GradientAccumulation(Module):
 
 
 class Dropout(Transform):
+    """Applies dropout to the update.
+
+    For each weight the update to that weight has :code:`p` probability to be set to 0.
+    This can be used to implement gradient dropout or update dropout depending on placement.
+
+    Args:
+        p (float, optional): probability that update for a weight is replaced with 0. Defaults to 0.5.
+        graft (bool, optional):
+            if True, update after dropout is rescaled to have the same norm as before dropout. Defaults to False.
+        target (Target, optional): what to set on var, refer to documentation. Defaults to 'update'.
+
+
+    Examples:
+        Gradient dropout.
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Dropout(0.5),
+                tz.m.Adam(),
+                tz.m.LR(1e-3)
+            )
+
+        Update dropout.
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.Dropout(0.5),
+                tz.m.LR(1e-3)
+            )
+
+    """
     def __init__(self, p: float = 0.5, graft: bool=False, target: Target = 'update'):
         defaults = dict(p=p, graft=graft)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -343,10 +413,23 @@ class Dropout(Transform):
 
         return tensors.mul_(tensors.rademacher_like(1-p).add_(1).div_(2))
 
+def _bernoulli_like(tensor, p = 0.5, generator = None):
+    """p is probability of a 1, other values will be 0."""
+    return torch.bernoulli(torch.full_like(tensor, p), generator = generator)
+
 class WeightDropout(Module):
-    """Applies dropout directly to weights."""
+    """
+    Changes the closure so that it evaluates loss and gradients with random weights replaced with 0.
+
+    Dropout can be disabled for a parameter by setting :code:`use_dropout=False` in corresponding parameter group.
+
+    Args:
+        p (float, optional): probability that any weight is replaced with 0. Defaults to 0.5.
+        graft (bool, optional):
+            if True, parameters after dropout are rescaled to have the same norm as before dropout. Defaults to False.
+    """
     def __init__(self, p: float = 0.5, graft: bool = True):
-        defaults = dict(p=p, graft=graft)
+        defaults = dict(p=p, graft=graft, use_dropout=True)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -355,7 +438,14 @@ class WeightDropout(Module):
         if closure is None: raise RuntimeError('WeightDropout requires closure')
         params = TensorList(var.params)
         p = NumberList(self.settings[p]['p'] for p in params)
-        mask = params.rademacher_like(p).add_(1).div_(2).as_bool()
+
+        # create masks
+        mask = []
+        for p, m in zip(params, mask):
+            prob = self.settings[p]['p']
+            use_dropout = self.settings[p]['use_dropout']
+            if use_dropout: mask.append(_bernoulli_like(p, prob))
+            else: mask.append(torch.ones_like(p))
 
         @torch.no_grad
         def dropout_closure(backward=True):
@@ -372,7 +462,7 @@ class WeightDropout(Module):
         return var
 
 class NoiseSign(Transform):
-    """uses random vector with update sign"""
+    """Outputs random tensors with sign copied from the update."""
     def __init__(self, distribution:Distributions = 'normal', alpha = 1):
         defaults = dict(distribution=distribution, alpha=alpha)
         super().__init__(defaults, uses_grad=False)
@@ -385,7 +475,10 @@ class NoiseSign(Transform):
 
 
 class NegateOnLossIncrease(Module):
-    def __init__(self, backtrack=True):
+    """Uses an extra forward pass to evaluate loss at :code:`parameters+update`,
+    if loss is larger than at :code:`parameters`,
+    the update is set to 0 if :code:`backtrack=False` and to :code:`-update` otherwise"""
+    def __init__(self, backtrack=False):
         defaults = dict(backtrack=backtrack)
         super().__init__(defaults=defaults)
 

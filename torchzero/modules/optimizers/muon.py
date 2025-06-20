@@ -19,6 +19,7 @@ def _is_at_least_2d(p: torch.Tensor):
 
 # stolen from:
 # https://github.com/KellerJordan/Muon/blob/master/muon.py
+# actually at this stage its a frankenstein
 @enable_compilation
 def zeropower_via_newtonschulz5(G: torch.Tensor, steps: int) -> torch.Tensor:
     """
@@ -186,6 +187,9 @@ class Orthogonalize(TensorwiseTransform):
                 ),
                 tz.m.LR(1e-2)
             )
+
+    Reference:
+        Keller Jordan, Yuchen Jin, Vlado Boza, You Jiacheng, Franz Cesista, Laker Newhouse, Jeremy Bernstein - Muon: An optimizer for hidden layers in neural networks (2024) https://github.com/KellerJordan/Muon
     """
     def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
                  method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):

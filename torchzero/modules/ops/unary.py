@@ -6,6 +6,10 @@ from ...core import TensorwiseTransform, Target, Transform
 from ...utils import TensorList, unpack_dicts,unpack_states
 
 class UnaryLambda(Transform):
+    """Applies :code:`fn` to input tensors.
+
+    :code:`fn` must accept and return a list of tensors.
+    """
     def __init__(self, fn, target: "Target" = 'update'):
         defaults = dict(fn=fn)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
@@ -15,6 +19,10 @@ class UnaryLambda(Transform):
         return settings[0]['fn'](tensors)
 
 class UnaryParameterwiseLambda(TensorwiseTransform):
+    """Applies :code:`fn` to each input tensor.
+
+    :code:`fn` must accept and return a tensor.
+    """
     def __init__(self, fn, target: "Target" = 'update'):
         defaults = dict(fn=fn)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
@@ -24,6 +32,8 @@ class UnaryParameterwiseLambda(TensorwiseTransform):
         return settings['fn'](tensor)
 
 class CustomUnaryOperation(Transform):
+    """Applies :code:`getattr(tensor, name)` to each tensor
+    """
     def __init__(self, name: str, target: "Target" = 'update'):
         defaults = dict(name=name)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
@@ -34,6 +44,7 @@ class CustomUnaryOperation(Transform):
 
 
 class Abs(Transform):
+    """Returns :code:`abs(input)`"""
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -41,6 +52,7 @@ class Abs(Transform):
         return tensors
 
 class Sign(Transform):
+    """Returns :code:`sign(input)`"""
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -48,6 +60,7 @@ class Sign(Transform):
         return tensors
 
 class Exp(Transform):
+    """Returns :code:`exp(input)`"""
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -55,6 +68,7 @@ class Exp(Transform):
         return tensors
 
 class Sqrt(Transform):
+    """Returns :code:`sqrt(input)`"""
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -62,6 +76,7 @@ class Sqrt(Transform):
         return tensors
 
 class Reciprocal(Transform):
+    """Returns :code:`1 / input`"""
     def __init__(self, eps = 0, target: "Target" = 'update'):
         defaults = dict(eps = eps)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -73,6 +88,7 @@ class Reciprocal(Transform):
         return tensors
 
 class Negate(Transform):
+    """Returns :code:`- input`"""
     def __init__(self, target: "Target" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -102,7 +118,7 @@ class NanToNum(Transform):
         return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
 class Rescale(Transform):
-    """rescale update to (min, max) range"""
+    """Rescales input to :code`(min, max)` range"""
     def __init__(self, min: float, max: float, tensorwise: bool = False, eps:float=1e-8, target: "Target" = 'update'):
         defaults = dict(min=min, max=max, eps=eps, tensorwise=tensorwise)
         super().__init__(defaults, uses_grad=False, target=target)

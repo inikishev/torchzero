@@ -6,6 +6,7 @@ from ...core import Module
 from ...utils.tensorlist import Distributions
 
 class PrintUpdate(Module):
+    """Prints current update."""
     def __init__(self, text = 'update = ', print_fn = print):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)
@@ -15,6 +16,7 @@ class PrintUpdate(Module):
         return var
 
 class PrintShape(Module):
+    """Prints shapes of the update."""
     def __init__(self, text = 'shapes = ', print_fn = print):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)

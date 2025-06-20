@@ -47,6 +47,7 @@ class ReduceOperation(Module, ABC):
         return var
 
 class Sum(ReduceOperation):
+    """Outputs sum of :code:`inputs` that can be modules or numbers."""
     USE_MEAN = False
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
@@ -63,12 +64,14 @@ class Sum(ReduceOperation):
         return sum
 
 class Mean(Sum):
+    """Outputs a mean of :code:`inputs` that can be modules or numbers."""
     USE_MEAN = True
 
 
 class WeightedSum(ReduceOperation):
     USE_MEAN = False
     def __init__(self, *inputs: Chainable | float, weights: Iterable[float]):
+        """Outputs a weighted sum of :code:`inputs` that can be modules or numbers."""
         weights = list(weights)
         if len(inputs) != len(weights):
             raise ValueError(f'Number of inputs {len(inputs)} must match number of weights {len(weights)}')
@@ -91,9 +94,11 @@ class WeightedSum(ReduceOperation):
 
 
 class WeightedMean(WeightedSum):
+    """Outputs weighted mean of :code:`inputs` that can be modules or numbers."""
     USE_MEAN = True
 
 class Median(ReduceOperation):
+    """Outputs median of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
 
@@ -107,6 +112,7 @@ class Median(ReduceOperation):
         return res
 
 class Prod(ReduceOperation):
+    """Outputs product of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
 
@@ -121,6 +127,7 @@ class Prod(ReduceOperation):
         return prod
 
 class MaximumModules(ReduceOperation):
+    """Outputs elementwise maximum of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
 
@@ -135,6 +142,7 @@ class MaximumModules(ReduceOperation):
         return maximum
 
 class MinimumModules(ReduceOperation):
+    """Outputs elementwise minimum of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
 

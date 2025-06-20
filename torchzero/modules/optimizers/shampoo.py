@@ -117,7 +117,8 @@ class Shampoo(Transform):
         .. code-block:: python
 
             opt = tz.Modular(
-                model.parameters(), tz.m.GraftModules(
+                model.parameters(),
+                tz.m.GraftModules(
                     direction = tz.m.Shampoo(),
                     magnitude = tz.m.Adam(),
                 ),

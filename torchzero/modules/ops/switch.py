@@ -7,7 +7,28 @@ from ...core import Chainable, Module
 
 
 class Alternate(Module):
-    """alternate between stepping with `modules`"""
+    """Alternates between stepping with :code:`modules`.
+
+    That is, first step is performed with 1st module, second step with second module, etc.
+
+    Args:
+        steps (int | Iterable[int], optional): number of steps to perform with each module. Defaults to 1.
+
+    Examples:
+        Alternate between Adam, SignSGD and RMSprop
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Alternate(
+                    tz.m.Adam(),
+                    [tz.m.SignSGD(), tz.m.Mul(0.5)],
+                    tz.m.RMSprop(),
+                ),
+                tz.m.LR(1e-3),
+            )
+    """
     LOOP = True
     def __init__(self, *modules: Chainable, steps: int | Iterable[int] = 1):
         if isinstance(steps, Iterable):
@@ -54,14 +75,34 @@ class Alternate(Module):
         return var
 
 class Switch(Alternate):
-    """switch to next module after some steps"""
+    """After :code:`steps` steps switches to the next module.
+
+    Args:
+        steps (int | Iterable[int]): Number of steps to perform with each module.
+
+    Examples:
+        Start with Adam, switch to L-BFGS after 1000th step and Truncated Newton on 2000th step.
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Switch(
+                    [tz.m.Adam(), tz.m.LR(1e-3)],
+                    [tz.m.LBFGS(), tz.m.Backtracking()],
+                    [tz.m.NewtonCG(maxiter=20), tz.m.Backtracking()],
+                    steps = (1000, 2000)
+                )
+            )
+    """
+
     LOOP = False
     def __init__(self, *modules: Chainable, steps: int | Iterable[int]):
 
         if isinstance(steps, Iterable):
             steps = list(steps)
             if len(steps) != len(modules) - 1:
-                raise ValueError(f"steps must be the same length as modules, got {len(modules) = }, {len(steps) = }")
+                raise ValueError(f"steps must be the same length as modules minus 1, got {len(modules) = }, {len(steps) = }")
 
             steps.append(1)
 

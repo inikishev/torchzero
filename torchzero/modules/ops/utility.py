@@ -6,12 +6,17 @@ from ...core import Module, Target, Transform
 from ...utils.tensorlist import Distributions, TensorList
 
 
-class Clone(Transform):
-    def __init__(self): super().__init__({}, uses_grad=False)
+class Clone(Module):
+    """Clones input. May be useful to store some intermediate result and make sure it doesn't get affected by in-place operations"""
+    def __init__(self):
+        super().__init__({})
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings): return [t.clone() for t in tensors]
+    def step(self, var):
+        var.update = [u.clone() for u in var.get_update()]
+        return var
 
 class Grad(Module):
+    """Outputs the gradient"""
     def __init__(self):
         super().__init__({})
     @torch.no_grad
@@ -20,6 +25,7 @@ class Grad(Module):
         return var
 
 class Params(Module):
+    """Outputs parameters"""
     def __init__(self):
         super().__init__({})
     @torch.no_grad
@@ -27,15 +33,8 @@ class Params(Module):
         var.update = [p.clone() for p in var.params]
         return var
 
-class Update(Module):
-    def __init__(self):
-        super().__init__({})
-    @torch.no_grad
-    def step(self, var):
-        var.update = [u.clone() for u in var.get_update()]
-        return var
-
 class Zeros(Module):
+    """Outputs zeros"""
     def __init__(self):
         super().__init__({})
     @torch.no_grad
@@ -44,6 +43,7 @@ class Zeros(Module):
         return var
 
 class Ones(Module):
+    """Outputs ones"""
     def __init__(self):
         super().__init__({})
     @torch.no_grad
@@ -52,6 +52,7 @@ class Ones(Module):
         return var
 
 class Fill(Module):
+    """Outputs tensors filled with :code:`value`"""
     def __init__(self, value: float):
         defaults = dict(value=value)
         super().__init__(defaults)
@@ -62,6 +63,7 @@ class Fill(Module):
         return var
 
 class RandomSample(Module):
+    """Outputs tensors filled with random numbers from distribution depending on value of :code:`distribution`."""
     def __init__(self, eps: float = 1, distribution: Distributions = 'normal'):
         defaults = dict(eps=eps, distribution=distribution)
         super().__init__(defaults)
@@ -74,6 +76,7 @@ class RandomSample(Module):
         return var
 
 class Randn(Module):
+    """Outputs tensors filled with random numbers from a normal distribution with mean 0 and variance 1."""
     def __init__(self):
         super().__init__({})
 
@@ -83,6 +86,7 @@ class Randn(Module):
         return var
 
 class Uniform(Module):
+    """Outputs tensors filled with random numbers from uniform distribution between :code:`low` and :code:`high`."""
     def __init__(self, low: float, high: float):
         defaults = dict(low=low, high=high)
         super().__init__(defaults)
@@ -94,19 +98,23 @@ class Uniform(Module):
         return var
 
 class GradToNone(Module):
+    """Sets :code:`grad` attribute to None on :code:`var`."""
     def __init__(self): super().__init__()
     def step(self, var):
         var.grad = None
         return var
 
 class UpdateToNone(Module):
+    """Sets :code:`update` attribute to None on :code:`var`."""
     def __init__(self): super().__init__()
     def step(self, var):
         var.update = None
         return var
 
 class Identity(Module):
+    """A placeholder identity operator that is argument-insensitive."""
     def __init__(self, *args, **kwargs): super().__init__()
     def step(self, var): return var
 
 NoOp = Identity
+"""A placeholder identity operator that is argument-insensitive."""

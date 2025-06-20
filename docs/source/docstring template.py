@@ -24,6 +24,7 @@ class MyModule:
         [A title or short sentence describing the first example]:
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 ...
@@ -32,6 +33,7 @@ class MyModule:
         [A title or short sentence for a second, different example]:
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 ...

@@ -45,7 +45,35 @@ def _split(
     return var
 
 class Split(Module):
-    """Apply `true` modules to all parameters filtered by `filter`, apply `false` modules to all other parameters."""
+    """Apply `true` modules to all parameters filtered by `filter`, apply `false` modules to all other parameters.
+
+    Args:
+        filter (Callable[[torch.Tensor], bool]): a function that takes in a parameter tensor and returns a boolean value.
+        true (Chainable | None): modules that are applied to tensors where :code:`filter` returned True.
+        false (Chainable | None): modules that are applied to tensors where :code:`filter` returned False.
+
+    Examples:
+        standard Muon with Adam fallback
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.head.parameters(),
+                tz.m.Split(
+                    # apply muon only to 2D+ parameters
+                    filter = lambda t: t.ndim >= 2,
+                    true = [
+                        tz.m.HeavyBall(),
+                        tz.m.Orthogonalize(),
+                        tz.m.LR(1e-2),
+                    ],
+                    false = tz.m.Adam()
+                ),
+                tz.m.LR(1e-2)
+            )
+
+
+    """
     def __init__(self, filter: Callable[[torch.Tensor], bool], true: Chainable | None, false: Chainable | None):
         defaults = dict(filter=filter)
         super().__init__(defaults)

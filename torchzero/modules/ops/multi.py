@@ -52,6 +52,7 @@ class MultiOperation(Module, ABC):
 
 
 class SubModules(MultiOperation):
+    """Calculates :code:`input - other`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, other: Chainable | float, alpha: float = 1):
         defaults = dict(alpha=alpha)
         super().__init__(defaults, input=input, other=other)
@@ -69,6 +70,7 @@ class SubModules(MultiOperation):
         return input
 
 class DivModules(MultiOperation):
+    """Calculates :code:`input / other`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, other: Chainable | float):
         defaults = {}
         super().__init__(defaults, input=input, other=other)
@@ -83,6 +85,7 @@ class DivModules(MultiOperation):
         return input
 
 class PowModules(MultiOperation):
+    """Calculates :code:`input ** exponent`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, exponent: Chainable | float):
         defaults = {}
         super().__init__(defaults, input=input, exponent=exponent)
@@ -97,6 +100,10 @@ class PowModules(MultiOperation):
         return input
 
 class LerpModules(MultiOperation):
+    """Does a linear interpolation of :code:`input(tensors)` and :code:`end(tensors)` based on a scalar :code:`weight`.
+
+    The output is given by :code:`output = input(tensors) + weight * (end(tensors) - input(tensors))`
+    """
     def __init__(self, input: Chainable, end: Chainable, weight: float):
         defaults = dict(weight=weight)
         super().__init__(defaults, input=input, end=end)
@@ -107,6 +114,7 @@ class LerpModules(MultiOperation):
         return input
 
 class ClipModules(MultiOperation):
+    """Calculates :code:`input(tensors).clip(min, max)`. :code:`min` and :code:`max` can be numbers or modules."""
     def __init__(self, input: Chainable, min: float | Chainable | None = None, max: float | Chainable | None = None):
         defaults = {}
         super().__init__(defaults, input=input, min=min, max=max)
@@ -117,6 +125,33 @@ class ClipModules(MultiOperation):
 
 
 class GraftModules(MultiOperation):
+    """Outputs :code:`direction` output rescaled to have the same norm as :code:`magnitude` output.
+
+    Args:
+        direction (Chainable): module to use the direction from
+        magnitude (Chainable): module to use the magnitude from
+        tensorwise (bool, optional): whether to calculate norm per-tensor or globally. Defaults to True.
+        ord (float, optional): norm order. Defaults to 2.
+        eps (float, optional): clips denominator to be no less than this value. Defaults to 1e-6.
+        strength (float, optional): strength of grafting. Defaults to 1.
+
+    Example:
+        Shampoo grafted to Adam
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.GraftModules(
+                    direction = tz.m.Shampoo(),
+                    magnitude = tz.m.Adam(),
+                ),
+                tz.m.LR(1e-3)
+            )
+
+    Reference:
+        Agarwal, N., Anil, R., Hazan, E., Koren, T., & Zhang, C. (2020). Disentangling adaptive gradient methods from learning rates. arXiv preprint arXiv:2002.11803. https://arxiv.org/pdf/2002.11803
+    """
     def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6, strength:float=1):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
         super().__init__(defaults, direction=direction, magnitude=magnitude)
@@ -128,6 +163,10 @@ class GraftModules(MultiOperation):
 
 
 class Where(MultiOperation):
+    """Outputs tensors with values taken from :code:`input` or :code:`other` based on values of :code:`condition`.
+
+    :code:`condition` must output a binary tensor with 0 and 1s.
+    """
     def __init__(self, condition: Chainable, input: Chainable | float, other: Chainable | float):
         super().__init__({}, condition=condition, input=input, other=other)
 
