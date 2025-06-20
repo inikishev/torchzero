@@ -94,7 +94,25 @@ If you intend to use gradient-free methods, :code:`backward` argument is still r
 
 How to use learning rate schedulers?
 =============================================
-TODO
+To apply a scheduler, make sure there is a single :py:class:`tz.m.LR<torchzero.modules.LR>` module somewhere in the chain.
+
+Then pass the optimizer to your scheduler:
+
+.. code:: python
+
+    import torchzero as tz
+    from torch.optim.lr_scheduler import OneCycleLR
+
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.WeightDecay(1e-3)
+        tz.m.LR(1e-3),
+
+    )
+
+    scheduler = OneCycleLR(opt)
+
 
 How to specify per-parameter options?
 =============================================
