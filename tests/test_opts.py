@@ -684,8 +684,8 @@ GradAccumulation = Run(
     sphere_steps=20, sphere_loss=1e-11,
 )
 NegateOnLossIncrease = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.02), tz.m.NegateOnLossIncrease(),),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.1), tz.m.NegateOnLossIncrease(),),
+    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.02), tz.m.NegateOnLossIncrease(True),),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.1), tz.m.NegateOnLossIncrease(True),),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
     sphere_steps=20, sphere_loss=0.001,
