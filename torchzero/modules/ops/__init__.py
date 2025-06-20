@@ -97,7 +97,6 @@ from .utility import (
     Randn,
     RandomSample,
     Uniform,
-    Update,
     UpdateToNone,
     Zeros,
 )
