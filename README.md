@@ -156,6 +156,8 @@ for epoch in range(100):
 
 * **Experimental**: various horrible atrocities
 
+A complete list of modules is available in the [documentation](https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html), although I am working out how to structure it better.
+
 ## Advanced Usage
 
 ### Closure
@@ -362,6 +364,4 @@ This project is licensed under the MIT License
 
 # Project Links
 
-The documentation is available at https://torchzero.readthedocs.io/en/latest/
-
-
+The documentation is available at <https://torchzero.readthedocs.io/en/latest/>
