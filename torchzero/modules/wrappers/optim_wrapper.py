@@ -10,7 +10,7 @@ class Wrap(Module):
     """
     Wraps a pytorch optimizer to use it as a module.
 
-    Note:
+    .. note::
         Custom param groups are supported only by `set_param_groups`, settings passed to Modular will be ignored.
 
     Args:
