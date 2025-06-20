@@ -102,14 +102,20 @@ class FDM(GradApproximator):
 
     Examples:
         plain FDM:
+
         .. code-block:: python
+
             fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
 
         Any gradient-based method can use FDM-estimated gradients seamlessly.
+
         .. code-block:: python
+
             fdm_ncg = tz.Modular(
                 model.parameters(),
                 tz.m.FDM(),
+                # set hvp_method to "forward" so that it
+                # uses gradient difference instead of autograd
                 tz.m.NewtonCG(hvp_method="forward"),
                 tz.m.Backtracking()
             )

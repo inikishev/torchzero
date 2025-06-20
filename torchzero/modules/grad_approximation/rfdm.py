@@ -110,28 +110,36 @@ class RandomizedFDM(GradApproximator):
         target (GradTarget, optional): what to set on var. Defaults to "closure".
 
     Examples:
+        #### Simultaneous perturbation stochastic approximation (SPSA) method
 
-        #### Simultaneous perturbation stochastic approximation (SPSA) method:
         SPSA is randomized finite differnce with rademacher distribution and central formula.
+
         .. code-block:: python
+
             spsa = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
                 tz.m.LR(1e-2)
             )
 
-        #### Random-direction stochastic approximation (RDSA) method:
+        #### Random-direction stochastic approximation (RDSA) method
+
         RDSA is randomized finite differnce with usually gaussian distribution and central formula.
+
         .. code-block:: python
+
             rdsa = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
                 tz.m.LR(1e-2)
             )
 
-        #### RandomizedFDM with momentum:
+        #### RandomizedFDM with momentum
+
         Momentum might help by reducing the variance of the estimated gradients.
+
         .. code-block:: python
+
             momentum_spsa = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(),
@@ -140,8 +148,11 @@ class RandomizedFDM(GradApproximator):
             )
 
         #### Gaussian smoothing method
+
         GS uses many gaussian samples with possibly a larger finite difference step size.
+
         .. code-block:: python
+
             gs = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
@@ -149,7 +160,8 @@ class RandomizedFDM(GradApproximator):
                 tz.m.Backtracking()
             )
 
-        #### SPSA-NewtonCG.
+        #### SPSA-NewtonCG
+
         NewtonCG with hessian-vector product estimated via gradient difference
         calls closure multiple times per step. If each closure call estimates gradients
         with different perturbations, NewtonCG is unable to produce useful directions.
@@ -157,7 +169,9 @@ class RandomizedFDM(GradApproximator):
         By setting pre_generate to True, perturbations are generated once before each step,
         and each closure call estimates gradients using the same pre-generated perturbations.
         This way closure-based algorithms are able to use gradients estimated in a consistent way.
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(n_samples=10),
@@ -166,6 +180,7 @@ class RandomizedFDM(GradApproximator):
             )
 
         #### SPSA-BFGS
+
         L-BFGS uses a memory of past parameter and gradient differences. If past gradients
         were estimated with different perturbations, L-BFGS directions will be useless.
 
@@ -174,7 +189,9 @@ class RandomizedFDM(GradApproximator):
         The disadvantage is that the subspace the algorithm is able to explore changes slowly.
 
         Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99),
