@@ -40,7 +40,7 @@ class SophiaH(Module):
     This is similar to Adam, but the second momentum is replaced by an exponential moving average of randomized hessian diagonal estimates, and the update is agressively clipped.
 
     .. note::
-        Because SophiaH relies on extra autograd, in most cases it should be the first module in the chain. Use the :code:`inner` argument if you wish to apply SophiaH preconditioning to another module's output.
+        In most cases SophiaH should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply SophiaH preconditioning to another module's output.
 
     .. note::
         If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
@@ -48,6 +48,7 @@ class SophiaH(Module):
     .. note::
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.96.

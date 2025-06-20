@@ -15,14 +15,12 @@ class MatrixMomentum(Module):
         :code:`mu` is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable.
 
     .. note::
-        Because MatrixMomentum relies on extra autograd, in most cases it should be the first module in the chain.
-
-    .. note::
-        If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+        In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
 
     .. note::
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
         mu (float, optional): this has a similar role to (1 - beta) in normal momentum. Defaults to 0.1.
@@ -105,14 +103,12 @@ class AdaptiveMatrixMomentum(Module):
     This version estimates mu via a simple heuristic: ||s||/||y||, where s is parameter difference, y is gradient difference.
 
     .. note::
-        Because AdaptiveMatrixMomentum relies on extra autograd, in most cases it should be the first module in the chain.
-
-    .. note::
-        If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+        In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
 
     .. note::
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
 
     Args:

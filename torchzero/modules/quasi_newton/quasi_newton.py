@@ -59,7 +59,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
     Example:
         Implementing BFGS method that maintains an estimate of the hessian inverse (H):
+
         .. code-block:: python
+
             class BFGS(HessianUpdateStrategy):
                 def __init__(
                     self,
@@ -99,6 +101,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
                     term2 = num2.div_(sy)
                     H += term1.sub_(term2)
                     return H
+
     """
     def __init__(
         self,
@@ -227,7 +230,6 @@ class HUpdateStrategy(HessianUpdateStrategy):
     Refer to :code:`HessianUpdateStrategy` documentation.
 
     Example:
-
         Implementing BFGS method that maintains an estimate of the hessian inverse (H):
 
         .. code-block:: python
@@ -324,7 +326,9 @@ class BFGS(HUpdateStrategy):
 
     Examples:
         BFGS with strong-wolfe line search:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.BFGS(),
@@ -332,7 +336,9 @@ class BFGS(HUpdateStrategy):
             )
 
         BFGS preconditioning applied to momentum:
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.BFGS(inner=tz.m.EMA(0.9)),
@@ -403,7 +409,9 @@ class SR1(HUpdateStrategy):
 
     Examples:
         SR1 with strong-wolfe line search
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.SR1(),
@@ -411,7 +419,9 @@ class SR1(HUpdateStrategy):
             )
 
         BFGS preconditioning applied to momentum
+
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.SR1(inner=tz.m.EMA(0.9)),

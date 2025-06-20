@@ -36,6 +36,7 @@ class LineSearch(Module, ABC):
 
     Examples:
         #### Basic line search
+
         This evaluates all step sizes in a range by using the :code:`self.evaluate_step_size` method.
 
         .. code-block:: python
@@ -64,6 +65,7 @@ class LineSearch(Module, ABC):
                     return best_step_size
 
         #### Using external solver via self.make_objective
+
         Here we let :code:`scipy.optimize.minimize_scalar` solver find the best step size via :code:`self.make_objective`
 
         .. code-block:: python

@@ -18,7 +18,7 @@ class NystromSketchAndSolve(Module):
         The closure must accept a ``backward`` argument (refer to documentation).
 
     .. note::
-        In most cases NystromSketchAndSolve should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        In most cases NystromSketchAndSolve should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
 
     .. note::
         If this is unstable, increase the :code:`reg` parameter and tune the rank.
@@ -144,7 +144,7 @@ class NystromPCG(Module):
         The closure must accept a ``backward`` argument (refer to documentation).
 
     .. note::
-        In most cases NystromPCG should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        In most cases NystromPCG should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
 
     Args:
         sketch_size (int):

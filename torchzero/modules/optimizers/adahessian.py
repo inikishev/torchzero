@@ -71,7 +71,7 @@ class AdaHessian(Module):
     This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of squared randomized hessian diagonal estimates.
 
     .. note::
-        Because AdaHessian relies on extra autograd, in most cases it should be the first module in the chain. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output.
+        In most cases AdaHessian should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output.
 
     .. note::
         If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
@@ -79,6 +79,7 @@ class AdaHessian(Module):
     .. note::
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
+        The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.9.

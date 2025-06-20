@@ -75,10 +75,14 @@ def lsr1_(
 class LSR1(Module):
     """Limited Memory SR1 algorithm. A line search is recommended.
 
-    Notes:
-        - L-SR1 provides a better estimate of true hessian, however it is significantly more unstable compared to L-BFGS.
-        - L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `n!` (n factorial). On small problems BFGS and SR1 may be faster than limited-memory versions.
-        - directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,
+    .. note::
+        L-SR1 provides a better estimate of true hessian, however it is significantly more unstable compared to L-BFGS.
+
+    .. note::
+        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `n!` (n factorial). On small problems BFGS and SR1 may be faster than limited-memory versions.
+
+    .. note::
+        directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,
         for example using :code:`tz.m.StrongWolfe(plus_minus=True)` line search, or modifying the direction with :code:`tz.m.Cautious` or :code:`tz.m.ScaleByGradCosineSimilarity`.
 
     Args:

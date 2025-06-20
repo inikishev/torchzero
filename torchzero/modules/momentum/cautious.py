@@ -57,7 +57,9 @@ class Cautious(Transform):
 
     Examples:
         Cautious Adam
+
         .. code-block:: python
+
             opt = tz.Modular(
                 bench.parameters(),
                 tz.m.Adam(),
@@ -171,7 +173,9 @@ class ScaleByGradCosineSimilarity(Transform):
 
     Examples:
         Scaled Adam
+
         .. code-block:: python
+
             opt = tz.Modular(
                 bench.parameters(),
                 tz.m.Adam(),
@@ -207,7 +211,9 @@ class ScaleModulesByCosineSimilarity(Module):
 
     Example:
         Adam scaled by similarity to RMSprop
+
         .. code-block:: python
+
             opt = tz.Modular(
                 bench.parameters(),
                 tz.m.ScaleModulesByCosineSimilarity(
