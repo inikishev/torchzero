@@ -272,29 +272,29 @@ class RandomizedFDM(GradApproximator):
         return grad, loss, loss_approx
 
 class SPSA(RandomizedFDM): pass
-"""
-Gradient approximation via Simultaneous perturbation stochastic approximation (SPSA) method.
+    """
+    Gradient approximation via Simultaneous perturbation stochastic approximation (SPSA) method.
 
-.. note::
-    This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
-    and further closure-based modules will use the modified closure.
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
 
 
-Args:
-    h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
-    n_samples (int, optional): number of random gradient samples. Defaults to 1.
-    formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
-    distribution (Distributions, optional): distribution. Defaults to "rademacher".
-        If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
-    beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
-    pre_generate (bool, optional):
-        whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
-    seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
-    target (GradTarget, optional): what to set on var. Defaults to "closure".
+    Args:
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        distribution (Distributions, optional): distribution. Defaults to "rademacher".
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
+        pre_generate (bool, optional):
+            whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
+        seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
 
-References:
-    Chen, Y. (2021). Theoretical study and comparison of SPSA and RDSA algorithms. arXiv preprint arXiv:2107.12771. https://arxiv.org/abs/2107.12771
-"""
+    References:
+        Chen, Y. (2021). Theoretical study and comparison of SPSA and RDSA algorithms. arXiv preprint arXiv:2107.12771. https://arxiv.org/abs/2107.12771
+    """
 
 class RDSA(RandomizedFDM):
     """
