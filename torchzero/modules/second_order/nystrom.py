@@ -49,11 +49,11 @@ class NystromSketchAndSolve(Module):
 
         .. code-block:: python
 
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.NystromSketchAndSolve(10),
-            tz.m.Backtracking()
-        )
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.NystromSketchAndSolve(10),
+                tz.m.Backtracking()
+            )
 
     Reference:
         Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
@@ -179,7 +179,11 @@ class NystromPCG(Module):
 
         .. code-block:: python
 
-            opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.NystromPCG(10),
+                tz.m.Backtracking()
+            )
 
     Reference:
         Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
