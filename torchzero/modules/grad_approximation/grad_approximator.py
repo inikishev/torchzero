@@ -23,8 +23,11 @@ class GradApproximator(Module, ABC):
             whether to set `var.grad`, `var.update` or 'var.closure`. Defaults to 'closure'.
 
     Example:
+
         Basic SPSA method implementation.
+
         .. code-block:: python
+
             class SPSA(GradApproximator):
                 def __init__(self, h=1e-3):
                     defaults = dict(h=h)
@@ -58,6 +61,7 @@ class GradApproximator(Module, ABC):
                     # since we only evaluated loss with perturbed parameters
                     # we only have loss_approx
                     return spsa_grads, None, loss_plus
+
             """
     def __init__(self, defaults: dict[str, Any] | None = None, target: GradTarget = 'closure'):
         super().__init__(defaults)
