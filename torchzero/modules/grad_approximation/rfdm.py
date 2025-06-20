@@ -271,7 +271,7 @@ class RandomizedFDM(GradApproximator):
         if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
 
-class SPSA(RandomizedFDM): pass
+class SPSA(RandomizedFDM):
     """
     Gradient approximation via Simultaneous perturbation stochastic approximation (SPSA) method.
 
