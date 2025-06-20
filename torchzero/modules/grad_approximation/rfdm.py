@@ -93,84 +93,94 @@ _RFD_FUNCS = {
 class RandomizedFDM(GradApproximator):
     """Gradient approximation via a randomized finite-difference method.
 
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
+
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "rademacher".
             If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
         target (GradTarget, optional): what to set on var. Defaults to "closure".
 
-    ## Examples:
-    #### Simultaneous perturbation stochastic approximation (SPSA) method:
-    SPSA is randomized finite differnce with rademacher distribution and central formula.
-    .. code:: py
-        spsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
-            tz.m.LR(1e-2)
-        )
+    Examples:
 
-    #### Random-direction stochastic approximation (RDSA) method:
-    RDSA is randomized finite differnce with usually gaussian distribution and central formula.
-    .. code:: py
-        rdsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
-            tz.m.LR(1e-2)
-        )
-    #### RandomizedFDM with momentum:
-    Momentum might help by reducing the variance of the estimated gradients.
-    .. code:: py
-        momentum_spsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(),
-            tz.m.HeavyBall(0.9),
-            tz.m.LR(1e-3)
-        )
-    #### Gaussian smoothing method
-    GS uses many gaussian samples with possibly a larger finite difference step size.
-    .. code:: py
-        gs = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
-            tz.m.NewtonCG(hvp_method="forward"),
-            tz.m.Backtracking()
-        )
-    #### SPSA-NewtonCG.
-    NewtonCG with hessian-vector product estimated via gradient difference
-    calls closure multiple times per step. If each closure call estimates gradients
-    with different perturbations, NewtonCG is unable to produce useful directions.
+        #### Simultaneous perturbation stochastic approximation (SPSA) method:
+        SPSA is randomized finite differnce with rademacher distribution and central formula.
+        .. code-block:: python
+            spsa = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
+                tz.m.LR(1e-2)
+            )
 
-    By setting pre_generate to True, perturbations are generated once before each step,
-    and each closure call estimates gradients using the same pre-generated perturbations.
-    This way closure-based algorithms are able to use gradients estimated in a consistent way.
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(n_samples=10),
-            tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
-            tz.m.Backtracking()
-        )
-    #### SPSA-BFGS
-    L-BFGS uses a memory of past parameter and gradient differences. If past gradients
-    were estimated with different perturbations, L-BFGS directions will be useless.
+        #### Random-direction stochastic approximation (RDSA) method:
+        RDSA is randomized finite differnce with usually gaussian distribution and central formula.
+        .. code-block:: python
+            rdsa = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
+                tz.m.LR(1e-2)
+            )
 
-    To alleviate this momentum can be added to random perturbations to make sure they only
-    change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
-    The disadvantage is that the subspace the algorithm is able to explore changes slowly.
+        #### RandomizedFDM with momentum:
+        Momentum might help by reducing the variance of the estimated gradients.
+        .. code-block:: python
+            momentum_spsa = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(),
+                tz.m.HeavyBall(0.9),
+                tz.m.LR(1e-3)
+            )
 
-    Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99),
-            tz.m.BFGS(reset_interval=100),
-            tz.m.Backtracking()
-        )
+        #### Gaussian smoothing method
+        GS uses many gaussian samples with possibly a larger finite difference step size.
+        .. code-block:: python
+            gs = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
+                tz.m.NewtonCG(hvp_method="forward"),
+                tz.m.Backtracking()
+            )
+
+        #### SPSA-NewtonCG.
+        NewtonCG with hessian-vector product estimated via gradient difference
+        calls closure multiple times per step. If each closure call estimates gradients
+        with different perturbations, NewtonCG is unable to produce useful directions.
+
+        By setting pre_generate to True, perturbations are generated once before each step,
+        and each closure call estimates gradients using the same pre-generated perturbations.
+        This way closure-based algorithms are able to use gradients estimated in a consistent way.
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(n_samples=10),
+                tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
+                tz.m.Backtracking()
+            )
+
+        #### SPSA-BFGS
+        L-BFGS uses a memory of past parameter and gradient differences. If past gradients
+        were estimated with different perturbations, L-BFGS directions will be useless.
+
+        To alleviate this momentum can be added to random perturbations to make sure they only
+        change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
+        The disadvantage is that the subspace the algorithm is able to explore changes slowly.
+
+        Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99),
+                tz.m.BFGS(reset_interval=100),
+                tz.m.Backtracking()
+            )
     """
     PRE_MULTIPLY_BY_H = True
     def __init__(
@@ -262,8 +272,54 @@ class RandomizedFDM(GradApproximator):
         return grad, loss, loss_approx
 
 SPSA = RandomizedFDM
+"""
+Gradient approximation via Simultaneous perturbation stochastic approximation (SPSA) method.
+
+.. note::
+    This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+    and further closure-based modules will use the modified closure.
+
+
+Args:
+    h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+    n_samples (int, optional): number of random gradient samples. Defaults to 1.
+    formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+    distribution (Distributions, optional): distribution. Defaults to "rademacher".
+        If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+    beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
+    pre_generate (bool, optional):
+        whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
+    seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
+    target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+References:
+    Chen, Y. (2021). Theoretical study and comparison of SPSA and RDSA algorithms. arXiv preprint arXiv:2107.12771. https://arxiv.org/abs/2107.12771
+"""
 
 class RDSA(RandomizedFDM):
+    """
+    Gradient approximation via Random-direction stochastic approximation (RDSA) method.
+
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
+
+    Args:
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        distribution (Distributions, optional): distribution. Defaults to "gaussian".
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
+        pre_generate (bool, optional):
+            whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
+        seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+    References:
+        Chen, Y. (2021). Theoretical study and comparison of SPSA and RDSA algorithms. arXiv preprint arXiv:2107.12771. https://arxiv.org/abs/2107.12771
+
+    """
     def __init__(
         self,
         h: float = 1e-3,
@@ -278,6 +334,29 @@ class RDSA(RandomizedFDM):
         super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
 
 class GaussianSmoothing(RandomizedFDM):
+    """
+    Gradient approximation via Gaussian smoothing method.
+
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
+
+    Args:
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        distribution (Distributions, optional): distribution. Defaults to "gaussian".
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
+        pre_generate (bool, optional):
+            whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
+        seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+
+    References:
+        Yurii Nesterov, Vladimir Spokoiny. (2015). Random Gradient-Free Minimization of Convex Functions. https://gwern.net/doc/math/2015-nesterov.pdf
+    """
     def __init__(
         self,
         h: float = 1e-2,
@@ -292,8 +371,27 @@ class GaussianSmoothing(RandomizedFDM):
         super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
 
 class MeZO(GradApproximator):
+    """Gradient approximation via memory-efficient zeroth order optimizer (MeZO) - https://arxiv.org/abs/2305.17333.
+
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
+
+    Args:
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
+        n_samples (int, optional): number of random gradient samples. Defaults to 1.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        distribution (Distributions, optional): distribution. Defaults to "rademacher".
+            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
+        target (GradTarget, optional): what to set on var. Defaults to "closure".
+
+    References:
+        Malladi, S., Gao, T., Nichani, E., Damian, A., Lee, J. D., Chen, D., & Arora, S. (2023). Fine-tuning language models with just forward passes. Advances in Neural Information Processing Systems, 36, 53038-53075. https://arxiv.org/abs/2305.17333
+    """
+
     def __init__(self, h: float=1e-3, n_samples: int = 1, formula: _FD_Formula = 'central2',
                  distribution: Distributions = 'rademacher', target: GradTarget = 'closure'):
+
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution)
         super().__init__(defaults, target=target)
 

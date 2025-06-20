@@ -20,19 +20,23 @@ class NystromSketchAndSolve(Module):
         rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
         reg (float, optional): regularization parameter. Defaults to 1e-3.
         hvp_method (str, optional):
-            determines how hessian-vector products are evaluated.
+            Determines how Hessian-vector products are evaluated.
 
-            - "autograd" - use pytorch autograd to calculate hessian-vector products.
-            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
-            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
+              This requires creating a graph for the gradient.
+            - ``"forward"``: Use a forward finite difference formula to
+              approximate the HVP. This requires one extra gradient evaluation.
+            - ``"central"``: Use a central finite difference formula for a
+              more accurate HVP approximation. This requires two extra
+              gradient evaluations.
             Defaults to "autograd".
         h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
-    NystromSketchAndSolve with backtracking line search
-    .. code:: py
+        NystromSketchAndSolve with backtracking line search
+        .. code-block:: python
         opt = tz.Modular(
             model.parameters(),
             tz.m.NystromSketchAndSolve(10),
@@ -40,7 +44,7 @@ class NystromSketchAndSolve(Module):
         )
 
     Reference:
-        https://arxiv.org/abs/2110.02820
+        Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
     """
     def __init__(
         self,
@@ -135,23 +139,27 @@ class NystromPCG(Module):
         tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
         reg (float, optional): regularization parameter. Defaults to 1e-8.
         hvp_method (str, optional):
-            determines how hessian-vector products are evaluated.
+            Determines how Hessian-vector products are evaluated.
 
-            - "autograd" - use pytorch autograd to calculate hessian-vector products.
-            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
-            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
+              This requires creating a graph for the gradient.
+            - ``"forward"``: Use a forward finite difference formula to
+              approximate the HVP. This requires one extra gradient evaluation.
+            - ``"central"``: Use a central finite difference formula for a
+              more accurate HVP approximation. This requires two extra
+              gradient evaluations.
             Defaults to "autograd".
         h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
-    NystromPCG with backtracking line search
-    .. code:: py
-        opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
+        NystromPCG with backtracking line search
+        .. code-block:: python
+            opt = tz.Modular(model.parameters(), tz.m.NystromPCG(10), tz.m.Backtracking())
 
     Reference:
-        https://arxiv.org/abs/2110.02820
+        Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
 
     """
     def __init__(

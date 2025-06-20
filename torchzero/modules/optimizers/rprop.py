@@ -136,7 +136,7 @@ class Rprop(Transform):
 
     Compared to pytorch this also implements backtracking update when sign changes.
 
-    This implementation is identical to :code:`torch.optim.Adam` if :code:`backtrack` is set to False.
+    This implementation is identical to :code:`torch.optim.Rprop` if :code:`backtrack` is set to False.
 
     Args:
         nplus (float): multiplicative increase factor for when ascent didn't change sign (default: 1.2).
@@ -300,15 +300,17 @@ class SignConsistencyMask(Transform):
 
     The output is 0 for weights where input sign changed compared to previous input, 1 otherwise.
 
-    Example:
-    .. code:: py
-    ```
-    # GD that skips update for weights where gradient sign changed compared to previous gradient.
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Mul(tz.m.SignConsistencyMask()),
-        tz.m.LR(1e-2))
-    ```
+    Examples:
+
+        GD that skips update for weights where gradient sign changed compared to previous gradient.
+
+        .. code-block:: py
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Mul(tz.m.SignConsistencyMask()),
+                tz.m.LR(1e-2))
+
     """
     def __init__(self,target: Target = 'update'):
         super().__init__({}, uses_grad=False, target = target)
@@ -322,19 +324,19 @@ class SignConsistencyMask(Transform):
 
 
 class SignConsistencyLRs(Transform):
-    """Outputs per-weight learning rates based on sign consistency.
+    """Outputs per-weight learning rates based on consecutive sign consistency.
 
-    The learning rate for a weight is multiplied by :code:`nplus` when two consequtive update signs are the same, otherwise it is multiplied by :code:`nplus`. The learning rates are bounded to be in :code:`(lb, ub)` range.
+    The learning rate for a weight is multiplied by :code:`nplus` when two consecutive update signs are the same, otherwise it is multiplied by :code:`nplus`. The learning rates are bounded to be in :code:`(lb, ub)` range.
 
-    Example:
-    .. code:: py
-    ```
-    # GD scaled by gradient sign consistency
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Mul(tz.m.SignConsistencyLRs()),
-        tz.m.LR(1e-2))
-    ```
+    Examples:
+
+        GD scaled by consecutive gradient sign consistency
+
+        .. code:: py
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Mul(tz.m.SignConsistencyLRs()),
+                tz.m.LR(1e-2))
     """
     def __init__(
         self,

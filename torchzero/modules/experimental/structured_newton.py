@@ -19,7 +19,8 @@ from ...utils.derivatives import (
 
 
 class StructuredNewton(Module):
-    """TODO. Please note that this is experimental and isn't guaranteed to work.
+    """Please note that this is experimental and isn't guaranteed to work.
+
     Args:
         structure (str, optional): structure.
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.

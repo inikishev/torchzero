@@ -10,27 +10,86 @@ from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import cg
 
 class NewtonCG(Module):
-    """Newton's method with a matrix-free conjugate gradient solver. This doesn't require the hessian but it calculates hessian-vector products. Those can be obtained with autograd or finite difference method depending on the value of the :coed:`hvp_method` argument.
+    """Newton's method with a matrix-free conjugate gradient solver.
+
+    This optimizer implements Newton's method using a matrix-free conjugate
+    gradient (CG) solver to approximate the search direction. Instead of
+    forming the full Hessian matrix, it only requires Hessian-vector products
+    (HVPs). These can be calculated efficiently using automatic
+    differentiation or approximated using finite differences.
+
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating HVPs.
+
+    .. warning::
+        CG may fail if hessian is not positive-definite.
 
     Args:
         maxiter (int | None, optional):
-            maximum number of iterations. By default this is set to the number of dimensions
-            in the objective function, which is supposed to be enough for conjugate gradient
-            to have guaranteed convergence. Setting this to a small value can still generate good enough directions.
-            Defaults to None.
-        tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
-        reg (float, optional): regularization parameter. Defaults to 1e-8.
+            Maximum number of iterations for the conjugate gradient solver.
+            By default, this is set to the number of dimensions in the
+            objective function, which is the theoretical upper bound for CG
+            convergence. Setting this to a smaller value (truncated Newton)
+            can still generate good search directions. Defaults to None.
+        tol (float, optional):
+            Relative tolerance for the conjugate gradient solver to determine
+            convergence. Defaults to 1e-4.
+        reg (float, optional):
+            Regularization parameter (damping) added to the Hessian diagonal.
+            This helps ensure the system is positive-definite. Defaults to 1e-8.
         hvp_method (str, optional):
-            determines how hessian-vector products are evaluated.
+            Determines how Hessian-vector products are evaluated.
 
-            - "autograd" - use pytorch autograd to calculate hessian-vector products.
-            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
-            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
+              This requires creating a graph for the gradient.
+            - ``"forward"``: Use a forward finite difference formula to
+              approximate the HVP. This requires one extra gradient evaluation.
+            - ``"central"``: Use a central finite difference formula for a
+              more accurate HVP approximation. This requires two extra
+              gradient evaluations.
             Defaults to "autograd".
-        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        h (float, optional):
+            The step size for finite differences if :code:`hvp_method` is
+            ``"forward"`` or ``"central"``. Defaults to 1e-3.
         warm_start (bool, optional):
-            whether to warm-start conjugate gradient from previous solution. This can help if step size is small or maxiter is set to a small value. Defaults to False.
-        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
+            If ``True``, the conjugate gradient solver is initialized with the
+            solution from the previous optimization step. This can accelerate
+            convergence, especially in truncated Newton methods.
+            Defaults to False.
+        inner (Chainable | None, optional):
+            NewtonCG will attempt to apply preconditioning to the output of this module.
+
+    Examples:
+        Newton-CG with a backtracking line search:
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.NewtonCG(),
+                tz.m.Backtracking()
+            )
+
+        Truncated Newton method (useful for large-scale problems):
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.NewtonCG(maxiter=10, warm_start=True),
+                tz.m.Backtracking()
+            )
+
+        Newton preconditioning applied to momentum (may be unstable):
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.NewtonCG(inner=tz.m.EMA(0.9)),
+                tz.m.LR(0.1)
+            )
 
     """
     def __init__(

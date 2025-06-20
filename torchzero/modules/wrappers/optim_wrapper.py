@@ -22,14 +22,15 @@ class Wrap(Module):
             Extra args to be passed to opt_fn. The function is called as :code:`opt_fn(parameters, *args, **kwargs)`.
 
     Example:
-    .. code:: py
-        from pytorch_optimizer import StableAdamW
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Wrap(StableAdamW),
-            tz.m.Cautious(),
-            tz.m.LR(1e-2)
-        )
+        wrapping pytorch_optimizer.StableAdamW
+        .. code-block:: py
+            from pytorch_optimizer import StableAdamW
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Wrap(StableAdamW, lr=1),
+                tz.m.Cautious(),
+                tz.m.LR(1e-2)
+            )
 
 
     """

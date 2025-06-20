@@ -197,6 +197,25 @@ class StrongWolfe(LineSearch):
             Otherwise it is reset to initial value. Defaults to True.
         plus_minus (bool, optional):
             If enabled and the direction is not descent direction, performs line search in opposite direction. Defaults to False.
+
+
+    Examples:
+        Conjugate gradient method with strong wolfe line search. Nocedal and Wright recommend setting c2 to 0.1 for CG.
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.PolakRibiere(),
+                tz.m.StrongWolfe(c2=0.1)
+            )
+
+        LBFGS strong wolfe line search:
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.LBFGS(),
+                tz.m.StrongWolfe()
+            )
+
     """
     def __init__(
         self,

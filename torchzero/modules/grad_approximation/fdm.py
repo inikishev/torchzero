@@ -91,24 +91,28 @@ _FD_FUNCS = {
 class FDM(GradApproximator):
     """Approximate gradients via finite difference method.
 
+    .. note::
+        This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
+        and further closure-based modules will use the modified closure.
+
     Args:
         h (float, optional): magnitude of parameter perturbation. Defaults to 1e-3.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         target (GradTarget, optional): what to set on var. Defaults to 'closure'.
 
-    ## Examples:
-    plain FDM:
-    .. code:: py
-        fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
+    Examples:
+        plain FDM:
+        .. code-block:: python
+            fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
 
-    Any gradient-based method can use FDM-estimated gradients seamlessly.
-    .. code:: py
-        fdm_ncg = tz.Modular(
-            model.parameters(),
-            tz.m.FDM(),
-            tz.m.NewtonCG(hvp_method="forward"),
-            tz.m.Backtracking()
-        )
+        Any gradient-based method can use FDM-estimated gradients seamlessly.
+        .. code-block:: python
+            fdm_ncg = tz.Modular(
+                model.parameters(),
+                tz.m.FDM(),
+                tz.m.NewtonCG(hvp_method="forward"),
+                tz.m.Backtracking()
+            )
     """
     def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)

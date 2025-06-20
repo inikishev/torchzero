@@ -32,7 +32,7 @@ class ForwardGradient(RandomizedFDM):
         target (GradTarget, optional): what to set on var. Defaults to "closure".
 
     References:
-        - Baydin, A. G., Pearlmutter, B. A., Syme, D., Wood, F., & Torr, P. (2022). Gradients without backpropagation. arXiv preprint arXiv:2202.08587.
+        Baydin, A. G., Pearlmutter, B. A., Syme, D., Wood, F., & Torr, P. (2022). Gradients without backpropagation. arXiv preprint arXiv:2202.08587.
     """
     PRE_MULTIPLY_BY_H = False
     def __init__(

@@ -7,7 +7,11 @@ from .line_search import LineSearch
 
 class TrustRegion(LineSearch):
     """Basic first order trust region method. Re-evaluates the function after stepping, if value decreased sufficiently,
-    step size is increased. If value increased, step size is decreased. This is prone to collapsing.
+    step size is increased. If value increased, step size is decreased.
+
+    .. note::
+        This works well in some cases, but it is often prone to collapsing.
+        For a more robust alternative use :code:`tz.m.AdaptiveBacktracking`.
 
     Args:
         nplus (float, optional): multiplier to step size on successful steps. Defaults to 1.5.
@@ -18,6 +22,17 @@ class TrustRegion(LineSearch):
         adaptive (bool, optional):
             If enabled, when multiple consecutive steps have been successful or unsuccessful,
             the corresponding multipliers are increased, otherwise they are reset. Defaults to True.
+
+
+    Examples:
+        Adagrad with trust region:
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adagrad(),
+                tz.m.TrustRegion()
+            )
+
     """
     def __init__(self, nplus: float=1.5, nminus: float=0.75, c: float=1e-4, init: float = 1, backtrack: bool = True, adaptive: bool = True):
         defaults = dict(nplus=nplus, nminus=nminus, c=c, init=init, backtrack=backtrack, adaptive=adaptive)

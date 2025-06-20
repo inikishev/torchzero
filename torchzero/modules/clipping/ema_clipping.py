@@ -14,9 +14,10 @@ class ClipNormByEMA(Transform):
         beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
         ord (float, optional): order of the norm. Defaults to 2.
         eps (float, optional): epsilon for division. Defaults to 1e-6.
-        tensorwise (bool, optional): whether to calculate norm separately for each layer, or global norm for all layers. Defaults to True.
+        tensorwise (bool, optional):
+            if True, norms are calculated parameter-wise, otherwise treats all parameters as single vector. Defaults to True.
         max_ema_growth (float | None, optional):
-            if specified, exponential moving average norm can grow but at most this value per step. Defaults to 1.5.
+            if specified, restricts how quickly exponential moving average norm can grow. The norm is allowed to grow by at most this value per step. Defaults to 1.5.
         ema_init (str, optional):
             How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
     """
@@ -88,9 +89,10 @@ class NormalizeByEMA(ClipNormByEMA):
         beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
         ord (float, optional): order of the norm. Defaults to 2.
         eps (float, optional): epsilon for division. Defaults to 1e-6.
-        tensorwise (bool, optional): whether to calculate norm separately for each layer, or global norm for all layers. Defaults to True.
+        tensorwise (bool, optional):
+            if True, norms are calculated parameter-wise, otherwise treats all parameters as single vector. Defaults to True.
         max_ema_growth (float | None, optional):
-            if specified, exponential moving average norm can grow but at most this value per step. Defaults to 1.5.
+            if specified, restricts how quickly exponential moving average norm can grow. The norm is allowed to grow by at most this value per step. Defaults to 1.5.
         ema_init (str, optional):
             How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
     """
@@ -99,13 +101,14 @@ class NormalizeByEMA(ClipNormByEMA):
 # TODO Centralize by EMA?
 
 class ClipValueByEMA(Transform):
-    """Clips magnitude of update to be no larger than magnitude of an exponential moving average of past (unclipped) updates.
+    """Clips magnitude of update to be no larger than magnitude of exponential moving average of past (unclipped) updates.
 
     Args:
         beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
         ema_init (str, optional):
             How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
-        ema_tfm (Chainable | None, optional): optional modules applied to exponential moving average before clipping by it. Defaults to None.
+        ema_tfm (Chainable | None, optional):
+            optional modules applied to exponential moving average before clipping by it. Defaults to None.
     """
     def __init__(
         self,

@@ -71,10 +71,14 @@ class AdaHessian(Module):
     This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of squared randomized hessian diagonal estimates.
 
     .. note::
-        Because AdaHessian relies on extra autograd, in most cases it should be the first module in the chain. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output. If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+        Because AdaHessian relies on extra autograd, in most cases it should be the first module in the chain. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output.
 
     .. note::
-        This module requires a closure with a :code:`backward` argument to compute hessian-vector products.
+        If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating HVPs.
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.9.
@@ -90,11 +94,15 @@ class AdaHessian(Module):
         eps (float, optional):
             division stability epsilon. Defaults to 1e-8.
         hvp_method (str, optional):
-            determines how hessian-vector products are evaluated.
+            Determines how Hessian-vector products are evaluated.
 
-            - "autograd" - use pytorch autograd to calculate hessian-vector products.
-            - "forward" - use two gradient evaluations to estimate hessian-vector products via froward finite differnce formula.
-            - "central" - uses three gradient evaluations to estimate hessian-vector products via central finite differnce formula.
+            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
+              This requires creating a graph for the gradient.
+            - ``"forward"``: Use a forward finite difference formula to
+              approximate the HVP. This requires one extra gradient evaluation.
+            - ``"central"``: Use a central finite difference formula for a
+              more accurate HVP approximation. This requires two extra
+              gradient evaluations.
             Defaults to "autograd".
         h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
         n_samples (int, optional):
@@ -127,7 +135,6 @@ class AdaHessian(Module):
                 tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),
                 tz.m.LR(0.1)
             )
-
 
     """
     def __init__(

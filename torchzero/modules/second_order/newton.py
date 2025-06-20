@@ -83,25 +83,37 @@ class Newton(Module):
             If this is specified, eigendecomposition will be used to invert the hessian.
 
     Examples:
-    Newton's method with backtracking line search
-    .. code:: py
-        opt = tz.Modular(model.parameters(), tz.m.Newton(), tz.m.Backtracking())
+        Newton's method with backtracking line search
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Newton(),
+                tz.m.Backtracking()
+            )
 
-    Newton's method modified for non-convex functions by taking matrix absolute value of the hessian
-    .. code:: py
-        opt = tz.Modular(model.parameters(), tz.m.Newton(eigval_tfm=torch.abs), tz.m.Backtracking())
+        Newton's method modified for non-convex functions by taking matrix absolute value of the hessian
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Newton(eigval_tfm=torch.abs),
+                tz.m.Backtracking()
+            )
 
-    Newton's method modified for non-convex functions by searching along negative curvature directions
-    .. code:: py
-        opt = tz.Modular(model.parameters(), tz.m.Newton(search_negative=True), tz.m.Backtracking())
+        Newton's method modified for non-convex functions by searching along negative curvature directions
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Newton(search_negative=True),
+                tz.m.Backtracking()
+            )
 
-    Newton preconditioning applied to momentum
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Newton(inner=tz.m.EMA(0.9)),
-            tz.m.LR(0.1)
-        )
+        Newton preconditioning applied to momentum
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Newton(inner=tz.m.EMA(0.9)),
+                tz.m.LR(0.1)
+            )
     """
     def __init__(
         self,

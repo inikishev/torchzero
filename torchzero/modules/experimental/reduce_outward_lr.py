@@ -9,7 +9,8 @@ class ReduceOutwardLR(Transform):
 
     This means updates that move weights towards zero have higher learning rates.
 
-    A note on this is that it sounded good but its really bad in practice.
+    .. note::
+        this sounded good, but it sucks.
     """
     def __init__(self, mul = 0.5, use_grad=False, invert=False, target: Target = 'update'):
         defaults = dict(mul=mul, use_grad=use_grad, invert=invert)

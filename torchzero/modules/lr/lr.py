@@ -45,16 +45,15 @@ class Warmup(Transform):
         steps (int, optional): number of steps to perform warmup for. Defaults to 100.
 
     Example:
-    .. code:: py
-    ```
-    # adam with 1000 steps warmup
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Adam(),
-        tz.m.LR(1e-2),
-        tz.m.Warmup(steps=1000)
-    )
-    ```
+        Adam with 1000 steps warmup
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.LR(1e-2),
+                tz.m.Warmup(steps=1000)
+            )
+
     """
     def __init__(self, start_lr = 1e-5, end_lr:float = 1, steps = 100):
         defaults = dict(start_lr=start_lr,end_lr=end_lr, steps=steps)
@@ -83,16 +82,14 @@ class WarmupNormClip(Transform):
         steps (int, optional): number of steps to perform warmup for. Defaults to 100.
 
     Example:
-    .. code:: py
-    ```
-    # adam with 1000 steps norm clip warmup
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.Adam(),
-        tz.m.LR(1e-2),
-        tz.m.WarmupNormClip(steps=1000)
-    )
-    ```
+        Adam with 1000 steps norm clip warmup
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.WarmupNormClip(steps=1000)
+                tz.m.LR(1e-2),
+            )
     """
     def __init__(self, start_norm = 1e-5, end_norm:float = 1, steps = 100):
         defaults = dict(start_norm=start_norm,end_norm=end_norm, steps=steps)

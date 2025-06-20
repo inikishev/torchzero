@@ -55,14 +55,18 @@ class Cautious(Transform):
 
             "backtrack" - negate them (same as using update magnitude and gradient sign)
 
-    ## Example:
-    cautious Adam
-    .. code:: py
-        opt = tz.Modular(bench.parameters(), tz.m.Adam(), tz.m.Cautious(), tz.m.LR(1e-2))
+    Examples:
+        Cautious Adam
+        .. code-block:: python
+            opt = tz.Modular(
+                bench.parameters(),
+                tz.m.Adam(),
+                tz.m.Cautious(),
+                tz.m.LR(1e-2)
+            )
 
-    ## Reference:
-        *Cautious Optimizers: Improving Training with One Line of Code.
-        Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu*
+    References:
+        Cautious Optimizers: Improving Training with One Line of Code. Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu
     """
 
     def __init__(
@@ -165,18 +169,15 @@ class ScaleByGradCosineSimilarity(Transform):
     Args:
         eps (float, optional): epsilon for division. Defaults to 1e-6.
 
-    Example:
-    .. code:: py
-    ```
-    # Scaled Adam
-    opt = tz.Modular(
-        bench.parameters(),
-        tz.m.Adam(),
-        tz.m.ScaleByGradCosineSimilarity(),
-        tz.m.LR(1e-2)
-    )
-    ```
-
+    Examples:
+        Scaled Adam
+        .. code-block:: python
+            opt = tz.Modular(
+                bench.parameters(),
+                tz.m.Adam(),
+                tz.m.ScaleByGradCosineSimilarity(),
+                tz.m.LR(1e-2)
+            )
     """
     def __init__(
         self,
@@ -205,19 +206,16 @@ class ScaleModulesByCosineSimilarity(Module):
         eps (float, optional): epsilon for division. Defaults to 1e-6.
 
     Example:
-    .. code:: py
-    ```
-    # Adam scaled by similarity to RMSprop
-    opt = tz.Modular(
-        bench.parameters(),
-        tz.m.ScaleModulesByCosineSimilarity(
-            main = tz.m.Adam(),
-            compare = tz.m.RMSprop(0.999, debiased=True),
-        ),
-        tz.m.LR(1e-2)
-    )
-    ```
-
+        Adam scaled by similarity to RMSprop
+        .. code-block:: python
+            opt = tz.Modular(
+                bench.parameters(),
+                tz.m.ScaleModulesByCosineSimilarity(
+                    main = tz.m.Adam(),
+                    compare = tz.m.RMSprop(0.999, debiased=True),
+                ),
+                tz.m.LR(1e-2)
+            )
     """
     def __init__(
         self,

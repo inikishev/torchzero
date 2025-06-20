@@ -86,6 +86,15 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
 class Shampoo(Transform):
     """Shampoo from Preconditioned Stochastic Tensor Optimization (https://arxiv.org/abs/1802.09568).
 
+    .. note::
+        Shampoo is usually grafted to another optimizer like Adam, otherwise it can be unstable. An example of how to do grafting is given below in the Examples section.
+
+    .. note::
+        Shampoo is a very computationally expensive optimizer, increase :code:`update_freq` if it is too slow.
+
+    .. note::
+        SOAP optimizer usually outperforms Shampoo and is also not as computationally expensive. SOAP implementation is available as :code:`tz.m.SOAP`.
+
     Args:
         decay (float | None, optional): slowly decays preconditioners. Defaults to None.
         beta (float | None, optional):
@@ -103,24 +112,24 @@ class Shampoo(Transform):
             Defaults to None.
 
     Examples:
-    Shampoo grafted to Adam
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(), tz.m.GraftModules(
-                direction = tz.m.Shampoo(),
-                magnitude = tz.m.Adam(),
-            ),
-            tz.m.LR(1e-3)
-        )
+        Shampoo grafted to Adam
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(), tz.m.GraftModules(
+                    direction = tz.m.Shampoo(),
+                    magnitude = tz.m.Adam(),
+                ),
+                tz.m.LR(1e-3)
+            )
 
-    Adam with Shampoo preconditioner
-    .. code:: py
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
-            tz.m.Debias(0.9, 0.999),
-            tz.m.LR(1e-3)
-        )
+        Adam with Shampoo preconditioner
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
+                tz.m.Debias(0.9, 0.999),
+                tz.m.LR(1e-3)
+            )
     """
     def __init__(
         self,

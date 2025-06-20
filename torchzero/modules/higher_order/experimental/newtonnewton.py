@@ -7,13 +7,13 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
-from ...utils import TensorList, vec_to_tensors
-from ...utils.derivatives import (
+from ....core import Chainable, Module, apply_transform
+from ....utils import TensorList, vec_to_tensors
+from ....utils.derivatives import (
     hessian_list_to_mat,
     jacobian_wrt,
 )
-from ..second_order.newton import (
+from ...second_order.newton import (
     cholesky_solve,
     eigh_solve,
     least_squares_solve,
@@ -22,8 +22,9 @@ from ..second_order.newton import (
 
 
 class NewtonNewton(Module):
-    """
-    Method that I thought of and then it worked.
+    """Applies Newton-like preconditioning to Newton step.
+
+    This is a method that I thought of and then it worked. Here is how it works:
 
     1. Calculate newton step by solving Hx=g
 
@@ -34,6 +35,9 @@ class NewtonNewton(Module):
     4. Optionally, repeat (if order is higher than 3.)
 
     Memory is n^order. It tends to converge faster on convex functions, but can be unstable on non-convex. Orders higher than 3 are usually too unsable and have little benefit.
+
+    3rd order variant can minimize some convex functions with up to 100 variables in less time than Newton's method,
+    this is if pytorch can vectorize hessian computation efficiently.
     """
     def __init__(
         self,

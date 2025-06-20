@@ -19,7 +19,7 @@ class ClipValueGrowth(TensorwiseTransform):
             bounds the tracked multiplicative clipping decay to prevent collapse to 0.
             Next update is at most :code:`max(previous update * mul, max_decay)`.
             Defaults to 2.
-        target (Target, optional): what to set on var.. Defaults to "update".
+        target (Target, optional): what to set on var. Defaults to "update".
     """
     def __init__(
         self,
@@ -120,7 +120,8 @@ class ClipNormGrowth(Transform):
 
     Args:
         add (float | None, optional): additive clipping, next update norm is at most `previous norm + add`. Defaults to None.
-        mul (float | None, optional): multiplicative clipping, next update norm is at most `previous norm * mul`. Defaults to 1.5.
+        mul (float | None, optional):
+            multiplicative clipping, next update norm is at most `previous norm * mul`. Defaults to 1.5.
         min_value (float | None, optional):
             minimum value for multiplicative clipping to prevent collapse to 0.
             Next norm is at most :code:`max(prev_norm, min_value) * mul`. Defaults to 1e-4.

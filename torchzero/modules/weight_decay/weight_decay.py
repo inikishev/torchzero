@@ -30,32 +30,32 @@ class WeightDecay(Transform):
         target (Target, optional): what to set on var. Defaults to 'update'.
 
     Examples:
-    .. code:: py
-        # Adam with non-decoupled weight decay
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.WeightDecay(1e-3),
-            tz.m.Adam(),
-            tz.m.LR(1e-3)
-        )
+        Adam with non-decoupled weight decay
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.WeightDecay(1e-3),
+                tz.m.Adam(),
+                tz.m.LR(1e-3)
+            )
 
-        # Adam with decoupled weight decay
-        # that still scales with learning rate
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Adam(),
-            tz.m.WeightDecay(1e-3),
-            tz.m.LR(1e-3)
-        )
+        Adam with decoupled weight decay that still scales with learning rate
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.WeightDecay(1e-3),
+                tz.m.LR(1e-3)
+            )
 
-        # Adam with fully decoupled weight decay
-        # that doesn't scale with learning rate
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Adam(),
-            tz.m.LR(1e-3),
-            tz.m.WeightDecay(1e-6)
-        )
+        Adam with fully decoupled weight decay that doesn't scale with learning rate
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.LR(1e-3),
+                tz.m.WeightDecay(1e-6)
+            )
 
     """
     def __init__(self, weight_decay: float, ord: int = 2, target: Target = 'update'):
@@ -82,22 +82,23 @@ class RelativeWeightDecay(Transform):
         target (Target, optional): what to set on var. Defaults to 'update'.
 
     Examples:
-    .. code:: py
-        # Adam with non-decoupled relative weight decay
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.RelativeWeightDecay(1e-3),
-            tz.m.Adam(),
-            tz.m.LR(1e-3)
-        )
+        Adam with non-decoupled relative weight decay
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.RelativeWeightDecay(1e-3),
+                tz.m.Adam(),
+                tz.m.LR(1e-3)
+            )
 
-        # Adam with decoupled relative weight decay
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.Adam(),
-            tz.m.RelativeWeightDecay(1e-3),
-            tz.m.LR(1e-3)
-        )
+        Adam with decoupled relative weight decay
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Adam(),
+                tz.m.RelativeWeightDecay(1e-3),
+                tz.m.LR(1e-3)
+            )
 
     """
     def __init__(

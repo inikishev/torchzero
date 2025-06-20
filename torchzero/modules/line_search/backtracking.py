@@ -71,6 +71,23 @@ class Backtracking(LineSearch):
             when enabled, if line search failed, initial step size is reduced.
             Otherwise it is reset to initial value. Defaults to True.
         try_negative (bool, optional): Whether to perform line search in opposite direction on fail. Defaults to False.
+
+    Examples:
+        Gradient descent with backtracking line search:
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Backtracking()
+            )
+
+        LBFGS with backtracking line search:
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.LBFGS(),
+                tz.m.Backtracking()
+            )
+
     """
     def __init__(
         self,

@@ -109,18 +109,20 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
 
 
 class HigherOrderNewton(Module):
-    """
-    A basic arbitrary order newton's method with optional trust region and proximal penalty.
-    It is recommended to enable at least one of trust region or proximal penalty.
+    """A basic arbitrary order newton's method with optional trust region and proximal penalty.
 
     This constructs an nth order taylor approximation via autograd and minimizes it with
     scipy.optimize.minimize trust region newton solvers with optional proximal penalty.
 
-    This uses n^order memory, where n is number of decision variables, and I am not aware
-    of any problems where this is more efficient than newton's method. It can minimize
-    rosenbrock in a single step, but that step probably takes more time than newton.
-    And there are way more efficient tensor methods out there but they tend to be
-    significantly more complex.
+    .. note::
+        This uses n^order memory, where n is number of decision variables, and I am not aware
+        of any problems where this is more efficient than newton's method. It can minimize
+        rosenbrock in a single step, but that step probably takes more time than newton.
+        And there are way more efficient tensor methods out there but they tend to be
+        significantly more complex.
+
+    .. note::
+        "none" and "proximal" trust methods may generate subproblems that have no minima.
 
     Args:
 
@@ -167,7 +169,7 @@ class HigherOrderNewton(Module):
     def step(self, var):
         params = TensorList(var.params)
         closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if closure is None: raise RuntimeError('HigherOrderNewton requires closure')
 
         settings = self.settings[params[0]]
         order = settings['order']

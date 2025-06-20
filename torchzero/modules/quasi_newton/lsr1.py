@@ -99,9 +99,13 @@ class LSR1(Module):
             L-SR1 history and before preconditioning. Defaults to None.
 
     Examples:
-    L-SR1 with strong-wolfe line search
-    .. code:: py
-        opt = tz.Modular(model.parameters(), tz.m.LSR1(100), tz.m.StrongWolfe())
+        L-SR1 with Strong-Wolfe+- line search
+        .. code-block:: python
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.LSR1(100),
+                tz.m.StrongWolfe(plus_minus=True)
+            )
     """
     def __init__(
         self,

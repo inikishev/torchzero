@@ -71,27 +71,28 @@ class LAdagrad(TensorwiseTransform):
 
     Examples:
 
-    .. code:: py
+        Limited-memory Adagrad
+        .. code-block:: python
+            optimizer = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
 
-        # limited-memory Adagrad
-        ladagrad = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
+        Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
+        .. code-block:: python
+            optimizer = tz.Modular(
+                model.parameters(),
+                tz.m.LAdagrad(inner=tz.m.EMA()),
+                tz.m.Debias(0.9, 0.999),
+                tz.m.LR(0.01)
+            )
 
-        # Adam with LAdagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
-        ladam = tz.Modular(
-            model.parameters(),
-            tz.m.LAdagrad(inner=tz.m.EMA()),
-            tz.m.Debias(0.9, 0.999),
-            tz.m.LR(0.01)
-        )
-
-        # Stable Adam with LAdagrad preconditioner (this is what I would recommend)
-        stable_ladam = tz.Modular(
-            model.parameters(),
-            tz.m.LAdagrad(inner=tz.m.EMA()),
-            tz.m.Debias(0.9, 0.999),
-            tz.m.ClipNormByEMA(max_ema_growth=1.2),
-            tz.m.LR(0.01)
-        )
+        Stable Adam with L-Adagrad preconditioner (this is what I would recommend)
+        .. code-block:: python
+            optimizer = tz.Modular(
+                model.parameters(),
+                tz.m.LAdagrad(inner=tz.m.EMA()),
+                tz.m.Debias(0.9, 0.999),
+                tz.m.ClipNormByEMA(max_ema_growth=1.2),
+                tz.m.LR(0.01)
+            )
     """
 
     def __init__(

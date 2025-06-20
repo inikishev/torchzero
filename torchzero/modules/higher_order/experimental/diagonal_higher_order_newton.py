@@ -116,9 +116,12 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
 
 
 class DiagonalHigherOrderNewton(Module):
-    """
-    Hvp with ones doesn't give you the diagonal unless derivatives are diagonal, but somehow it still works,
-    except it doesn't work in all cases except ones where it works.
+    """This works only if all derivative tensors up to order are diagonal.
+
+    This constructs an nth order diagonal taylor approximation via autograd and minimizes it with
+    scipy.optimize.minimize trust region newton solvers with optional proximal penalty.
+
+    It is not clear to me what happens when derivatives are not diagonal.
     """
     def __init__(
         self,
@@ -142,7 +145,7 @@ class DiagonalHigherOrderNewton(Module):
     def step(self, var):
         params = TensorList(var.params)
         closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if closure is None: raise RuntimeError('DiagonalHigherOrderNewton requires closure')
 
         settings = self.settings[params[0]]
         order = settings['order']
