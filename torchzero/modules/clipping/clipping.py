@@ -383,6 +383,7 @@ class Centralize(Transform):
         Standard gradient centralization:
 
         .. code-block:: python
+
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Centralize(dim=0),

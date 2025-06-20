@@ -6,3 +6,4 @@ nlopt
 git+https://github.com/inikishev/torchzero.git
 furo
 sphinx-autoapi
+sphinx-rtd-theme
