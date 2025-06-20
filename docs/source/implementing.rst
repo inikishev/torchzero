@@ -4,7 +4,8 @@ Implementing new modules
 Modules are quite similar to torch.optim.Optimizer, the main difference is that everything is stored in the Var object,
 not in the module itself. Also both per-parameter settings and state are stored in per-parameter dictionaries. Feel free to modify the example below.
 
-.. code:: python
+.. code-block:: python
+
     import torch
     from torchzero.core import Module, Var
 
