@@ -18,3 +18,5 @@ from .orthograd import OrthoGrad, orthograd_
 from .sophia_h import SophiaH
 # from .curveball import CurveBall
 # from .spectral import SpectralPreconditioner
+
+from .adahessian import AdaHessian
