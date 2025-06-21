@@ -20,6 +20,8 @@ class SAM(Module):
     Args:
         rho (float, optional): Neighborhood size. Defaults to 0.05.
         p (float, optional): norm of the SAM objective. Defaults to 2.
+        adaptive (float, optional):
+            whether to use ASAM variant, which makes perturbation relative to weights. Defaults to False.
 
     Examples:
         SAM-SGD:
@@ -44,12 +46,13 @@ class SAM(Module):
             )
 
     References:
-        Foret, P., Kleiner, A., Mobahi, H., & Neyshabur, B. (2020). Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412. https://arxiv.org/pdf/2010.01412#page=3.16
+        - Foret, P., Kleiner, A., Mobahi, H., & Neyshabur, B. (2020). Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412. https://arxiv.org/abs/2010.01412#page=3.16
 
+        - Kwon, J., Kim, J., Park, H., & Choi, I. K. (2021, July). Asam: Adaptive sharpness-aware minimization for scale-invariant learning of deep neural networks. In International Conference on Machine Learning (pp. 5905-5914). PMLR. https://arxiv.org/abs/2102.11600
     """
 
-    def __init__(self, rho: float = 0.05, p: float = 2, eps=1e-10):
-        defaults = dict(rho=rho, p=p, eps=eps)
+    def __init__(self, rho: float = 0.05, adaptive: bool = False, p: float = 2, eps=1e-10):
+        defaults = dict(rho=rho, p=p, eps=eps, adaptive=adaptive)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -60,7 +63,9 @@ class SAM(Module):
         zero_grad = var.zero_grad
         if closure is None: raise RuntimeError("SAM requires a closure passed to the optimizer step")
         p, rho = self.get_settings(var.params, 'p', 'rho', cls=NumberList)
-        eps = self.settings[var.params[0]]['eps']
+        s = self.settings[var.params[0]]
+        eps = s['eps']
+        adaptive = s['adaptive']
 
         # 1/p + 1/q = 1
         # okay, authors of SAM paper, I will manually solve your equation
@@ -89,6 +94,8 @@ class SAM(Module):
             term2 = grad_abs.pow_(q-1)
             denom = grad_abs.pow(q).sum().pow(1/p)
             e = term1.mul_(term2).div_(denom.clip(min=eps))
+            if adaptive:
+                e.mul_(torch._foreach_pow(params, 2))
 
             # calculate loss and gradient approximation of inner problem
             torch._foreach_add_(params, e)

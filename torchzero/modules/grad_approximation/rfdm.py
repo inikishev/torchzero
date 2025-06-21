@@ -302,8 +302,8 @@ class SPSA(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "rademacher".
+        beta (float, optional):
             If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
-        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -326,8 +326,8 @@ class RDSA(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "gaussian".
+        beta (float, optional):
             If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
-        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -359,12 +359,12 @@ class GaussianSmoothing(RandomizedFDM):
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
     Args:
-        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
-        n_samples (int, optional): number of random gradient samples. Defaults to 1.
-        formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
+        h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-2.
+        n_samples (int, optional): number of random gradient samples. Defaults to 100.
+        formula (_FD_Formula, optional): finite difference formula. Defaults to 'forward2'.
         distribution (Distributions, optional): distribution. Defaults to "gaussian".
+        beta (float, optional):
             If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
-        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -378,7 +378,7 @@ class GaussianSmoothing(RandomizedFDM):
         self,
         h: float = 1e-2,
         n_samples: int = 100,
-        formula: _FD_Formula = "central2",
+        formula: _FD_Formula = "forward2",
         distribution: Distributions = "gaussian",
         beta: float = 0,
         pre_generate = True,

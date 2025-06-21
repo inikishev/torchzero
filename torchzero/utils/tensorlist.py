@@ -217,6 +217,12 @@ class TensorList(list[torch.Tensor | Any]):
         """Returns a TensorList with all elements for which `fn` returned True."""
         return self.__class__(i for i in self if fn(i, *args, **kwargs))
 
+    def filter_by_list(self, s: Sequence[bool]):
+        """returns a new TensorList with all elements where corresponding elements in :code:`s` are True."""
+        if len(self) != len(s):
+            raise ValueError(f"{len(self) = }, {len(s) = }")
+        return self.__class__(i for i, boolean in zip(self, s) if boolean)
+
     def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
         """If `other` is list/tuple, applies `fn` to this TensorList zipped with `other`.
         Otherwise applies `fn` to this TensorList and `other`.
