@@ -511,13 +511,10 @@ class Modular(torch.optim.Optimizer):
         #     self.add_param_group(param_group)
 
         self.current_step = 0
-        """The global step counter for the optimizer."""
+        """global step counter for the optimizer."""
 
         self.num_evaluations = 0
-        """
-        number of times the objective has been evaluated (number of closure calls or number of steps if closure is None).
-        This is meant to be used as a termination criteria and doesn't get reset on optimizer.reset().
-        """
+        """number of times the objective has been evaluated (number of closure calls or number of steps if closure is None)."""
 
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]

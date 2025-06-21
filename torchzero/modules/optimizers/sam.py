@@ -91,7 +91,7 @@ class SAM(Module):
 
             # compute e
             term1 = grad.sign().mul_(rho)
-            term2 = grad_abs.pow_(q-1)
+            term2 = grad_abs.pow(q-1)
             denom = grad_abs.pow(q).sum().pow(1/p)
             e = term1.mul_(term2).div_(denom.clip(min=eps))
             if adaptive:
