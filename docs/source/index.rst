@@ -20,6 +20,8 @@ Welcome to torchzero documentation!
       :show-inheritance:
    * :ref:`search`
 
+   .. examples/Logistic regression
+
    implementing
 
 

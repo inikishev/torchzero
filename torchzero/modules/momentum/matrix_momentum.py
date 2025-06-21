@@ -7,12 +7,16 @@ from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 class MatrixMomentum(Module):
-    """
-    May be useful for ill conditioned stochastic quadratic objectives but I need to test this.
-    Evaluates hessian vector product on each step (via finite difference or autograd).
+    """Second order momentum method.
+
+    Matrix momentum is useful for convex objectives, also for some reason it has very really good generalization on elastic net logistic regression.
 
     .. note::
-        :code:`mu` is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable.
+        :code:`mu` needs to be tuned very carefully. It is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable.
+
+    .. note::
+        I have devised an adaptive version of this - :code:`tz.m.AdaptiveMatrixMomentum`, and it works well
+        without having to tune :code:`mu`.
 
     .. note::
         In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
@@ -47,7 +51,7 @@ class MatrixMomentum(Module):
         self,
         mu=0.1,
         beta: float = 1,
-        hvp_method: Literal["autograd", "forward", "central"] = "forward",
+        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
         h: float = 1e-3,
         hvp_tfm: Chainable | None = None,
     ):
@@ -96,11 +100,9 @@ class MatrixMomentum(Module):
 
 
 class AdaptiveMatrixMomentum(Module):
-    """
-    May be useful for ill conditioned stochastic quadratic objectives but I need to test this.
-    Evaluates hessian vector product on each step (via finite difference or autograd).
+    """Second order momentum method.
 
-    This version estimates mu via a simple heuristic: ||s||/||y||, where s is parameter difference, y is gradient difference.
+    Matrix momentum is useful for convex objectives, also for some reason it has very good generalization on elastic net logistic regression.
 
     .. note::
         In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
@@ -137,7 +139,7 @@ class AdaptiveMatrixMomentum(Module):
         mu_mul: float = 1,
         beta: float = 1,
         eps=1e-4,
-        hvp_method: Literal["autograd", "forward", "central"] = "forward",
+        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
         h: float = 1e-3,
         hvp_tfm: Chainable | None = None,
     ):

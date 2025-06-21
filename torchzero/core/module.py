@@ -440,6 +440,21 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
 
 # region Modular
 # ---------------------------------- Modular --------------------------------- #
+
+class _EvalCounterClosure:
+    """keeps track of how many times closure has been evaluated"""
+    __slots__ = ("modular", "closure")
+    def __init__(self, modular: "Modular", closure):
+        self.modular = modular
+        self.closure = closure
+
+    def __call__(self, *args, **kwargs):
+        if self.closure is None:
+            raise RuntimeError("One of the modules requires closure to be passed to the step method")
+
+        self.modular.num_evaluations += 1
+        return self.closure(*args, **kwargs)
+
 # have to inherit from Modular to support lr schedulers
 # although Accelerate doesn't work due to converting param_groups to a dict
 class Modular(torch.optim.Optimizer):
@@ -497,6 +512,12 @@ class Modular(torch.optim.Optimizer):
 
         self.current_step = 0
         """The global step counter for the optimizer."""
+
+        self.num_evaluations = 0
+        """
+        number of times the objective has been evaluated (number of closure calls or number of steps if closure is None).
+        This is meant to be used as a termination criteria and doesn't get reset on optimizer.reset().
+        """
 
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]
@@ -558,11 +579,12 @@ class Modular(torch.optim.Optimizer):
 
         # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        var = Var(params=params, closure=closure, model=self.model, current_step=self.current_step)
+        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step)
 
         # if closure is None, assume backward has been called and gather grads
         if closure is None:
             var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+            self.num_evaluations += 1
 
         last_module = self.modules[-1]
         last_lr = last_module.defaults.get('lr', None)

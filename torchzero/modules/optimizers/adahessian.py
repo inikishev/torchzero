@@ -77,7 +77,7 @@ class AdaHessian(Module):
         If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
 
     .. note::
-        This module requires the a closure passed to the optimizer step,
+        This module requires a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
         The closure must accept a ``backward`` argument (refer to documentation).
 

@@ -81,6 +81,7 @@ for epoch in range(100):
   * `Muon`.
   * `RMSprop`.
   * `Rprop`.
+  * `SAM`.
   * `Shampoo`.
   * `SOAP` (my current recommendation).
   * `SophiaH`.

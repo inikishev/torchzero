@@ -9,7 +9,7 @@ import sys, os
 #sys.path.insert(0, os.path.abspath('.../src'))
 
 project = 'torchzero'
-copyright = '2024, Ivan Nikishev'
+copyright = '2025, Ivan Nikishev'
 author = 'Ivan Nikishev'
 
 # -- General configuration ---------------------------------------------------
@@ -24,6 +24,8 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
     'autoapi.extension',
+    "myst_nb",
+
     # 'sphinx_rtd_theme',
 ]
 autosummary_generate = True
