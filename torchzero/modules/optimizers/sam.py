@@ -128,7 +128,7 @@ class SAM(Module):
 
 # different class because defaults for SAM are bad for ASAM
 class ASAM(SAM):
-    """Adptive sharpness-Aware Minimization from https://arxiv.org/pdf/2102.11600#page=6.52
+    """Adaptive Sharpness-Aware Minimization from https://arxiv.org/pdf/2102.11600#page=6.52
 
     SAM functions by seeking parameters that lie in neighborhoods having uniformly low loss value.
     It performs two forward and backward passes per step.
