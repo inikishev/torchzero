@@ -17,7 +17,7 @@ from .rprop import (
     SignConsistencyLRs,
     SignConsistencyMask,
 )
-from .sam import SAM
+from .sam import SAM, ASAM
 from .shampoo import Shampoo
 from .soap import SOAP
 from .sophia_h import SophiaH
