@@ -31,6 +31,16 @@ def generic_eq(x: int | float | Iterable[int | float], y: int | float | Iterable
         return all(i==y for i in x)
     return all(i==j for i,j in zip(x,y))
 
+def generic_ne(x: int | float | Iterable[int | float], y: int | float | Iterable[int | float]) -> bool:
+    """generic not equals function that supports scalars and lists of numbers. Faster than not generic_eq"""
+    if isinstance(x, (int,float)):
+        if isinstance(y, (int,float)): return x!=y
+        return any(i!=x for i in y)
+    if isinstance(y, (int,float)):
+        return any(i!=y for i in x)
+    return any(i!=j for i,j in zip(x,y))
+
+
 def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
     """If `other` is list/tuple, applies `fn` to self zipped with `other`.
     Otherwise applies `fn` to this sequence and `other`.

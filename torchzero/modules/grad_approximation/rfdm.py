@@ -3,7 +3,7 @@ from typing import Any
 from functools import partial
 import torch
 
-from ...utils import TensorList, Distributions, NumberList, generic_eq
+from ...utils import TensorList, Distributions, NumberList
 from .grad_approximator import GradApproximator, GradTarget, _FD_Formula
 
 def _rforward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):

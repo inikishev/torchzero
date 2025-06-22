@@ -130,3 +130,5 @@ class NumberList(list[int | float | Any]):
 
     def clamp(self, min=None, max=None):
         return self.zipmap_args(_clamp, min, max)
+    def clip(self, min=None, max=None):
+        return self.zipmap_args(_clamp, min, max)

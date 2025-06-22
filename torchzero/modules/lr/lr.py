@@ -2,13 +2,14 @@
 import torch
 
 from ...core import Transform
-from ...utils import NumberList, TensorList, generic_eq, unpack_dicts
+from ...utils import NumberList, TensorList, generic_ne, unpack_dicts
 
 def lazy_lr(tensors: TensorList, lr: float | list, inplace:bool):
     """multiplies by lr if lr is not 1"""
-    if generic_eq(lr, 1): return tensors
-    if inplace: return tensors.mul_(lr)
-    return tensors * lr
+    if generic_ne(lr, 1):
+        if inplace: return tensors.mul_(lr)
+        return tensors * lr
+    return tensors
 
 class LR(Transform):
     """Learning rate. Adding this module also adds support for LR schedulers."""

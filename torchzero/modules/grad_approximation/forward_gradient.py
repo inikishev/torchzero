@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...utils import Distributions, NumberList, TensorList, generic_eq
+from ...utils import Distributions, NumberList, TensorList
 from ...utils.derivatives import jvp, jvp_fd_central, jvp_fd_forward
 from .grad_approximator import GradApproximator, GradTarget
 from .rfdm import RandomizedFDM

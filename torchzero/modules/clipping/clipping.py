@@ -5,7 +5,7 @@ import math
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList, generic_eq
+from ...utils import NumberList, TensorList
 
 
 def clip_grad_value_(params: Iterable[torch.Tensor], value: float):

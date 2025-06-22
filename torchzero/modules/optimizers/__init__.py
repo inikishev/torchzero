@@ -7,6 +7,7 @@ from .adam import Adam
 from .adan import Adan
 from .ladagrad import LAdagrad
 from .lion import Lion
+from .msam import MSAM, MSAMObjective
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .orthograd import OrthoGrad, orthograd_
 from .rmsprop import RMSprop
@@ -17,7 +18,7 @@ from .rprop import (
     SignConsistencyLRs,
     SignConsistencyMask,
 )
-from .sam import SAM, ASAM
+from .sam import ASAM, SAM
 from .shampoo import Shampoo
 from .soap import SOAP
 from .sophia_h import SophiaH

@@ -19,7 +19,7 @@ from typing_extensions import Self, TypeAlias, Unpack
 
 import torch
 from .ops import where_
-from .python_tools import generic_eq, zipmap
+from .python_tools import zipmap, generic_ne
 from .numberlist import NumberList, as_numberlist, maybe_numberlist
 
 
@@ -431,11 +431,11 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     def lazy_add(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 0): return self
-        return self.add(other)
+        if generic_ne(other, 0): return self.add(other)
+        return self
     def lazy_add_(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 0): return self
-        return self.add_(other)
+        if generic_ne(other, 0): return self.add_(other)
+        return self
 
     @overload
     def sub(self, other: _TensorSeq, alpha: _Scalar = 1): ...
@@ -455,11 +455,11 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     def lazy_sub(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 0): return self
-        return self.sub(other)
+        if generic_ne(other, 0): return self.sub(other)
+        return self
     def lazy_sub_(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 0): return self
-        return self.sub_(other)
+        if generic_ne(other, 0): return self.sub_(other)
+        return self
 
     def neg(self): return self.__class__(torch._foreach_neg(self))
     def neg_(self):
@@ -473,13 +473,13 @@ class TensorList(list[torch.Tensor | Any]):
 
     # TODO: benchmark
     def lazy_mul(self, other: int | float | list[int | float] | tuple[int | float], clone=False):
-        if generic_eq(other, 1):
-            if clone: return self.clone()
-            return self
-        return self * other
+        if generic_ne(other, 1):
+            return self * other
+        if clone: return self.clone()
+        return self
     def lazy_mul_(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 1): return self
-        return self.mul_(other)
+        if generic_ne(other, 1): return self.mul_(other)
+        return self
 
     def div(self, other: _STOrSTSeq) -> Self: return self.__class__(torch._foreach_div(self, other))
     def div_(self, other: _STOrSTSeq):
@@ -487,11 +487,11 @@ class TensorList(list[torch.Tensor | Any]):
         return self
 
     def lazy_div(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 1): return self
-        return self / other
+        if generic_ne(other, 1): return self / other
+        return self
     def lazy_div_(self, other: int | float | list[int | float] | tuple[int | float]):
-        if generic_eq(other, 1): return self
-        return self.div_(other)
+        if generic_ne(other, 1): return self.div_(other)
+        return self
 
     def pow(self, exponent: "_Scalar | _STSeq"): return self.__class__(torch._foreach_pow(self, exponent))
     def pow_(self, exponent: "_Scalar | _STSeq"):
@@ -797,7 +797,7 @@ class TensorList(list[torch.Tensor | Any]):
             norm_self = self.global_vector_norm(ord)
             norm_other = magnitude.global_vector_norm(ord)
 
-        if not generic_eq(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
+        if generic_ne(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
         return self * (norm_other / norm_self.clip_(min=eps))
 
@@ -810,7 +810,7 @@ class TensorList(list[torch.Tensor | Any]):
             norm_self = self.global_vector_norm(ord)
             norm_other = magnitude.global_vector_norm(ord)
 
-        if not generic_eq(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
+        if generic_ne(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
         return self.mul_(norm_other / norm_self.clip_(min=eps))
 

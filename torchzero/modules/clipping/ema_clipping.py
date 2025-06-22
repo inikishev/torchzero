@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 import torch
 
 from ...core import Module, Target, Transform, apply_transform, Chainable
-from ...utils import NumberList, TensorList, generic_eq, unpack_dicts, unpack_states
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 class ClipNormByEMA(Transform):
     """Clips norm to be no larger than the norm of an exponential moving average of past updates.

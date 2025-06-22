@@ -57,7 +57,6 @@ def eig_tikhonov_(H: torch.Tensor, reg: float):
     v = torch.linalg.eigvalsh(H).min().clamp_(max=0).neg_() + reg # pylint:disable=not-callable
     return tikhonov_(H, v)
 
-
 class Newton(Module):
     """Exact newton's method via autograd.
 
@@ -71,6 +70,7 @@ class Newton(Module):
 
     .. warning::
         this uses roughly O(N^2) memory.
+
 
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
@@ -87,8 +87,12 @@ class Newton(Module):
         H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
-            must return a tuple: `(hessian, is_inverted)` with transformed hessian and a boolean value
-            which must be True if transform inverted the hessian and False otherwise. Defaults to None.
+            must return either a tuple: `(hessian, is_inverted)` with transformed hessian and a boolean value
+            which must be True if transform inverted the hessian and False otherwise.
+
+            Or it returns a single tensor which is used as the update.
+
+            Defaults to None.
         eigval_tfm (Callable | None, optional):
             optional eigenvalues transform, for example :code:`torch.abs` or :code:`lambda L: torch.clip(L, min=1e-8)`.
             If this is specified, eigendecomposition will be used to invert the hessian.
@@ -110,7 +114,7 @@ class Newton(Module):
 
             opt = tz.Modular(
                 model.parameters(),
-                tz.m.Newton(eigval_tfm=torch.abs),
+                tz.m.Newton(eigval_tfm=lambda x: torch.abs(x).clip(min=0.1)),
                 tz.m.Backtracking()
             )
 
@@ -133,6 +137,17 @@ class Newton(Module):
                 tz.m.Newton(inner=tz.m.EMA(0.9)),
                 tz.m.LR(0.1)
             )
+
+        Diagonal newton example. This will still evaluate the entire hessian so it isn't efficient, but if you wanted to see how diagonal newton behaves or compares to full newton, you can use this.
+
+        .. code-block:: python
+
+            opt = tz.Modular(
+                model.parameters(),
+                tz.m.Newton(H_tfm = lambda H, g: g/H.diag()),
+                tz.m.Backtracking()
+            )
+
     """
     def __init__(
         self,
@@ -142,7 +157,7 @@ class Newton(Module):
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
         inner: Chainable | None = None,
-        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | None = None,
+        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
         defaults = dict(reg=reg, eig_reg=eig_reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative)
@@ -198,8 +213,14 @@ class Newton(Module):
         # ----------------------------------- solve ---------------------------------- #
         update = None
         if H_tfm is not None:
-            H, is_inv = H_tfm(H, g)
-            if is_inv: update = H @ g
+            ret = H_tfm(H, g)
+
+            if isinstance(ret, torch.Tensor):
+                update = ret
+
+            else: # returns (H, is_inv)
+                H, is_inv = ret
+                if is_inv: update = H @ g
 
         if search_negative or (eigval_tfm is not None):
             update = eigh_solve(H, g, eigval_tfm, search_negative=search_negative)

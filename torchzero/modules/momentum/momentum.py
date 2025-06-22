@@ -61,3 +61,4 @@ class NAG(Transform):
 
         momentum,dampening = unpack_dicts(settings, 'momentum','dampening', cls=NumberList)
         return nag_(TensorList(tensors), velocity_=velocity,momentum=momentum,dampening=dampening,lerp=lerp)
+
