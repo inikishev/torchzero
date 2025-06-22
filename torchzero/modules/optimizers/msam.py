@@ -167,7 +167,6 @@ class MSAMObjective(MSAM):
             Defaults to False.
 
     Examples:
-
         AdamW-MSAM
 
         .. code-block:: python
