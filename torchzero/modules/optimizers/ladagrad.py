@@ -5,13 +5,8 @@ import warnings
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool, centered:bool):
+def svd_update(history: deque[torch.Tensor], damping, rdamping, true_damping: bool):
     M = torch.stack(tuple(history), dim=1)
-
-    mean = None
-    if centered:
-        mean = M.mean(1, keepdim=True)
-        M -= mean
 
     device = M.device
     if torch.cuda.is_available(): M = M.cuda()
@@ -34,16 +29,41 @@ def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdam
             S.add_(Iu)
             if true_damping: S.sqrt_()
 
-        return U, S, mean
+        return U, S
 
     except torch.linalg.LinAlgError:
-        return None, None, mean
+        return None, None
 
-def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S: torch.Tensor, mean:torch.Tensor | None):
-    if mean is not None: g -= mean.squeeze()
+def svd_apply(g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
     Z = (U.T @ g)/S
     return U @ Z
 
+def eigh_update(history: deque[torch.Tensor], damping, rdamping):
+    M = torch.stack(tuple(history), dim=1)
+
+    try:
+        L, Q = torch.linalg.eigh(M.T @ M) # pylint:disable=not-callable
+
+        tol = torch.finfo(M.dtype).eps * L.max()
+        indices = L > tol
+        L = L[indices]
+        Q = Q[:, indices]
+
+        U = (M @ Q) * L.rsqrt()
+
+        if damping != 0 or rdamping != 0:
+            if rdamping != 0: rdamping *= torch.linalg.vector_norm(L) # pylint:disable=not-callable
+            Iu = damping + rdamping
+            L.add_(Iu)
+
+        return U, L
+
+    except torch.linalg.LinAlgError:
+        return None, None
+
+def eigh_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor):
+    Z = U.T @ g
+    return (U * L.rsqrt()) @ Z
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
     if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
@@ -68,8 +88,7 @@ class LMAdagrad(TensorwiseTransform):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
         true_damping (bool, optional):
             If True, damping is added to squared singular values to mimic Adagrad. Defaults to True.
-        centered (bool, optional):
-            if True, centers observations by mean of each feature, which you are supposed to do in ZCA, however centering the gradients may not work for some objectives. If False, this essentially uses second moment matrix. Defaults to False.
+        eigh (bool, optional): uses a more efficient way to calculate U and S. Defaults to True.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
         S_beta (float | None, optional): momentum for S (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
@@ -119,7 +138,7 @@ class LMAdagrad(TensorwiseTransform):
         rdamping: float = 0,
         order: int = 1,
         true_damping: bool = True,
-        centered: bool = False,
+        eigh: bool = True,
         U_beta: float | None = None,
         S_beta: float | None = None,
         interval: int = 1,
@@ -127,7 +146,7 @@ class LMAdagrad(TensorwiseTransform):
         inner: Chainable | None = None,
     ):
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, centered=centered, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, eigh=eigh, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -140,7 +159,7 @@ class LMAdagrad(TensorwiseTransform):
         true_damping = settings['true_damping']
         U_beta = settings['U_beta']
         S_beta = settings['S_beta']
-        centered = settings['centered']
+        eigh = settings['eigh']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -173,17 +192,19 @@ class LMAdagrad(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S, mean = lm_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping,
-                                                       true_damping=true_damping, centered=centered)
+            if eigh:
+                U, S = eigh_update(history, damping=damping, rdamping=rdamping)
+            else:
+                U, S = svd_update(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, S_beta, 'S', S)
-            state['mean'] = mean
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
+        eigh = settings['eigh']
 
         U = state.get('U', None)
         if U is None:
@@ -191,7 +212,8 @@ class LMAdagrad(TensorwiseTransform):
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
         S = state['S']
-        update = lm_adagrad_apply(tensor.view(-1), U, S, mean=state.get('mean', None)).view_as(tensor)
+        update_fn = eigh_apply if eigh else svd_apply
+        update = update_fn(tensor.view(-1), U, S).view_as(tensor)
 
         return update
 
