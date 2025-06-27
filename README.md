@@ -74,7 +74,7 @@ for epoch in range(100):
 * **Optimizers**: Optimization algorithms.
   * `Adam`.
   * `Adan`.
-  * `Adagrad`, `FullMatrixAdagrad`, and `LAdagrad` (limited-memory Adagrad).
+  * `Adagrad`, `FullMatrixAdagrad`, and `LMAdagrad` (limited-memory Adagrad).
   * `AdaHessian`.
   * `OrthoGrad`.
   * `Lion`.
@@ -90,7 +90,7 @@ for epoch in range(100):
   * Grams: `[tz.m.Adam(), tz.m.GradSign()]`
   * LaProp: `[tz.m.RMSprop(), tz.m.EMA(0.9)]`
   * Signum: `[tz.m.HeavyBall(), tz.m.Sign()]`
-  * Efficient full-matrix version of any diagonal optimizer, like Adam: `[tz.m.LAdagrad(beta=0.999, inner=tz.m.EMA(0.9)), tz.m.Debias(0.9, 0.999)]`
+  * Efficient full-matrix version of any diagonal optimizer, like Adam: `[tz.m.LMAdagrad(beta=0.999, inner=tz.m.EMA(0.9)), tz.m.Debias(0.9, 0.999)]`
   * Cautious version of any optimizer, like SOAP: `[tz.m.SOAP(), tz.m.Cautious()]`
 
 * **Momentum**:

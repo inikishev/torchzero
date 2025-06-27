@@ -870,7 +870,7 @@ HigherOrderNewton = Run(
 )
 
 # ---------------------------- optimizers/ladagrad --------------------------- #
-LAdagrad = Run(
+LMAdagrad = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(5)),
     needs_closure=False,

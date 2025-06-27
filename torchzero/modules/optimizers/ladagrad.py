@@ -18,7 +18,7 @@ def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdam
         if torch.cuda.is_available():
             U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
         else:
-            warnings.warn("CUDA is not available, cuSOLVER's \"gesvda\" can't be used so LAdagrad may be significantly slower.")
+            warnings.warn("CUDA is not available, cuSOLVER's \"gesvda\" can't be used so LMAdagrad may be significantly slower.")
             U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
 
         U = U.to(device); S = S.to(device)
@@ -78,7 +78,11 @@ class LMAdagrad(TensorwiseTransform):
 
         .. code-block:: python
 
-            optimizer = tz.Modular(model.parameters(), tz.m.LAdagrad(), tz.m.LR(0.1))
+            optimizer = tz.Modular(
+                model.parameters(),
+                tz.m.LMAdagrad(),
+                tz.m.LR(0.1)
+            )
 
         Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
 
@@ -86,7 +90,7 @@ class LMAdagrad(TensorwiseTransform):
 
             optimizer = tz.Modular(
                 model.parameters(),
-                tz.m.LAdagrad(inner=tz.m.EMA()),
+                tz.m.LMAdagrad(inner=tz.m.EMA()),
                 tz.m.Debias(0.9, 0.999),
                 tz.m.LR(0.01)
             )
@@ -97,7 +101,7 @@ class LMAdagrad(TensorwiseTransform):
 
             optimizer = tz.Modular(
                 model.parameters(),
-                tz.m.LAdagrad(inner=tz.m.EMA()),
+                tz.m.LMAdagrad(inner=tz.m.EMA()),
                 tz.m.Debias(0.9, 0.999),
                 tz.m.ClipNormByEMA(max_ema_growth=1.2),
                 tz.m.LR(0.01)
