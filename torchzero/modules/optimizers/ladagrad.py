@@ -9,6 +9,7 @@ def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdam
     M = torch.stack(tuple(history), dim=1)
 
     if centered:
+        # centering is unstable when not enough history has been recorded
         maxlen = history.maxlen if history.maxlen is not None else 5
         if len(history) >= min(maxlen, 5):
             M -= M.mean(1, keepdim=True)
