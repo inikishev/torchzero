@@ -5,41 +5,8 @@ import warnings
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def svd_update(history: deque[torch.Tensor], damping, rdamping, true_damping: bool):
-    M = torch.stack(tuple(history), dim=1)
-
-    device = M.device
-    if torch.cuda.is_available(): M = M.cuda()
-
-    try:
-        if torch.cuda.is_available():
-            U, S, _ = torch.linalg.svd(M, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
-        else:
-            warnings.warn("CUDA is not available, cuSOLVER's \"gesvda\" can't be used so LMAdagrad may be significantly slower.")
-            U, S, _ = torch.linalg.svd(M, full_matrices=False) # pylint:disable=not-callable
-
-        U = U.to(device); S = S.to(device)
-
-        if damping != 0 or rdamping != 0:
-            if rdamping != 0: rdamping *= torch.linalg.vector_norm(S) # pylint:disable=not-callable
-            Iu = damping + rdamping
-            if true_damping:
-                S.pow_(2)
-                Iu **= 2
-            S.add_(Iu)
-            if true_damping: S.sqrt_()
-
-        return U, S
-
-    except torch.linalg.LinAlgError:
-        return None, None
-
-def svd_apply(g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
-    Z = (U.T @ g)/S
-    return U @ Z
-
-def eigh_update(history: deque[torch.Tensor], damping, rdamping):
-    M = torch.stack(tuple(history), dim=1)
+def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
+    M = torch.stack(tuple(history), dim=1)# / len(history)
 
     try:
         L, Q = torch.linalg.eigh(M.T @ M) # pylint:disable=not-callable
@@ -61,7 +28,7 @@ def eigh_update(history: deque[torch.Tensor], damping, rdamping):
     except torch.linalg.LinAlgError:
         return None, None
 
-def eigh_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor):
+def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor):
     Z = U.T @ g
     return (U * L.rsqrt()) @ Z
 
@@ -75,7 +42,7 @@ class LMAdagrad(TensorwiseTransform):
     """
     Limited-memory full matrix Adagrad.
 
-    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U ((Uᵀg)/S).
+    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U S^-1 Uᵀg.
 
     This is equivalent to full-matrix Adagrad on recent gradients.
 
@@ -138,15 +105,14 @@ class LMAdagrad(TensorwiseTransform):
         rdamping: float = 0,
         order: int = 1,
         true_damping: bool = True,
-        eigh: bool = True,
         U_beta: float | None = None,
-        S_beta: float | None = None,
+        L_beta: float | None = None,
         interval: int = 1,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, eigh=eigh, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, L_beta=L_beta)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -156,10 +122,8 @@ class LMAdagrad(TensorwiseTransform):
         update_freq = settings['update_freq']
         damping = settings['damping']
         rdamping = settings['rdamping']
-        true_damping = settings['true_damping']
         U_beta = settings['U_beta']
-        S_beta = settings['S_beta']
-        eigh = settings['eigh']
+        L_beta = settings['L_beta']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -192,28 +156,22 @@ class LMAdagrad(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            if eigh:
-                U, S = eigh_update(history, damping=damping, rdamping=rdamping)
-            else:
-                U, S = svd_update(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
+            U, L = lm_adagrad_update(history, damping=damping, rdamping=rdamping)
             maybe_lerp_(state, U_beta, 'U', U)
-            maybe_lerp_(state, S_beta, 'S', S)
+            maybe_lerp_(state, L_beta, 'L', L)
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        eigh = settings['eigh']
-
         U = state.get('U', None)
         if U is None:
             # make a conservative step to avoid issues due to different GD scaling
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
-        S = state['S']
-        update_fn = eigh_apply if eigh else svd_apply
-        update = update_fn(tensor.view(-1), U, S).view_as(tensor)
+        L = state['L']
+        update = lm_adagrad_apply(tensor.view(-1), U, L).view_as(tensor)
 
         return update
 
