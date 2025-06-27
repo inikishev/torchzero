@@ -6,20 +6,22 @@ import torch
 from ...core import Chainable, TensorwiseTransform
 
 def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool, centered:bool):
-    M_hist = torch.stack(tuple(history), dim=1)
+    M = torch.stack(tuple(history), dim=1)
 
-    if centered and len(history) == history.maxlen:
-        M_hist -= M_hist.mean(1, keepdim=True)
+    if centered:
+        maxlen = history.maxlen if history.maxlen is not None else 5
+        if len(history) >= min(maxlen, 5):
+            M -= M.mean(1, keepdim=True)
 
-    device = M_hist.device
-    if torch.cuda.is_available(): M_hist = M_hist.cuda()
+    device = M.device
+    if torch.cuda.is_available(): M = M.cuda()
 
     try:
         if torch.cuda.is_available():
-            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
+            U, S, _ = torch.linalg.svd(M, full_matrices=False, driver='gesvda') # pylint:disable=not-callable
         else:
             warnings.warn("CUDA is not available, cuSOLVER's \"gesvda\" can't be used so LMAdagrad may be significantly slower.")
-            U, S, _ = torch.linalg.svd(M_hist, full_matrices=False) # pylint:disable=not-callable
+            U, S, _ = torch.linalg.svd(M, full_matrices=False) # pylint:disable=not-callable
 
         U = U.to(device); S = S.to(device)
 
@@ -32,14 +34,14 @@ def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdam
             S.add_(Iu)
             if true_damping: S.sqrt_()
 
-        return U, 1/S
+        return U, S
 
     except torch.linalg.LinAlgError:
         return None, None
 
-def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
-    Utg = (U.T @ g)*S_inv
-    return U @ Utg
+def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S: torch.Tensor):
+    Z = (U.T @ g)/S
+    return U @ Z
 
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
@@ -68,7 +70,7 @@ class LMAdagrad(TensorwiseTransform):
         centered (bool, optional):
             if True, centers observations by mean of each feature before calculating the covariance matrix, which is how you are supposed to calculate it but it is more unstable. Defaults to False.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
-        S_beta (float | None, optional): momentum for 1/S (too unstable, don't use). Defaults to None.
+        S_beta (float | None, optional): momentum for S (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
         concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
@@ -157,12 +159,12 @@ class LMAdagrad(TensorwiseTransform):
                     state[f'prev_g_{i}'] = cur_g
                     break
 
-                s_k = cur_p - state[f'prev_p_{i}']
-                y_k = cur_g - state[f'prev_g_{i}']
+                s = cur_p - state[f'prev_p_{i}']
+                y = cur_g - state[f'prev_g_{i}']
                 state[f'prev_p_{i}'] = cur_p
                 state[f'prev_g_{i}'] = cur_g
-                cur_p = s_k
-                cur_g = y_k
+                cur_p = s
+                cur_g = y
 
                 if i == order - 1:
                     cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
@@ -170,28 +172,24 @@ class LMAdagrad(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S_inv = lm_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping,
+            U, S = lm_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping,
                                                        true_damping=true_damping, centered=centered)
             maybe_lerp_(state, U_beta, 'U', U)
-            maybe_lerp_(state, S_beta, 'S_inv', S_inv)
+            maybe_lerp_(state, S_beta, 'S', S)
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        history_size = settings['history_size']
 
         U = state.get('U', None)
         if U is None:
             # make a conservative step to avoid issues due to different GD scaling
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
-        S_inv = state['S_inv']
-        update = lm_adagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
+        S = state['S']
+        update = lm_adagrad_apply(tensor.view(-1), U, S).view_as(tensor)
 
-        n = len(state['history'])
-        mh = min(history_size, 10)
-        if n <= mh: update.mul_(n/mh)
         return update
 
