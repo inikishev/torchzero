@@ -65,8 +65,6 @@ class LAdagrad(TensorwiseTransform):
         S_beta (float | None, optional): momentum for 1/S (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
         concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
-        normalize (bool, optional): whether to normalize gradients, this doesn't work well so don't use it. Defaults to False.
-        centralize (bool, optional): whether to centralize gradients, this doesn't work well so don't use it. Defaults to False.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
 
     Examples:
@@ -112,12 +110,10 @@ class LAdagrad(TensorwiseTransform):
         S_beta: float | None = None,
         interval: int = 1,
         concat_params: bool = True,
-        normalize: bool=False,
-        centralize:bool = False,
         inner: Chainable | None = None,
     ):
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta, normalize=normalize, centralize=centralize)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -130,16 +126,12 @@ class LAdagrad(TensorwiseTransform):
         true_damping = settings['true_damping']
         U_beta = settings['U_beta']
         S_beta = settings['S_beta']
-        normalize = settings['normalize']
-        centralize = settings['centralize']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
 
         if order == 1:
             t = tensor.clone().view(-1)
-            if centralize: t -= t.mean()
-            if normalize: t /= torch.linalg.vector_norm(t).clip(min=1e-8) # pylint:disable=not-callable
             history.append(t)
         else:
 
@@ -161,9 +153,7 @@ class LAdagrad(TensorwiseTransform):
                 cur_g = y_k
 
                 if i == order - 1:
-                    if centralize: cur_g = cur_g - cur_g.mean()
-                    if normalize: cur_g = cur_g / torch.linalg.vector_norm(cur_g).clip(min=1e-8) # pylint:disable=not-callable
-                    else: cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
+                    cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
                     history.append(cur_g.view(-1))
 
         step = state.get('step', 0)
