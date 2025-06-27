@@ -78,6 +78,7 @@ for epoch in range(100):
   * `AdaHessian`.
   * `OrthoGrad`.
   * `Lion`.
+  * `MARS`.
   * `Muon`.
   * `RMSprop`.
   * `Rprop`.
