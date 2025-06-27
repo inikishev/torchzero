@@ -5,7 +5,7 @@ from .adagrad import Adagrad, FullMatrixAdagrad
 from .adahessian import AdaHessian
 from .adam import Adam
 from .adan import Adan
-from .ladagrad import LAdagrad
+from .ladagrad import LMAdagrad
 from .lion import Lion
 from .msam import MSAM, MSAMObjective
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_

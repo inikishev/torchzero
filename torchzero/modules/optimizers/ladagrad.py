@@ -5,8 +5,12 @@ import warnings
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def l_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool):
+def lm_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamping, true_damping: bool, centered:bool):
     M_hist = torch.stack(tuple(history), dim=1)
+
+    if centered and len(history) == history.maxlen:
+        M_hist -= M_hist.mean(1, keepdim=True)
+
     device = M_hist.device
     if torch.cuda.is_available(): M_hist = M_hist.cuda()
 
@@ -33,7 +37,7 @@ def l_adagrad_update_preconditioner(history: deque[torch.Tensor], damping, rdamp
     except torch.linalg.LinAlgError:
         return None, None
 
-def l_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
+def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, S_inv: torch.Tensor):
     Utg = (U.T @ g)*S_inv
     return U @ Utg
 
@@ -44,7 +48,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         if state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class LAdagrad(TensorwiseTransform):
+class LMAdagrad(TensorwiseTransform):
     """
     Limited-memory full matrix Adagrad.
 
@@ -61,6 +65,8 @@ class LAdagrad(TensorwiseTransform):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
         true_damping (bool, optional):
             If True, damping is added to squared singular values to mimic Adagrad. Defaults to True.
+        centered (bool, optional):
+            if True, centers observations by mean of each feature before calculating the covariance matrix, which is how you are supposed to calculate it but it is more unstable. Defaults to False.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
         S_beta (float | None, optional): momentum for 1/S (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
@@ -106,6 +112,7 @@ class LAdagrad(TensorwiseTransform):
         rdamping: float = 0,
         order: int = 1,
         true_damping: bool = True,
+        centered: bool = False,
         U_beta: float | None = None,
         S_beta: float | None = None,
         interval: int = 1,
@@ -113,7 +120,7 @@ class LAdagrad(TensorwiseTransform):
         inner: Chainable | None = None,
     ):
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
+        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, centered=centered, true_damping=true_damping, order=order, U_beta=U_beta, S_beta=S_beta)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
@@ -126,6 +133,7 @@ class LAdagrad(TensorwiseTransform):
         true_damping = settings['true_damping']
         U_beta = settings['U_beta']
         S_beta = settings['S_beta']
+        centered = settings['centered']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -158,7 +166,8 @@ class LAdagrad(TensorwiseTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
-            U, S_inv = l_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping, true_damping=true_damping)
+            U, S_inv = lm_adagrad_update_preconditioner(history, damping=damping, rdamping=rdamping,
+                                                       true_damping=true_damping, centered=centered)
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, S_beta, 'S_inv', S_inv)
 
@@ -175,7 +184,7 @@ class LAdagrad(TensorwiseTransform):
             return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
 
         S_inv = state['S_inv']
-        update = l_adagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
+        update = lm_adagrad_apply(tensor.view(-1), U, S_inv).view_as(tensor)
 
         n = len(state['history'])
         mh = min(history_size, 10)
