@@ -874,7 +874,7 @@ LMAdagrad = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(5)),
     needs_closure=False,
-    func='booth', steps=50, loss=0.001, merge_invariant=True,
+    func='booth', steps=50, loss=0.003, merge_invariant=True,
     sphere_steps=20, sphere_loss=1 if torch.cuda.is_available() else 50,
 )
 
