@@ -13,7 +13,6 @@ from .etf import (
 from .gradmin import GradMin
 from .newton_solver import NewtonSolver
 from .reduce_outward_lr import ReduceOutwardLR
-from .soapy import SOAPY
 from .structured_newton import StructuredNewton
 from .subspace_preconditioners import (
     HistorySubspacePreconditioning,
