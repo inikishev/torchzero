@@ -55,7 +55,7 @@ def cubic_adam_(
     return x_star.mul_(-alpha)
 
 class CubicAdam(Transform):
-    """Adam which has 3rd momentum and minimizes a cubic polynomial
+    """Adam which has 3rd momentum and minimizes a cubic polynomial. Unexpectedly this is slightly better than Adam (except it is more expensive but not by much).
 
     .. warning::
         Experimental.
