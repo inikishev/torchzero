@@ -7,6 +7,9 @@ from ...core import Chainable, TensorwiseTransform
 
 def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
     M = torch.stack(tuple(history), dim=1)# / len(history)
+    MTM = M.T @ M
+    if damping != 0:
+        M.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype))
 
     try:
         L, Q = torch.linalg.eigh(M.T @ M) # pylint:disable=not-callable
@@ -18,10 +21,9 @@ def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
 
         U = (M @ Q) * L.rsqrt()
 
-        if damping != 0 or rdamping != 0:
-            if rdamping != 0: rdamping *= torch.linalg.vector_norm(L) # pylint:disable=not-callable
-            Iu = damping + rdamping
-            L.add_(Iu)
+        if rdamping != 0:
+            rdamping *= torch.linalg.vector_norm(L) # pylint:disable=not-callable
+            L.add_(rdamping)
 
         return U, L
 
