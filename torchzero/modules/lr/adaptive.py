@@ -4,8 +4,8 @@ from typing import Any
 from operator import itemgetter
 import torch
 
-from ...core import Transform
-from ...utils import TensorList, NumberList, unpack_dicts
+from ...core import Transform, Chainable, apply_transform
+from ...utils import TensorList, NumberList, unpack_dicts, unpack_states, as_tensorlist
 
 
 class PolyakStepSize(Transform):
@@ -24,10 +24,12 @@ class PolyakStepSize(Transform):
             if False calculate one global step size for all parameters. Defaults to False.
         alpha (float, optional): multiplier to Polyak step-size. Defaults to 1.
     """
-    def __init__(self, max: float | None = None, min_obj_value: float = 0, use_grad=True, parameterwise=False, alpha: float = 1):
+    def __init__(self, max: float | None = None, min_obj_value: float = 0, use_grad=True, parameterwise=False, alpha: float = 1, inner: Chainable | None = None):
 
         defaults = dict(alpha=alpha, max=max, min_obj_value=min_obj_value, use_grad=use_grad, parameterwise=parameterwise)
         super().__init__(defaults, uses_grad=use_grad)
+
+        if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
@@ -52,6 +54,9 @@ class PolyakStepSize(Transform):
 
             if max is not None:
                 if polyak_step_size > max: polyak_step_size = max
+
+        if 'inner' in self.children:
+            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads, loss))
 
         tensors.mul_(alpha * polyak_step_size)
         return tensors
@@ -91,3 +96,4 @@ class RandomStepSize(Transform):
 
         torch._foreach_mul_(tensors, lr)
         return tensors
+

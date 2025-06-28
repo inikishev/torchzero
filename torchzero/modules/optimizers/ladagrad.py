@@ -9,7 +9,7 @@ def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
     M = torch.stack(tuple(history), dim=1)# / len(history)
     MTM = M.T @ M
     if damping != 0:
-        MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype))
+        MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype).mul_(damping))
 
     try:
         L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
@@ -37,7 +37,7 @@ def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor):
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
     if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
     else:
-        if state_[key].shape != value.shape: state_[key] = value
+        if state_[key] is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
 class LMAdagrad(TensorwiseTransform):

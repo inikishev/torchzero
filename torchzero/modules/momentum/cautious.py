@@ -196,7 +196,7 @@ class ScaleByGradCosineSimilarity(Transform):
         eps = settings[0]['eps']
         tensors = TensorList(tensors)
         grads = TensorList(grads)
-        cos_sim = (tensors.dot(grads)) / (tensors.global_vector_norm() * grads.global_vector_norm()).clip(min=eps)
+        cos_sim = tensors.dot(grads) / (tensors.global_vector_norm() * grads.global_vector_norm()).clip(min=eps)
 
         return tensors.mul_(cos_sim)
 
@@ -250,7 +250,7 @@ class ScaleModulesByCosineSimilarity(Module):
         c = TensorList(compare_var.get_update())
         eps = self.settings[var.params[0]]['eps']
 
-        cos_sim = (m.dot(c)) / (m.global_vector_norm() * c.global_vector_norm()).clip(min=eps)
+        cos_sim = m.dot(c) / (m.global_vector_norm() * c.global_vector_norm()).clip(min=eps)
 
         var.update = m.mul_(cos_sim)
         return var

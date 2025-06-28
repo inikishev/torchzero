@@ -21,3 +21,4 @@ from .subspace_preconditioners import (
 from .tensor_adagrad import TensorAdagrad
 from .higher_order_adagrad import HigherOrderAdagrad
 from .cubic_adam import CubicAdam
+from .cosine import CosineTrustRegion, CosineDebounce
