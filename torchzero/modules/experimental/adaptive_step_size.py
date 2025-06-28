@@ -2,11 +2,11 @@ from operator import itemgetter
 
 import torch
 
-from .line_search import LineSearch
+from ..line_search import LineSearch
 
 
-class TrustRegion(LineSearch):
-    """Basic first order trust region method. Re-evaluates the function after stepping, if value decreased sufficiently,
+class AdaptiveStepSize(LineSearch):
+    """Basic first order step size adaptation method. Re-evaluates the function after stepping, if value decreased sufficiently,
     step size is increased. If value increased, step size is decreased.
 
     .. note::

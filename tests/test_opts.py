@@ -494,15 +494,6 @@ StrongWolfe = Run(
     sphere_steps=2, sphere_loss=0,
 )
 
-# ------------------------- line_search/trust_region ------------------------- #
-TrustRegion = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.TrustRegion()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.TrustRegion(init=0.1)),
-    needs_closure=True,
-    func='booth', steps=50, loss=0.1, merge_invariant=True,
-    sphere_steps=10, sphere_loss=1e-5,
-)
-
 # ----------------------------------- lr/lr ---------------------------------- #
 LR = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.LR(0.1)),
