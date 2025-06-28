@@ -14,7 +14,7 @@ def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
     try:
         L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
 
-        tol = torch.finfo(M.dtype).eps * L.max() # remove small eigenvalues
+        tol = torch.finfo(M.dtype).eps * L.amax() # remove small eigenvalues
         indices = L > tol
         L = L[indices]
         Q = Q[:, indices]

@@ -871,11 +871,11 @@ HigherOrderNewton = Run(
 
 # ---------------------------- optimizers/ladagrad --------------------------- #
 LMAdagrad = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(4)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(5)),
     needs_closure=False,
-    func='booth', steps=50, loss=0.003, merge_invariant=True,
-    sphere_steps=20, sphere_loss=1 if torch.cuda.is_available() else 50,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
+    sphere_steps=20, sphere_loss=1e-9,
 )
 
 # ------------------------------ optimizers/adan ----------------------------- #

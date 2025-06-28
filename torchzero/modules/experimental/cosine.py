@@ -70,7 +70,7 @@ class CosineTrustRegion(Transform):
 
 
 class CosineDebounce(Transform):
-    """Debouncing when cosine similarty is less than 0.
+    """Debouncing when cosine similarity is less than 0.
 
     Args:
         scale (float, optional): cosine similarity scale. Defaults to 0.95.
