@@ -9,10 +9,10 @@ def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
     M = torch.stack(tuple(history), dim=1)# / len(history)
     MTM = M.T @ M
     if damping != 0:
-        M.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype))
+        MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype))
 
     try:
-        L, Q = torch.linalg.eigh(M.T @ M) # pylint:disable=not-callable
+        L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
 
         tol = torch.finfo(M.dtype).eps * L.max() # remove small eigenvalues
         indices = L > tol
