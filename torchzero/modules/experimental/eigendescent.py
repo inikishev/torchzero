@@ -23,7 +23,7 @@ def _cosine_similarity(x, y):
 
 class EigenDescent(Module):
     """
-    Uses eigenvectors corresponding to certain eigenvalues.
+    Uses eigenvectors corresponding to certain eigenvalues. For now they are just extracted from hessian.
 
     .. warning::
         Experimental.

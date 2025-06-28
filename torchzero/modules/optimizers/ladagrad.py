@@ -43,6 +43,7 @@ class LMAdagrad(TensorwiseTransform):
     Limited-memory full matrix Adagrad.
 
     The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U S^-1 Uᵀg.
+    But it uses eigendecomposition on MᵀM to get U and S^2 because that is faster when you don't neeed V.
 
     This is equivalent to full-matrix Adagrad on recent gradients.
 
@@ -95,11 +96,14 @@ class LMAdagrad(TensorwiseTransform):
                 tz.m.ClipNormByEMA(max_ema_growth=1.2),
                 tz.m.LR(0.01)
             )
+
+    Reference:
+        Agarwal N. et al. Efficient full-matrix adaptive regularization //International Conference on Machine Learning. – PMLR, 2019. – С. 102-110.
     """
 
     def __init__(
         self,
-        history_size: int = 10,
+        history_size: int = 100,
         update_freq: int = 1,
         damping: float = 1e-4,
         rdamping: float = 0,
