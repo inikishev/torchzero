@@ -466,8 +466,8 @@ AdaptiveBacktracking = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
     sphere_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
     needs_closure=True,
-    func='booth', steps=50, loss=0, merge_invariant=True,
-    sphere_steps=2, sphere_loss=1e-12,
+    func='booth', steps=50, loss=1e-12, merge_invariant=True,
+    sphere_steps=2, sphere_loss=0,
 )
 AdaptiveBacktracking_try_negative = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.Mul(-1), tz.m.AdaptiveBacktracking(try_negative=True)),
