@@ -24,11 +24,9 @@ def project(tensors: torch.Tensor, Q: list[torch.Tensor | None]):
     Projects the gradient to the eigenbases of the preconditioner.
     """
     for mat in Q:
-        if mat is None: continue
-        if len(mat) > 0:
+        if mat is not None and len(mat) > 0:
             tensors = torch.tensordot(tensors, mat, dims=[[0], [0]]) # pyright:ignore[reportArgumentType]
         else:
-            # I don't understand this part but it is in https://github.com/nikhilvyas/SOAP/blob/main/soap.py
             permute_order = list(range(1, len(tensors.shape))) + [0]
             tensors = tensors.permute(permute_order)
 
@@ -40,8 +38,7 @@ def project_back(tensors: torch.Tensor, Q: list[torch.Tensor| None]):
     Projects the gradient back to the original space.
     """
     for mat in Q:
-        if mat is None: continue
-        if len(mat) > 0:
+        if mat is not None and len(mat) > 0:
             tensors = torch.tensordot(tensors, mat,dims=[[0], [1]]) # pyright:ignore[reportArgumentType]
         else:
             permute_order = list(range(1, len(tensors.shape))) + [0]
@@ -59,8 +56,7 @@ def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
     float_data = False
     original_type = original_device = None
     for m in mat:
-        if m is None: continue
-        if len(m) == 0:
+        if m is None or len(m) == 0:
             matrix.append([])
             continue
         if m.dtype != torch.float:
@@ -100,13 +96,11 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     float_data = False
     original_type = original_device = None
     for m,o in zip(GG, Q_list):
-        if m is None: continue
-        assert o is not None
-
-        if len(m) == 0:
+        if m is None or len(m) == 0:
             matrix.append([])
             orth_matrix.append([])
             continue
+        assert o is not None
         if m.data.dtype != torch.float:
             original_type = m.data.dtype
             original_device = m.data.device
@@ -218,7 +212,7 @@ class SOAP(Transform):
             # initialize state on 1st step
             if 'GG' not in state:
                 state["exp_avg"] = torch.zeros_like(t)
-                state["exp_avg_sq"] = torch.zeros_like(t)
+                state["exp_avg_sq_projected"] = torch.zeros_like(t)
 
                 if not precondition_1d and t.ndim <= 1:
                     state['GG'] = []
@@ -248,21 +242,19 @@ class SOAP(Transform):
             # exponential moving averages
             # this part could be foreached but I will do that at some point its not a big difference compared to preconditioning
             exp_avg: torch.Tensor = state["exp_avg"]
-            exp_avg_sq: torch.Tensor = state["exp_avg_sq"]
+            exp_avg_sq_projected: torch.Tensor = state["exp_avg_sq_projected"]
 
             exp_avg.lerp_(t, 1-beta1)
 
             if t_projected is None:
-                exp_avg_sq.mul_(beta2).addcmul_(t, t, value=1-beta2)
+                exp_avg_sq_projected.mul_(beta2).addcmul_(t, t, value=1-beta2)
             else:
-                exp_avg_sq.mul_(beta2).addcmul_(t_projected, t_projected, value=1-beta2)
+                exp_avg_sq_projected.mul_(beta2).addcmul_(t_projected, t_projected, value=1-beta2)
 
             # project exponential moving averages if they are accumulated unprojected
             exp_avg_projected = exp_avg
             if t_projected is not None:
                 exp_avg_projected = project(exp_avg, state['Q'])
-
-            exp_avg_sq_projected = exp_avg_sq
 
             denom = exp_avg_sq_projected.sqrt().add_(eps)
             # print(f'{t_projected = }, {exp_avg = }, {exp_avg_projected = }, {exp_avg_sq = }, {exp_avg_sq_projected = }, {denom = }')
@@ -291,6 +283,6 @@ class SOAP(Transform):
             if state['GG'] is not None:
                 update_soap_covariances_(t, state['GG'], shampoo_beta)
                 if state['step'] % setting['precond_freq'] == 0:
-                    state['Q'], state['exp_avg_sq'] = get_orthogonal_matrix_QR(exp_avg_sq, state['GG'], state['Q'])
+                    state['Q'], state['exp_avg_sq_projected'] = get_orthogonal_matrix_QR(exp_avg_sq_projected, state['GG'], state['Q'])
 
         return updates
