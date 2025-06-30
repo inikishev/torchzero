@@ -6,80 +6,138 @@ import torch
 from ...utils import TensorList, Distributions, NumberList
 from .grad_approximator import GradApproximator, GradTarget, _FD_Formula
 
-def _rforward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
+def _rforward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
     """p_fn is a function that returns the perturbation.
     It may return pre-generated one or generate one deterministically from a seed as in MeZO.
     Returned perturbation must be multiplied by `h`."""
-    if v_0 is None: v_0 = closure(False)
+    if f_0 is None: f_0 = closure(False)
     params += p_fn()
-    v_plus = closure(False)
+    f_1 = closure(False)
     params -= p_fn()
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_0, (v_plus - v_0) / h # (loss, loss_approx, grad)
+    return f_0, f_0, (f_1 - f_0) / h # (loss, loss_approx, grad)
 
-def _rbackward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
-    if v_0 is None: v_0 = closure(False)
+def _rbackward2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    if f_0 is None: f_0 = closure(False)
     params -= p_fn()
-    v_minus = closure(False)
+    f_m1 = closure(False)
     params += p_fn()
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_0, (v_0 - v_minus) / h
+    return f_0, f_0, (f_0 - f_m1) / h
 
-def _rcentral2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: Any):
+def _rcentral2(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: Any):
     params += p_fn()
-    v_plus = closure(False)
+    f_1 = closure(False)
 
     params -= p_fn() * 2
-    v_minus = closure(False)
+    f_m1 = closure(False)
 
     params += p_fn()
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_plus, (v_plus - v_minus) / (2 * h)
+    return f_0, f_1, (f_1 - f_m1) / (2 * h)
 
-def _rforward3(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
-    if v_0 is None: v_0 = closure(False)
+def _rforward3(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    if f_0 is None: f_0 = closure(False)
     params += p_fn()
-    v_plus1 = closure(False)
+    f_1 = closure(False)
 
     params += p_fn()
-    v_plus2 = closure(False)
+    f_2 = closure(False)
 
     params -= p_fn() * 2
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_0, (-3*v_0 + 4*v_plus1 - v_plus2) / (2 * h)
+    return f_0, f_0, (-3*f_0 + 4*f_1 - f_2) / (2 * h)
 
-def _rbackward3(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
-    if v_0 is None: v_0 = closure(False)
-
-    params -= p_fn()
-    v_minus1 = closure(False)
+def _rbackward3(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    if f_0 is None: f_0 = closure(False)
 
     params -= p_fn()
-    v_minus2 = closure(False)
+    f_m1 = closure(False)
+
+    params -= p_fn()
+    f_m2 = closure(False)
 
     params += p_fn() * 2
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_0, (v_minus2 - 4*v_minus1 + 3*v_0) / (2 * h)
+    return f_0, f_0, (f_m2 - 4*f_m1 + 3*f_0) / (2 * h)
 
-def _rcentral4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, v_0: float | None):
+def _rcentral4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
     params += p_fn()
-    v_plus1 = closure(False)
+    f_1 = closure(False)
 
     params += p_fn()
-    v_plus2 = closure(False)
+    f_2 = closure(False)
 
     params -= p_fn() * 3
-    v_minus1 = closure(False)
+    f_m1 = closure(False)
 
     params -= p_fn()
-    v_minus2 = closure(False)
+    f_m2 = closure(False)
 
     params += p_fn() * 2
     h = h**2 # because perturbation already multiplied by h
-    return v_0, v_plus1, (v_minus2 - 8*v_minus1 + 8*v_plus1 - v_plus2) / (12 * h)
+    return f_0, f_1, (f_m2 - 8*f_m1 + 8*f_1 - f_2) / (12 * h)
+
+# some good ones
+# Pachalyl S. et al. Generalized simultaneous perturbation-based gradient search with reduced estimator bias //IEEE Transactions on Automatic Control. – 2025.
+# Three measurements GSPSA is _rforward3
+# Four measurements GSPSA
+def _rforward4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    if f_0 is None: f_0 = closure(False)
+    params += p_fn()
+    f_1 = closure(False)
+
+    params += p_fn()
+    f_2 = closure(False)
+
+    params += p_fn()
+    f_3 = closure(False)
+
+    params -= p_fn() * 3
+    h = h**2 # because perturbation already multiplied by h
+    return f_0, f_0, (2*f_3 - 9*f_2 + 18*f_1 - 11*f_0) / (6 * h)
+
+def _rforward5(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    if f_0 is None: f_0 = closure(False)
+    params += p_fn()
+    f_1 = closure(False)
+
+    params += p_fn()
+    f_2 = closure(False)
+
+    params += p_fn()
+    f_3 = closure(False)
+
+    params += p_fn()
+    f_4 = closure(False)
+
+    params -= p_fn() * 4
+    h = h**2 # because perturbation already multiplied by h
+    return f_0, f_0, (-3*f_4 + 16*f_3 - 36*f_2 + 48*f_1 - 25*f_0) / (12 * h)
+
+# another central4
+def _bgspsa4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+    params += p_fn()
+    f_1 = closure(False)
+
+    params += p_fn() * 2
+    f_3 = closure(False)
+
+    params -= p_fn() * 4
+    f_m1 = closure(False)
+
+    params -= p_fn() * 2
+    f_m3 = closure(False)
+
+    params += p_fn() * 3
+    h = h**2 # because perturbation already multiplied by h
+    return f_0, f_1, (27*f_1 - f_m1 - f_3 + f_m3) / (48 * h)
+
 
 _RFD_FUNCS = {
+    "forward": _rforward2,
     "forward2": _rforward2,
+    "backward": _rbackward2,
     "backward2": _rbackward2,
     "central": _rcentral2,
     "central2": _rcentral2,
@@ -87,6 +145,9 @@ _RFD_FUNCS = {
     "forward3": _rforward3,
     "backward3": _rbackward3,
     "central4": _rcentral4,
+    "forward4": _rforward4,
+    "forward5": _rforward5,
+    "bspsa4": _bgspsa4,
 }
 
 
@@ -263,6 +324,7 @@ class RandomizedFDM(GradApproximator):
     @torch.no_grad
     def approximate(self, closure, params, loss):
         params = TensorList(params)
+        orig_params = params.clone() # store to avoid small changes due to float imprecision
         loss_approx = None
 
         h = NumberList(self.settings[p]['h'] for p in params)
@@ -280,10 +342,11 @@ class RandomizedFDM(GradApproximator):
             if prt[0] is None: prt = params.sample_like(distribution=distribution, generator=generator).mul_(h)
             else: prt = TensorList(prt)
 
-            loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, v_0=loss)
+            loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, f_0=loss)
             if grad is None: grad = prt * d
             else: grad += prt * d
 
+        params.set_(orig_params)
         assert grad is not None
         if n_samples > 1: grad.div_(n_samples)
         return grad, loss, loss_approx
@@ -447,7 +510,7 @@ class MeZO(GradApproximator):
 
         grad = None
         for i in range(n_samples):
-            loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=prt_fns[i], h=h, v_0=loss)
+            loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=prt_fns[i], h=h, f_0=loss)
             if grad is None: grad = prt_fns[i]().mul_(d)
             else: grad += prt_fns[i]().mul_(d)
 

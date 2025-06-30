@@ -32,11 +32,15 @@ def backtracking_line_search(
 
     a = init
     f_x = f(0)
+    f_prev = None
 
     for iteration in range(maxiter):
         f_a = f(a)
 
-        if f_a <= f_x + c * a * min(g_0, 0): # pyright: ignore[reportArgumentType]
+        if (f_prev is not None) and (f_a > f_prev) and (f_prev < f_x): return a / beta
+        f_prev = f_a
+
+        if f_a < f_x + c * a * min(g_0, 0): # pyright: ignore[reportArgumentType]
             # found an acceptable alpha
             return a
 

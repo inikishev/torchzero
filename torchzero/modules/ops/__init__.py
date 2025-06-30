@@ -27,7 +27,7 @@ from .binary import (
     Sub,
     Threshold,
 )
-from .debug import PrintShape, PrintUpdate
+from .debug import PrintShape, PrintUpdate, PrintLoss, PrintParams
 from .misc import (
     DivByLoss,
     Dropout,

@@ -92,7 +92,7 @@ class GradApproximator(Module, ABC):
                     # set loss to None because closure might be evaluated at different points
                     grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None)
                     for p, g in zip(params, grad): p.grad = g
-                    return l if l is not None else l_approx
+                    return l if l is not None else closure(False)
                 return closure(False)
 
             var.closure = approx_closure
@@ -108,4 +108,4 @@ class GradApproximator(Module, ABC):
         else: raise ValueError(self._target)
         return var
 
-_FD_Formula = Literal['forward2', 'backward2', 'forward3', 'backward3', 'central', 'central2', 'central3', 'central4']
+_FD_Formula = Literal['forward', 'forward2', 'backward', 'backward2', 'central', 'central2', 'central3', 'forward3', 'backward3', 'central4', 'forward4', 'forward5', 'bspsa5']

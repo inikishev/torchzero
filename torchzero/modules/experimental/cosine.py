@@ -8,7 +8,7 @@ from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack
 class CosineStepSize(Transform):
     """Adaptive step size based on cosine similarity
 
-    VERDICT: USELESS.
+    VERDICT: Useless. This is too unstable.
 
     Args:
         scale (float, optional): cosine similarity multiplier. Defaults to 0.95.
@@ -53,7 +53,7 @@ class CosineStepSize(Transform):
 class CosineDebounce(Transform):
     """Debouncing when cosine similarity is less than 0.
 
-    VERDICT: USELESS.
+    VERDICT: Useless. This doesn't help at all.
 
     Args:
         scale (float, optional): cosine similarity multiplier. Defaults to 0.95.
@@ -93,7 +93,7 @@ class CosineDebounce(Transform):
 class CosineMomentum(Transform):
     """Beta depends on cosine similarity. At cossim=1, beta is 0. At cossim=-1, beta is 2^power. This basically removes oscillations.
 
-    VERDICT: USELESS.
+    VERDICT: Useless. Worse than all other momentums.
 
     Args:
         scale (float, optional): cosine similarity multiplier. Defaults to 1.
@@ -133,7 +133,7 @@ class CosineMomentum(Transform):
 
 
 class AdaptiveDifference(Transform):
-    """VERDICT: USELESS."""
+    """VERDICT: Useless. Doesn't help (sort of to be expected)."""
     def __init__(self, inner:Chainable | None = None):
         defaults = dict()
         super().__init__(defaults, uses_grad=False)
@@ -155,7 +155,7 @@ class AdaptiveDifference(Transform):
         return tensors
 
 class AdaptiveDifferenceEMA(Transform):
-    """VERDICT: USELESS."""
+    """VERDICT: better than non-EMA but still useless."""
     def __init__(self, beta=0.99, inner:Chainable | None = None):
         defaults = dict(beta=beta)
         super().__init__(defaults, uses_grad=False)
@@ -180,7 +180,7 @@ class AdaptiveDifferenceEMA(Transform):
 
 
 class ScaledAdaptiveDifference(Transform):
-    """VERDICT: USELESS."""
+    """VERDICT: Useless and doesn't help."""
     def __init__(self, scale=0.95, damping:float=0.99, inner:Chainable | None = None):
         defaults = dict(scale=scale, damping=damping)
         super().__init__(defaults, uses_grad=False)

@@ -64,6 +64,8 @@ def adamy_(
 class AdamY(Module):
     """Adam but uses scaled gradient differences for second momentum.
 
+    Verdict: I haven't tested this yet.
+
     .. warning::
         Experimental.
     """

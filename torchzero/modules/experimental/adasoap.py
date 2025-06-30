@@ -39,6 +39,8 @@ class AdaSOAP(Transform):
         Experimental.
 
     precond_beta - beta for GG^T squares
+
+    Verdict: It works, but it is about the same performance as Adam, but maybe more tuning potential?
     """
     def __init__(
         self,

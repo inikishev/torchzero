@@ -52,6 +52,8 @@ def adadam_(
 class Adadam(Module):
     """Adam with a diagonally preconditioned preconditioner.
 
+    Verdict: I haven't tested this yet.
+
     .. warning::
         Experimental.
     """

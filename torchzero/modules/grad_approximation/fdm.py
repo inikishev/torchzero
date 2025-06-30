@@ -77,7 +77,9 @@ def _central4(closure: Callable[..., float], param:torch.Tensor, idx: int, h, v_
     return v_0, v_plus1, (v_minus2 - 8*v_minus1 + 8*v_plus1 - v_plus2) / (12 * h)
 
 _FD_FUNCS = {
+    "forward": _forward2,
     "forward2": _forward2,
+    "backward": _backward2,
     "backward2": _backward2,
     "central": _central2,
     "central2": _central2,
