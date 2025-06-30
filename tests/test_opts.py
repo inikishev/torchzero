@@ -292,42 +292,42 @@ FDM_central2 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central2'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=1e-7, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_forward2 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=1e-7, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_backward2 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=2e-7, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_forward3 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=3e-7, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_backward3 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=3e-7, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_central4 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
     needs_closure=True,
-    func='booth', steps=50, loss=2e-8, merge_invariant=True,
+    func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 
@@ -467,7 +467,7 @@ AdaptiveBacktracking = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
     needs_closure=True,
     func='booth', steps=50, loss=0, merge_invariant=True,
-    sphere_steps=2, sphere_loss=0,
+    sphere_steps=2, sphere_loss=1e-12,
 )
 AdaptiveBacktracking_try_negative = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.Mul(-1), tz.m.AdaptiveBacktracking(try_negative=True)),

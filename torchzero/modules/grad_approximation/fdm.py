@@ -122,7 +122,7 @@ class FDM(GradApproximator):
                 tz.m.Backtracking()
             )
     """
-    def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central2', target: GradTarget = 'closure'):
+    def __init__(self, h: float=1e-3, formula: _FD_Formula = 'central', target: GradTarget = 'closure'):
         defaults = dict(h=h, formula=formula)
         super().__init__(defaults, target=target)
 
