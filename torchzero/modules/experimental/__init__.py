@@ -4,6 +4,7 @@ from .adadam import Adadam
 from .adamY import AdamY
 from .adasoap import AdaSOAP
 from .curveball import CurveBall
+from .exp_adam import ExpAdam
 from .eigendescent import EigenDescent
 from .etf import (
     ExponentialTrajectoryFit,
