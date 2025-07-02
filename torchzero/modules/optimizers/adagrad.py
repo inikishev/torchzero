@@ -25,6 +25,7 @@ def adagrad_(
     step: int,
     pow: float = 2,
     use_sqrt: bool = True,
+    divide: bool = False,
 
     # inner args
     inner: Module | None = None,
@@ -39,6 +40,8 @@ def adagrad_(
     if inner is not None:
         assert params is not None
         tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
+
+    if divide: sq_sum_ = sq_sum_ / max(step, 1)
 
     if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
     else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
@@ -69,10 +72,11 @@ class Adagrad(Transform):
         alpha: float = 1,
         pow: float = 2,
         use_sqrt: bool = True,
+        divide: bool=False,
         inner: Chainable | None = None,
     ):
         defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
-                        eps = eps, pow=pow, use_sqrt = use_sqrt)
+                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide)
         super().__init__(defaults=defaults, uses_grad=False)
 
         if inner is not None:
@@ -85,7 +89,7 @@ class Adagrad(Transform):
 
         lr_decay,alpha,eps = unpack_dicts(settings, 'lr_decay', 'alpha', 'eps', cls=NumberList)
 
-        pow, use_sqrt = itemgetter('pow', 'use_sqrt')(settings[0])
+        pow, use_sqrt, divide = itemgetter('pow', 'use_sqrt', 'divide')(settings[0])
 
         sq_sum = unpack_states(states, tensors, 'sq_sum', cls=TensorList)
 
@@ -102,6 +106,7 @@ class Adagrad(Transform):
             step=self.global_state["step"],
             pow=pow,
             use_sqrt=use_sqrt,
+            divide=divide,
 
             # inner args
             inner=self.children.get("inner", None),
@@ -112,9 +117,9 @@ class Adagrad(Transform):
 
 
 class FullMatrixAdagrad(TensorwiseTransform):
-    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=True, update_freq=1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', inner: Chainable | None = None):
-        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, init=init)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
+    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=True, update_freq=1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', divide: bool=False, inner: Chainable | None = None):
+        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, init=init, divide=divide)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner,)
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, loss, state, settings):
@@ -134,11 +139,14 @@ class FullMatrixAdagrad(TensorwiseTransform):
 
         if beta is not None: state['GG'].lerp_(GG, 1-beta)
         else: state['GG'].add_(GG)
+        state['i'] = state.get('i', 0) + 1 # number of GGTs in sum
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         GG = state['GG']
         sqrt = settings['sqrt']
+        divide = settings['divide']
+        if divide: GG = GG/state.get('i', 1)
 
         if tensor.numel() == 1:
             GG = GG.squeeze()
