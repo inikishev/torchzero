@@ -192,6 +192,8 @@ class StrongWolfe(LineSearch):
         maxiter (int, optional): Maximum number of line search iterations. Defaults to 25.
         maxzoom (int, optional): Maximum number of zoom iterations. Defaults to 10.
         expand (float, optional): Expansion factor (multipler to step size when weak condition not satisfied). Defaults to 2.0.
+        use_prev (bool, optional):
+            if True, previous step size is used as the initial step size on the next step.
         adaptive (bool, optional):
             when enabled, if line search failed, initial step size is reduced.
             Otherwise it is reset to initial value. Defaults to True.
@@ -230,11 +232,12 @@ class StrongWolfe(LineSearch):
         maxzoom: int = 10,
         # a_max: float = 1e10,
         expand: float = 2.0,
+        use_prev: bool = False,
         adaptive = True,
         plus_minus = False,
     ):
         defaults=dict(init=init,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom,
-                      expand=expand, adaptive=adaptive, plus_minus=plus_minus)
+                      expand=expand, adaptive=adaptive, plus_minus=plus_minus,use_prev=use_prev)
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
@@ -244,11 +247,12 @@ class StrongWolfe(LineSearch):
     def search(self, update, var):
         objective = self.make_objective_with_derivative(var=var)
 
-        init, c1, c2, maxiter, maxzoom, expand, adaptive, plus_minus = itemgetter(
+        init, c1, c2, maxiter, maxzoom, expand, adaptive, plus_minus, use_prev = itemgetter(
             'init', 'c1', 'c2', 'maxiter', 'maxzoom',
-            'expand', 'adaptive', 'plus_minus')(self.settings[var.params[0]])
+            'expand', 'adaptive', 'plus_minus', 'use_prev')(self.settings[var.params[0]])
 
         f_0, g_0 = objective(0)
+        if use_prev: init = self.global_state.get('prev_alpha', init)
 
         step_size,f_a = strong_wolfe(
             objective,
@@ -265,8 +269,8 @@ class StrongWolfe(LineSearch):
         if f_a is not None and (f_a > f_0 or _notfinite(f_a)): step_size = None
         if step_size is not None and step_size != 0 and not _notfinite(step_size):
             self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))
+            self.global_state['prev_alpha'] = step_size
             return step_size
 
-        # fallback to backtracking on fail
         if adaptive: self.global_state['initial_scale'] *= 0.5
         return 0

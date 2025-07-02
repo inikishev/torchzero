@@ -24,6 +24,7 @@ def _adaptive_damping(
 
     return s_k, y_k, ys_k
 
+
 def lbfgs(
     tensors_: TensorList,
     s_history: deque[TensorList],
@@ -42,36 +43,35 @@ def lbfgs(
         scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
         return tensors_.mul_(scale_factor)
 
-    else:
-        # 1st loop
-        alpha_list = []
-        q = tensors_.clone()
-        for s_i, y_i, ys_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
-            p_i = 1 / ys_i # this is also denoted as ρ (rho)
-            alpha = p_i * s_i.dot(q)
-            alpha_list.append(alpha)
-            q.sub_(y_i, alpha=alpha) # pyright: ignore[reportArgumentType]
+    # 1st loop
+    alpha_list = []
+    q = tensors_.clone()
+    for s_i, y_i, ys_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
+        p_i = 1 / ys_i # this is also denoted as ρ (rho)
+        alpha = p_i * s_i.dot(q)
+        alpha_list.append(alpha)
+        q.sub_(y_i, alpha=alpha) # pyright: ignore[reportArgumentType]
 
-        # calculate z
-        # s.y/y.y is also this weird y-looking symbol I couldn't find
-        # z is it times q
-        # actually H0 = (s.y/y.y) * I, and z = H0 @ q
-        z = q * (ys_k / (y_k.dot(y_k)))
+    # calculate z
+    # s.y/y.y is also this weird y-looking symbol I couldn't find
+    # z is it times q
+    # actually H0 = (s.y/y.y) * I, and z = H0 @ q
+    z = q * (ys_k / (y_k.dot(y_k)))
 
-        # an attempt into adding momentum, lerping initial z seems stable compared to other variables
-        if z_beta is not None:
-            assert z_ema is not None
-            if step == 0: z_ema.copy_(z)
-            else: z_ema.lerp(z, 1-z_beta)
-            z = z_ema
+    # an attempt into adding momentum, lerping initial z seems stable compared to other variables
+    if z_beta is not None:
+        assert z_ema is not None
+        if step == 0: z_ema.copy_(z)
+        else: z_ema.lerp(z, 1-z_beta)
+        z = z_ema
 
-        # 2nd loop
-        for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
-            p_i = 1 / ys_i
-            beta_i = p_i * y_i.dot(z)
-            z.add_(s_i, alpha = alpha_i - beta_i)
+    # 2nd loop
+    for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
+        p_i = 1 / ys_i
+        beta_i = p_i * y_i.dot(z)
+        z.add_(s_i, alpha = alpha_i - beta_i)
 
-        return z
+    return z
 
 def _lerp_params_update_(
     self_: Module,

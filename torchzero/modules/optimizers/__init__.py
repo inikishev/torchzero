@@ -5,8 +5,10 @@ from .adagrad import Adagrad, FullMatrixAdagrad
 from .adahessian import AdaHessian
 from .adam import Adam
 from .adan import Adan
+from .esgd import ESGD
 from .ladagrad import LMAdagrad
 from .lion import Lion
+from .mars import MARSCorrection
 from .msam import MSAM, MSAMObjective
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .orthograd import OrthoGrad, orthograd_
@@ -22,4 +24,3 @@ from .sam import ASAM, SAM
 from .shampoo import Shampoo
 from .soap import SOAP
 from .sophia_h import SophiaH
-from .mars import MARSCorrection
