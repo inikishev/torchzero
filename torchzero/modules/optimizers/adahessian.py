@@ -68,7 +68,7 @@ def adahessian(
 class AdaHessian(Module):
     """AdaHessian: An Adaptive Second Order Optimizer for Machine Learning (https://arxiv.org/abs/2006.00719)
 
-    This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of squared randomized hessian diagonal estimates.
+    This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of random hessian-vector products.
 
     .. note::
         In most cases AdaHessian should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output.
