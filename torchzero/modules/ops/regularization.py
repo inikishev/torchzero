@@ -136,7 +136,7 @@ class PerturbWeights(Module):
 
         # create perturbations
         perts = []
-        for p, m in zip(params, perts):
+        for p in params:
             settings = self.settings[p]
             if not settings['perturb']:
                 perts.append(torch.zeros_like(p))
