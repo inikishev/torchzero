@@ -6,13 +6,12 @@ import torch
 
 from ...core import Chainable, Module, Target, Transform, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 
 def esgd_(
     tensors_: TensorList,
     D: TensorList | None,
-    D_exp_avg_sq_: TensorList,
+    D_sq_acc_: TensorList,
     damping: float | NumberList,
     update_freq: int,
     step: int,
@@ -21,19 +20,19 @@ def esgd_(
     # update preconditioner
     if step % update_freq == 0:
         assert D is not None
-        D_exp_avg_sq_.addcmul_(D, D)
+        D_sq_acc_.addcmul_(D, D)
         i += 1
     else:
         assert D is None
 
-    denom = (D_exp_avg_sq_ / max(i, 1)).sqrt_().add_(damping)
+    denom = (D_sq_acc_ / max(i, 1)).sqrt_().add_(damping)
     return tensors_.div_(denom), i
 
 
 class ESGD(Module):
     """Equilibrated Gradient Descent (https://arxiv.org/abs/1502.04390)
 
-    This is similar to Adagrad, but the accumulates randomized hessian diagonal estimates instead of squared gradients.
+    This is similar to Adagrad, but the accumulates squared randomized hessian diagonal estimates instead of squared gradients.
 
     .. note::
         In most cases Adagrad should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Adagrad preconditioning to another module's output.
@@ -129,7 +128,7 @@ class ESGD(Module):
             generator = self.global_state['generator']
 
         damping = self.get_settings(params, 'damping', cls=NumberList)
-        D_exp_avg_sq = self.get_state(params, 'D_exp_avg_sq', cls=TensorList)
+        D_sq_acc = self.get_state(params, 'D_sq_acc', cls=TensorList)
         i = self.global_state.get('i', 0)
 
         step = self.global_state.get('step', 0)
@@ -141,23 +140,12 @@ class ESGD(Module):
         D = None
         if step % update_freq == 0:
 
-            grad=None
-            for i in range(n_samples):
+            rgrad=None
+            for j in range(n_samples):
                 u = [torch.randn(p.size(), generator=generator, device=p.device, dtype=p.dtype) for p in params]
 
-                if hvp_method == 'autograd':
-                    if grad is None: grad = var.get_grad(create_graph=True)
-                    assert grad is not None
-                    Hvp = hvp(params, grad, u, retain_graph=i < n_samples-1)
-
-                elif hvp_method == 'forward':
-                    loss, Hvp = hvp_fd_forward(closure, params, u, h=fd_h, g_0=var.get_grad(), normalize=True)
-
-                elif hvp_method == 'central':
-                    loss, Hvp = hvp_fd_central(closure, params, u, h=fd_h, normalize=True)
-
-                else:
-                    raise ValueError(hvp_method)
+                Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
+                                     h=fd_h, normalize=True, retain_grad=j < n_samples-1)
 
                 if D is None: D = Hvp
                 else: torch._foreach_add_(D, Hvp)
@@ -174,7 +162,7 @@ class ESGD(Module):
         var.update, self.global_state['i'] = esgd_(
             tensors_=TensorList(update),
             D=TensorList(D) if D is not None else None,
-            D_exp_avg_sq_=D_exp_avg_sq,
+            D_sq_acc_=D_sq_acc,
             damping=damping,
             update_freq=update_freq,
             step=step,

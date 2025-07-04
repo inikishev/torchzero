@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from operator import itemgetter
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
@@ -71,9 +71,10 @@ class SubModules(MultiOperation):
 
 class DivModules(MultiOperation):
     """Calculates :code:`input / other`. :code:`input` and :code:`other` can be numbers or modules."""
-    def __init__(self, input: Chainable | float, other: Chainable | float):
+    def __init__(self, input: Chainable | float, other: Chainable | float, other_first:bool=False):
         defaults = {}
-        super().__init__(defaults, input=input, other=other)
+        if other_first: super().__init__(defaults, other=other, input=input)
+        else: super().__init__(defaults, input=input, other=other)
 
     @torch.no_grad
     def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
@@ -83,6 +84,7 @@ class DivModules(MultiOperation):
 
         torch._foreach_div_(input, other)
         return input
+
 
 class PowModules(MultiOperation):
     """Calculates :code:`input ** exponent`. :code:`input` and :code:`other` can be numbers or modules."""
@@ -161,16 +163,36 @@ class GraftModules(MultiOperation):
         tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[var.params[0]])
         return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
 
-
-class Where(MultiOperation):
-    """Outputs tensors with values taken from :code:`input` or :code:`other` based on values of :code:`condition`.
-
-    :code:`condition` must output a binary tensor with 0 and 1s.
-    """
-    def __init__(self, condition: Chainable, input: Chainable | float, other: Chainable | float):
-        super().__init__({}, condition=condition, input=input, other=other)
+class MultiplyByModuleNorm(MultiOperation):
+    """Outputs :code:`input` multiplied by norm of the :code:`norm` output."""
+    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
+        defaults = dict(tensorwise=tensorwise, ord=ord)
+        super().__init__(defaults, input=input, norm=norm)
 
     @torch.no_grad
-    def transform(self, var, condition: list[torch.Tensor], input: list[torch.Tensor] | float, other: list[torch.Tensor] | float):
-        return tensorlist.where(TensorList(condition).as_bool(), input, other)
+    def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
+        tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
+        if tensorwise:
+            if ord == 'mean_abs': n = [t.mean() for t in torch._foreach_abs(norm)]
+            else: n = torch._foreach_norm(norm, ord)
+        else: n = TensorList(norm).global_vector_norm(ord)
 
+        torch._foreach_mul_(input, n)
+        return input
+
+class DivideByModuleNorm(MultiOperation):
+    """Outputs :code:`input` divided by norm of the :code:`norm` output."""
+    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
+        defaults = dict(tensorwise=tensorwise, ord=ord)
+        super().__init__(defaults, input=input, norm=norm)
+
+    @torch.no_grad
+    def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
+        tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
+        if tensorwise:
+            if ord == 'mean_abs': n = [t.mean().clip(min=1e-8) for t in torch._foreach_abs(norm)]
+            else: n = torch._foreach_clamp_min(torch._foreach_norm(norm, ord), 1e-8)
+        else: n = TensorList(norm).global_vector_norm(ord).clip(min=1e-8)
+
+        torch._foreach_div_(input, n)
+        return input

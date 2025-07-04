@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, MutableMapping, Sequence
 from operator import itemgetter
-from typing import Any, final, overload
+from typing import Any, final, overload, Literal
 
 import torch
 
@@ -14,6 +14,7 @@ from ..utils import (
     _make_param_groups,
     get_state_vals,
 )
+from ..utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 from ..utils.python_tools import flatten
 
 
@@ -419,6 +420,78 @@ class Module(ABC):
 
     def _extra_unpack(self, x):
         pass
+
+
+    # ------------------------------ HELPER METHODS ------------------------------ #
+    @torch.no_grad
+    def Hvp(
+        self,
+        v: Sequence[torch.Tensor],
+        at_x0: bool,
+        var: Var,
+        rgrad: Sequence[torch.Tensor] | None,
+        hvp_method: Literal['autograd', 'forward', 'central'],
+        h: float,
+        normalize: bool,
+        retain_grad: bool,
+    ):
+        """
+        Returns ``(Hvp, rgrad)``. ``rgrad`` is gradient at current parameters, possibly with create_graph=True, or it may be None with ``hvp_method="central"``. Gradient is set to vars automatically if ``at_x0``, you can always access it with ``vars.get_grad()``
+
+        Single sample example:
+
+        .. code:: py
+
+            Hvp, _ = self.hvp(v, at_x0=True, rgrad=None, ..., retain_graph=False)
+
+        Multiple samples example:
+
+        .. code:: py
+
+            D = None
+            rgrad = None
+            for i in range(n_samples):
+                v = [torch.randn_like(p) for p in params]
+                Hvp, rgrad = self.hvp(v, at_x0=True, rgrad=rgrad, ..., retain_graph=i < n_samples-1)
+
+                if D is None: D = Hvp
+                else: torch._foreach_add_(D, Hvp)
+
+            if n_samples > 1: torch._foreach_div_(D, n_samples)
+        Args:
+            v (Sequence[torch.Tensor]): vector in hessian-vector product
+            at_x0 (bool): whether this is being called at original or perturbed parameters.
+            var (Var): Var
+            rgrad (Sequence[torch.Tensor] | None): pass None initially, then pass what this returns.
+            hvp_method (str): hvp method.
+            h (float): finite difference step size
+            normalize (bool): whether to normalize v for finite difference
+            retain_grad (bool): retain grad
+        """
+        # get grad
+        if rgrad is None and hvp_method in ('autograd', 'forward'):
+            if at_x0: rgrad = var.get_grad(create_graph = hvp_method=='autograd')
+            else:
+                if var.closure is None: raise RuntimeError("Closure is required to calculate HVp")
+                with torch.enable_grad():
+                    loss = var.closure()
+                    rgrad = torch.autograd.grad(loss, var.params, create_graph = hvp_method=='autograd')
+
+        if hvp_method == 'autograd':
+            assert rgrad is not None
+            Hvp = hvp(var.params, rgrad, v, retain_graph=retain_grad)
+
+        elif hvp_method == 'forward':
+            assert rgrad is not None
+            loss, Hvp = hvp_fd_forward(var.closure, var.params, v, h=h, g_0=rgrad, normalize=normalize)
+
+        elif hvp_method == 'central':
+            loss, Hvp = hvp_fd_central(var.closure, var.params, v, h=h, normalize=normalize)
+
+        else:
+            raise ValueError(hvp_method)
+
+        return Hvp, rgrad
 
 # endregion
 

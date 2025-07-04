@@ -77,7 +77,7 @@ class WeightDecay(Transform):
         return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
 
 class RelativeWeightDecay(Transform):
-    """Weight decay relative to the norm of update, gradient or parameters depending on value of :code:`norm_input` argument.
+    """Weight decay relative to the mean absolute value of update, gradient or parameters depending on value of :code:`norm_input` argument.
 
     Args:
         weight_decay (float): relative weight decay scale.
@@ -114,7 +114,7 @@ class RelativeWeightDecay(Transform):
     def __init__(
         self,
         weight_decay: float = 0.1,
-        ord: int = 2,
+        ord: int  = 2,
         norm_input: Literal["update", "grad", "params"] = "update",
         target: Target = "update",
     ):
@@ -137,9 +137,9 @@ class RelativeWeightDecay(Transform):
         else:
             raise ValueError(norm_input)
 
-        norm = src.global_vector_norm(ord)
+        mean_abs = src.abs().global_mean()
 
-        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * norm, ord)
+        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * mean_abs, ord)
 
 
 @torch.no_grad

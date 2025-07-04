@@ -153,23 +153,12 @@ class SophiaH(Module):
         h = None
         if step % update_freq == 0:
 
-            grad=None
+            rgrad=None
             for i in range(n_samples):
                 u = [torch.randn(p.shape, device=p.device, dtype=p.dtype, generator=generator) for p in params]
 
-                if hvp_method == 'autograd':
-                    if grad is None: grad = var.get_grad(create_graph=True)
-                    assert grad is not None
-                    Hvp = hvp(params, grad, u, retain_graph=i < n_samples-1)
-
-                elif hvp_method == 'forward':
-                    loss, Hvp = hvp_fd_forward(closure, params, u, h=fd_h, g_0=var.get_grad(), normalize=True)
-
-                elif hvp_method == 'central':
-                    loss, Hvp = hvp_fd_central(closure, params, u, h=fd_h, normalize=True)
-
-                else:
-                    raise ValueError(hvp_method)
+                Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
+                                     h=fd_h, normalize=True, retain_grad=i < n_samples-1)
 
                 if h is None: h = Hvp
                 else: torch._foreach_add_(h, Hvp)

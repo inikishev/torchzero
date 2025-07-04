@@ -84,7 +84,7 @@ def adam_lambertw_(
 
 class AdamLambertW(Transform):
     """Adam but uses abs x^x and LambertW instead of square and sqrt.
-    The gradient will be clipped to 20 because float32.
+    The gradient will be clipped to 20 because float32 which you have to use otherwise you're PC will explode.
 
     Args:
         beta1 (float, optional): momentum. Defaults to 0.9.

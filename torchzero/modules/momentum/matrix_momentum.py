@@ -70,30 +70,16 @@ class MatrixMomentum(Module):
 
         mu,beta = self.get_settings(var.params, 'mu','beta', cls=NumberList)
 
-        if hvp_method == 'autograd':
-            with torch.enable_grad():
-                grad = var.get_grad(create_graph=True)
-                hvp_ = TensorList(hvp(var.params, grads=grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
-
-        elif hvp_method == 'forward':
-            var.get_grad()
-            l, hvp_ = hvp_fd_forward(var.closure, var.params, vec=prev_update, g_0=var.grad, h=h, normalize=True)
-            if var.loss_approx is None: var.loss_approx = l
-
-        elif hvp_method == 'central':
-            l, hvp_ = hvp_fd_central(var.closure, var.params, vec=prev_update, h=h, normalize=True)
-            if var.loss_approx is None: var.loss_approx = l
-
-        else:
-            raise ValueError(hvp_method)
+        Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
+        Hvp = [t.detach() for t in Hvp]
 
         if 'hvp_tfm' in self.children:
-            hvp_ = TensorList(apply_transform(self.children['hvp_tfm'], hvp_, params=var.params, grads=var.grad, var=var))
+            Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
 
         update = TensorList(var.get_update())
 
-        hvp_ = as_tensorlist(hvp_)
-        update.add_(prev_update - hvp_*mu)
+        Hvp = as_tensorlist(Hvp)
+        update.add_(prev_update - Hvp*mu)
         prev_update.set_(update * beta)
         var.update = update
         return var
@@ -161,25 +147,11 @@ class AdaptiveMatrixMomentum(Module):
 
         mu_mul, beta = self.get_settings(var.params, 'mu_mul','beta', cls=NumberList)
 
-        if hvp_method == 'autograd':
-            with torch.enable_grad():
-                grad = var.get_grad(create_graph=True)
-                hvp_ = TensorList(hvp(var.params, grads=grad, vec=prev_update, allow_unused=True, retain_graph=False)).detach_()
-
-        elif hvp_method == 'forward':
-            var.get_grad()
-            l, hvp_ = hvp_fd_forward(var.closure, var.params, vec=prev_update, g_0=var.grad, h=h, normalize=True)
-            if var.loss_approx is None: var.loss_approx = l
-
-        elif hvp_method == 'central':
-            l, hvp_ = hvp_fd_central(var.closure, var.params, vec=prev_update, h=h, normalize=True)
-            if var.loss_approx is None: var.loss_approx = l
-
-        else:
-            raise ValueError(hvp_method)
+        Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
+        Hvp = [t.detach() for t in Hvp]
 
         if 'hvp_tfm' in self.children:
-            hvp_ = TensorList(apply_transform(self.children['hvp_tfm'], hvp_, params=var.params, grads=var.grad, var=var))
+            Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
 
         # adaptive part
         update = TensorList(var.get_update())
@@ -194,8 +166,8 @@ class AdaptiveMatrixMomentum(Module):
         ada_mu = (s_k.global_vector_norm() / (y_k.global_vector_norm() + eps)) * mu_mul
 
         # matrix momentum uppdate
-        hvp_ = as_tensorlist(hvp_)
-        update.add_(prev_update - hvp_*ada_mu)
+        Hvp = as_tensorlist(Hvp)
+        update.add_(prev_update - Hvp*ada_mu)
         prev_update.set_(update * beta)
         var.update = update
         return var

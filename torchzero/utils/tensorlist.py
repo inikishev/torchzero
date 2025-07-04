@@ -325,7 +325,8 @@ class TensorList(list[torch.Tensor | Any]):
     def global_sum(self) -> torch.Tensor: return builtins.sum(self.sum()) # pyright:ignore[reportArgumentType,reportReturnType]
     def global_std(self) -> torch.Tensor: return torch.std(self.to_vec())
     def global_var(self) -> torch.Tensor: return torch.var(self.to_vec())
-    def global_vector_norm(self, ord:float = 2) -> torch.Tensor:
+    def global_vector_norm(self, ord:float | Literal['mean_abs'] = 2) -> torch.Tensor:
+        if ord == 'mean_abs': return self.abs().global_mean()
         return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
     def global_any(self): return builtins.any(self.any())
     def global_all(self): return builtins.all(self.all())

@@ -27,30 +27,27 @@ from .binary import (
     Sub,
     Threshold,
 )
-from .debug import PrintShape, PrintUpdate, PrintLoss, PrintParams
+from .debug import PrintLoss, PrintParams, PrintShape, PrintUpdate
+from .gradient_accumulation import GradientAccumulation
 from .misc import (
     DivByLoss,
-    Dropout,
     FillLoss,
-    GradientAccumulation,
     GradSign,
     GraftGradToUpdate,
     GraftToGrad,
     GraftToParams,
+    HpuEstimate,
     LastAbsoluteRatio,
     LastDifference,
     LastGradDifference,
     LastProduct,
     LastRatio,
     MulByLoss,
-    Multistep,
-    NegateOnLossIncrease,
     NoiseSign,
     Previous,
+    RandomHvp,
     Relative,
-    Sequential,
     UpdateSign,
-    WeightDropout,
 )
 from .multi import (
     ClipModules,
@@ -61,6 +58,7 @@ from .multi import (
     PowModules,
     SubModules,
 )
+from .multistep import Multistep, NegateOnLossIncrease, Sequential
 from .reduce import (
     MaximumModules,
     Mean,
@@ -71,6 +69,7 @@ from .reduce import (
     WeightedMean,
     WeightedSum,
 )
+from .regularization import Dropout, PerturbWeights, WeightDropout
 from .split import Split
 from .switch import Alternate, Switch
 from .unary import (

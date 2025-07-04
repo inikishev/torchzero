@@ -1,7 +1,6 @@
 """This submodule contains various untested experimental modules, some of them are to be moved out of experimental when properly tested, some are to remain here forever or to be deleted depending on the degree of their usefulness."""
 from .absoap import ABSOAP
 from .adadam import Adadam
-from .adagrad_lambertw import AdagradLambertW
 from .adam_lambertw import AdamLambertW
 from .adamY import AdamY
 from .adaptive_step_size import AdaptiveStepSize

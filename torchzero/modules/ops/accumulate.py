@@ -1,11 +1,7 @@
-from collections import deque
-from operator import itemgetter
-from typing import Literal
-
 import torch
 
 from ...core import Target, Transform
-from ...utils import TensorList, NumberList, unpack_states, unpack_dicts
+from ...utils import TensorList, unpack_states
 
 class AccumulateSum(Transform):
     """Accumulates sum of all past updates.
