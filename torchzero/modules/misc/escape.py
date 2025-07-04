@@ -4,7 +4,7 @@ from ...core import Module
 from ...utils import TensorList, NumberList
 
 
-class EscaleMinima(Module):
+class EscapeAnnealing(Module):
     """If parameters stop changing, this runs a backward annealing random search"""
     def __init__(self, max_region:float = 1, max_iter:int = 1000, tol=1e-6, n_tol: int = 10):
         defaults = dict(max_region=max_region, max_iter=max_iter, tol=tol, n_tol=n_tol)

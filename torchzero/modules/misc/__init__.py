@@ -24,4 +24,4 @@ from .multistep import Multistep, NegateOnLossIncrease, Sequential
 from .regularization import Dropout, PerturbWeights, WeightDropout
 from .split import Split
 from .switch import Alternate, Switch
-from .escape import EscaleMinima
+from .escape import EscapeAnnealing
