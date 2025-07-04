@@ -5,7 +5,7 @@ from .line_search import LineSearchBase
 
 
 # polynomial interpolation
-# taken from https://github.com/hjmshi/PyTorch-LBFGS/blob/master/functions/LBFGS.py
+# this code is from https://github.com/hjmshi/PyTorch-LBFGS/blob/master/functions/LBFGS.py
 # PyTorch-LBFGS: A PyTorch Implementation of L-BFGS
 def polyinterp(points, x_min_bound=None, x_max_bound=None, plot=False):
     """

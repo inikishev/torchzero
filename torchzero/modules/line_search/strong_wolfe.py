@@ -6,7 +6,6 @@ import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
 from .line_search import LineSearchBase
-from .backtracking import backtracking_line_search
 from ...utils import totensor
 
 

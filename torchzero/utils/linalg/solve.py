@@ -223,7 +223,7 @@ def steihaug_toint_cg(
     reg: float | list[float] | tuple[float] = 0,
 ):
     """
-    Solution is bounded to have L2 norm no larger than :code:`trust_region`
+    Solution is bounded to have L2 norm no larger than :code:`trust_region`. If solution exceeds :code:`trust_region`, CG is terminated early, so it is also faster.
     """
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
 

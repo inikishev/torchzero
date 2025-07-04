@@ -70,30 +70,61 @@ def _proximal_poly_H(x: np.ndarray, c, prox, x0: np.ndarray, derivatives):
 def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, derivatives):
     derivatives = [T.detach().cpu().numpy().astype(np.float64) for T in derivatives]
     x0 = x.detach().cpu().numpy().astype(np.float64) # taylor series center
-    bounds = None
-    if trust_region is not None: bounds = list(zip(x0 - trust_region, x0 + trust_region))
 
-    # if len(derivatives) is 1, only gradient is available, I use that to test proximal penalty and bounds
-    if bounds is None:
-        if len(derivatives) == 1: method = 'bfgs'
+    # notes
+    # 1. since we have exact hessian we use trust methods
+
+    # 2. if len(derivatives) is 1, only gradient is available,
+    # thus use slsqp depending on whether trust region is enabled
+    # this is just so that I can test that trust region works
+    if trust_region is None:
+        if len(derivatives) == 1: raise RuntimeError("trust region must be enabled because 1st order has no minima")
         else: method = 'trust-exact'
+        de_bounds = list(zip(x0 - 10, x0 + 10))
     else:
-        if len(derivatives) == 1: method = 'l-bfgs-b'
+        if len(derivatives) == 1: method = 'slsqp'
         else: method = 'trust-constr'
+        de_bounds = list(zip(x0 - trust_region, x0 + trust_region))
+
+    def l2_bound_f(x):
+        if x.ndim == 2: return np.sum((x - x0[:,None])**2, axis=0)[None,:] # DE passes (ndim, batch_size) and expects (M, S)
+        return np.sum((x - x0)**2, axis=0)
+
+    def l2_bound_g(x):
+        return 2 * (x - x0)
+
+    def l2_bound_h(x, v):
+        return v[0] * 2 * np.eye(x0.shape[0])
+
+    constraint = scipy.optimize.NonlinearConstraint(
+        fun=l2_bound_f,
+        lb=0, # 0 <= ||x-x0||^2
+        ub=trust_region**2, # ||x-x0||^2 <= R^2
+        jac=l2_bound_g,
+        hess=l2_bound_h,
+        keep_feasible=False
+    )
 
     x_init = x0.copy()
     v0 = _proximal_poly_v(x0, c, prox, x0, derivatives)
+
+    # ---------------------------------- run DE ---------------------------------- #
     if de_iters is not None and de_iters != 0:
         if de_iters == -1: de_iters = None # let scipy decide
+
+        # DE needs bounds so use linf ig
         res = scipy.optimize.differential_evolution(
             _proximal_poly_v,
-            bounds if bounds is not None else list(zip(x0 - 10, x0 + 10)),
+            de_bounds,
             args=(c, prox, x0.copy(), derivatives),
             maxiter=de_iters,
             vectorized=True,
+            constraints = [constraint],
+            updating='deferred',
         )
-        if res.fun < v0: x_init = res.x
+        if res.fun < v0 and np.all(np.isfinite(res.x)): x_init = res.x
 
+    # ------------------------------- run minimize ------------------------------- #
     res = scipy.optimize.minimize(
         _proximal_poly_v,
         x_init,
@@ -101,7 +132,7 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
         args=(c, prox, x0.copy(), derivatives),
         jac=_proximal_poly_g,
         hess=_proximal_poly_H,
-        bounds=bounds
+        constraints = [constraint],
     )
 
     return torch.from_numpy(res.x).to(x), res.fun
@@ -113,9 +144,6 @@ class HigherOrderNewton(Module):
 
     This constructs an nth order taylor approximation via autograd and minimizes it with
     scipy.optimize.minimize trust region newton solvers with optional proximal penalty.
-
-    The trust region currently uses box bounds (L-inf norm), because I don't know how to do L2 for this,
-
 
     .. note::
         In most cases HigherOrderNewton should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
@@ -158,18 +186,18 @@ class HigherOrderNewton(Module):
         self,
         order: int = 4,
         trust_method: Literal['bounds', 'proximal', 'none'] | None = 'bounds',
-        increase: float = 2,
-        decrease: float = 0.25,
-        trust_init: float | None = None,
+        nplus: float = 2,
+        nminus: float = 0.25,
+        init: float | None = None,
         eta: float = 1e-6,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
-        if trust_init is None:
-            if trust_method == 'bounds': trust_init = 1
-            else: trust_init = 0.1
+        if init is None:
+            if trust_method == 'bounds': init = 1
+            else: init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, increase=increase, decrease=decrease, eta=eta, trust_init=trust_init, vectorize=vectorize, de_iters=de_iters)
+        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -180,15 +208,15 @@ class HigherOrderNewton(Module):
 
         settings = self.settings[params[0]]
         order = settings['order']
-        increase = settings['increase']
-        decrease = settings['decrease']
+        nplus = settings['nplus']
+        nminus = settings['nminus']
         eta = settings['eta']
-        trust_init = settings['trust_init']
+        init = settings['init']
         trust_method = settings['trust_method']
         de_iters = settings['de_iters']
         vectorize = settings['vectorize']
 
-        trust_value = self.global_state.get('trust_region', trust_init)
+        trust_value = self.global_state.get('trust_region', init)
         if trust_value < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
 
 
@@ -255,13 +283,13 @@ class HigherOrderNewton(Module):
             rho = reduction / (max(pred_reduction, 1e-8))
             # failed step
             if rho < 0.25:
-                self.global_state['trust_region'] = trust_value * decrease
+                self.global_state['trust_region'] = trust_value * nminus
 
             # very good step
             elif rho > 0.75:
                 diff = trust_value - (x0 - x_star).abs_()
                 if (diff.amin() / trust_value) > 1e-4: # hits boundary
-                    self.global_state['trust_region'] = trust_value * increase
+                    self.global_state['trust_region'] = trust_value * nplus
 
             # if the ratio is high enough then accept the proposed step
             success = rho > eta
