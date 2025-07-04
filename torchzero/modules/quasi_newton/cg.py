@@ -61,15 +61,15 @@ class ConguateGradientBase(Transform, ABC):
         tensors = as_tensorlist(tensors)
         params = as_tensorlist(params)
 
-        step = self.global_state.get('step', 0)
+        step = self.global_state.get('step', 0) + 1
+        self.global_state['step'] = step
         prev_dir, prev_grads = unpack_states(states, tensors, 'prev_dir', 'prev_grad', cls=TensorList)
 
         # initialize on first step
-        if step == 0:
+        if step == 1:
             self.initialize(params, tensors)
             prev_dir.copy_(tensors)
             prev_grads.copy_(tensors)
-            self.global_state['step'] = step + 1
             return tensors
 
         # get beta
@@ -86,10 +86,9 @@ class ConguateGradientBase(Transform, ABC):
         prev_dir.copy_(dir)
 
         # resetting
-        self.global_state['step'] = step + 1
         reset_interval = settings[0]['reset_interval']
         if reset_interval == 'auto': reset_interval = tensors.global_numel() + 1
-        if reset_interval is not None and (step+1) % reset_interval == 0:
+        if reset_interval is not None and step % reset_interval == 0:
             self.reset()
 
         return dir
@@ -308,7 +307,7 @@ class ProjectedGradientMethod(TensorwiseTransform):
     def __init__(
         self,
         tol: float = 1e-10,
-        reset_interval: int | None = None,
+        reset_interval: int | None | Literal['auto'] = 'auto',
         update_freq: int = 1,
         scale_first: bool = False,
         concat_params: bool = True,
@@ -318,12 +317,12 @@ class ProjectedGradientMethod(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def update_tensor(self, tensor, param, grad, loss, state, settings):
-        step = state.get('step', 0)
-        state['step'] = step + 1
+        step = state.get('step', 0) + 1
+        state['step'] = step
         reset_interval = settings['reset_interval']
-        if reset_interval is None: reset_interval = tensor.numel() + 1 # as recommended
+        if reset_interval == 'auto': reset_interval = tensor.numel() + 1 # as recommended
 
-        if ("H" not in state) or (step % reset_interval == 0):
+        if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
             state["H"] = torch.eye(tensor.numel(), device=tensor.device, dtype=tensor.dtype)
             state['g_prev'] = tensor.clone()
             return
@@ -338,3 +337,59 @@ class ProjectedGradientMethod(TensorwiseTransform):
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         H = state['H']
         return (H @ tensor.view(-1)).view_as(tensor)
+
+# ---------------------------- Shor’s r-algorithm ---------------------------- #
+# def shor_r(B:torch.Tensor, y:torch.Tensor, gamma:float):
+#     r = B.T @ y
+#     r /= torch.linalg.vector_norm(r).clip(min=1e-8) # pylint:disable=not-callable
+
+#     I = torch.eye(B.size(1), device=B.device, dtype=B.dtype)
+#     return B @ (I - gamma*r.outer(r))
+
+# this is supposed to be equivalent
+def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
+    p = H@y
+    #(1-y)^2 (ppT)/(pTq)
+    term = p.outer(p).div_(p.dot(y).clip(min=1e-8))
+    H.sub_(term, alpha=1-alpha**2)
+    return H
+
+class ShorR(TensorwiseTransform):
+    """Shor’s r-algorithm.
+
+    .. note::
+        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
+
+    Reference:
+        Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.
+
+        Ansari, Zafar A. Limited Memory Space Dilation and Reduction Algorithms. Diss. Virginia Tech, 1998.
+    """
+    def __init__(self, alpha=0.5, scale_first:bool=True, concat_params: bool=True, update_freq: int= 1, reset_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None,):
+        defaults = dict(alpha=alpha, reset_interval=reset_interval)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, update_freq=update_freq,inner=inner)
+
+    def update_tensor(self, tensor, param, grad, loss, state, settings):
+        reset_interval = settings['reset_interval']
+        step = state.get('step', 0) + 1
+        state['step'] = step
+
+        if reset_interval == 'auto': reset_interval = tensor.numel() + 1
+        g = tensor.ravel()
+
+        if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
+            state["H"] = torch.eye(g.numel(), device=g.device, dtype=g.dtype)
+            state["g_prev"] = g.clone()
+            return
+
+        H = state["H"]
+        g_prev = state["g_prev"]
+        y = g - g_prev
+        g_prev.copy_(g)
+
+        state["H"] = shor_r_(H, y, settings['alpha'])
+
+    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+        H = state["H"]
+        # return (B @ (B.T @ tensor.ravel())).view_as(tensor)
+        return (H @ tensor.ravel()).view_as(tensor)

@@ -8,6 +8,7 @@ from .cg import (
     LiuStorey,
     PolakRibiere,
     ProjectedGradientMethod,
+    ShorR,
 )
 from .lbfgs import LBFGS
 from .lsr1 import LSR1
@@ -34,4 +35,4 @@ from .quasi_newton import (
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
 )
-from .trust_region import TrustRegionBase,TrustNCG
+from .trust_region import TrustRegionBase,TrustNCG, CubicRegularization

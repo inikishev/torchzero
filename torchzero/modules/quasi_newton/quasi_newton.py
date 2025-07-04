@@ -152,8 +152,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         inverse = settings['inverse']
         M_key = 'H' if inverse else 'B'
         M = state.get(M_key, None)
-        step = state.get('step', 0)
-        state['step'] = step + 1
+        step = state.get('step', 0) + 1
+        state['step'] = step
         init_scale = settings['init_scale']
         tol = settings['tol']
         tol_reset = settings['tol_reset']
@@ -180,7 +180,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         state['p_prev'].copy_(p)
         state['g_prev'].copy_(g)
 
-        if reset_interval is not None and step != 0 and step % reset_interval == 0:
+        if reset_interval is not None and step % reset_interval == 0:
             self._reset_M_(M, s, y, inverse, init_scale, state)
             return
 
@@ -190,7 +190,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             if tol_reset: self._reset_M_(M, s, y, inverse, init_scale, state)
             return
 
-        if step == 1 and init_scale == 'auto':
+        if step == 2 and init_scale == 'auto':
             if inverse: M /= self._get_init_scale(s,y)
             else: M *= self._get_init_scale(s,y)
 
@@ -1132,5 +1132,4 @@ class NewSSM(HessianUpdateStrategy):
         f = state['f']
         f_prev = state['f_prev']
         return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=settings['type'], tol=settings['tol'])
-
 
