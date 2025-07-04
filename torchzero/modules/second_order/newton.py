@@ -53,10 +53,6 @@ def tikhonov_(H: torch.Tensor, reg: float):
     if reg!=0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(reg))
     return H
 
-def eig_tikhonov_(H: torch.Tensor, reg: float):
-    v = torch.linalg.eigvalsh(H).min().clamp_(max=0).neg_() + reg # pylint:disable=not-callable
-    return tikhonov_(H, v)
-
 class Newton(Module):
     """Exact newton's method via autograd.
 
@@ -74,8 +70,6 @@ class Newton(Module):
 
     Args:
         reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
-        eig_reg (bool, optional):
-            whether to use largest negative eigenvalue as regularizer. Defaults to False.
         search_negative (bool, Optional):
             if True, whenever a negative eigenvalue is detected,
             search direction is proposed along an eigenvector corresponding to a negative eigenvalue.
@@ -152,7 +146,6 @@ class Newton(Module):
     def __init__(
         self,
         reg: float = 1e-6,
-        eig_reg: bool = False,
         search_negative: bool = False,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
@@ -160,7 +153,7 @@ class Newton(Module):
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(reg=reg, eig_reg=eig_reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative)
+        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative)
         super().__init__(defaults)
 
         if inner is not None:
@@ -174,7 +167,6 @@ class Newton(Module):
 
         settings = self.settings[params[0]]
         reg = settings['reg']
-        eig_reg = settings['eig_reg']
         search_negative = settings['search_negative']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
@@ -207,8 +199,7 @@ class Newton(Module):
         g = torch.cat([t.ravel() for t in update])
 
         # ------------------------------- regulazition ------------------------------- #
-        if eig_reg: H = eig_tikhonov_(H, reg)
-        else: H = tikhonov_(H, reg)
+        H = tikhonov_(H, reg)
 
         # ----------------------------------- solve ---------------------------------- #
         update = None
