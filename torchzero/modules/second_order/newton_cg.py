@@ -83,15 +83,6 @@ class NewtonCG(Module):
                 tz.m.Backtracking()
             )
 
-        Newton preconditioning applied to momentum (may be unstable):
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NewtonCG(inner=tz.m.EMA(0.9)),
-                tz.m.LR(0.1)
-            )
 
     """
     def __init__(
@@ -169,7 +160,7 @@ class NewtonCG(Module):
 
 
 class NewtonCGSteihaug(Module):
-    """Newton's method with a matrix-free Steihaug-Toint trust region conjugate gradient solver.
+    """Trust region Newton's method with a matrix-free Steihaug-Toint conjugate gradient solver.
 
     This optimizer implements Newton's method using a matrix-free conjugate
     gradient (CG) solver to approximate the search direction. Instead of
@@ -240,14 +231,6 @@ class NewtonCGSteihaug(Module):
                 tz.m.NewtonCGSteihaug(),
             )
 
-        Newton preconditioning applied to momentum (may be unstable):
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NewtonCGSteihaug(inner=tz.m.EMA(0.9)),
-            )
 
     """
     def __init__(
