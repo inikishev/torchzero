@@ -10,7 +10,7 @@ from ...core import Chainable, Module, Target, Var, maybe_chain
 from ...utils import TensorList, tensorlist
 
 
-class BinaryOperation(Module, ABC):
+class BinaryOperationBase(Module, ABC):
     """Base class for operations that use update as the first operand. This is an abstract class, subclass it and override `transform` method to use it."""
     def __init__(self, defaults: dict[str, Any] | None, **operands: Chainable | Any):
         super().__init__(defaults=defaults)
@@ -46,7 +46,7 @@ class BinaryOperation(Module, ABC):
         return var
 
 
-class Add(BinaryOperation):
+class Add(BinaryOperationBase):
     """Add :code:`other` to tensors. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`tensors + other(tensors)`
@@ -61,7 +61,7 @@ class Add(BinaryOperation):
         else: torch._foreach_add_(update, other, alpha=self.settings[var.params[0]]['alpha'])
         return update
 
-class Sub(BinaryOperation):
+class Sub(BinaryOperationBase):
     """Subtract :code:`other` from tensors. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`tensors - other(tensors)`
@@ -76,7 +76,7 @@ class Sub(BinaryOperation):
         else: torch._foreach_sub_(update, other, alpha=self.settings[var.params[0]]['alpha'])
         return update
 
-class RSub(BinaryOperation):
+class RSub(BinaryOperationBase):
     """Subtract tensors from :code:`other`. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`other(tensors) - tensors`
@@ -88,7 +88,7 @@ class RSub(BinaryOperation):
     def transform(self, var, update: list[torch.Tensor], other: float | list[torch.Tensor]):
         return other - TensorList(update)
 
-class Mul(BinaryOperation):
+class Mul(BinaryOperationBase):
     """Multiply tensors by :code:`other`. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`tensors * other(tensors)`
@@ -101,7 +101,7 @@ class Mul(BinaryOperation):
         torch._foreach_mul_(update, other)
         return update
 
-class Div(BinaryOperation):
+class Div(BinaryOperationBase):
     """Divide tensors by :code:`other`. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`tensors / other(tensors)`
@@ -114,7 +114,7 @@ class Div(BinaryOperation):
         torch._foreach_div_(update, other)
         return update
 
-class RDiv(BinaryOperation):
+class RDiv(BinaryOperationBase):
     """Divide :code:`other` by tensors. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`other(tensors) / tensors`
@@ -126,7 +126,7 @@ class RDiv(BinaryOperation):
     def transform(self, var, update: list[torch.Tensor], other: float | list[torch.Tensor]):
         return other / TensorList(update)
 
-class Pow(BinaryOperation):
+class Pow(BinaryOperationBase):
     """Take tensors to the power of :code:`exponent`. :code:`exponent` can be a number or a module.
 
     If :code:`exponent` is a module, this calculates :code:`tensors ^ exponent(tensors)`
@@ -139,7 +139,7 @@ class Pow(BinaryOperation):
         torch._foreach_pow_(update, exponent)
         return update
 
-class RPow(BinaryOperation):
+class RPow(BinaryOperationBase):
     """Take :code:`other` to the power of tensors. :code:`other` can be a number or a module.
 
     If :code:`other` is a module, this calculates :code:`other(tensors) ^ tensors`
@@ -153,7 +153,7 @@ class RPow(BinaryOperation):
         torch._foreach_pow_(other, update)
         return other
 
-class Lerp(BinaryOperation):
+class Lerp(BinaryOperationBase):
     """Does a linear interpolation of tensors and :code:`end` module based on a scalar :code:`weight`.
 
     The output is given by :code:`output = tensors + weight * (end(tensors) - tensors)`
@@ -167,7 +167,7 @@ class Lerp(BinaryOperation):
         torch._foreach_lerp_(update, end, weight=self.get_settings(var.params, 'weight'))
         return update
 
-class CopySign(BinaryOperation):
+class CopySign(BinaryOperationBase):
     """Returns tensors with sign copied from :code:`other(tensors)`."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
@@ -176,7 +176,7 @@ class CopySign(BinaryOperation):
     def transform(self, var, update: list[torch.Tensor], other: list[torch.Tensor]):
         return [u.copysign_(o) for u, o in zip(update, other)]
 
-class RCopySign(BinaryOperation):
+class RCopySign(BinaryOperationBase):
     """Returns :code:`other(tensors)` with sign copied from tensors."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
@@ -186,7 +186,7 @@ class RCopySign(BinaryOperation):
         return [o.copysign_(u) for u, o in zip(update, other)]
 CopyMagnitude = RCopySign
 
-class Clip(BinaryOperation):
+class Clip(BinaryOperationBase):
     """clip tensors to be in  :code:`(min, max)` range. :code:`min` and :code:`max: can be None, numbers or modules.
 
     If code:`min` and :code:`max`:  are modules, this calculates :code:`tensors.clip(min(tensors), max(tensors))`.
@@ -198,7 +198,7 @@ class Clip(BinaryOperation):
     def transform(self, var, update: list[torch.Tensor], min: float | list[torch.Tensor] | None, max: float | list[torch.Tensor] | None):
         return TensorList(update).clamp_(min=min,  max=max)
 
-class MirroredClip(BinaryOperation):
+class MirroredClip(BinaryOperationBase):
     """clip tensors to be in  :code:`(-value, value)` range. :code:`value` can be a number or a module.
 
     If :code:`value` is a module, this calculates :code:`tensors.clip(-value(tensors), value(tensors))`
@@ -211,7 +211,7 @@ class MirroredClip(BinaryOperation):
         min = -value if isinstance(value, (int,float)) else [-v for v in value]
         return TensorList(update).clamp_(min=min,  max=value)
 
-class Graft(BinaryOperation):
+class Graft(BinaryOperationBase):
     """Outputs tensors rescaled to have the same norm as :code:`magnitude(tensors)`."""
     def __init__(self, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
@@ -222,7 +222,7 @@ class Graft(BinaryOperation):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[var.params[0]])
         return TensorList(update).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
 
-class RGraft(BinaryOperation):
+class RGraft(BinaryOperationBase):
     """Outputs :code:`magnitude(tensors)` rescaled to have the same norm as tensors"""
 
     def __init__(self, direction: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
@@ -236,7 +236,7 @@ class RGraft(BinaryOperation):
 
 GraftToUpdate = RGraft
 
-class Maximum(BinaryOperation):
+class Maximum(BinaryOperationBase):
     """Outputs :code:`maximum(tensors, other(tensors))`"""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
@@ -246,7 +246,7 @@ class Maximum(BinaryOperation):
         torch._foreach_maximum_(update, other)
         return update
 
-class Minimum(BinaryOperation):
+class Minimum(BinaryOperationBase):
     """Outputs :code:`minimum(tensors, other(tensors))`"""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
@@ -257,7 +257,7 @@ class Minimum(BinaryOperation):
         return update
 
 
-class GramSchimdt(BinaryOperation):
+class GramSchimdt(BinaryOperationBase):
     """outputs tensors made orthogonal to `other(tensors)` via Gram-Schmidt."""
     def __init__(self, other: Chainable):
         super().__init__({}, other=other)
@@ -268,7 +268,7 @@ class GramSchimdt(BinaryOperation):
         return update - (other*update) / ((other*other) + 1e-8)
 
 
-class Threshold(BinaryOperation):
+class Threshold(BinaryOperationBase):
     """Outputs tensors thresholded such that values above :code:`threshold` are set to :code:`value`."""
     def __init__(self, threshold: Chainable | float, value: Chainable | float, update_above: bool):
         defaults = dict(update_above=update_above)

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from .line_search import LineSearch
+from .line_search import LineSearchBase
 
 
 # polynomial interpolation

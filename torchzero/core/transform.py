@@ -150,7 +150,9 @@ class Transform(Module, ABC):
         return self.transform(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
 
     def pre_step(self, var: Var) -> None:
-        """Logic to run pre-step, this way transform has access to  Var."""
+        """Logic to run pre-transform, this way transform has access to  Var."""
+    def post_step(self, var: Var) -> None:
+        """Logic to run post-transform, this way transform has access to  Var."""
 
     def step(self, var: Var) -> Var:
         self.pre_step(var)
@@ -211,6 +213,7 @@ class Transform(Module, ABC):
                 return loss
 
             var.closure = transformed_closure
+            self.post_step(var)
             return var
 
         # ---------------------------------- invalid --------------------------------- #

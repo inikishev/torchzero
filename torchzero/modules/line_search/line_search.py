@@ -15,7 +15,7 @@ from ...utils import tofloat
 class MaxLineSearchItersReached(Exception): pass
 
 
-class LineSearch(Module, ABC):
+class LineSearchBase(Module, ABC):
     """Base class for line searches.
 
     This is an abstract class, to use it, subclass it and override `search`.

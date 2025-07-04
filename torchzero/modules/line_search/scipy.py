@@ -3,10 +3,10 @@ from operator import itemgetter
 
 import torch
 
-from .line_search import LineSearch
+from .line_search import LineSearchBase
 
 
-class ScipyMinimizeScalar(LineSearch):
+class ScipyMinimizeScalar(LineSearchBase):
     """Line search via :code:`scipy.optimize.minimize_scalar` which implements brent, golden search and bounded brent methods.
 
     Args:

@@ -1,3 +1,3 @@
-from .projection import Projection, VectorProjection, ScalarProjection
+from .projection import ProjectionBase, VectorProjection, ScalarProjection
 
 # from .galore import GaLore

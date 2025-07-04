@@ -225,7 +225,15 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
 
-class HUpdateStrategy(HessianUpdateStrategy):
+    # def post_step(self, var):
+    #     if self._concat_params:
+    #         param = var.params[0]
+    #         if self.settings[param]['inverse']:
+    #             var.storage['hessian inverse'] = self.state[param]['H']
+    #         else:
+    #             var.storage['hessian'] = self.state[param]['B']
+
+class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
     '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
     Refer to :code:`HessianUpdateStrategy` documentation.
 
@@ -234,7 +242,7 @@ class HUpdateStrategy(HessianUpdateStrategy):
 
         .. code-block:: python
 
-            class BFGS(HUpdateStrategy):
+            class BFGS(_HessianUpdateStrategyDefaults):
                 """Broyden–Fletcher–Goldfarb–Shanno algorithm"""
                 def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
                     tol = settings["tol"]
@@ -288,7 +296,7 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += term1.sub_(term2)
     return H
 
-class BFGS(HUpdateStrategy):
+class BFGS(_HessianUpdateStrategyDefaults):
     """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
 
     .. note::
@@ -365,7 +373,7 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     H += torch.outer(z, z).div_(denom)
     return H
 
-class SR1(HUpdateStrategy):
+class SR1(_HessianUpdateStrategyDefaults):
     """Symmetric Rank 1 Quasi-Newton method.
 
     .. note::
@@ -447,7 +455,7 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += term1.sub_(term2)
     return H
 
-class DFP(HUpdateStrategy):
+class DFP(_HessianUpdateStrategyDefaults):
     """Davidon–Fletcher–Powell Quasi-Newton method.
 
     .. note::
@@ -501,7 +509,7 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H -= num/cy
     return H
 
-class BroydenGood(HUpdateStrategy):
+class BroydenGood(_HessianUpdateStrategyDefaults):
     """Broyden's "good" Quasi-Newton method.
 
     .. note::
@@ -519,7 +527,7 @@ class BroydenGood(HUpdateStrategy):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class BroydenBad(HUpdateStrategy):
+class BroydenBad(_HessianUpdateStrategyDefaults):
     """Broyden's "bad" Quasi-Newton method.
 
     .. note::
@@ -537,7 +545,7 @@ class BroydenBad(HUpdateStrategy):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
 
-class Greenstadt1(HUpdateStrategy):
+class Greenstadt1(_HessianUpdateStrategyDefaults):
     """Greenstadt's first Quasi-Newton method.
 
     .. note::
@@ -555,7 +563,7 @@ class Greenstadt1(HUpdateStrategy):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev, tol=settings['tol'])
 
-class Greenstadt2(HUpdateStrategy):
+class Greenstadt2(_HessianUpdateStrategyDefaults):
     """Greenstadt's second Quasi-Newton method.
 
     .. note::
@@ -587,7 +595,7 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float
     H[:, j] += num.squeeze() / denom
     return H
 
-class ColumnUpdatingMethod(HUpdateStrategy):
+class ColumnUpdatingMethod(_HessianUpdateStrategyDefaults):
     """
     Column-updating Quasi-Newton method. This is computationally cheaper than other Quasi-Newton methods
     due to only updating one column of the inverse hessian approximation per step.
@@ -619,7 +627,7 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor,
     H -= num/cy
     return H, R
 
-class ThomasOptimalMethod(HUpdateStrategy):
+class ThomasOptimalMethod(_HessianUpdateStrategyDefaults):
     """
     Thomas's "optimal" Quasi-Newton method.
 
@@ -713,7 +721,7 @@ def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += num.div_(yHy)
     return H
 
-class Pearson(HUpdateStrategy):
+class Pearson(_HessianUpdateStrategyDefaults):
     """
     Pearson's Quasi-Newton method.
 
@@ -739,7 +747,7 @@ def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += num.div_(sy)
     return H
 
-class McCormick(HUpdateStrategy):
+class McCormick(_HessianUpdateStrategyDefaults):
     """McCormicks's Quasi-Newton method.
 
     .. note::
@@ -1002,7 +1010,7 @@ class GradientCorrection(Transform):
         g_prev.copy_(tensors)
         return g_hat
 
-class Horisho(HUpdateStrategy):
+class Horisho(_HessianUpdateStrategyDefaults):
     """
     Horisho's variable metric Quasi-Newton method.
 
@@ -1036,7 +1044,7 @@ def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float)
     H -= (term1 + term2 - term4.mul_(term3))
     return H
 
-class FletcherVMM(HUpdateStrategy):
+class FletcherVMM(_HessianUpdateStrategyDefaults):
     """
     Fletcher's variable metric Quasi-Newton method.
 

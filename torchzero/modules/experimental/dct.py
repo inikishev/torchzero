@@ -1,13 +1,13 @@
 from typing import Literal
 import torch
 import torch_dct
-from ..projections import Projection
+from ..projections import ProjectionBase
 from ...core import Chainable
 
 def reverse_dims(t:torch.Tensor):
     return t.permute(*reversed(range(t.ndim)))
 
-class DCTProjection(Projection):
+class DCTProjection(ProjectionBase):
     # norm description copied from pytorch docstring
     """Project update into Discrete Cosine Transform space, requires `torch_dct` library.
 

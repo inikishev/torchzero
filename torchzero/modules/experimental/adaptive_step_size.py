@@ -2,10 +2,10 @@ from operator import itemgetter
 
 import torch
 
-from ..line_search import LineSearch
+from ..line_search import LineSearchBase
 
 
-class AdaptiveStepSize(LineSearch):
+class AdaptiveStepSize(LineSearchBase):
     """Basic first order step size adaptation method. Re-evaluates the function after stepping, if value decreased sufficiently,
     step size is increased. If value increased, step size is decreased.
 

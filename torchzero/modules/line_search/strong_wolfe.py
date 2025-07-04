@@ -5,7 +5,7 @@ from operator import itemgetter
 import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
-from .line_search import LineSearch
+from .line_search import LineSearchBase
 from .backtracking import backtracking_line_search
 from ...utils import totensor
 
@@ -182,7 +182,7 @@ def _notfinite(x):
     if isinstance(x, torch.Tensor): return not torch.isfinite(x).all()
     return not math.isfinite(x)
 
-class StrongWolfe(LineSearch):
+class StrongWolfe(LineSearchBase):
     """Cubic interpolation line search satisfying Strong Wolfe condition.
 
     Args:

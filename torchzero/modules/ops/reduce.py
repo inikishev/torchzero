@@ -8,7 +8,7 @@ import torch
 from ...core import Chainable, Module, Target, Var, maybe_chain
 
 
-class ReduceOperation(Module, ABC):
+class ReduceOperationBase(Module, ABC):
     """Base class for reduction operations like Sum, Prod, Maximum. This is an abstract class, subclass it and override `transform` method to use it."""
     def __init__(self, defaults: dict[str, Any] | None, *operands: Chainable | Any):
         super().__init__(defaults=defaults)
@@ -46,7 +46,7 @@ class ReduceOperation(Module, ABC):
         var.update = transformed
         return var
 
-class Sum(ReduceOperation):
+class Sum(ReduceOperationBase):
     """Outputs sum of :code:`inputs` that can be modules or numbers."""
     USE_MEAN = False
     def __init__(self, *inputs: Chainable | float):
@@ -68,7 +68,7 @@ class Mean(Sum):
     USE_MEAN = True
 
 
-class WeightedSum(ReduceOperation):
+class WeightedSum(ReduceOperationBase):
     USE_MEAN = False
     def __init__(self, *inputs: Chainable | float, weights: Iterable[float]):
         """Outputs a weighted sum of :code:`inputs` that can be modules or numbers."""
@@ -97,7 +97,7 @@ class WeightedMean(WeightedSum):
     """Outputs weighted mean of :code:`inputs` that can be modules or numbers."""
     USE_MEAN = True
 
-class Median(ReduceOperation):
+class Median(ReduceOperationBase):
     """Outputs median of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
@@ -111,7 +111,7 @@ class Median(ReduceOperation):
             res.append(torch.median(torch.stack(tensors + tuple(torch.full_like(tensors[0], f) for f in floats)), dim=0))
         return res
 
-class Prod(ReduceOperation):
+class Prod(ReduceOperationBase):
     """Outputs product of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
@@ -126,7 +126,7 @@ class Prod(ReduceOperation):
 
         return prod
 
-class MaximumModules(ReduceOperation):
+class MaximumModules(ReduceOperationBase):
     """Outputs elementwise maximum of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)
@@ -141,7 +141,7 @@ class MaximumModules(ReduceOperation):
 
         return maximum
 
-class MinimumModules(ReduceOperation):
+class MinimumModules(ReduceOperationBase):
     """Outputs elementwise minimum of :code:`inputs` that can be modules or numbers."""
     def __init__(self, *inputs: Chainable | float):
         super().__init__({}, *inputs)

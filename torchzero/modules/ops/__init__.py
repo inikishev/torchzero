@@ -7,7 +7,7 @@ from .accumulate import (
 )
 from .binary import (
     Add,
-    BinaryOperation,
+    BinaryOperationBase,
     Clip,
     CopyMagnitude,
     CopySign,
@@ -54,7 +54,7 @@ from .multi import (
     DivModules,
     GraftModules,
     LerpModules,
-    MultiOperation,
+    MultiOperationBase,
     PowModules,
     SubModules,
 )
@@ -64,7 +64,7 @@ from .reduce import (
     Mean,
     MinimumModules,
     Prod,
-    ReduceOperation,
+    ReduceOperationBase,
     Sum,
     WeightedMean,
     WeightedSum,

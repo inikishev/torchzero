@@ -1,13 +1,14 @@
+from abc import ABC, abstractmethod
 import warnings
 from collections.abc import Callable
 from functools import partial
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, final
 
 import numpy as np
 import torch
 from scipy.optimize import lsq_linear
 
-from ...core import Chainable, Module, TensorwiseTransform, Transform, apply_transform
+from ...core import Chainable, Module, TensorwiseTransform, Transform, apply_transform, Var
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     hessian_list_to_mat,
@@ -32,7 +33,97 @@ def tikhonov_(H: torch.Tensor, reg: float):
 def _flatten_tensors(tensors: list[torch.Tensor]):
     return torch.cat([t.ravel() for t in tensors])
 
-class ExactTrustRegion(Module):
+
+class TrustRegionBase(Module, ABC):
+    def __init__(
+        self,
+        defaults: dict | None = None,
+        hess_module: HessianUpdateStrategy | None = None,
+        update_freq: int = 1,
+        inner: Chainable | None = None,
+    ):
+        self._update_freq = update_freq
+        super().__init__(defaults)
+
+        if hess_module is not None:
+            self.set_child('hess_module', hess_module)
+
+        if inner is not None:
+            self.set_child('inner', inner)
+
+    @abstractmethod
+    def trust_region_step(self, var: Var, tensors:list[torch.Tensor], P: torch.Tensor, is_inverse:bool) -> Var:
+        """trust region logic"""
+
+    @final
+    @torch.no_grad
+    def step(self, var):
+        # ---------------------------------- update ---------------------------------- #
+        closure = var.closure
+        if closure is None: raise RuntimeError("Trust region requires closure")
+        params = var.params
+
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        P = None
+        is_inverse=None
+        g_list = var.grad
+        loss = var.loss
+        if step % self._update_freq == 0:
+
+            if 'hess_module' not in self.children:
+                params=var.params
+                closure=var.closure
+                if closure is None: raise ValueError('Closure is required for trust region')
+                with torch.enable_grad():
+                    loss = var.loss = var.loss_approx = closure(False)
+                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=True)
+                    g_list = [t[0] for t in g_list] # remove leading dim from loss
+                    var.grad = g_list
+                    P = hessian_list_to_mat(H_list)
+                    is_inverse=False
+
+
+            else:
+                hessian_module = cast(HessianUpdateStrategy, self.children['hess_module'])
+
+                hessian_module.update_tensor(
+                    tensor=_flatten_tensors(var.get_update()),
+                    param = _flatten_tensors(params),
+                    grad = _flatten_tensors(var.grad) if var.grad is not None else None,
+                    loss = var.loss,
+                    state=hessian_module.state[params[0]],
+                    settings=hessian_module.defaults,
+                )
+                h_state = hessian_module.state[params[0]]
+                if "B" in h_state:
+                    P = h_state["B"]
+                    is_inverse=False
+                else:
+                    P = h_state["H"]
+                    is_inverse=True
+
+            if self._update_freq != 0:
+                self.global_state['B'] = P
+                self.global_state['is_inverse'] = is_inverse
+
+        if P is None:
+            P = self.global_state['B']
+            is_inverse = self.global_state['is_inverse']
+
+        assert is_inverse is not None
+
+        # -------------------------------- inner step -------------------------------- #
+        update = var.get_update()
+        if 'inner' in self.children:
+            if g_list is None: g_list = var.grad
+            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+
+        # ----------------------------------- apply ---------------------------------- #
+        return self.trust_region_step(var=var, tensors=update, P=P, is_inverse=is_inverse)
+
+class ExactTrustRegion(TrustRegionBase):
     """Exact trust region.
 
     Args:
@@ -62,92 +153,42 @@ class ExactTrustRegion(Module):
                 model.parameters(),
                 tz.m.ExactTrustRegion(hess_module=tz.m.SR1(inverse=False)),
             )
-
     """
     def __init__(
         self,
         hess_module: HessianUpdateStrategy | None = None,
         init: float = 1,
-        nplus: float = 1.5,
-        nminus: float = 0.75,
+        eta: float= 0.15,
+        nplus: float = 2,
+        nminus: float = 0.25,
         update_freq: int = 1,
         inner: Chainable | None = None,
     ):
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta)
+        super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, update_freq=update_freq)
-        super().__init__(defaults)
 
-        if hess_module is not None:
-            self.set_child('hess_module', hess_module)
-
-        if inner is not None:
-            self.set_child('inner', inner)
-
-    @torch.no_grad
-    def step(self, var):
-        # ---------------------------------- update ---------------------------------- #
-        closure = var.closure
-        if closure is None: raise RuntimeError("Trust region requires closure")
+    def trust_region_step(self, var, tensors, P, is_inverse):
         params = var.params
         settings = self.settings[params[0]]
-        update_freq = settings['update_freq']
+        g = _flatten_tensors(tensors)
 
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
-
-        B = None
-        g_list = var.grad
-        loss = var.loss
-        if step % update_freq == 0:
-
-            if 'hess_module' not in self.children:
-                params=var.params
-                closure=var.closure
-                if closure is None: raise ValueError('Closure is required if hessian_module is set to "newton"')
-                with torch.enable_grad():
-                    loss = var.loss = var.loss_approx = closure(False)
-                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=True)
-                    g_list = [t[0] for t in g_list] # remove leading dim from loss
-                    var.grad = g_list
-                    B = hessian_list_to_mat(H_list)
-
-
-            else:
-                hessian_module = cast(HessianUpdateStrategy | None, self.children.get('hess_module', None))
-
-                if hessian_module is not None:
-                    hessian_module.update_tensor(
-                        tensor=_flatten_tensors(var.get_update()),
-                        param = _flatten_tensors(params),
-                        grad = _flatten_tensors(var.grad) if var.grad is not None else None,
-                        loss = var.loss,
-                        state=hessian_module.state[params[0]],
-                        settings=hessian_module.defaults,
-                    )
-                    B = hessian_module.state[params[0]]['B']
-
-            if update_freq != 0: self.global_state['B'] = B
-
-        if B is None:
-            B = self.global_state['B']
-
-        # -------------------------------- inner step -------------------------------- #
-        update = var.get_update()
-        if 'inner' in self.children:
-            if g_list is None: g_list = var.grad
-            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
-
-        g = _flatten_tensors(update)
-
-        # ----------------------------------- apply ---------------------------------- #
         trust_region = self.global_state.get('trust_region', settings['init'])
+        if trust_region < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
+
         nplus = settings['nplus']
         nminus = settings['nminus']
+        eta = settings['eta']
 
+        loss = var.loss
+        closure = var.closure
+        if closure is None: raise RuntimeError("Trust region requires closure")
         if loss is None: loss = closure(False)
-        assert B is not None
-        update, cost = trust_lstsq(B, g, trust_region)
 
+        if is_inverse: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
+        update, _ = trust_lstsq(P, g, trust_region)
+
+        # evaluate actual loss reduction
         update_unflattned = vec_to_tensors(update, params)
         params = TensorList(params)
         params -= update_unflattned
@@ -155,14 +196,25 @@ class ExactTrustRegion(Module):
         params += update_unflattned
         reduction = loss - loss_star
 
+        # expected reduction is g.T @ p + 0.5 * p.T @ B @ p
+        pred_reduction = - (g.dot(update) + 0.5 * update.dot(P @ update))
+        rho = reduction / (pred_reduction.clip(min=1e-8))
+
         # failed step
-        if reduction <= 0:
+        if rho < 0.25:
             self.global_state['trust_region'] = trust_region * nminus
-            update.zero_()
 
-        # good step
+        # very good step
+        elif rho > 0.75:
+            diff = trust_region - update.abs()
+            if (diff.amin() / trust_region) > 1e-4: # hits boundary
+                self.global_state['trust_region'] = trust_region * nplus
+
+        # if the ratio is high enough then accept the proposed step
+        if rho > eta:
+            var.update = vec_to_tensors(update, params)
+
         else:
-            self.global_state['trust_region'] = trust_region * nplus
-
-        var.update = vec_to_tensors(update, params)
+            var.update = params.zeros_like()
         return var
+

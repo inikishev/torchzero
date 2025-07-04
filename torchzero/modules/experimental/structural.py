@@ -6,11 +6,11 @@ import torch
 from ...core import Chainable
 from ...utils import vec_to_tensors, TensorList
 from ..optimizers.shampoo import _merge_small_dims
-from ..projections import Projection
+from ..projections import ProjectionBase
 
 
 
-class TensorizeProjection(Projection):
+class TensorizeProjection(ProjectionBase):
     """flattens and concatenates all parameters into a vector and then reshapes it into a tensor"""
     def __init__(self, modules: Chainable, max_side: int, project_update=True, project_params=False, project_grad=False):
         defaults = dict(max_side=max_side)
@@ -50,7 +50,7 @@ class TensorizeProjection(Projection):
         if remainder > 0: vec = vec[:-remainder]
         return vec_to_tensors(vec, params)
 
-class BlockPartition(Projection):
+class BlockPartition(ProjectionBase):
     """splits parameters into blocks (for now flatttens them and chunks)"""
     def __init__(self, modules: Chainable, max_size: int, batched: bool = False, project_update=True, project_params=False, project_grad=False):
         defaults = dict(max_size=max_size, batched=batched)

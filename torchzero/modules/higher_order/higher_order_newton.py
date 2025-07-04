@@ -156,10 +156,10 @@ class HigherOrderNewton(Module):
         self,
         order: int = 4,
         trust_method: Literal['bounds', 'proximal', 'none'] | None = 'bounds',
-        increase: float = 1.5,
-        decrease: float = 0.75,
+        increase: float = 2,
+        decrease: float = 0.25,
         trust_init: float | None = None,
-        trust_tol: float = 2,
+        eta: float = 0.15,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
@@ -167,7 +167,7 @@ class HigherOrderNewton(Module):
             if trust_method == 'bounds': trust_init = 1
             else: trust_init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, increase=increase, decrease=decrease, trust_tol=trust_tol, trust_init=trust_init, vectorize=vectorize, de_iters=de_iters)
+        defaults = dict(order=order, trust_method=trust_method, increase=increase, decrease=decrease, eta=eta, trust_init=trust_init, vectorize=vectorize, de_iters=de_iters)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -180,13 +180,14 @@ class HigherOrderNewton(Module):
         order = settings['order']
         increase = settings['increase']
         decrease = settings['decrease']
-        trust_tol = settings['trust_tol']
+        eta = settings['eta']
         trust_init = settings['trust_init']
         trust_method = settings['trust_method']
         de_iters = settings['de_iters']
         vectorize = settings['vectorize']
 
-        trust_value = self.global_state.get('trust_value', trust_init)
+        trust_value = self.global_state.get('trust_region', trust_init)
+        if trust_value < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
 
 
         # ------------------------ calculate grad and hessian ------------------------ #
@@ -240,24 +241,33 @@ class HigherOrderNewton(Module):
         )
 
         # trust region
+        success = False
         if trust_method != 'none':
-            expected_reduction = loss - expected_loss
+            pred_reduction = loss - expected_loss
 
             vec_to_tensors_(x_star, params)
             loss_star = closure(False)
             vec_to_tensors_(x0, params)
             reduction = loss - loss_star
 
+            rho = reduction / (max(pred_reduction, 1e-8))
             # failed step
-            if reduction <= 0:
-                x_star = x0
-                self.global_state['trust_value'] = trust_value * decrease
+            if rho < 0.25:
+                self.global_state['trust_region'] = trust_value * decrease
 
             # very good step
-            elif expected_reduction / reduction <= trust_tol:
-                self.global_state['trust_value'] = trust_value * increase
+            elif rho > 0.75:
+                diff = trust_value - (x0 - x_star).abs_()
+                if (diff.amin() / trust_value) > 1e-4: # hits boundary
+                    self.global_state['trust_region'] = trust_value * increase
 
-        difference = vec_to_tensors(x0 - x_star, params)
-        var.update = list(difference)
+            # if the ratio is high enough then accept the proposed step
+            success = rho > eta
+
+        if success:
+            difference = vec_to_tensors(x0 - x_star, params)
+            var.update = list(difference)
+        else:
+            var.update = params.zeros_like()
         return var
 

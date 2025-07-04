@@ -77,7 +77,7 @@ class _FakeProjectedClosure:
 
 
 
-class Projection(Module, ABC):
+class ProjectionBase(Module, ABC):
     """
     Base class for projections.
     This is an abstract class, to use it, subclass it and override `project` and `unproject`.
@@ -298,7 +298,7 @@ class Projection(Module, ABC):
 
 
 # basic examples
-class VectorProjection(Projection):
+class VectorProjection(ProjectionBase):
     """projection that concatenates all parameters into a vector"""
     def __init__(
         self,
@@ -318,7 +318,7 @@ class VectorProjection(Projection):
         return vec_to_tensors(vec=projected_tensors[0], reference=params)
 
 
-class ScalarProjection(Projection):
+class ScalarProjection(ProjectionBase):
     """projetion that splits all parameters into individual scalars"""
     def __init__(
         self,

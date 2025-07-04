@@ -2,10 +2,10 @@ import torch
 
 from ...core import Chainable
 from ...utils import vec_to_tensors
-from ..projections import Projection
+from ..projections import ProjectionBase
 
 
-class FFTProjection(Projection):
+class FFTProjection(ProjectionBase):
     # norm description copied from pytorch docstring
     """Project update into Fourier space of real-valued inputs.
 

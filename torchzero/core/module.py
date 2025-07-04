@@ -110,6 +110,9 @@ class Var:
         self.skip_update: bool = False
         """if True, the parameters will not be updated"""
 
+        self.storage: dict = {}
+        """Storage for any other data, such as hessian estimates, etc"""
+
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`var.loss`.
         Do not call this at perturbed parameters. Backward always zeroes grads before recomputing."""
@@ -187,6 +190,7 @@ class Var:
         if self.loss is None: self.loss = var.loss
         if self.loss_approx is None: self.loss_approx = var.loss_approx
         if self.grad is None: self.grad = var.grad
+        self.storage.update(var.storage)
 
     def zero_grad(self, set_to_none=True):
         if set_to_none:

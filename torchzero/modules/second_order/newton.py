@@ -208,6 +208,8 @@ class Newton(Module):
         if H is None:
             H = self.global_state["H"]
 
+        # var.storage['hessian'] = H
+
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
@@ -236,4 +238,5 @@ class Newton(Module):
         if update is None: update = least_squares_solve(H, g)
 
         var.update = vec_to_tensors(update, params)
+
         return var

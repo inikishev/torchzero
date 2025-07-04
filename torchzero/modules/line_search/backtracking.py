@@ -4,7 +4,7 @@ from operator import itemgetter
 
 import torch
 
-from .line_search import LineSearch
+from .line_search import LineSearchBase
 
 
 def backtracking_line_search(
@@ -63,7 +63,7 @@ def backtracking_line_search(
 
     return None
 
-class Backtracking(LineSearch):
+class Backtracking(LineSearchBase):
     """Backtracking line search satisfying the Armijo condition.
 
     Args:
@@ -142,7 +142,7 @@ class Backtracking(LineSearch):
 def _lerp(start,end,weight):
     return start + weight * (end - start)
 
-class AdaptiveBacktracking(LineSearch):
+class AdaptiveBacktracking(LineSearchBase):
     """Adaptive backtracking line search. After each line search procedure, a new initial step size is set
     such that optimal step size in the procedure would be found on the second line search iteration.
 

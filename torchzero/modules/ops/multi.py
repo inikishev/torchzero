@@ -11,7 +11,7 @@ from ...core import Chainable, Module, Target, Var, maybe_chain
 from ...utils import TensorList, tensorlist
 
 
-class MultiOperation(Module, ABC):
+class MultiOperationBase(Module, ABC):
     """Base class for operations that use operands. This is an abstract class, subclass it and override `transform` method to use it."""
     def __init__(self, defaults: dict[str, Any] | None, **operands: Chainable | Any):
         super().__init__(defaults=defaults)
@@ -51,7 +51,7 @@ class MultiOperation(Module, ABC):
 
 
 
-class SubModules(MultiOperation):
+class SubModules(MultiOperationBase):
     """Calculates :code:`input - other`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, other: Chainable | float, alpha: float = 1):
         defaults = dict(alpha=alpha)
@@ -69,7 +69,7 @@ class SubModules(MultiOperation):
         else: torch._foreach_sub_(input, other, alpha=alpha)
         return input
 
-class DivModules(MultiOperation):
+class DivModules(MultiOperationBase):
     """Calculates :code:`input / other`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, other: Chainable | float, other_first:bool=False):
         defaults = {}
@@ -86,7 +86,7 @@ class DivModules(MultiOperation):
         return input
 
 
-class PowModules(MultiOperation):
+class PowModules(MultiOperationBase):
     """Calculates :code:`input ** exponent`. :code:`input` and :code:`other` can be numbers or modules."""
     def __init__(self, input: Chainable | float, exponent: Chainable | float):
         defaults = {}
@@ -101,7 +101,7 @@ class PowModules(MultiOperation):
         torch._foreach_div_(input, exponent)
         return input
 
-class LerpModules(MultiOperation):
+class LerpModules(MultiOperationBase):
     """Does a linear interpolation of :code:`input(tensors)` and :code:`end(tensors)` based on a scalar :code:`weight`.
 
     The output is given by :code:`output = input(tensors) + weight * (end(tensors) - input(tensors))`
@@ -115,7 +115,7 @@ class LerpModules(MultiOperation):
         torch._foreach_lerp_(input, end, weight=self.settings[var.params[0]]['weight'])
         return input
 
-class ClipModules(MultiOperation):
+class ClipModules(MultiOperationBase):
     """Calculates :code:`input(tensors).clip(min, max)`. :code:`min` and :code:`max` can be numbers or modules."""
     def __init__(self, input: Chainable, min: float | Chainable | None = None, max: float | Chainable | None = None):
         defaults = {}
@@ -126,7 +126,7 @@ class ClipModules(MultiOperation):
         return TensorList(input).clamp_(min=min, max=max)
 
 
-class GraftModules(MultiOperation):
+class GraftModules(MultiOperationBase):
     """Outputs :code:`direction` output rescaled to have the same norm as :code:`magnitude` output.
 
     Args:
@@ -163,7 +163,7 @@ class GraftModules(MultiOperation):
         tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[var.params[0]])
         return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
 
-class MultiplyByModuleNorm(MultiOperation):
+class MultiplyByModuleNorm(MultiOperationBase):
     """Outputs :code:`input` multiplied by norm of the :code:`norm` output."""
     def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
         defaults = dict(tensorwise=tensorwise, ord=ord)
@@ -180,7 +180,7 @@ class MultiplyByModuleNorm(MultiOperation):
         torch._foreach_mul_(input, n)
         return input
 
-class DivideByModuleNorm(MultiOperation):
+class DivideByModuleNorm(MultiOperationBase):
     """Outputs :code:`input` divided by norm of the :code:`norm` output."""
     def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
         defaults = dict(tensorwise=tensorwise, ord=ord)
