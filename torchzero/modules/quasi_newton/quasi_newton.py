@@ -34,7 +34,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             Defaults to "auto".
         tol (float | None, optional):
             tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to False.
         reset_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
@@ -67,7 +67,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
                     self,
                     init_scale: float | Literal["auto"] = "auto",
                     tol: float = 1e-10,
-                    tol_reset: bool = True,
+                    tol_reset: bool = False,
                     reset_interval: int | None = None,
                     beta: float | None = None,
                     update_freq: int = 1,
@@ -108,7 +108,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         defaults: dict | None = None,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -261,7 +261,7 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
         self,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -684,7 +684,7 @@ class PSB(HessianUpdateStrategy):
         self,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -797,7 +797,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         self,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None | Literal['auto'] = 'auto',
         beta: float | None = None,
         update_freq: int = 1,
@@ -920,7 +920,7 @@ class SSVM(HessianUpdateStrategy):
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -1105,7 +1105,7 @@ class NewSSM(HessianUpdateStrategy):
         type: Literal[1, 2] = 1,
         init_scale: float | Literal["auto"] = "auto",
         tol: float = 1e-10,
-        tol_reset: bool = True,
+        tol_reset: bool = False,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,

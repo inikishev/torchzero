@@ -1,6 +1,7 @@
 # pylint:disable=not-callable
 from abc import ABC, abstractmethod
 from typing import Any, Literal, cast, final
+from collections.abc import Sequence, Mapping
 
 import numpy as np
 import torch
@@ -20,10 +21,6 @@ def trust_lstsq(H: torch.Tensor, g: torch.Tensor, trust_region: float):
     res = lsq_linear(H.numpy(force=True).astype(np.float64), g.numpy(force=True).astype(np.float64), bounds=(-trust_region, trust_region))
     x = torch.from_numpy(res.x).to(H)
     return x, res.cost
-
-def tikhonov_(H: torch.Tensor, reg: float):
-    if reg!=0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(reg))
-    return H
 
 def _flatten_tensors(tensors: list[torch.Tensor]):
     return torch.cat([t.ravel() for t in tensors])
@@ -118,7 +115,19 @@ class TrustRegionBase(Module, ABC):
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_step(var=var, tensors=update, P=P, is_inverse=is_inverse)
 
-def _update_tr_radius(update_vec:torch.Tensor, params, closure, loss, g:torch.Tensor, H:torch.Tensor, trust_region:float, nplus:float, nminus:float, eta:float):
+def _update_tr_radius(update_vec:torch.Tensor, params: Sequence[torch.Tensor], closure,
+                      loss, g:torch.Tensor, H:torch.Tensor, trust_region:float, settings: Mapping):
+    """returns (update, new_trust_region)
+
+    Args:
+        update_vec (torch.Tensor): update vector which is SUBTRACTED from parameters
+        params (_type_): params tensor list
+        closure (_type_): closure
+        loss (_type_): loss at x0
+        g (torch.Tensor): gradient vector
+        H (torch.Tensor): hessian
+        trust_region (float): current trust region value
+    """
     # evaluate actual loss reduction
     update_unflattned = vec_to_tensors(update_vec, params)
     params = TensorList(params)
@@ -133,16 +142,16 @@ def _update_tr_radius(update_vec:torch.Tensor, params, closure, loss, g:torch.Te
 
     # failed step
     if rho < 0.25:
-        trust_region *= nminus
+        trust_region *= settings["nminus"]
 
     # very good step
     elif rho > 0.75:
         diff = trust_region - update_vec.abs()
         if (diff.amin() / trust_region) > 1e-4: # hits boundary
-            trust_region *= nplus
+            trust_region *= settings["nplus"]
 
     # if the ratio is high enough then accept the proposed step
-    if rho > eta:
+    if rho > settings["eta"]:
         update = vec_to_tensors(update_vec, params)
 
     else:
@@ -208,10 +217,6 @@ class TrustNCG(TrustRegionBase):
 
         trust_region = self.global_state.get('trust_region', settings['init'])
         if trust_region < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
-
-        nplus = settings['nplus']
-        nminus = settings['nminus']
-        eta = settings['eta']
         reg = settings['reg']
 
         loss = var.loss
@@ -220,13 +225,11 @@ class TrustNCG(TrustRegionBase):
         if loss is None: loss = closure(False)
 
         if is_inverse: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
-        update = steihaug_toint_cg(P, -g, trust_region, reg=reg)
+        update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
 
         var.update, self.global_state['trust_region'] = _update_tr_radius(
-            update_vec=update, params=params, closure=closure,
-            loss=loss, g=g, H=P,
-            trust_region=trust_region,
-            nplus=nplus, nminus=nminus, eta=eta,
+            update_vec=update_vec, params=params, closure=closure,
+            loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
         )
 
         return var
@@ -328,14 +331,6 @@ class CubicRegularization(TrustRegionBase):
                 tz.m.CubicRegularization(),
             )
 
-        Cubic regularized BFGS
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.ExactTrustRegion(hess_module=tz.m.SR1(inverse=False)),
-            )
     """
     def __init__(
         self,
@@ -361,9 +356,6 @@ class CubicRegularization(TrustRegionBase):
         trust_region = self.global_state.get('trust_region', settings['init'])
         if trust_region < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
 
-        eta = settings['eta']
-        nplus = settings['nplus']
-        nminus = settings['nminus']
         maxiter = settings['maxiter']
         eps = settings['eps']
 
@@ -379,15 +371,13 @@ class CubicRegularization(TrustRegionBase):
             params.sub_(x_unflat)
             return loss_x
 
-        update, _ = ls_cubic_solver(f=loss, g=g, H=P, M=1/trust_region, is_inverse=is_inverse,
+        update_vec, _ = ls_cubic_solver(f=loss, g=g, H=P, M=1/trust_region, is_inverse=is_inverse,
                                  loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
-        update.neg_()
+        update_vec.neg_()
 
         var.update, self.global_state['trust_region'] = _update_tr_radius(
-            update_vec=update, params=params, closure=closure,
-            loss=loss, g=g, H=P,
-            trust_region=trust_region,
-            nplus=nplus, nminus=nminus, eta=eta,
+            update_vec=update_vec, params=params, closure=closure,
+            loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
         )
 
         return var
