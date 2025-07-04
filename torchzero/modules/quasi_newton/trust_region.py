@@ -1,24 +1,18 @@
 from abc import ABC, abstractmethod
-import warnings
-from collections.abc import Callable
-from functools import partial
 from typing import Any, Literal, cast, final
 
 import numpy as np
 import torch
 from scipy.optimize import lsq_linear
 
-from ...core import Chainable, Module, TensorwiseTransform, Transform, apply_transform, Var
-from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
+from ...core import Chainable, Module, apply_transform, Var
+from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     hessian_list_to_mat,
-    hessian_mat,
-    hvp,
-    hvp_fd_central,
-    hvp_fd_forward,
     jacobian_and_hessian_wrt,
 )
 from .quasi_newton import HessianUpdateStrategy
+from ...utils.linalg import steihaug_toint_cg
 
 
 def trust_lstsq(H: torch.Tensor, g: torch.Tensor, trust_region: float):
@@ -123,8 +117,9 @@ class TrustRegionBase(Module, ABC):
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_step(var=var, tensors=update, P=P, is_inverse=is_inverse)
 
-class ExactTrustRegion(TrustRegionBase):
-    """Exact trust region.
+class TrustNCG(TrustRegionBase):
+    """Trust region via Steihaug-Toint Conjugate Gradient method. This is mainly useful for quasi-newton methods.
+    If you don't use :code:`hess_module`, use the matrix-free :code:`tz.m.NewtonCGSteihaug` which only uses hessian-vector products.
 
     Args:
         hess_module (HessianUpdateStrategy | None, optional):
@@ -157,14 +152,15 @@ class ExactTrustRegion(TrustRegionBase):
     def __init__(
         self,
         hess_module: HessianUpdateStrategy | None = None,
-        init: float = 1,
         eta: float= 0.15,
         nplus: float = 2,
         nminus: float = 0.25,
+        init: float = 1,
         update_freq: int = 1,
+        reg: float = 0,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
 
@@ -179,6 +175,7 @@ class ExactTrustRegion(TrustRegionBase):
         nplus = settings['nplus']
         nminus = settings['nminus']
         eta = settings['eta']
+        reg = settings['reg']
 
         loss = var.loss
         closure = var.closure
@@ -186,7 +183,7 @@ class ExactTrustRegion(TrustRegionBase):
         if loss is None: loss = closure(False)
 
         if is_inverse: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
-        update, _ = trust_lstsq(P, g, trust_region)
+        update = steihaug_toint_cg(P, -g, trust_region, reg=reg)
 
         # evaluate actual loss reduction
         update_unflattned = vec_to_tensors(update, params)

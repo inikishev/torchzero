@@ -34,4 +34,4 @@ from .quasi_newton import (
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
 )
-from .trust_region import TrustRegionBase,ExactTrustRegion
+from .trust_region import TrustRegionBase,TrustNCG

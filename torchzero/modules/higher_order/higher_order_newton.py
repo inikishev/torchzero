@@ -114,6 +114,8 @@ class HigherOrderNewton(Module):
     This constructs an nth order taylor approximation via autograd and minimizes it with
     scipy.optimize.minimize trust region newton solvers with optional proximal penalty.
 
+    The trust region currently uses box bounds (L-inf norm), because I don't know how to do L2 for this,
+
 
     .. note::
         In most cases HigherOrderNewton should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
@@ -159,7 +161,7 @@ class HigherOrderNewton(Module):
         increase: float = 2,
         decrease: float = 0.25,
         trust_init: float | None = None,
-        eta: float = 0.15,
+        eta: float = 1e-6,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):

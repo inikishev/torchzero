@@ -1,12 +1,30 @@
+# pyright: reportArgumentType=false
 from collections.abc import Callable
 from typing import overload
 import torch
 
-from .. import TensorList, generic_zeros_like, generic_vector_norm, generic_numel, generic_randn_like, generic_eq
+from .. import TensorList, generic_zeros_like, generic_vector_norm, generic_numel, generic_randn_like, generic_eq, generic_finfo_eps
+
+def _make_A_mm_reg(A_mm: Callable | torch.Tensor, reg):
+    if callable(A_mm):
+        def A_mm_reg(x): # A_mm with regularization
+            Ax = A_mm(x)
+            if not generic_eq(reg, 0): Ax += x*reg
+            return Ax
+        return A_mm_reg
+
+    if not isinstance(A_mm, torch.Tensor): raise TypeError(type(A_mm))
+
+    def Ax_reg(x): # A_mm with regularization
+        Ax = A_mm @ x
+        if reg != 0: Ax += x*reg
+        return Ax
+    return Ax_reg
+
 
 @overload
 def cg(
-    A_mm: Callable[[torch.Tensor], torch.Tensor],
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
     b: torch.Tensor,
     x0_: torch.Tensor | None = None,
     tol: float | None = 1e-4,
@@ -24,17 +42,14 @@ def cg(
 ) -> TensorList: ...
 
 def cg(
-    A_mm: Callable,
+    A_mm: Callable | torch.Tensor,
     b: torch.Tensor | TensorList,
     x0_: torch.Tensor | TensorList | None = None,
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
 ):
-    def A_mm_reg(x): # A_mm with regularization
-        Ax = A_mm(x)
-        if not generic_eq(reg, 0): Ax += x*reg
-        return Ax
+    A_mm_reg = _make_A_mm_reg(A_mm, reg)
 
     if maxiter is None: maxiter = generic_numel(b)
     if x0_ is None: x0_ = generic_zeros_like(b)
@@ -167,3 +182,87 @@ def nystrom_pcg(
         beta = residual.dot(z) / rz
         p = z + p*beta
 
+
+
+def _tr_tau(x,d,trust_region):
+    xd = x.dot(d)
+    dd = d.dot(d)
+    xx = x.dot(x)
+
+    rad = (xd**2 - dd * (xx - trust_region**2)).sqrt()
+    tau = (-xd + rad) / dd
+    return x + tau * d
+
+@overload
+def steihaug_toint_cg(
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
+    b: torch.Tensor,
+    trust_region: float,
+    x0: torch.Tensor | None = None,
+    tol: float = 1e-4,
+    maxiter: int | None = None,
+    reg: float = 0,
+) -> torch.Tensor: ...
+@overload
+def steihaug_toint_cg(
+    A_mm: Callable[[TensorList], TensorList],
+    b: TensorList,
+    trust_region: float,
+    x0: TensorList | None = None,
+    tol: float = 1e-4,
+    maxiter: int | None = None,
+    reg: float | list[float] | tuple[float] = 0,
+) -> TensorList: ...
+def steihaug_toint_cg(
+    A_mm: Callable | torch.Tensor,
+    b: torch.Tensor | TensorList,
+    trust_region: float,
+    x0: torch.Tensor | TensorList | None = None,
+    tol: float = 1e-4,
+    maxiter: int | None = None,
+    reg: float | list[float] | tuple[float] = 0,
+):
+    """
+    Solution is bounded to have L2 norm no larger than :code:`trust_region`
+    """
+    A_mm_reg = _make_A_mm_reg(A_mm, reg)
+
+    x = x0
+    if x is None: x = generic_zeros_like(b)
+    r = -b
+    d = r.clone()
+
+    eps = generic_finfo_eps(b)
+
+    if generic_vector_norm(r) < tol:
+        return x
+
+    if maxiter is None:
+        maxiter = generic_numel(b)
+
+    for _ in range(maxiter):
+        Ad = A_mm_reg(d)
+
+        d_Bd = d.dot(Ad)
+        if d_Bd <= eps:
+            return _tr_tau(x, d, trust_region)
+
+        alpha = r.dot(r) / d_Bd
+        p_next = x + alpha * d
+
+        # check if the step exceeds the trust-region boundary
+        if generic_vector_norm(p_next) >= trust_region:
+            return _tr_tau(x, d, trust_region)
+
+        # update step, residual and direction
+        x = p_next
+        r_next = r - alpha * Ad
+
+        if generic_vector_norm(r_next) < tol:
+            break
+
+        beta = r_next.dot(r_next) / r.dot(r)
+        d = r_next + beta * d
+        r = r_next
+
+    return x
