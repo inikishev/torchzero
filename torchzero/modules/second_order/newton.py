@@ -53,6 +53,7 @@ def tikhonov_(H: torch.Tensor, reg: float):
     if reg!=0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(reg))
     return H
 
+
 class Newton(Module):
     """Exact newton's method via autograd.
 
@@ -147,13 +148,14 @@ class Newton(Module):
         self,
         reg: float = 1e-6,
         search_negative: bool = False,
+        update_freq: int = 1,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
         inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative)
+        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative, update_freq=update_freq)
         super().__init__(defaults)
 
         if inner is not None:
@@ -172,34 +174,47 @@ class Newton(Module):
         vectorize = settings['vectorize']
         H_tfm = settings['H_tfm']
         eigval_tfm = settings['eigval_tfm']
+        update_freq = settings['update_freq']
 
-        # ------------------------ calculate grad and hessian ------------------------ #
-        if hessian_method == 'autograd':
-            with torch.enable_grad():
-                loss = var.loss = var.loss_approx = closure(False)
-                g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
-                g_list = [t[0] for t in g_list] # remove leading dim from loss
-                var.grad = g_list
-                H = hessian_list_to_mat(H_list)
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
-        elif hessian_method in ('func', 'autograd.functional'):
-            strat = 'forward-mode' if vectorize else 'reverse-mode'
-            with torch.enable_grad():
-                g_list = var.get_grad(retain_graph=True)
-                H: torch.Tensor = hessian_mat(partial(closure, backward=False), params,
-                                method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
+        g_list = var.grad
+        H = None
+        if step % update_freq == 0:
+            # ------------------------ calculate grad and hessian ------------------------ #
+            if hessian_method == 'autograd':
+                with torch.enable_grad():
+                    loss = var.loss = var.loss_approx = closure(False)
+                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
+                    g_list = [t[0] for t in g_list] # remove leading dim from loss
+                    var.grad = g_list
+                    H = hessian_list_to_mat(H_list)
 
-        else:
-            raise ValueError(hessian_method)
+            elif hessian_method in ('func', 'autograd.functional'):
+                strat = 'forward-mode' if vectorize else 'reverse-mode'
+                with torch.enable_grad():
+                    g_list = var.get_grad(retain_graph=True)
+                    H = hessian_mat(partial(closure, backward=False), params,
+                                    method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
+
+            else:
+                raise ValueError(hessian_method)
+
+            H = tikhonov_(H, reg)
+            if update_freq != 1:
+                self.global_state['H'] = H
+
+        if H is None:
+            H = self.global_state["H"]
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=list(g_list), var=var)
+            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+
         g = torch.cat([t.ravel() for t in update])
 
-        # ------------------------------- regulazition ------------------------------- #
-        H = tikhonov_(H, reg)
 
         # ----------------------------------- solve ---------------------------------- #
         update = None

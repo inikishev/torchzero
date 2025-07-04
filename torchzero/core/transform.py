@@ -26,6 +26,7 @@ class Transform(Module, ABC):
         self,
         defaults: dict[str,Any] | None,
         uses_grad: bool,
+        uses_loss: bool = False,
         concat_params: bool = False,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -35,6 +36,7 @@ class Transform(Module, ABC):
         super().__init__(defaults)
         self._target: Target = target
         self._uses_grad = uses_grad
+        self._uses_loss = uses_loss
         self._concat_params = concat_params
         self._update_freq = update_freq
         self._scale_first = scale_first
@@ -147,9 +149,15 @@ class Transform(Module, ABC):
 
         return self.transform(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
 
+    def pre_step(self, var: Var) -> None:
+        """Logic to run pre-step, this way transform has access to  Var."""
+
     def step(self, var: Var) -> Var:
+        self.pre_step(var)
+
         # var may change, therefore current params and grads have to be extracted and passed explicitly
         if self._uses_grad: var.get_grad()
+        if self._uses_loss: var.get_loss(False)
         params=var.params
 
         # ---------------------------------- update ---------------------------------- #
@@ -226,6 +234,7 @@ class TensorwiseTransform(Transform, ABC):
         self,
         defaults: dict[str,Any] | None,
         uses_grad: bool,
+        uses_loss: bool = False,
         concat_params: bool = False,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -238,6 +247,7 @@ class TensorwiseTransform(Transform, ABC):
             concat_params=concat_params,
             update_freq=update_freq,
             scale_first=scale_first,
+            uses_loss=uses_loss,
             inner=inner,
             target=target,
         )

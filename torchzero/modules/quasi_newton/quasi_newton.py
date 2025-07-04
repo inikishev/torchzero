@@ -260,6 +260,7 @@ class HUpdateStrategy(HessianUpdateStrategy):
         scale_first: bool = True,
         scale_second: bool = False,
         concat_params: bool = True,
+        inverse: bool = True,
         inner: Chainable | None = None,
     ):
         super().__init__(
@@ -273,7 +274,7 @@ class HUpdateStrategy(HessianUpdateStrategy):
             scale_first=scale_first,
             scale_second=scale_second,
             concat_params=concat_params,
-            inverse=True,
+            inverse=inverse,
             inner=inner,
         )
 # ----------------------------------- BFGS ----------------------------------- #
@@ -431,6 +432,8 @@ class SR1(HUpdateStrategy):
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return sr1_H_(H=B, s=y, y=s, tol=settings['tol'])
 
 # ------------------------------------ DFP ----------------------------------- #
 def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):

@@ -158,7 +158,7 @@ def hessian_mat(
     method="func",
     vectorize=False,
     outer_jacobian_strategy="reverse-mode",
-):
+) -> torch.Tensor:
     """
     returns hessian matrix for parameters (as if they were flattened and concatenated into a vector).
 
@@ -190,7 +190,7 @@ def hessian_mat(
         return loss
 
     if method == 'func':
-        return torch.func.hessian(func)(torch.cat([p.view(-1) for p in params]).detach().requires_grad_(create_graph))
+        return torch.func.hessian(func)(torch.cat([p.view(-1) for p in params]).detach().requires_grad_(create_graph)) # pyright:ignore[reportReturnType]
 
     if method == 'autograd.functional':
         return torch.autograd.functional.hessian(
@@ -199,7 +199,7 @@ def hessian_mat(
             create_graph=create_graph,
             vectorize=vectorize,
             outer_jacobian_strategy=outer_jacobian_strategy,
-        )
+        ) # pyright:ignore[reportReturnType]
     raise ValueError(method)
 
 def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
