@@ -156,6 +156,7 @@ def _assert_var_are_same_(v1: Var, v2: Var, clone_update: bool):
     for k,v in v1.__dict__.items():
         if not k.startswith('__'):
             # if k == 'post_step_hooks': continue
+            if k == 'storage': continue
             if k == 'update' and clone_update:
                 if v1.update is None or v2.update is None:
                     assert v1.update is None and v2.update is None, f'{k} is not the same, {v1 = }, {v2 = }'

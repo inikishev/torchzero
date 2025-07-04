@@ -578,8 +578,8 @@ UpdateGradientSignConsistency = Run(
     sphere_steps=10, sphere_loss=2,
 )
 IntermoduleCautious = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS()), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS()), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(tol_reset=True)), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(tol_reset=True)), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-4, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
@@ -592,8 +592,8 @@ ScaleByGradCosineSimilarity = Run(
     sphere_steps=10, sphere_loss=0.1,
 )
 ScaleModulesByCosineSimilarity = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS()),tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS()),tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(tol_reset=True)),tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(tol_reset=True)),tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.005, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
@@ -725,22 +725,22 @@ Shampoo = Run(
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #
 BFGS = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.BFGS(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.BFGS(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.BFGS(tol_reset=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.BFGS(tol_reset=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 SR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SR1(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.SR1(tol_reset=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(tol_reset=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-12, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 SSVM = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, tol_reset=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, tol_reset=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-10, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
@@ -793,8 +793,8 @@ NewtonCG = Run(
 
 # ---------------------------- smoothing/gaussian ---------------------------- #
 GaussianHomotopy = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(tol_reset=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(tol_reset=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='booth', steps=20, loss=0.1, merge_invariant=True,
     sphere_steps=10, sphere_loss=200,
@@ -904,7 +904,7 @@ for QN in (
     tz.m.ThomasOptimalMethod,
     tz.m.FletcherVMM,
     tz.m.Horisho,
-    lambda scale_first: tz.m.Horisho(scale_first=scale_first, inner=tz.m.GradientCorrection()),
+    lambda scale_first, tol_reset: tz.m.Horisho(scale_first=scale_first, tol_reset=tol_reset, inner=tz.m.GradientCorrection()),
     tz.m.Pearson,
     tz.m.ProjectedNewtonRaphson,
     tz.m.PSB,
@@ -912,8 +912,8 @@ for QN in (
     tz.m.SSVM,
 ):
     Run(
-        func_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
-        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False), tz.m.StrongWolfe()),
+        func_opt=lambda p: tz.Modular(p, QN(scale_first=False, tol_reset=True), tz.m.StrongWolfe()),
+        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False, tol_reset=True), tz.m.StrongWolfe()),
         needs_closure=True,
         func='lstsq', steps=50, loss=1e-10, merge_invariant=False,
         sphere_steps=10, sphere_loss=1e-20,

@@ -288,7 +288,7 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
 # ----------------------------------- BFGS ----------------------------------- #
 def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = torch.dot(s, y)
-    if sy <= tol: return H # don't reset H in this case
+    if sy <= tol: return H
     num1 = (sy + (y @ H @ y)) * s.outer(s)
     term1 = num1.div_(sy**2)
     num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))

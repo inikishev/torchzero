@@ -81,29 +81,32 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
         if len(derivatives) == 1: raise RuntimeError("trust region must be enabled because 1st order has no minima")
         else: method = 'trust-exact'
         de_bounds = list(zip(x0 - 10, x0 + 10))
+        constraints = None
+
     else:
         if len(derivatives) == 1: method = 'slsqp'
         else: method = 'trust-constr'
         de_bounds = list(zip(x0 - trust_region, x0 + trust_region))
 
-    def l2_bound_f(x):
-        if x.ndim == 2: return np.sum((x - x0[:,None])**2, axis=0)[None,:] # DE passes (ndim, batch_size) and expects (M, S)
-        return np.sum((x - x0)**2, axis=0)
+        def l2_bound_f(x):
+            if x.ndim == 2: return np.sum((x - x0[:,None])**2, axis=0)[None,:] # DE passes (ndim, batch_size) and expects (M, S)
+            return np.sum((x - x0)**2, axis=0)
 
-    def l2_bound_g(x):
-        return 2 * (x - x0)
+        def l2_bound_g(x):
+            return 2 * (x - x0)
 
-    def l2_bound_h(x, v):
-        return v[0] * 2 * np.eye(x0.shape[0])
+        def l2_bound_h(x, v):
+            return v[0] * 2 * np.eye(x0.shape[0])
 
-    constraint = scipy.optimize.NonlinearConstraint(
-        fun=l2_bound_f,
-        lb=0, # 0 <= ||x-x0||^2
-        ub=trust_region**2, # ||x-x0||^2 <= R^2
-        jac=l2_bound_g,
-        hess=l2_bound_h,
-        keep_feasible=False
-    )
+        constraint = scipy.optimize.NonlinearConstraint(
+            fun=l2_bound_f,
+            lb=0, # 0 <= ||x-x0||^2
+            ub=trust_region**2, # ||x-x0||^2 <= R^2
+            jac=l2_bound_g, # pyright:ignore[reportArgumentType]
+            hess=l2_bound_h,
+            keep_feasible=False
+        )
+        constraints = [constraint]
 
     x_init = x0.copy()
     v0 = _proximal_poly_v(x0, c, prox, x0, derivatives)
@@ -119,7 +122,7 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
             args=(c, prox, x0.copy(), derivatives),
             maxiter=de_iters,
             vectorized=True,
-            constraints = [constraint],
+            constraints = constraints,
             updating='deferred',
         )
         if res.fun < v0 and np.all(np.isfinite(res.x)): x_init = res.x
@@ -132,7 +135,7 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
         args=(c, prox, x0.copy(), derivatives),
         jac=_proximal_poly_g,
         hess=_proximal_poly_H,
-        constraints = [constraint],
+        constraints = constraints,
     )
 
     return torch.from_numpy(res.x).to(x), res.fun
@@ -272,7 +275,9 @@ class HigherOrderNewton(Module):
 
         # trust region
         success = False
-        if trust_method != 'none':
+        if trust_method == 'none':
+            success = True
+        else:
             pred_reduction = loss - expected_loss
 
             vec_to_tensors_(x_star, params)
