@@ -15,6 +15,8 @@ from .cosine import (
 )
 from .cubic_adam import CubicAdam
 from .curveball import CurveBall
+
+# from dct import DCTProjection
 from .eigendescent import EigenDescent
 from .etf import (
     ExponentialTrajectoryFit,
@@ -22,10 +24,15 @@ from .etf import (
     PointwiseExponential,
 )
 from .exp_adam import ExpAdam
+from .expanded_lbfgs import ExpandedLBFGS
+from .fft import FFTProjection
 from .gradmin import GradMin
+from .hnewton import HNewton
+from .modular_lbfgs import ModularLBFGS
 from .newton_solver import NewtonSolver
+from .newtonnewton import NewtonNewton
 from .reduce_outward_lr import ReduceOutwardLR
-from .structured_newton import StructuredNewton
+from .structural_projections import BlockPartition, TensorizeProjection
 from .subspace_preconditioners import (
     HistorySubspacePreconditioning,
     RandomSubspacePreconditioning,

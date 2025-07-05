@@ -4,8 +4,8 @@ from typing import Any
 
 import torch
 
-from ....core import Chainable, Module, Transform, Var, apply_transform, maybe_chain
-from ....utils import NumberList, TensorList, as_tensorlist
+from ...core import Chainable, Module, Transform, Var, apply_transform, maybe_chain
+from ...utils import NumberList, TensorList, as_tensorlist
 
 
 def _adaptive_damping(
@@ -43,32 +43,31 @@ def lbfgs(
         if scale < 1e-5: scale = 1 / tensors_.abs().mean()
         return tensors_.mul_(min(1.0, scale)) # pyright: ignore[reportArgumentType]
 
-    else:
-        # 1st loop
-        alpha_list = []
-        q = tensors_.clone()
-        for s_i, y_i, ys_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
-            p_i = 1 / ys_i # this is also denoted as ρ (rho)
-            alpha = p_i * s_i.dot(q)
-            alpha_list.append(alpha)
-            q.sub_(y_i, alpha=alpha) # pyright: ignore[reportArgumentType]
+    # 1st loop
+    alpha_list = []
+    q = tensors_.clone()
+    for s_i, y_i, ys_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
+        p_i = 1 / ys_i # this is also denoted as ρ (rho)
+        alpha = p_i * s_i.dot(q)
+        alpha_list.append(alpha)
+        q.sub_(y_i, alpha=alpha) # pyright: ignore[reportArgumentType]
 
-        # calculate z
-        # s.y/y.y is also this weird y-looking symbol I couldn't find
-        # z is it times q
-        # actually H0 = (s.y/y.y) * I, and z = H0 @ q
-        z = q * (ys_k / (y_k.dot(y_k)))
+    # calculate z
+    # s.y/y.y is also this weird y-looking symbol I couldn't find
+    # z is it times q
+    # actually H0 = (s.y/y.y) * I, and z = H0 @ q
+    z = q * (ys_k / (y_k.dot(y_k)))
 
-        if z_tfm is not None:
-            z = TensorList(apply_transform(z_tfm, tensors=z, params=var.params, grads=var.grad, var=var))
+    if z_tfm is not None:
+        z = TensorList(apply_transform(z_tfm, tensors=z, params=var.params, grads=var.grad, var=var))
 
-        # 2nd loop
-        for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
-            p_i = 1 / ys_i
-            beta_i = p_i * y_i.dot(z)
-            z.add_(s_i, alpha = alpha_i - beta_i)
+    # 2nd loop
+    for s_i, y_i, ys_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
+        p_i = 1 / ys_i
+        beta_i = p_i * y_i.dot(z)
+        z.add_(s_i, alpha = alpha_i - beta_i)
 
-        return z
+    return z
 
 def _apply_tfms_into_history(
     self: Module,

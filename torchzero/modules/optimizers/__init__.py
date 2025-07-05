@@ -5,6 +5,7 @@ from .adagrad import Adagrad, FullMatrixAdagrad
 from .adahessian import AdaHessian
 from .adam import Adam
 from .adan import Adan
+from .adaptive_heavyball import AdaptiveHeavyBall
 from .esgd import ESGD
 from .ladagrad import LMAdagrad
 from .lion import Lion

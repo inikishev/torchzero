@@ -12,9 +12,9 @@ class PolyakStepSize(Transform):
     """Polyak's subgradient method.
 
     Args:
-        max (float | None, optional): maximum possible step size. Defaults to None.
-        min_obj_value (int, optional):
+        f_star (int, optional):
             (estimated) minimal possible value of the objective function (lowest possible loss). Defaults to 0.
+        max (float | None, optional): maximum possible step size. Defaults to None.
         use_grad (bool, optional):
             if True, uses dot product of update and gradient to compute the step size.
             Otherwise, dot product of update with itself is used, which has no geometric meaning so it probably won't work well.
@@ -24,9 +24,9 @@ class PolyakStepSize(Transform):
             if False calculate one global step size for all parameters. Defaults to False.
         alpha (float, optional): multiplier to Polyak step-size. Defaults to 1.
     """
-    def __init__(self, max: float | None = None, min_obj_value: float = 0, use_grad=True, parameterwise=False, alpha: float = 1, inner: Chainable | None = None):
+    def __init__(self, f_star: float = 0, max: float | None = None, use_grad=False, alpha: float = 1, inner: Chainable | None = None):
 
-        defaults = dict(alpha=alpha, max=max, min_obj_value=min_obj_value, use_grad=use_grad, parameterwise=parameterwise)
+        defaults = dict(alpha=alpha, max=max, f_star=f_star, use_grad=use_grad)
         super().__init__(defaults, uses_grad=use_grad)
 
         if inner is not None: self.set_child('inner', inner)
@@ -38,22 +38,16 @@ class PolyakStepSize(Transform):
         grads = TensorList(grads)
         alpha = NumberList(s['alpha'] for s in settings)
 
-        parameterwise, use_grad, max, min_obj_value = itemgetter('parameterwise', 'use_grad', 'max', 'min_obj_value')(settings[0])
+        use_grad, max, f_star = itemgetter('use_grad', 'max', 'f_star')(settings[0])
 
         if use_grad: denom = tensors.dot(grads)
         else: denom = tensors.dot(tensors)
 
-        if parameterwise:
-            polyak_step_size: TensorList | Any = (loss - min_obj_value) / denom.where(denom!=0, 1)
-            polyak_step_size = polyak_step_size.where(denom != 0, 0)
-            if max is not None: polyak_step_size = polyak_step_size.clamp_max(max)
+        if denom.abs() <= torch.finfo(denom.dtype).eps: polyak_step_size = 0 # converged
+        else: polyak_step_size = (loss - f_star) / denom
 
-        else:
-            if denom.abs() <= torch.finfo(denom.dtype).eps: polyak_step_size = 0 # converged
-            else: polyak_step_size = (loss - min_obj_value) / denom
-
-            if max is not None:
-                if polyak_step_size > max: polyak_step_size = max
+        if max is not None:
+            if polyak_step_size > max: polyak_step_size = max
 
         if 'inner' in self.children:
             tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads, loss))

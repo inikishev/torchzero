@@ -44,8 +44,8 @@ def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_ne
              # use eigvec or -eigvec depending on if it points in same direction as gradient
             return g.dot(d).sign() * d
 
-        L.reciprocal_()
-        return torch.linalg.multi_dot([Q * L.unsqueeze(-2), Q.mH, g]) # pylint:disable=not-callable
+        return Q @ ((Q.mH @ g) / L)
+
     except torch.linalg.LinAlgError:
         return None
 

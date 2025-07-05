@@ -7,13 +7,13 @@ from typing import Literal
 
 import torch
 
-from ....core import Chainable, Module, apply_transform
-from ....utils import TensorList, vec_to_tensors
-from ....utils.derivatives import (
+from ...core import Chainable, Module, apply_transform
+from ...utils import TensorList, vec_to_tensors
+from ...utils.derivatives import (
     hessian_list_to_mat,
     jacobian_wrt,
 )
-from ...second_order.newton import (
+from ..second_order.newton import (
     cholesky_solve,
     eigh_solve,
     least_squares_solve,

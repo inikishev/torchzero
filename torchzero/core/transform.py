@@ -47,7 +47,7 @@ class Transform(Module, ABC):
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
         grads: list[torch.Tensor] | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
         states: list[dict[str, Any]],
         settings: Sequence[Mapping[str, Any]],
     ) -> None:
@@ -59,7 +59,7 @@ class Transform(Module, ABC):
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
         grads: list[torch.Tensor] | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
         states: list[dict[str, Any]],
         settings: Sequence[Mapping[str, Any]],
     ) -> Sequence[torch.Tensor]:
@@ -72,7 +72,7 @@ class Transform(Module, ABC):
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
         grads: list[torch.Tensor] | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
         states: list[dict[str, Any]],
         settings: Sequence[Mapping[str, Any]] | None,
     ) -> list[torch.Tensor]:
@@ -132,7 +132,7 @@ class Transform(Module, ABC):
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
         grads: list[torch.Tensor] | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
     ):
         """Applies this transform to `tensors`, `params` will be used as keys and need to always point to same tensor objects."""
         if self._concat_params:
@@ -158,7 +158,8 @@ class Transform(Module, ABC):
         self.pre_step(var)
 
         # var may change, therefore current params and grads have to be extracted and passed explicitly
-        if self._uses_grad: var.get_grad()
+        if self._target in ('update', 'update_difference'): var.get_update() # this sets loss
+        if self._uses_grad or self._target == 'grad': var.get_grad()
         if self._uses_loss: var.get_loss(False)
         params=var.params
 
@@ -260,7 +261,7 @@ class TensorwiseTransform(Transform, ABC):
         tensor: torch.Tensor,
         param: torch.Tensor,
         grad: torch.Tensor | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
         state: dict[str, Any],
         settings: Mapping[str, Any],
     ) -> None:
@@ -272,7 +273,7 @@ class TensorwiseTransform(Transform, ABC):
         tensor: torch.Tensor,
         param: torch.Tensor,
         grad: torch.Tensor | None,
-        loss: torch.Tensor | None,
+        loss: torch.Tensor | float | None,
         state: dict[str, Any],
         settings: Mapping[str, Any],
     ) -> torch.Tensor:
@@ -297,7 +298,7 @@ def apply_transform(
     tensors: list[torch.Tensor],
     params: list[torch.Tensor],
     grads: list[torch.Tensor] | None,
-    loss: torch.Tensor | None = None,
+    loss: torch.Tensor | float | None = None,
     var: Var | None = None,
     current_step: int = 0,
 ):

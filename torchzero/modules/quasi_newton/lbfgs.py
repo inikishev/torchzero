@@ -204,7 +204,7 @@ class LBFGS(Module):
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
         prev_l_params, prev_l_grad = self.get_state(params, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
-        # 1st step - there are no previous params and grads, `lbfgs` will do normalized SGD step
+        # 1st step - there are no previous params and grads, lbfgs will do normalized SGD step
         if step == 0:
             s_k = None; y_k = None; ys_k = None
         else:
