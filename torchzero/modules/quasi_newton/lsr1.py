@@ -4,9 +4,10 @@ from operator import itemgetter
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist
-
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ..functional import safe_scaling_
 from .lbfgs import _lerp_params_update_
+
 
 def lsr1_(
     tensors_: TensorList,
@@ -15,11 +16,9 @@ def lsr1_(
     step: int,
     scale_second: bool,
 ):
-    if step == 0 or not s_history:
+    if len(s_history) == 0:
         # initial step size guess from pytorch
-        scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
-        scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
-        return tensors_.mul_(scale_factor)
+        return safe_scaling_(TensorList(tensors_))
 
     m = len(s_history)
 
@@ -64,7 +63,7 @@ def lsr1_(
 
         Hx.add_(w_k, alpha=w_k.dot(tensors_) / wy) # pyright:ignore[reportArgumentType]
 
-    if scale_second and step == 1:
+    if scale_second and step == 2:
         scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
         scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
         Hx.mul_(scale_factor)
@@ -72,14 +71,14 @@ def lsr1_(
     return Hx
 
 
-class LSR1(Module):
+class LSR1(Transform):
     """Limited Memory SR1 algorithm. A line search is recommended.
 
     .. note::
         L-SR1 provides a better estimate of true hessian, however it is significantly more unstable compared to L-BFGS.
 
     .. note::
-        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `n!` (n factorial). On small problems BFGS and SR1 may be faster than limited-memory versions.
+        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `(n^2)/2`. On small problems BFGS and SR1 may be faster than limited-memory versions.
 
     .. note::
         directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,
@@ -121,20 +120,19 @@ class LSR1(Module):
         grads_beta: float | None = None,
         update_freq: int = 1,
         scale_second: bool = False,
+        tol_reset: bool = False,
         inner: Chainable | None = None,
     ):
         defaults = dict(
             history_size=history_size, tol=tol,
             params_beta=params_beta, grads_beta=grads_beta,
-            update_freq=update_freq, scale_second=scale_second
+            update_freq=update_freq, scale_second=scale_second,
+            tol_reset=tol_reset,
         )
-        super().__init__(defaults)
+        super().__init__(defaults, uses_grad=False, inner=inner)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
-
-        if inner is not None:
-            self.set_child('inner', inner)
 
     def reset(self):
         self.state.clear()
@@ -144,52 +142,59 @@ class LSR1(Module):
 
 
     @torch.no_grad
-    def step(self, var: Var):
-        params = as_tensorlist(var.params)
-        update = as_tensorlist(var.get_update())
+    def update(self, tensors, params, grads, loss, states, settings):
+        params = as_tensorlist(params)
+        update = as_tensorlist(tensors)
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         s_history: deque[TensorList] = self.global_state['s_history']
         y_history: deque[TensorList] = self.global_state['y_history']
 
-        settings = self.settings[params[0]]
-        tol, update_freq, scale_second = itemgetter('tol', 'update_freq', 'scale_second')(settings)
+        setting = settings[0]
+        update_freq = itemgetter('update_freq')(setting)
 
-        params_beta, grads_beta_ = self.get_settings(params, 'params_beta', 'grads_beta') # type: ignore
-        l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta_)
+        params_beta, grads_beta = unpack_dicts(settings, 'params_beta', 'grads_beta')
+        l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
+        prev_l_params, prev_l_grad = unpack_states(states, tensors, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
-        prev_l_params, prev_l_grad = self.get_state(params, 'prev_l_params', 'prev_l_grad', cls=TensorList)
-
-        y_k = None
+        y = None
         if step != 0:
             if step % update_freq == 0:
-                s_k = l_params - prev_l_params
-                y_k = l_update - prev_l_grad
+                s = l_params - prev_l_params
+                y = l_update - prev_l_grad
 
-                s_history.append(s_k)
-                y_history.append(y_k)
+                s_history.append(s)
+                y_history.append(y)
 
         prev_l_params.copy_(l_params)
         prev_l_grad.copy_(l_update)
 
-        if 'inner' in self.children:
-            update = TensorList(apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var))
+        # store for apply
+        self.global_state['y'] = y
+
+    @torch.no_grad
+    def apply(self, tensors, params, grads, loss, states, settings):
+        tensors = as_tensorlist(tensors)
+        y = self.global_state.pop('y')
+
+        setting = settings[0]
+        tol = setting['tol']
+        tol_reset = setting['tol_reset']
 
         # tolerance on gradient difference to avoid exploding after converging
         if tol is not None:
-            if y_k is not None and y_k.abs().global_max() <= tol:
-                var.update = update
-                return var
+            if y is not None and y.abs().global_max() <= tol:
+                if tol_reset: self.reset()
+                return safe_scaling_(tensors)
 
+        # precondition
         dir = lsr1_(
-            tensors_=update,
-            s_history=s_history,
-            y_history=y_history,
-            step=step,
-            scale_second=scale_second,
+            tensors_=tensors,
+            s_history=self.global_state['s_history'],
+            y_history=self.global_state['y_history'],
+            step=self.global_state.get('step', 1),
+            scale_second=setting['scale_second'],
         )
 
-        var.update = dir
-
-        return var
+        return dir

@@ -7,8 +7,9 @@ storage is always indicated in the docstring.
 
 Additional functional variants are present in most module files, e.g. `adam_`, `rmsprop_`, `lion_`, etc.
 """
-
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
+from typing import overload
+import torch
 
 from ..utils import NumberList, TensorList
 
@@ -206,4 +207,13 @@ def sqrt_centered_ema_sq_(
         ema_sq_fn=lambda *a, **kw: centered_ema_sq_(*a, **kw, exp_avg_=exp_avg_)
     )
 
+@overload
+def safe_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
+@overload
+def safe_scaling_(tensors_: TensorList) -> TensorList: ...
+def safe_scaling_(tensors_: torch.Tensor | TensorList):
+    if isinstance(tensors_, torch.Tensor): scale = 1 / tensors_.abs().sum()
+    else: scale = 1 / tensors_.abs().global_sum()
+    scale = scale.clip(min=torch.finfo(tensors_[0].dtype).eps, max=1)
+    return tensors_.mul_(scale)
 

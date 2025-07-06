@@ -1,9 +1,11 @@
 from collections import deque
 from operator import itemgetter
+
 import torch
 
-from ...core import Transform, Chainable, Module, Var, apply_transform
-from ...utils import TensorList, as_tensorlist, NumberList, unpack_dicts, unpack_states
+from ...core import Chainable, Module, Transform, Var, apply_transform
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ..functional import safe_scaling_
 
 
 def _adaptive_damping(
@@ -24,10 +26,6 @@ def _adaptive_damping(
 
     return s, y, sy
 
-def _safe_scaling_(tensors_: TensorList):
-    scale = (1 / tensors_.abs().global_sum()).clip(min=torch.finfo(tensors_[0].dtype).eps, max=1)
-    return tensors_.mul_(scale)
-
 def lbfgs(
     tensors_: TensorList,
     s_history: deque[TensorList],
@@ -42,7 +40,7 @@ def lbfgs(
     if len(s_history) == 0 or y is None or sy is None:
 
         # initial step size guess modified from pytorch L-BFGS
-        return _safe_scaling_(TensorList(tensors_))
+        return safe_scaling_(TensorList(tensors_))
 
     # 1st loop
     alpha_list = []
@@ -98,7 +96,7 @@ def _lerp_params_update_(
     return TensorList(params), TensorList(update)
 
 class LBFGS(Transform):
-    """Limited-memory BFGS algorithm. A line search is recommended, although L-BFGS is reasonably stable without it.
+    """Limited-memory BFGS algorithm. A line search is recommended, although L-BFGS may be reasonably stable without it.
 
     Args:
         history_size (int, optional):
@@ -145,7 +143,7 @@ class LBFGS(Transform):
                 tz.m.StrongWolfe()
             )
 
-        L-BFGS preconditioning applied to momentum
+        L-BFGS preconditioning applied to momentum (may be unstable!)
 
         .. code-block:: python
 
@@ -227,6 +225,7 @@ class LBFGS(Transform):
         self.global_state['y'] = y
         self.global_state['sy'] = sy
 
+    @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
 
@@ -242,7 +241,7 @@ class LBFGS(Transform):
         if tol is not None:
             if y is not None and y.abs().global_max() <= tol:
                 if tol_reset: self.reset()
-                return _safe_scaling_(TensorList(tensors))
+                return safe_scaling_(TensorList(tensors))
 
         # lerp initial H^-1 @ q guess
         z_ema = None
