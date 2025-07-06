@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, TensorwiseTransform, Transform, apply_transform
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
-
+from .quasi_newton import _safe_clip
 
 class ConguateGradientBase(Transform, ABC):
     """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.
@@ -280,11 +280,10 @@ class HybridHS_DY(ConguateGradientBase):
         return hs_dy_beta(g, prev_d, prev_g)
 
 
-def projected_gradient_(H:torch.Tensor, y:torch.Tensor, tol: float):
+def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
     Hy = H @ y
-    denom = y.dot(Hy)
-    if denom.abs() < tol: return H
-    H -= (H @ y.outer(y) @ H) / denom
+    yHy = _safe_clip(y.dot(Hy))
+    H -= (Hy.outer(y) @ H) / yHy
     return H
 
 class ProjectedGradientMethod(TensorwiseTransform):
@@ -306,14 +305,13 @@ class ProjectedGradientMethod(TensorwiseTransform):
 
     def __init__(
         self,
-        tol: float = 1e-10,
         reset_interval: int | None | Literal['auto'] = 'auto',
         update_freq: int = 1,
         scale_first: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(reset_interval=reset_interval, tol=tol)
+        defaults = dict(reset_interval=reset_interval)
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def update_tensor(self, tensor, param, grad, loss, state, settings):
@@ -332,7 +330,7 @@ class ProjectedGradientMethod(TensorwiseTransform):
         state['g_prev'] = tensor.clone()
         y = (tensor - g_prev).ravel()
 
-        projected_gradient_(H, y, settings['tol'])
+        projected_gradient_(H, y)
 
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         H = state['H']
