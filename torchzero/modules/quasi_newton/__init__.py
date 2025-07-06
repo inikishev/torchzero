@@ -10,6 +10,14 @@ from .cg import (
     ProjectedGradientMethod,
     ShorR,
 )
+from .diagonal_quasi_newton import (
+    DNRTR,
+    DiagonalBFGS,
+    DiagonalQuasiCauchi,
+    DiagonalSR1,
+    DiagonalWeightedQuasiCauchi,
+    NewDQN,
+)
 from .lbfgs import LBFGS
 from .lsr1 import LSR1
 from .olbfgs import OnlineLBFGS
@@ -18,17 +26,12 @@ from .olbfgs import OnlineLBFGS
 from .quasi_newton import (
     BFGS,
     DFP,
-    DNRTR,
     ICUM,
     PSB,
     SR1,
     SSVM,
     BroydenBad,
     BroydenGood,
-    DiagonalBFGS,
-    DiagonalQuasiCauchi,
-    DiagonalSR1,
-    DiagonalWeightedQuasiCauchi,
     FletcherVMM,
     GradientCorrection,
     Greenstadt1,
@@ -38,6 +41,6 @@ from .quasi_newton import (
     NewSSM,
     Pearson,
     ProjectedNewtonRaphson,
-    ThomasOptimalMethod, NewDQN,
+    ThomasOptimalMethod,
 )
 from .trust_region import CubicRegularization, TrustNCG, TrustRegionBase

@@ -388,19 +388,6 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     H += term1.sub_(term2)
     return H
 
-def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    sy = s.dot(y)
-    if sy < tol: return H
-
-    sy_sq = _safe_clip(sy**2)
-
-    num1 = (sy + (y * H * y)) * s*s
-    term1 = num1.div_(sy_sq)
-    num2 = (H * y * s).add_(s * y * H)
-    term2 = num2.div_(sy)
-    H += term1.sub_(term2)
-    return H
-
 class BFGS(_InverseHessianUpdateStrategyDefaults):
     """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
 
@@ -468,12 +455,6 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
         return bfgs_B_(B=B, s=s, y=y, tol=settings['tol'])
 
-class DiagonalBFGS(_InverseHessianUpdateStrategyDefaults):
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-
 # ------------------------------------ SR1 ----------------------------------- #
 def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H@y
@@ -487,20 +468,6 @@ def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
     H += z.outer(z).div_(_safe_clip(denom))
-    return H
-
-def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
-    z = s - H*y
-    denom = z.dot(y)
-
-    z_norm = torch.linalg.norm(z) # pylint:disable=not-callable
-    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
-
-    # if y_norm*z_norm < tol: return H
-
-    # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
-    if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
-    H += (z*z).div_(_safe_clip(denom))
     return H
 
 class SR1(_InverseHessianUpdateStrategyDefaults):
@@ -575,13 +542,6 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
         return sr1_(H=H, s=s, y=y, tol=settings['tol'])
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_(H=B, s=y, y=s, tol=settings['tol'])
-class DiagonalSR1(_InverseHessianUpdateStrategyDefaults):
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_sr1_(H=H, s=s, y=y, tol=settings['tol'])
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_sr1_(H=B, s=y, y=s, tol=settings['tol'])
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
 
 
 # ------------------------------------ DFP ----------------------------------- #
@@ -1269,82 +1229,3 @@ class NewSSM(HessianUpdateStrategy):
         f = state['f']
         f_prev = state['f_prev']
         return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=settings['type'], tol=settings['tol'])
-
-
-# Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
-def diagonal_qc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
-    num = s.dot(y) - (s*B).dot(s)
-    B += s**2 * (num/denom)
-    return B
-
-class DiagonalQuasiCauchi(_HessianUpdateStrategyDefaults):
-    """Diagonal quasi-cauchi method.
-
-    Reference:
-        Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
-    """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_qc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-
-# Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
-def diagonal_wqc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    E_sq = s**2 * B**2
-    denom = _safe_clip((s*E_sq).dot(s))
-    num = s.dot(y) - (s*B).dot(s)
-    B += E_sq * (num/denom)
-    return B
-
-class DiagonalWeightedQuasiCauchi(_HessianUpdateStrategyDefaults):
-    """Diagonal quasi-cauchi method.
-
-    Reference:
-        Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
-    """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_wqc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-
-
-# Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
-def dnrtr_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
-    num = s.dot(y) + s.dot(s) - (s*B).dot(s)
-    B += s**2 * (num/denom) - 1
-    return B
-
-class DNRTR(_HessianUpdateStrategyDefaults):
-    """Diagonal quasi-newton method.
-
-    Reference:
-        Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
-    """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_wqc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-    def _post_B(self, B, g, state, settings):
-        return torch.where(B>settings['tol'], B, 1), g
-
-
-def new_dqn_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
-    num = s.dot(y)
-    B += s**2 * (num/denom)
-    return B
-
-class NewDQN(_HessianUpdateStrategyDefaults):
-    """Diagonal quasi-newton method.
-
-    Reference:
-        Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
-    """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return new_dqn_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-    def _post_B(self, B, g, state, settings):
-        return torch.where(B>settings['tol'], B, 1), g
