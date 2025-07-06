@@ -18,14 +18,17 @@ from .olbfgs import OnlineLBFGS
 from .quasi_newton import (
     BFGS,
     DFP,
+    DNRTR,
+    ICUM,
     PSB,
     SR1,
     SSVM,
     BroydenBad,
     BroydenGood,
-    ColumnUpdatingMethod,
     DiagonalBFGS,
+    DiagonalQuasiCauchi,
     DiagonalSR1,
+    DiagonalWeightedQuasiCauchi,
     FletcherVMM,
     GradientCorrection,
     Greenstadt1,
@@ -35,6 +38,6 @@ from .quasi_newton import (
     NewSSM,
     Pearson,
     ProjectedNewtonRaphson,
-    ThomasOptimalMethod,
+    ThomasOptimalMethod, NewDQN,
 )
 from .trust_region import CubicRegularization, TrustNCG, TrustRegionBase

@@ -17,13 +17,10 @@ class PolyakStepSize(Transform):
         use_grad (bool, optional):
             if True, uses dot product of update and gradient to compute the step size.
             Otherwise, dot product of update with itself is used, which has no geometric meaning so it probably won't work well.
-            Defaults to True.
-        parameterwise (bool, optional):
-            if True, calculate Polyak step-size for each parameter separately,
-            if False calculate one global step size for all parameters. Defaults to False.
+            Defaults to False.
         alpha (float, optional): multiplier to Polyak step-size. Defaults to 1.
     """
-    def __init__(self, f_star: float = 0, max: float | None = None, use_grad=True, alpha: float = 1, inner: Chainable | None = None):
+    def __init__(self, f_star: float = 0, max: float | None = None, use_grad=False, alpha: float = 1, inner: Chainable | None = None):
 
         defaults = dict(alpha=alpha, max=max, f_star=f_star, use_grad=use_grad)
         super().__init__(defaults, uses_grad=use_grad, uses_loss=True, inner=inner)

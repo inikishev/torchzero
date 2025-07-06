@@ -97,7 +97,7 @@ class WarmupNormClip(Transform):
                 tz.m.LR(1e-2),
             )
     """
-    def __init__(self, start_norm = 1e-5, end_norm:float = 1, steps = 100):
+    def __init__(self, steps = 100, start_norm = 1e-5, end_norm:float = 1):
         defaults = dict(start_norm=start_norm,end_norm=end_norm, steps=steps)
         super().__init__(defaults, uses_grad=False)
 

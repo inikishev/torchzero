@@ -7,7 +7,7 @@ import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
-
+from ..functional import safe_scaling_
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -18,6 +18,13 @@ def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     if (beta is None) or (beta == 0) or (key not in state): state[key] = value
     elif state[key].shape != value.shape: state[key] = value
     else: state[key].lerp_(value, 1-beta)
+
+def _safe_clip(x: torch.Tensor):
+    """makes sure scalar tensor x is not smaller than epsilon"""
+    assert x.numel() == 1, x.shape
+    eps = torch.finfo(x.dtype).eps ** 2
+    if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
+    return x
 
 class HessianUpdateStrategy(TensorwiseTransform, ABC):
     """Base class for quasi-newton methods that store and update hessian approximation H or inverse B.
@@ -32,9 +39,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
 
             Defaults to "auto".
-        tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to False.
+        tol (float, optional):
+            algorithm-dependent tolerance (usually on curvature condition). Defaults to 1e-8.
+        ptol (float | None, optional):
+            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
+        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
+        gtol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
         reset_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
@@ -66,8 +77,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
                 def __init__(
                     self,
                     init_scale: float | Literal["auto"] = "auto",
-                    tol: float = 1e-10,
-                    tol_reset: bool = False,
+                    tol: float = 1e-8,
+                    ptol: float = 1e-10,
+                    ptol_reset: bool = False,
                     reset_interval: int | None = None,
                     beta: float | None = None,
                     update_freq: int = 1,
@@ -80,7 +92,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
                         defaults=None,
                         init_scale=init_scale,
                         tol=tol,
-                        tol_reset=tol_reset,
+                        ptol=ptol,
+                        ptol_reset=ptol_reset,
                         reset_interval=reset_interval,
                         beta=beta,
                         update_freq=update_freq,
@@ -107,8 +120,10 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         self,
         defaults: dict | None = None,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -119,7 +134,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, tol_reset=tol_reset, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
+        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
     def _init_M(self, size:int, device, dtype, is_inverse:bool):
@@ -158,8 +173,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         step = state.get('step', 0) + 1
         state['step'] = step
         init_scale = settings['init_scale']
-        tol = settings['tol']
-        tol_reset = settings['tol_reset']
+        ptol = settings['ptol']
+        ptol_reset = settings['ptol_reset']
+        gtol = settings['gtol']
         reset_interval = settings['reset_interval']
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1
 
@@ -188,10 +204,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             self._reset_M_(M, s, y, inverse, init_scale, state)
             return
 
-        # tolerance on gradient difference to avoid exploding after converging
-        if y.abs().max() <= tol:
-            # reset history
-            if tol_reset: self._reset_M_(M, s, y, inverse, init_scale, state)
+        # tolerance on parameter difference to avoid exploding after converging
+        if ptol is not None and s.abs().max() <= ptol:
+            if ptol_reset: self._reset_M_(M, s, y, inverse, init_scale, state) # reset history
+            return
+
+        # tolerance on gradient difference to avoid exploding when there is no curvature
+        if gtol is not None and y.abs().max() <= gtol:
             return
 
         if step == 2 and init_scale == 'auto':
@@ -211,25 +230,35 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         state['f_prev'] = loss
 
+    def _post_B(self, B: torch.Tensor, g: torch.Tensor, state, settings):
+        """modifies B before appling the update rule. Must return (B, g)"""
+        return B, g
+
+    def _post_H(self, H: torch.Tensor, g: torch.Tensor, state, settings):
+        """modifies H before appling the update rule. Must return (H, g)"""
+        return H, g
+
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, settings):
         step = state.get('step', 0)
 
         if settings['scale_second'] and step == 2:
-            scale_factor = 1 / tensor.abs().sum().clip(min=1)
-            scale_factor = scale_factor.clip(min=torch.finfo(tensor.dtype).eps)
-            tensor = tensor * scale_factor
+            tensor = safe_scaling_(tensor)
 
         inverse = settings['inverse']
         if inverse:
             H = state['H']
-            if H.ndim == 1: return tensor.mul_(H)
-            return (H @ tensor.view(-1)).view_as(tensor)
+            H, g = self._post_H(H, tensor.view(-1), state, settings)
+            if H.ndim == 1: return g.mul_(H).view_as(tensor)
+            return (H @ g).view_as(tensor)
 
         B = state['B']
+        H, g = self._post_B(B, tensor.view(-1), state, settings)
 
-        if B.ndim == 1: return tensor.div_(B)
-        return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
+        if B.ndim == 1: return g.div_(B).view_as(tensor)
+        x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
+        if info == 0: return x.view_as(tensor)
+        return safe_scaling_(tensor)
 
     # def post_step(self, var):
     #     if self._concat_params:
@@ -239,7 +268,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
     #         else:
     #             var.storage['hessian'] = self.state[param]['B']
 
-class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
+class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
     '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
     Refer to :code:`HessianUpdateStrategy` documentation.
 
@@ -266,8 +295,10 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -281,7 +312,9 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
             defaults=None,
             init_scale=init_scale,
             tol=tol,
-            tol_reset=tol_reset,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
             reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
@@ -291,21 +324,76 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
             inverse=inverse,
             inner=inner,
         )
+
+class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
+    def __init__(
+        self,
+        init_scale: float | Literal["auto"] = "auto",
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
+        reset_interval: int | None = None,
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = True,
+        scale_second: bool = False,
+        concat_params: bool = True,
+        inverse: bool = False,
+        inner: Chainable | None = None,
+    ):
+        super().__init__(
+            defaults=None,
+            init_scale=init_scale,
+            tol=tol,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
+            reset_interval=reset_interval,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=inverse,
+            inner=inner,
+        )
+
 # ----------------------------------- BFGS ----------------------------------- #
+def bfgs_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    sy = s.dot(y)
+    if sy < tol: return B
+
+    Bs = B@s
+    sBs = _safe_clip(s.dot(Bs))
+
+    term1 = y.outer(y).div_(sy)
+    term2 = (Bs.outer(s) @ B.T).div_(sBs)
+    B += term1.sub_(term2)
+    return B
+
 def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    sy = torch.dot(s, y)
-    sy_sq = sy**2
-    if sy_sq <= tol: return H
-    num1 = (sy + (y @ H @ y)) * s.outer(s)
-    term1 = num1.div_(sy_sq)
-    num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+    sy = s.dot(y)
+    if sy <= tol: return H
+
+    sy_sq = _safe_clip(sy**2)
+
+    Hy = H@y
+    scale1 = (sy + y.dot(Hy)) / sy_sq
+    term1 = s.outer(s).mul_(scale1)
+
+    num2 = (Hy.outer(s)).add_(s.outer(y @ H))
     term2 = num2.div_(sy)
+
     H += term1.sub_(term2)
     return H
+
 def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    sy = torch.dot(s, y)
-    sy_sq = sy**2
-    if sy_sq <= tol: return H
+    sy = s.dot(y)
+    if sy < tol: return H
+
+    sy_sq = _safe_clip(sy**2)
+
     num1 = (sy + (y * H * y)) * s*s
     term1 = num1.div_(sy_sq)
     num2 = (H * y * s).add_(s * y * H)
@@ -313,7 +401,7 @@ def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float
     H += term1.sub_(term2)
     return H
 
-class BFGS(_HessianUpdateStrategyDefaults):
+class BFGS(_InverseHessianUpdateStrategyDefaults):
     """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
 
     .. note::
@@ -329,9 +417,12 @@ class BFGS(_HessianUpdateStrategyDefaults):
             "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
 
             Defaults to "auto".
-        tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        tol (float, optional):
+            tolerance on curvature condition. Defaults to 1e-8.
+        ptol (float | None, optional):
+            skips update if maximum difference between current and previous gradients is less than this, to avoid instability.
+            Defaults to 1e-10.
+        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
         reset_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
@@ -374,8 +465,10 @@ class BFGS(_HessianUpdateStrategyDefaults):
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return bfgs_B_(B=B, s=s, y=y, tol=settings['tol'])
 
-class DiagonalBFGS(_HessianUpdateStrategyDefaults):
+class DiagonalBFGS(_InverseHessianUpdateStrategyDefaults):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return diagonal_bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
     def _init_M(self, size:int, device, dtype, is_inverse:bool):
@@ -384,32 +477,33 @@ class DiagonalBFGS(_HessianUpdateStrategyDefaults):
 # ------------------------------------ SR1 ----------------------------------- #
 def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H@y
-    denom = torch.dot(z, y)
+    denom = z.dot(y)
 
     z_norm = torch.linalg.norm(z) # pylint:disable=not-callable
     y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
 
-    if y_norm*z_norm < tol: return H
+    # if y_norm*z_norm < tol: return H
 
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
-    H += torch.outer(z, z).div_(denom)
+    H += z.outer(z).div_(_safe_clip(denom))
     return H
+
 def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H*y
-    denom = torch.dot(z, y)
+    denom = z.dot(y)
 
     z_norm = torch.linalg.norm(z) # pylint:disable=not-callable
     y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
 
-    if y_norm*z_norm < tol: return H
+    # if y_norm*z_norm < tol: return H
 
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
-    H += (z*z).div_(denom)
+    H += (z*z).div_(_safe_clip(denom))
     return H
 
-class SR1(_HessianUpdateStrategyDefaults):
+class SR1(_InverseHessianUpdateStrategyDefaults):
     """Symmetric Rank 1 Quasi-Newton method.
 
     .. note::
@@ -431,9 +525,12 @@ class SR1(_HessianUpdateStrategyDefaults):
             "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
 
             Defaults to "auto".
-        tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional): whether to reset the hessian approximation when tolerance is not met. Defaults to True.
+        tol (float, optional):
+            tolerance for denominator in SR1 update rule as in Nocedal, Wright. “Numerical optimization” 2nd p.146. Defaults to 1e-8.
+        ptol (float | None, optional):
+            skips update if maximum difference between current and previous gradients is less than this, to avoid instability.
+            Defaults to 1e-10.
+        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
         reset_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
@@ -478,7 +575,7 @@ class SR1(_HessianUpdateStrategyDefaults):
         return sr1_(H=H, s=s, y=y, tol=settings['tol'])
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
         return sr1_(H=B, s=y, y=s, tol=settings['tol'])
-class DiagonalSR1(_HessianUpdateStrategyDefaults):
+class DiagonalSR1(_InverseHessianUpdateStrategyDefaults):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return diagonal_sr1_(H=H, s=s, y=y, tol=settings['tol'])
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
@@ -489,17 +586,31 @@ class DiagonalSR1(_HessianUpdateStrategyDefaults):
 
 # ------------------------------------ DFP ----------------------------------- #
 def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    sy = torch.dot(s, y)
+    sy = s.dot(y)
     if sy.abs() <= tol: return H
-    term1 = torch.outer(s, s).div_(sy)
-    yHy = torch.dot(y, H @ y) #
-    if yHy.abs() <= tol: return H
-    num = H @ torch.outer(y, y) @ H
+    term1 = s.outer(s).div_(sy)
+
+    yHy = _safe_clip(y.dot(H @ y))
+
+    num = (H @ y).outer(y) @ H
     term2 = num.div_(yHy)
+
     H += term1.sub_(term2)
     return H
 
-class DFP(_HessianUpdateStrategyDefaults):
+def dfp_B(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    sy = s.dot(y)
+    if sy.abs() <= tol: return B
+    I = torch.eye(B.size(0), device=B.device, dtype=B.dtype)
+    sub = y.outer(s).div_(sy)
+    term1 = I - sub
+    term2 = I.sub_(sub.T)
+    term3 = y.outer(y).div_(sy)
+    B = (term1 @ B @ term2).add_(term3)
+    return B
+
+
+class DFP(_InverseHessianUpdateStrategyDefaults):
     """Davidon–Fletcher–Powell Quasi-Newton method.
 
     .. note::
@@ -514,58 +625,53 @@ class DFP(_HessianUpdateStrategyDefaults):
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return dfp_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return dfp_B(B=B, s=s, y=y, tol=settings['tol'])
 
 
 # formulas for methods below from Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
 # H' = H - (Hy - S)c^T / c^T*y
 # the difference is how `c` is calculated
 
-def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     c = H.T @ s
-    cy = c.dot(y)
-    if cy.abs() <= tol: return H
+    cy = _safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
-def broyden_good_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+def broyden_good_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     r = y - B@s
-    ss = s.dot(s)
-    if ss.abs() <= tol: return B
+    ss = _safe_clip(s.dot(s))
     B += r.outer(s).div_(ss)
     return B
 
-def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    c = y
-    cy = c.dot(y)
-    if cy.abs() <= tol: return H
-    num = (H@y).sub_(s).outer(c)
-    H -= num/cy
+def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    yy = _safe_clip(y.dot(y))
+    num = (s - (H @ y)).outer(y)
+    H += num/yy
     return H
-def broyden_bad_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+def broyden_bad_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     r = y - B@s
-    ys = y.dot(s)
-    if ys.abs() <= tol: return B
+    ys = _safe_clip(y.dot(s))
     B += r.outer(y).div_(ys)
     return B
 
-def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor, tol: float):
+def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor):
     c = g_prev
-    cy = c.dot(y)
-    if cy.abs() <= tol: return H
+    cy = _safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
 
-def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     Hy = H @ y
     c = H @ Hy # pylint:disable=not-callable
-    cy = c.dot(y)
-    if cy.abs() <= tol: return H
+    cy = _safe_clip(c.dot(y))
     num = Hy.sub_(s).outer(c)
     H -= num/cy
     return H
 
-class BroydenGood(_HessianUpdateStrategyDefaults):
+class BroydenGood(_InverseHessianUpdateStrategyDefaults):
     """Broyden's "good" Quasi-Newton method.
 
     .. note::
@@ -581,11 +687,11 @@ class BroydenGood(_HessianUpdateStrategyDefaults):
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return broyden_good_H_(H=H, s=s, y=y)
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_good_B_(B=B, s=s, y=y, tol=settings['tol'])
+        return broyden_good_B_(B=B, s=s, y=y)
 
-class BroydenBad(_HessianUpdateStrategyDefaults):
+class BroydenBad(_InverseHessianUpdateStrategyDefaults):
     """Broyden's "bad" Quasi-Newton method.
 
     .. note::
@@ -601,11 +707,11 @@ class BroydenBad(_HessianUpdateStrategyDefaults):
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return broyden_bad_H_(H=H, s=s, y=y)
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return broyden_bad_B_(B=B, s=s, y=y, tol=settings['tol'])
+        return broyden_bad_B_(B=B, s=s, y=y)
 
-class Greenstadt1(_HessianUpdateStrategyDefaults):
+class Greenstadt1(_InverseHessianUpdateStrategyDefaults):
     """Greenstadt's first Quasi-Newton method.
 
     .. note::
@@ -621,9 +727,9 @@ class Greenstadt1(_HessianUpdateStrategyDefaults):
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev, tol=settings['tol'])
+        return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev)
 
-class Greenstadt2(_HessianUpdateStrategyDefaults):
+class Greenstadt2(_InverseHessianUpdateStrategyDefaults):
     """Greenstadt's second Quasi-Newton method.
 
     .. note::
@@ -640,14 +746,13 @@ class Greenstadt2(_HessianUpdateStrategyDefaults):
 
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return greenstadt2_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return greenstadt2_H_(H=H, s=s, y=y)
 
 
-def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float):
+def icum_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
     j = y.abs().argmax()
 
-    denom = y[j]
-    if denom.abs() < tol: return H
+    denom = _safe_clip(y[j])
 
     Hy = H @ y.unsqueeze(1)
     num = s.unsqueeze(1) - Hy
@@ -655,9 +760,9 @@ def column_updating_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, tol:float
     H[:, j] += num.squeeze() / denom
     return H
 
-class ColumnUpdatingMethod(_HessianUpdateStrategyDefaults):
+class ICUM(_InverseHessianUpdateStrategyDefaults):
     """
-    Column-updating Quasi-Newton method. This is computationally cheaper than other Quasi-Newton methods
+    Inverse Column-updating Quasi-Newton method. This is computationally cheaper than other Quasi-Newton methods
     due to only updating one column of the inverse hessian approximation per step.
 
     .. note::
@@ -670,24 +775,22 @@ class ColumnUpdatingMethod(_HessianUpdateStrategyDefaults):
         Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return column_updating_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return icum_H_(H=H, s=s, y=y)
 
-def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
+def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
     s_norm = torch.linalg.vector_norm(s) # pylint:disable=not-callable
     I = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
     d = (R + I * (s_norm/2)) @ s
-    ds = d.dot(s)
-    if ds.abs() <= tol: return H, R
+    ds = _safe_clip(d.dot(s))
     R = (1 + s_norm) * ((I*s_norm).add_(R).sub_(d.outer(d).div_(ds)))
 
     c = H.T @ d
-    cy = c.dot(y)
-    if cy.abs() <= tol: return H, R
+    cy = _safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H, R
 
-class ThomasOptimalMethod(_HessianUpdateStrategyDefaults):
+class ThomasOptimalMethod(_InverseHessianUpdateStrategyDefaults):
     """
     Thomas's "optimal" Quasi-Newton method.
 
@@ -705,7 +808,7 @@ class ThomasOptimalMethod(_HessianUpdateStrategyDefaults):
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
-        H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
+        H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y)
         return H
 
     def _reset_M_(self, M, s, y,inverse, init_scale, state):
@@ -714,18 +817,17 @@ class ThomasOptimalMethod(_HessianUpdateStrategyDefaults):
             st.pop("R", None)
 
 # ------------------------ powell's symmetric broyden ------------------------ #
-def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
+def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
     y_Bs = y - B@s
-    ss = s.dot(s)
-    if ss.abs() < tol: return B
+    ss = _safe_clip(s.dot(s))
     num1 = y_Bs.outer(s).add_(s.outer(y_Bs))
     term1 = num1.div_(ss)
-    term2 = s.outer(s).mul_(y_Bs.dot(s)/(ss**2))
+    term2 = s.outer(s).mul_(y_Bs.dot(s)/(_safe_clip(ss**2)))
     B += term1.sub_(term2)
     return B
 
 # I couldn't find formula for H
-class PSB(HessianUpdateStrategy):
+class PSB(_HessianUpdateStrategyDefaults):
     """Powell's Symmetric Broyden Quasi-Newton method.
 
     .. note::
@@ -740,48 +842,19 @@ class PSB(HessianUpdateStrategy):
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
-    def __init__(
-        self,
-        init_scale: float | Literal["auto"] = 'auto',
-        tol: float = 1e-10,
-        tol_reset: bool = False,
-        reset_interval: int | None = None,
-        beta: float | None = None,
-        update_freq: int = 1,
-        scale_first: bool = True,
-        scale_second: bool = False,
-        concat_params: bool = True,
-        inner: Chainable | None = None,
-    ):
-        super().__init__(
-            defaults=None,
-            init_scale=init_scale,
-            tol=tol,
-            tol_reset=tol_reset,
-            reset_interval=reset_interval,
-            beta=beta,
-            update_freq=update_freq,
-            scale_first=scale_first,
-            scale_second=scale_second,
-            concat_params=concat_params,
-            inverse=False,
-            inner=inner,
-        )
-
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return psb_B_(B=B, s=s, y=y, tol=settings['tol'])
+        return psb_B_(B=B, s=s, y=y)
 
 
 # Algorithms from Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171
-def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     Hy = H@y
-    yHy = y.dot(Hy)
-    if yHy.abs() <= tol: return H
+    yHy = _safe_clip(y.dot(Hy))
     num = (s - Hy).outer(Hy)
     H += num.div_(yHy)
     return H
 
-class Pearson(_HessianUpdateStrategyDefaults):
+class Pearson(_InverseHessianUpdateStrategyDefaults):
     """
     Pearson's Quasi-Newton method.
 
@@ -798,16 +871,15 @@ class Pearson(_HessianUpdateStrategyDefaults):
         Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return pearson_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return pearson_H_(H=H, s=s, y=y)
 
-def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
-    sy = s.dot(y)
-    if sy.abs() <= tol: return H
+def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    sy = _safe_clip(s.dot(y))
     num = (s - H@y).outer(s)
     H += num.div_(sy)
     return H
 
-class McCormick(_HessianUpdateStrategyDefaults):
+class McCormick(_InverseHessianUpdateStrategyDefaults):
     """McCormicks's Quasi-Newton method.
 
     .. note::
@@ -825,12 +897,11 @@ class McCormick(_HessianUpdateStrategyDefaults):
         This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method in other sources.
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return mccormick_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return mccormick_H_(H=H, s=s, y=y)
 
-def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol:float):
+def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
     Hy = H @ y
-    yHy = y.dot(Hy)
-    if yHy.abs() < tol: return H, R
+    yHy = _safe_clip(y.dot(Hy))
     H -= Hy.outer(Hy) / yHy
     R += (s - R@y).outer(Hy) / yHy
     return H, R
@@ -856,8 +927,10 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = 'auto',
-        tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None | Literal['auto'] = 'auto',
         beta: float | None = None,
         update_freq: int = 1,
@@ -869,7 +942,9 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         super().__init__(
             init_scale=init_scale,
             tol=tol,
-            tol_reset=tol_reset,
+            ptol = ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
             reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
@@ -882,7 +957,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
-        H, R = projected_newton_raphson_H_(H=H, R=state['R'], s=s, y=y, tol=settings['tol'])
+        H, R = projected_newton_raphson_H_(H=H, R=state['R'], s=s, y=y)
         state["R"] = R
         return H
 
@@ -900,12 +975,10 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
     # however p.12 says eps = gs / gHy
 
     Hy = H@y
-    gHy = g.dot(Hy)
-    yHy = y.dot(Hy)
+    gHy = _safe_clip(g.dot(Hy))
+    yHy = _safe_clip(y.dot(Hy))
     sy = s.dot(y)
-    if sy < tol: return H
-    if yHy.abs() < tol: return H
-    if gHy.abs() < tol: return H
+    if sy < tol: return H # the proof is for sy>0. But not clear if it should be skipped
 
     v_mul = yHy.sqrt()
     v_term1 = s/sy
@@ -920,28 +993,26 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
         e = gs / gHy
         if switch in (1, 3):
             if e/o <= 1:
-                if o.abs() <= tol: return H
-                phi = e/o
+                phi = e/_safe_clip(o)
                 theta = 0
             elif o/t >= 1:
-                if t.abs() <= tol: return H
-                phi = o/t
+                phi = o/_safe_clip(t)
                 theta = 1
             else:
                 phi = 1
-                denom = e*t - o**2
-                if denom.abs() <= tol: return H
+                denom = _safe_clip(e*t - o**2)
                 if switch == 1: theta = o * (e - o) / denom
                 else: theta = o * (t - o) / denom
 
         elif switch == 2:
-            if t.abs() <= tol or o.abs() <= tol or e.abs() <= tol: return H
+            t = _safe_clip(t)
+            o = _safe_clip(o)
+            e = _safe_clip(e)
             phi = (e / t) ** 0.5
             theta = 1 / (1 + (t*e / o**2)**0.5)
 
         elif switch == 4:
-            if t.abs() <= tol: return H
-            phi = e/t
+            phi = e/_safe_clip(t)
             theta = 1/2
 
         else: raise ValueError(switch)
@@ -979,8 +1050,10 @@ class SSVM(HessianUpdateStrategy):
         self,
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
-        tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -994,7 +1067,9 @@ class SSVM(HessianUpdateStrategy):
             defaults=defaults,
             init_scale=init_scale,
             tol=tol,
-            tol_reset=tol_reset,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
             reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
@@ -1012,10 +1087,9 @@ class SSVM(HessianUpdateStrategy):
 def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     Hy = H@y
     ys = y.dot(s)
-    if ys.abs() <= tol: return H
+    if ys.abs() <= tol: return H # probably? because it is BFGS and DFP-like
     yHy = y.dot(Hy)
-    denom = ys + yHy
-    if denom.abs() <= tol: return H
+    denom = _safe_clip(ys + yHy)
 
     term1 = 1/denom
     term2 = s.outer(s).mul_(1 + ((2 * yHy) / ys))
@@ -1028,8 +1102,7 @@ def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 def gradient_correction(g: TensorList, s: TensorList, y: TensorList):
-    sy = s.dot(y)
-    if sy.abs() < torch.finfo(g[0].dtype).eps: return g
+    sy = _safe_clip(s.dot(y))
     return g - (y * (s.dot(g) / sy))
 
 
@@ -1070,7 +1143,7 @@ class GradientCorrection(Transform):
         g_prev.copy_(tensors)
         return g_hat
 
-class Horisho(_HessianUpdateStrategyDefaults):
+class Horisho(_InverseHessianUpdateStrategyDefaults):
     """
     Horisho's variable metric Quasi-Newton method.
 
@@ -1093,7 +1166,7 @@ class Horisho(_HessianUpdateStrategyDefaults):
 # Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
 def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
-    if sy.abs() < tol: return H
+    if sy.abs() < tol: return H # part of algorithm
     Hy = H @ y
 
     term1 = (s.outer(y) @ H).div_(sy)
@@ -1104,7 +1177,7 @@ def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float)
     H -= (term1 + term2 - term4.mul_(term3))
     return H
 
-class FletcherVMM(_HessianUpdateStrategyDefaults):
+class FletcherVMM(_InverseHessianUpdateStrategyDefaults):
     """
     Fletcher's variable metric Quasi-Newton method.
 
@@ -1127,7 +1200,7 @@ class FletcherVMM(_HessianUpdateStrategyDefaults):
 # Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U.
 def new_ssm1(H: torch.Tensor, s: torch.Tensor, y: torch.Tensor, f, f_prev, tol: float, type:int):
     sy = s.dot(y)
-    if sy < tol: return H
+    if sy < tol: return H # part of algorithm
 
     term1 = (H @ y.outer(s) + s.outer(y) @ H) / sy
 
@@ -1164,8 +1237,10 @@ class NewSSM(HessianUpdateStrategy):
         self,
         type: Literal[1, 2] = 1,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-10,
-        tol_reset: bool = False,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
@@ -1178,7 +1253,9 @@ class NewSSM(HessianUpdateStrategy):
             defaults=dict(type=type),
             init_scale=init_scale,
             tol=tol,
-            tol_reset=tol_reset,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
             reset_interval=reset_interval,
             beta=beta,
             update_freq=update_freq,
@@ -1193,3 +1270,81 @@ class NewSSM(HessianUpdateStrategy):
         f_prev = state['f_prev']
         return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=settings['type'], tol=settings['tol'])
 
+
+# Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
+def diagonal_qc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    denom = _safe_clip((s**4).sum())
+    num = s.dot(y) - (s*B).dot(s)
+    B += s**2 * (num/denom)
+    return B
+
+class DiagonalQuasiCauchi(_HessianUpdateStrategyDefaults):
+    """Diagonal quasi-cauchi method.
+
+    Reference:
+        Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
+    """
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_qc_B_(B=B, s=s, y=y)
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+
+# Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
+def diagonal_wqc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    E_sq = s**2 * B**2
+    denom = _safe_clip((s*E_sq).dot(s))
+    num = s.dot(y) - (s*B).dot(s)
+    B += E_sq * (num/denom)
+    return B
+
+class DiagonalWeightedQuasiCauchi(_HessianUpdateStrategyDefaults):
+    """Diagonal quasi-cauchi method.
+
+    Reference:
+        Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
+    """
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_wqc_B_(B=B, s=s, y=y)
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+
+
+# Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
+def dnrtr_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    denom = _safe_clip((s**4).sum())
+    num = s.dot(y) + s.dot(s) - (s*B).dot(s)
+    B += s**2 * (num/denom) - 1
+    return B
+
+class DNRTR(_HessianUpdateStrategyDefaults):
+    """Diagonal quasi-newton method.
+
+    Reference:
+        Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
+    """
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_wqc_B_(B=B, s=s, y=y)
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+    def _post_B(self, B, g, state, settings):
+        return torch.where(B>settings['tol'], B, 1), g
+
+
+def new_dqn_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
+    denom = _safe_clip((s**4).sum())
+    num = s.dot(y)
+    B += s**2 * (num/denom)
+    return B
+
+class NewDQN(_HessianUpdateStrategyDefaults):
+    """Diagonal quasi-newton method.
+
+    Reference:
+        Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
+    """
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return new_dqn_B_(B=B, s=s, y=y)
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+    def _post_B(self, B, g, state, settings):
+        return torch.where(B>settings['tol'], B, 1), g

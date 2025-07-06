@@ -88,7 +88,11 @@ class LSR1(Transform):
         history_size (int, optional):
             number of past parameter differences and gradient differences to store. Defaults to 10.
         tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
+            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
+        tol_reset (bool, optional):
+            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
+        gtol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
         params_beta (float | None, optional):
             if not None, EMA of parameters is used for
             preconditioner update (s_k vector). Defaults to None.
@@ -115,16 +119,17 @@ class LSR1(Transform):
     def __init__(
         self,
         history_size: int = 10,
-        tol: float = 1e-8,
+        tol: float | None = 1e-10,
+        tol_reset: bool = False,
+        gtol: float | None = 1e-10,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq: int = 1,
         scale_second: bool = False,
-        tol_reset: bool = False,
         inner: Chainable | None = None,
     ):
         defaults = dict(
-            history_size=history_size, tol=tol,
+            history_size=history_size, tol=tol, gtol=gtol,
             params_beta=params_beta, grads_beta=grads_beta,
             update_freq=update_freq, scale_second=scale_second,
             tol_reset=tol_reset,
@@ -158,6 +163,7 @@ class LSR1(Transform):
         l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
         prev_l_params, prev_l_grad = unpack_states(states, tensors, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
+        s = None
         y = None
         if step != 0:
             if step % update_freq == 0:
@@ -171,22 +177,30 @@ class LSR1(Transform):
         prev_l_grad.copy_(l_update)
 
         # store for apply
+        self.global_state['s'] = s
         self.global_state['y'] = y
 
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
+        s = self.global_state.pop('s')
         y = self.global_state.pop('y')
 
         setting = settings[0]
         tol = setting['tol']
+        gtol = setting['gtol']
         tol_reset = setting['tol_reset']
 
-        # tolerance on gradient difference to avoid exploding after converging
+        # tolerance on parameter difference to avoid exploding after converging
         if tol is not None:
-            if y is not None and y.abs().global_max() <= tol:
+            if s is not None and s.abs().global_max() <= tol:
                 if tol_reset: self.reset()
-                return safe_scaling_(tensors)
+                return safe_scaling_(TensorList(tensors))
+
+        # tolerance on gradient difference to avoid exploding when there is no curvature
+        if tol is not None:
+            if y is not None and y.abs().global_max() <= gtol:
+                return safe_scaling_(TensorList(tensors))
 
         # precondition
         dir = lsr1_(

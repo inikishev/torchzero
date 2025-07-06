@@ -101,14 +101,18 @@ class LBFGS(Transform):
     Args:
         history_size (int, optional):
             number of past parameter differences and gradient differences to store. Defaults to 10.
-        tol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability. Defaults to 1e-10.
         damping (bool, optional):
             whether to use adaptive damping. Learning rate might need to be lowered with this enabled. Defaults to False.
         init_damping (float, optional):
             initial damping for adaptive dampening. Defaults to 0.9.
         eigval_bounds (tuple, optional):
             eigenvalue bounds for adaptive dampening. Defaults to (0.5, 50).
+        tol (float | None, optional):
+            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
+        tol_reset (bool, optional):
+            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
+        gtol (float | None, optional):
+            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
         params_beta (float | None, optional):
             if not None, EMA of parameters is used for preconditioner update. Defaults to None.
         grads_beta (float | None, optional):
@@ -117,8 +121,6 @@ class LBFGS(Transform):
             how often to update L-BFGS history. Defaults to 1.
         z_beta (float | None, optional):
             optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
-        tol_reset (bool, optional):
-            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
@@ -156,18 +158,19 @@ class LBFGS(Transform):
     def __init__(
         self,
         history_size=10,
-        tol: float | None = 1e-10,
         damping: bool = False,
         init_damping=0.9,
         eigval_bounds=(0.5, 50),
+        tol: float | None = 1e-10,
+        tol_reset: bool = False,
+        gtol: float | None = 1e-10,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq = 1,
         z_beta: float | None = None,
-        tol_reset: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, tol_reset=tol_reset)
+        defaults = dict(history_size=history_size, tol=tol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, tol_reset=tol_reset)
         super().__init__(defaults, uses_grad=False, inner=inner)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -222,6 +225,7 @@ class LBFGS(Transform):
                 sy_history.append(sy)
 
         # store for apply
+        self.global_state['s'] = s
         self.global_state['y'] = y
         self.global_state['sy'] = sy
 
@@ -229,18 +233,25 @@ class LBFGS(Transform):
     def apply(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
 
+        s = self.global_state.pop('s')
         y = self.global_state.pop('y')
         sy = self.global_state.pop('sy')
 
         setting = settings[0]
         tol = setting['tol']
+        gtol = setting['gtol']
         tol_reset = setting['tol_reset']
         z_beta = setting['z_beta']
 
-        # tolerance on gradient difference to avoid exploding after converging
+        # tolerance on parameter difference to avoid exploding after converging
         if tol is not None:
-            if y is not None and y.abs().global_max() <= tol:
+            if s is not None and s.abs().global_max() <= tol:
                 if tol_reset: self.reset()
+                return safe_scaling_(TensorList(tensors))
+
+        # tolerance on gradient difference to avoid exploding when there is no curvature
+        if tol is not None:
+            if y is not None and y.abs().global_max() <= gtol:
                 return safe_scaling_(TensorList(tensors))
 
         # lerp initial H^-1 @ q guess
