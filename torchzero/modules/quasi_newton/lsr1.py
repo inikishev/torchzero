@@ -75,10 +75,10 @@ class LSR1(Transform):
     """Limited Memory SR1 algorithm. A line search is recommended.
 
     .. note::
-        L-SR1 provides a better estimate of true hessian, however it is significantly more unstable compared to L-BFGS.
+        L-SR1 provides a better estimate of true hessian, however it is more unstable compared to L-BFGS.
 
     .. note::
-        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `(n^2)/2`. On small problems BFGS and SR1 may be faster than limited-memory versions.
+        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `(n^2)/2`. On small problems (ndim <= 2000) BFGS and SR1 may be faster than limited-memory versions.
 
     .. note::
         directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,

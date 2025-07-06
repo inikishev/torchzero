@@ -1,15 +1,11 @@
-"""Use BFGS or maybe SR1."""
-from abc import ABC, abstractmethod
-from collections.abc import Mapping
-from typing import Any, Literal
-
 import torch
 
-from ...core import Chainable, Module, TensorwiseTransform, Transform
-from ...utils import TensorList, set_storage_, unpack_states
-from ..functional import safe_scaling_
-from .quasi_newton import _safe_clip, HessianUpdateStrategy, _HessianUpdateStrategyDefaults, _InverseHessianUpdateStrategyDefaults
-
+from .quasi_newton import (
+    HessianUpdateStrategy,
+    _HessianUpdateStrategyDefaults,
+    _InverseHessianUpdateStrategyDefaults,
+    _safe_clip,
+)
 
 
 def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
