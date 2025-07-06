@@ -49,7 +49,7 @@ class PolyakStepSize(Transform):
     @torch.no_grad
     def apply(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
-        torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha'))
+        torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
 
