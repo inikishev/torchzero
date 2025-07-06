@@ -122,6 +122,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, tol_reset=tol_reset, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.eye(size, device=device, dtype=dtype)
+
     def _get_init_scale(self,s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
         """returns multiplier to H or B"""
         ys = y.dot(s)
@@ -130,7 +133,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         return 1
 
     def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]):
-        set_storage_(M, torch.eye(M.size(-1), device=M.device, dtype=M.dtype))
+        set_storage_(M, self._init_M(s.numel(), device=M.device, dtype=M.dtype, is_inverse=inverse))
         if init_scale == 'auto': init_scale = self._get_init_scale(s,y)
         if init_scale >= 1:
             if inverse: M /= init_scale
@@ -161,7 +164,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1
 
         if M is None:
-            M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            #M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
+            M = self._init_M(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
             if isinstance(init_scale, (int, float)) and init_scale != 1:
                 if inverse: M /= init_scale
                 else: M *= init_scale
@@ -219,10 +223,12 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         inverse = settings['inverse']
         if inverse:
             H = state['H']
+            if H.ndim == 1: return tensor.mul_(H)
             return (H @ tensor.view(-1)).view_as(tensor)
 
         B = state['B']
 
+        if B.ndim == 1: return tensor.div_(B)
         return torch.linalg.solve_ex(B, tensor.view(-1))[0].view_as(tensor) # pylint:disable=not-callable
 
     # def post_step(self, var):
@@ -288,10 +294,21 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
 # ----------------------------------- BFGS ----------------------------------- #
 def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = torch.dot(s, y)
-    if sy <= tol: return H
+    sy_sq = sy**2
+    if sy_sq <= tol: return H
     num1 = (sy + (y @ H @ y)) * s.outer(s)
-    term1 = num1.div_(sy**2)
+    term1 = num1.div_(sy_sq)
     num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+    term2 = num2.div_(sy)
+    H += term1.sub_(term2)
+    return H
+def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    sy = torch.dot(s, y)
+    sy_sq = sy**2
+    if sy_sq <= tol: return H
+    num1 = (sy + (y * H * y)) * s*s
+    term1 = num1.div_(sy_sq)
+    num2 = (H * y * s).add_(s * y * H)
     term2 = num2.div_(sy)
     H += term1.sub_(term2)
     return H
@@ -358,8 +375,14 @@ class BFGS(_HessianUpdateStrategyDefaults):
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
 
+class DiagonalBFGS(_HessianUpdateStrategyDefaults):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+
 # ------------------------------------ SR1 ----------------------------------- #
-def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
+def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H@y
     denom = torch.dot(z, y)
 
@@ -371,6 +394,19 @@ def sr1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
     H += torch.outer(z, z).div_(denom)
+    return H
+def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
+    z = s - H*y
+    denom = torch.dot(z, y)
+
+    z_norm = torch.linalg.norm(z) # pylint:disable=not-callable
+    y_norm = torch.linalg.norm(y) # pylint:disable=not-callable
+
+    if y_norm*z_norm < tol: return H
+
+    # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
+    if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
+    H += (z*z).div_(denom)
     return H
 
 class SR1(_HessianUpdateStrategyDefaults):
@@ -439,9 +475,17 @@ class SR1(_HessianUpdateStrategyDefaults):
     """
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return sr1_H_(H=H, s=s, y=y, tol=settings['tol'])
+        return sr1_(H=H, s=s, y=y, tol=settings['tol'])
     def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return sr1_H_(H=B, s=y, y=s, tol=settings['tol'])
+        return sr1_(H=B, s=y, y=s, tol=settings['tol'])
+class DiagonalSR1(_HessianUpdateStrategyDefaults):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_sr1_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return diagonal_sr1_(H=B, s=y, y=s, tol=settings['tol'])
+    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+        return torch.ones(size, device=device, dtype=dtype)
+
 
 # ------------------------------------ DFP ----------------------------------- #
 def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
@@ -483,6 +527,12 @@ def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float)
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
+def broyden_good_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    r = y - B@s
+    ss = s.dot(s)
+    if ss.abs() <= tol: return B
+    B += r.outer(s).div_(ss)
+    return B
 
 def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     c = y
@@ -491,6 +541,12 @@ def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
+def broyden_bad_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+    r = y - B@s
+    ys = y.dot(s)
+    if ys.abs() <= tol: return B
+    B += r.outer(y).div_(ys)
+    return B
 
 def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor, tol: float):
     c = g_prev
@@ -526,6 +582,8 @@ class BroydenGood(_HessianUpdateStrategyDefaults):
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_good_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return broyden_good_B_(B=B, s=s, y=y, tol=settings['tol'])
 
 class BroydenBad(_HessianUpdateStrategyDefaults):
     """Broyden's "bad" Quasi-Newton method.
@@ -544,6 +602,8 @@ class BroydenBad(_HessianUpdateStrategyDefaults):
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
         return broyden_bad_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+        return broyden_bad_B_(B=B, s=s, y=y, tol=settings['tol'])
 
 class Greenstadt1(_HessianUpdateStrategyDefaults):
     """Greenstadt's first Quasi-Newton method.

@@ -24,6 +24,8 @@ from .quasi_newton import (
     BroydenBad,
     BroydenGood,
     ColumnUpdatingMethod,
+    DiagonalBFGS,
+    DiagonalSR1,
     FletcherVMM,
     GradientCorrection,
     Greenstadt1,
@@ -35,4 +37,4 @@ from .quasi_newton import (
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
 )
-from .trust_region import TrustRegionBase,TrustNCG, CubicRegularization
+from .trust_region import CubicRegularization, TrustNCG, TrustRegionBase

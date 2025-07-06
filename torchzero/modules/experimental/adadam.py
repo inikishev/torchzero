@@ -10,7 +10,7 @@ from ..functional import (
     ema_,
     sqrt_ema_sq_,
 )
-from ..lr.lr import lazy_lr
+from ..step_size.lr import lazy_lr
 from ..momentum.experimental import sqrt_nag_ema_sq_
 from ..momentum.momentum import nag_
 

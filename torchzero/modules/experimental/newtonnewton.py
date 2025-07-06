@@ -87,6 +87,6 @@ class NewtonNewton(Module):
                     if x is None: x = least_squares_solve(H, xp)
                     xp = x.squeeze()
 
-        var.update = vec_to_tensors(xp, params)
+        var.update = vec_to_tensors(xp.nan_to_num_(0,0,0), params)
         return var
 

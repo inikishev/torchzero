@@ -204,8 +204,8 @@ class OnlineLBFGS(Module):
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
-            y_k=y_k,
-            ys_k=ys_k,
+            y=y_k,
+            sy=ys_k,
             z_beta = z_beta,
             z_ema = z_ema,
             step=step

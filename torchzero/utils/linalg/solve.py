@@ -16,7 +16,8 @@ def _make_A_mm_reg(A_mm: Callable | torch.Tensor, reg):
     if not isinstance(A_mm, torch.Tensor): raise TypeError(type(A_mm))
 
     def Ax_reg(x): # A_mm with regularization
-        Ax = A_mm @ x
+        if A_mm.ndim == 1: Ax = A_mm * x
+        else: Ax = A_mm @ x
         if reg != 0: Ax += x*reg
         return Ax
     return Ax_reg

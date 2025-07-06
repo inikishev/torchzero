@@ -137,7 +137,9 @@ def _update_tr_radius(update_vec:torch.Tensor, params: Sequence[torch.Tensor], c
     reduction = loss - loss_star
 
     # expected reduction is g.T @ p + 0.5 * p.T @ B @ p
-    pred_reduction = - (g.dot(update_vec) + 0.5 * update_vec.dot(H @ update_vec))
+    if H.ndim == 1: Hu = H * update_vec
+    else: Hu = H @ update_vec
+    pred_reduction = - (g.dot(update_vec) + 0.5 * update_vec.dot(Hu))
     rho = reduction / (pred_reduction.clip(min=1e-8))
 
     # failed step
@@ -224,7 +226,9 @@ class TrustNCG(TrustRegionBase):
         if closure is None: raise RuntimeError("Trust region requires closure")
         if loss is None: loss = closure(False)
 
-        if is_inverse: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
+        if is_inverse:
+            if P.ndim == 1: P = P.reciprocal()
+            else: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
         update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
 
         var.update, self.global_state['trust_region'] = _update_tr_radius(
@@ -253,7 +257,10 @@ def ls_cubic_solver(f, g:torch.Tensor, H:torch.Tensor, M: float, is_inverse: boo
         newton_step = - H @ g
         H = torch.linalg.inv(H)
     else:
-        newton_step = -torch.linalg.solve(H, g)
+        newton_step, info = torch.linalg.solve_ex(H, g)
+        if info != 0:
+            newton_step = torch.linalg.lstsq(H, g).solution
+        newton_step.neg_()
     if M == 0:
         return newton_step, solver_it
     def cauchy_point(g, H, M):

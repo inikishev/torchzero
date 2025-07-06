@@ -1,5 +1,6 @@
 """Learning rate"""
 import torch
+import random
 
 from ...core import Transform
 from ...utils import NumberList, TensorList, generic_ne, unpack_dicts
@@ -114,4 +115,40 @@ class WarmupNormClip(Transform):
             tensors.mul_(current_max_norm / norm)
 
         self.global_state['step'] = step + 1
+        return tensors
+
+
+class RandomStepSize(Transform):
+    """Uses random global or layer-wise step size from `low` to `high`.
+
+    Args:
+        low (float, optional): minimum learning rate. Defaults to 0.
+        high (float, optional): maximum learning rate. Defaults to 1.
+        parameterwise (bool, optional):
+            if True, generate random step size for each parameter separately,
+            if False generate one global random step size. Defaults to False.
+    """
+    def __init__(self, low: float = 0, high: float = 1, parameterwise=False, seed:int|None=None):
+        defaults = dict(low=low, high=high, parameterwise=parameterwise,seed=seed)
+        super().__init__(defaults, uses_grad=False)
+
+    @torch.no_grad
+    def apply(self, tensors, params, grads, loss, states, settings):
+        s = settings[0]
+        parameterwise = s['parameterwise']
+
+        seed = s['seed']
+        if 'generator' not in self.global_state:
+            self.global_state['generator'] = random.Random(seed)
+        generator: random.Random = self.global_state['generator']
+
+        if parameterwise:
+            low, high = unpack_dicts(settings, 'low', 'high')
+            lr = [generator.uniform(l, h) for l, h in zip(low, high)]
+        else:
+            low = s['low']
+            high = s['high']
+            lr = generator.uniform(low, high)
+
+        torch._foreach_mul_(tensors, lr)
         return tensors

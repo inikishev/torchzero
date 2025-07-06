@@ -74,10 +74,12 @@ class HNewton(TensorwiseTransform):
         g_proj = g @ S
 
         newton_proj, info = torch.linalg.solve_ex(B, g_proj) # pylint:disable=not-callable
-        if info == 0:
-            newton = S @ newton_proj
-            return newton.view_as(tensor)
+        if info != 0:
+            newton_proj = -torch.linalg.lstsq(B, g_proj).solution # pylint:disable=not-callable
+        newton = S @ newton_proj
+        return newton.view_as(tensor)
 
-        scale = (1 / tensor.abs().sum()).clip(min=torch.finfo(tensor.dtype).eps, max=1)
-        tensor.mul_(scale)
-        return tensor
+
+        # scale = (1 / tensor.abs().sum()).clip(min=torch.finfo(tensor.dtype).eps, max=1)
+        # tensor.mul_(scale)
+        # return tensor

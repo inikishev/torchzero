@@ -128,16 +128,18 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
         if res.fun < v0 and np.all(np.isfinite(res.x)): x_init = res.x
 
     # ------------------------------- run minimize ------------------------------- #
-    res = scipy.optimize.minimize(
-        _proximal_poly_v,
-        x_init,
-        method=method,
-        args=(c, prox, x0.copy(), derivatives),
-        jac=_proximal_poly_g,
-        hess=_proximal_poly_H,
-        constraints = constraints,
-    )
-
+    try:
+        res = scipy.optimize.minimize(
+            _proximal_poly_v,
+            x_init,
+            method=method,
+            args=(c, prox, x0.copy(), derivatives),
+            jac=_proximal_poly_g,
+            hess=_proximal_poly_H,
+            constraints = constraints,
+        )
+    except ValueError:
+        return x, -float('inf')
     return torch.from_numpy(res.x).to(x), res.fun
 
 
