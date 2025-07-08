@@ -149,7 +149,7 @@ class Online(Module):
         # restore previous params
         var_prev = Var(params=params, closure=closure, model=var.model, current_step=var.current_step)
         params.set_(p_prev)
-        module.reset_intermediate()
+        module.reset_for_online()
         module.update(var_prev)
 
         # restore current params

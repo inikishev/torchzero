@@ -8,7 +8,6 @@ from .cg import (
     LiuStorey,
     PolakRibiere,
     ProjectedGradientMethod,
-    ShorR,
 )
 from .diagonal_quasi_newton import (
     DNRTR,
@@ -42,5 +41,6 @@ from .quasi_newton import (
     Pearson,
     ProjectedNewtonRaphson,
     ThomasOptimalMethod,
+    ShorR,
 )
 from .trust_region import CubicRegularization, TrustNCG, TrustRegionBase

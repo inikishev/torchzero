@@ -166,8 +166,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         """update hessian"""
         raise NotImplementedError
 
-    def reset_intermediate(self):
-        super().reset_intermediate()
+    def reset_for_online(self):
+        super().reset_for_online()
         self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
 
     def get_B(self) -> tuple[torch.Tensor, bool]:
@@ -222,7 +222,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1
 
         if M is None or 'f_prev' not in state:
-            if M is None: # won't be true on reset_intermediate
+            if M is None: # won't be true on reset_for_online
                 M = self._init_M(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
                 if isinstance(init_scale, (int, float)) and init_scale != 1:
                     if inverse: M /= init_scale
@@ -1263,3 +1263,69 @@ class NewSSM(HessianUpdateStrategy):
         f = state['f']
         f_prev = state['f_prev']
         return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=setting['type'], tol=setting['tol'])
+
+# ---------------------------- Shor’s r-algorithm ---------------------------- #
+# def shor_r(B:torch.Tensor, y:torch.Tensor, gamma:float):
+#     r = B.T @ y
+#     r /= torch.linalg.vector_norm(r).clip(min=1e-8) # pylint:disable=not-callable
+
+#     I = torch.eye(B.size(1), device=B.device, dtype=B.dtype)
+#     return B @ (I - gamma*r.outer(r))
+
+# this is supposed to be equivalent
+def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
+    p = H@y
+    #(1-y)^2 (ppT)/(pTq)
+    term = p.outer(p).div_(p.dot(y).clip(min=1e-8))
+    H.sub_(term, alpha=1-alpha**2)
+    return H
+
+class ShorR(HessianUpdateStrategy):
+    """Shor’s r-algorithm.
+
+    .. note::
+        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
+
+    Reference:
+        Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.
+
+        Ansari, Zafar A. Limited Memory Space Dilation and Reduction Algorithms. Diss. Virginia Tech, 1998.
+    """
+
+    def __init__(
+        self,
+        alpha=0.5,
+        init_scale: float | Literal["auto"] = 1,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
+        reset_interval: int | None | Literal['auto'] = None,
+        beta: float | None = None,
+        update_freq: int = 1,
+        scale_first: bool = False,
+        scale_second: bool = False,
+        concat_params: bool = True,
+        # inverse: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(alpha=alpha)
+        super().__init__(
+            defaults=defaults,
+            init_scale=init_scale,
+            tol=tol,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
+            reset_interval=reset_interval,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=True,
+            inner=inner,
+        )
+
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return shor_r_(H=H, y=y, alpha=setting['alpha'])

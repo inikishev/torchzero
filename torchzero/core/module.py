@@ -451,9 +451,9 @@ class Module(ABC):
         self.state.clear()
         self.global_state.clear()
 
-    def reset_intermediate(self):
+    def reset_for_online(self):
         """resets only the intermediate state of this module, e.g. previous parameters and gradient."""
-        for c in self.children.values(): c.reset_intermediate()
+        for c in self.children.values(): c.reset_for_online()
 
     def _extra_pack(self):
         return {}

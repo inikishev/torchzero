@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, TensorwiseTransform, Transform, apply_transform
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
-from .quasi_newton import _safe_clip
+from .quasi_newton import _safe_clip, HessianUpdateStrategy
 
 
 class ConguateGradientBase(Transform, ABC):
@@ -53,8 +53,8 @@ class ConguateGradientBase(Transform, ABC):
     def reset(self):
         super().reset()
 
-    def reset_intermediate(self):
-        super().reset_intermediate()
+    def reset_for_online(self):
+        super().reset_for_online()
         self.clear_state_keys('prev_grad')
         self.global_state.pop('stage', None)
         self.global_state['step'] = self.global_state.get('step', 1) - 1
@@ -313,7 +313,7 @@ def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
     H -= (Hy.outer(y) @ H) / yHy
     return H
 
-class ProjectedGradientMethod(TensorwiseTransform):
+class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain hessian
     """Projected gradient method.
 
     .. note::
@@ -332,106 +332,38 @@ class ProjectedGradientMethod(TensorwiseTransform):
 
     def __init__(
         self,
+        init_scale: float | Literal["auto"] = 1,
+        tol: float = 1e-8,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
+        gtol: float | None = 1e-10,
         reset_interval: int | None | Literal['auto'] = 'auto',
+        beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
+        scale_second: bool = False,
         concat_params: bool = True,
+        # inverse: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(reset_interval=reset_interval)
-        super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
+        super().__init__(
+            defaults=None,
+            init_scale=init_scale,
+            tol=tol,
+            ptol=ptol,
+            ptol_reset=ptol_reset,
+            gtol=gtol,
+            reset_interval=reset_interval,
+            beta=beta,
+            update_freq=update_freq,
+            scale_first=scale_first,
+            scale_second=scale_second,
+            concat_params=concat_params,
+            inverse=True,
+            inner=inner,
+        )
 
-    def reset_intermediate(self):
-        super().reset_intermediate()
-        self.clear_state_keys('g_prev')
 
-    def update_tensor(self, tensor, param, grad, loss, state, setting):
-        step = state.get('step', 0) + 1
-        state['step'] = step
-        reset_interval = setting['reset_interval']
-        if reset_interval == 'auto': reset_interval = tensor.numel() + 1 # as recommended
 
-        if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
-            state["H"] = torch.eye(tensor.numel(), device=tensor.device, dtype=tensor.dtype)
-            state['g_prev'] = tensor.clone()
-            return
-
-        if "g_prev" not in state:
-            state['g_prev'] = tensor.clone()
-            return
-
-        H = state['H']
-        g_prev = state['g_prev']
-        state['g_prev'] = tensor.clone()
-        y = (tensor - g_prev).ravel()
-
-        projected_gradient_(H, y)
-
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
-        H = state['H']
-        return (H @ tensor.view(-1)).view_as(tensor)
-
-# ---------------------------- Shor’s r-algorithm ---------------------------- #
-# def shor_r(B:torch.Tensor, y:torch.Tensor, gamma:float):
-#     r = B.T @ y
-#     r /= torch.linalg.vector_norm(r).clip(min=1e-8) # pylint:disable=not-callable
-
-#     I = torch.eye(B.size(1), device=B.device, dtype=B.dtype)
-#     return B @ (I - gamma*r.outer(r))
-
-# this is supposed to be equivalent
-def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
-    p = H@y
-    #(1-y)^2 (ppT)/(pTq)
-    term = p.outer(p).div_(p.dot(y).clip(min=1e-8))
-    H.sub_(term, alpha=1-alpha**2)
-    return H
-
-class ShorR(TensorwiseTransform):
-    """Shor’s r-algorithm.
-
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
-
-    Reference:
-        Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.
-
-        Ansari, Zafar A. Limited Memory Space Dilation and Reduction Algorithms. Diss. Virginia Tech, 1998.
-    """
-    def __init__(self, alpha=0.5, scale_first:bool=True, concat_params: bool=True, update_freq: int= 1, reset_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None,):
-        defaults = dict(alpha=alpha, reset_interval=reset_interval)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, update_freq=update_freq,inner=inner)
-
-    def reset_intermediate(self):
-        super().reset_intermediate()
-        self.clear_state_keys('g_prev')
-
-    def update_tensor(self, tensor, param, grad, loss, state, setting):
-        reset_interval = setting['reset_interval']
-        step = state.get('step', 0) + 1
-
-        if reset_interval == 'auto': reset_interval = tensor.numel() + 1
-        g = tensor.ravel()
-
-        if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
-            state["H"] = torch.eye(g.numel(), device=g.device, dtype=g.dtype)
-            state["g_prev"] = g.clone()
-            state['step'] = step
-            return
-
-        if "g_prev" not in state:
-            state['g_prev'] = tensor.clone()
-            return
-
-        H = state["H"]
-        g_prev = state["g_prev"]
-        y = g - g_prev
-        g_prev.copy_(g)
-
-        state["H"] = shor_r_(H, y, setting['alpha'])
-        state['step'] = step
-
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
-        H = state["H"]
-        # return (B @ (B.T @ tensor.ravel())).view_as(tensor)
-        return (H @ tensor.ravel()).view_as(tensor)
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return projected_gradient_(H=H, y=y)

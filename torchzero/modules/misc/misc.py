@@ -245,8 +245,8 @@ class HpuEstimate(Transform):
         defaults = dict()
         super().__init__(defaults, uses_grad=False)
 
-    def reset_intermediate(self):
-        super().reset_intermediate()
+    def reset_for_online(self):
+        super().reset_for_online()
         self.clear_state_keys('prev_params', 'prev_update')
 
     @torch.no_grad

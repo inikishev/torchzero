@@ -90,8 +90,8 @@ class BarzilaiBorwein(Transform):
         defaults = dict(type=type, fallback=fallback)
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, inner=inner)
 
-    def reset_intermediate(self):
-        super().reset_intermediate()
+    def reset_for_online(self):
+        super().reset_for_online()
         self.clear_state_keys('prev_p', 'prev_g')
 
     @torch.no_grad
