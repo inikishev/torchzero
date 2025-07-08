@@ -54,6 +54,7 @@ class ConguateGradientBase(Transform, ABC):
         super().reset()
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_grad')
         self.global_state.pop('stage', None)
         self.global_state['step'] = self.global_state.get('step', 1) - 1
@@ -341,6 +342,7 @@ class ProjectedGradientMethod(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('g_prev')
 
     def update_tensor(self, tensor, param, grad, loss, state, setting):
@@ -401,6 +403,7 @@ class ShorR(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, update_freq=update_freq,inner=inner)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('g_prev')
 
     def update_tensor(self, tensor, param, grad, loss, state, setting):

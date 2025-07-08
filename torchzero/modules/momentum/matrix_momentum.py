@@ -62,6 +62,7 @@ class MatrixMomentum(Module):
             self.set_child('hvp_tfm', hvp_tfm)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_update')
 
     @torch.no_grad
@@ -143,6 +144,7 @@ class AdaptiveMatrixMomentum(Module):
             self.set_child('hvp_tfm', hvp_tfm)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_params', 'prev_grad')
 
     @torch.no_grad

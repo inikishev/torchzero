@@ -167,6 +167,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         raise NotImplementedError
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
 
     def get_B(self) -> tuple[torch.Tensor, bool]:

@@ -96,9 +96,6 @@ class ABSOAP(Transform):
         )
         super().__init__(defaults, uses_grad=False)
 
-    def reset_intermediate(self):
-        self.clear_state_keys('g_prev', 'p_prev')
-
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         updates = []

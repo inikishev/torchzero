@@ -83,9 +83,6 @@ class AdamY(Module):
         super().__init__(defaults)
         self.getter = itemgetter('amsgrad','pow','debiased')
 
-    def reset_intermediate(self):
-        self.clear_state_keys('g_prev', 'p_prev')
-
     @torch.no_grad
     def step(self, var):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1

@@ -45,9 +45,6 @@ class ExpandedLBFGS(Module):
         self.global_state['p_history'].clear()
         self.global_state['g_history'].clear()
 
-    def reset_intermediate(self):
-        self.clear_state_keys('prev_l_params', 'prev_l_grad')
-
     @torch.no_grad
     def step(self, var):
         params = as_tensorlist(var.params)

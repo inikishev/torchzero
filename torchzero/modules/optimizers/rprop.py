@@ -164,10 +164,6 @@ class Rprop(Transform):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, backtrack=backtrack)
         super().__init__(defaults, uses_grad=False)
 
-    def reset_intermediate(self):
-        self.clear_state_keys('prev','allowed')
-        self.global_state.pop('step', None)
-
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)

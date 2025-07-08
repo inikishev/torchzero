@@ -47,9 +47,10 @@ class TrustRegionBase(Module, ABC):
     def trust_region_step(self, var: Var, tensors:list[torch.Tensor], P: torch.Tensor, is_inverse:bool) -> Var:
         """trust region logic"""
 
+
     @final
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         # ---------------------------------- update ---------------------------------- #
         closure = var.closure
         if closure is None: raise RuntimeError("Trust region requires closure")
@@ -86,17 +87,17 @@ class TrustRegionBase(Module, ABC):
                 self.global_state['B'] = P
                 self.global_state['is_inverse'] = is_inverse
 
-        if P is None:
-            P = self.global_state['B']
-            is_inverse = self.global_state['is_inverse']
 
-        assert is_inverse is not None
+    @final
+    @torch.no_grad
+    def apply(self, var):
+        P = self.global_state['B']
+        is_inverse = self.global_state['is_inverse']
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            if g_list is None: g_list = var.grad
-            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+            update = apply_transform(self.children['inner'], update, params=var.params, grads=var.grad, var=var)
 
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_step(var=var, tensors=update, P=P, is_inverse=is_inverse)
@@ -197,7 +198,7 @@ class TrustNCG(TrustRegionBase):
         defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
-
+    @torch.no_grad
     def trust_region_step(self, var, tensors, P, is_inverse):
         params = var.params
         settings = self.settings[params[0]]
@@ -340,7 +341,7 @@ class CubicRegularization(TrustRegionBase):
         defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, maxiter=maxiter, eps=eps)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
-
+    @torch.no_grad
     def trust_region_step(self, var, tensors, P, is_inverse):
         params = TensorList(var.params)
         settings = self.settings[params[0]]

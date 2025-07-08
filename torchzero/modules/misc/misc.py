@@ -33,9 +33,6 @@ class LastDifference(Transform):
     def __init__(self,target: Target = 'update'):
         super().__init__({}, target=target)
 
-    def reset_intermediate(self):
-        self.clear_state_keys('prev_tensors')
-
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev_tensors = unpack_states(states, tensors, 'prev_tensors') # initialized to 0
@@ -47,9 +44,6 @@ class LastGradDifference(Module):
     """Outputs difference between past two gradients."""
     def __init__(self):
         super().__init__({})
-
-    def reset_intermediate(self):
-        self.clear_state_keys('prev_grad')
 
     @torch.no_grad
     def step(self, var):
@@ -64,9 +58,6 @@ class LastParamDifference(Module):
     """Outputs difference between past two parameters, which is the effective previous update."""
     def __init__(self):
         super().__init__({})
-
-    def reset_intermediate(self):
-        self.clear_state_keys('prev_params')
 
     @torch.no_grad
     def step(self, var):
@@ -84,9 +75,6 @@ class LastProduct(Transform):
     def __init__(self,target: Target = 'update'):
         super().__init__({}, uses_grad=False, target=target)
 
-    def reset_intermediate(self):
-        self.clear_state_keys('prev')
-
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init=torch.ones_like) # initialized to 1 for prod
@@ -99,9 +87,6 @@ class LastRatio(Transform):
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', target: Target = 'update'):
         defaults = dict(numerator=numerator)
         super().__init__(defaults, uses_grad=False, target=target)
-
-    def reset_intermediate(self):
-        self.clear_state_keys('prev')
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
@@ -117,9 +102,6 @@ class LastAbsoluteRatio(Transform):
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8, target: Target = 'update'):
         defaults = dict(numerator=numerator, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
-
-    def reset_intermediate(self):
-        self.clear_state_keys('prev')
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
@@ -264,6 +246,7 @@ class HpuEstimate(Transform):
         super().__init__(defaults, uses_grad=False)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_params', 'prev_update')
 
     @torch.no_grad

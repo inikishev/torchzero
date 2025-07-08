@@ -91,6 +91,7 @@ class BarzilaiBorwein(Transform):
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, inner=inner)
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_p', 'prev_g')
 
     @torch.no_grad

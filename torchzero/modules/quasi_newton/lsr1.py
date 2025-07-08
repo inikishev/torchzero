@@ -146,6 +146,7 @@ class LSR1(Transform):
         self.global_state['y_history'].clear()
 
     def reset_intermediate(self):
+        super().reset_intermediate()
         self.clear_state_keys('prev_l_params', 'prev_l_grad')
         self.global_state.pop('step', None)
 
