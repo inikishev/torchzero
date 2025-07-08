@@ -764,14 +764,14 @@ LSR1 = Run(
     sphere_steps=10, sphere_loss=0,
 )
 
-# ---------------------------- quasi_newton/olbfgs --------------------------- #
-OnlineLBFGS = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
-    needs_closure=True,
-    func='rosen', steps=50, loss=0, merge_invariant=True,
-    sphere_steps=10, sphere_loss=0,
-)
+# # ---------------------------- quasi_newton/olbfgs --------------------------- #
+# OnlineLBFGS = Run(
+#     func_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
+#     sphere_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
+#     needs_closure=True,
+#     func='rosen', steps=50, loss=0, merge_invariant=True,
+#     sphere_steps=10, sphere_loss=0,
+# )
 
 # ---------------------------- second_order/newton --------------------------- #
 Newton = Run(

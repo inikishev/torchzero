@@ -16,7 +16,7 @@ class ReduceOutwardLR(Transform):
         super().__init__(defaults, uses_grad=use_grad, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         params = TensorList(params)
         tensors = TensorList(tensors)
 

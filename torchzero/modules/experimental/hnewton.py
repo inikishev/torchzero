@@ -24,9 +24,9 @@ class HNewton(TensorwiseTransform):
         defaults = dict(history_size=history_size, window_size=window_size, reg=reg, tol=tol)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner)
 
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
 
-        history_size = settings['history_size']
+        history_size = setting['history_size']
 
         if 'param_history' not in state:
             state['param_history'] = deque(maxlen=history_size)
@@ -37,10 +37,10 @@ class HNewton(TensorwiseTransform):
         param_history.append(param.ravel())
         grad_history.append(tensor.ravel())
 
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        window_size = settings['window_size']
-        reg = settings['reg']
-        tol = settings['tol']
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+        window_size = setting['window_size']
+        reg = setting['reg']
+        tol = setting['tol']
 
         param_history: deque = state['param_history']
         grad_history: deque = state['grad_history']

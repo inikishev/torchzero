@@ -7,6 +7,7 @@ from ...core import Chainable, TensorwiseTransform, Transform, apply_transform
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 from .quasi_newton import _safe_clip
 
+
 class ConguateGradientBase(Transform, ABC):
     """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.
 
@@ -49,6 +50,14 @@ class ConguateGradientBase(Transform, ABC):
         if inner is not None:
             self.set_child('inner', inner)
 
+    def reset(self):
+        super().reset()
+
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_grad')
+        self.global_state.pop('stage', None)
+        self.global_state['step'] = self.global_state.get('step', 1) - 1
+
     def initialize(self, p: TensorList, g: TensorList):
         """runs on first step when prev_grads and prev_dir are not available"""
 
@@ -57,33 +66,50 @@ class ConguateGradientBase(Transform, ABC):
         """returns beta"""
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         params = as_tensorlist(params)
 
         step = self.global_state.get('step', 0) + 1
         self.global_state['step'] = step
-        prev_dir, prev_grads = unpack_states(states, tensors, 'prev_dir', 'prev_grad', cls=TensorList)
 
         # initialize on first step
-        if step == 1:
+        if self.global_state.get('stage', 0) == 0:
+            g_prev, d_prev = unpack_states(states, tensors, 'g_prev', 'd_prev', cls=TensorList)
+            d_prev.copy_(tensors)
+            g_prev.copy_(tensors)
             self.initialize(params, tensors)
-            prev_dir.copy_(tensors)
-            prev_grads.copy_(tensors)
-            return tensors
+            self.global_state['stage'] = 1
 
-        # get beta
-        beta = self.get_beta(params, tensors, prev_grads, prev_dir)
-        if settings[0]['clip_beta']: beta = max(0, beta) # pyright:ignore[reportArgumentType]
-        prev_grads.copy_(tensors)
+        else:
+            # if `update_tensors` was called multiple times before `apply_tensors`,
+            # stage becomes 2
+            self.global_state['stage'] = 2
 
-        # inner step
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        tensors = as_tensorlist(tensors)
+        step = self.global_state['step']
+
         if 'inner' in self.children:
             tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads))
 
+        assert self.global_state['stage'] != 0
+        if self.global_state['stage'] == 1:
+            self.global_state['stage'] = 2
+            return tensors
+
+        params = as_tensorlist(params)
+        g_prev, d_prev = unpack_states(states, tensors, 'g_prev', 'd_prev', cls=TensorList)
+
+        # get beta
+        beta = self.get_beta(params, tensors, g_prev, d_prev)
+        if settings[0]['clip_beta']: beta = max(0, beta) # pyright:ignore[reportArgumentType]
+
+        # inner step
         # calculate new direction with beta
-        dir = tensors.add_(prev_dir.mul_(beta))
-        prev_dir.copy_(dir)
+        dir = tensors.add_(d_prev.mul_(beta))
+        d_prev.copy_(dir)
 
         # resetting
         reset_interval = settings[0]['reset_interval']
@@ -207,7 +233,7 @@ class ConjugateDescent(Transform):
 
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         g = as_tensorlist(tensors)
 
         prev_d = unpack_states(states, tensors, 'prev_dir', cls=TensorList, init=torch.zeros_like)
@@ -314,14 +340,21 @@ class ProjectedGradientMethod(TensorwiseTransform):
         defaults = dict(reset_interval=reset_interval)
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
+    def reset_intermediate(self):
+        self.clear_state_keys('g_prev')
+
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
         step = state.get('step', 0) + 1
         state['step'] = step
-        reset_interval = settings['reset_interval']
+        reset_interval = setting['reset_interval']
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1 # as recommended
 
         if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
             state["H"] = torch.eye(tensor.numel(), device=tensor.device, dtype=tensor.dtype)
+            state['g_prev'] = tensor.clone()
+            return
+
+        if "g_prev" not in state:
             state['g_prev'] = tensor.clone()
             return
 
@@ -332,7 +365,7 @@ class ProjectedGradientMethod(TensorwiseTransform):
 
         projected_gradient_(H, y)
 
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         H = state['H']
         return (H @ tensor.view(-1)).view_as(tensor)
 
@@ -367,10 +400,12 @@ class ShorR(TensorwiseTransform):
         defaults = dict(alpha=alpha, reset_interval=reset_interval)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, scale_first=scale_first, update_freq=update_freq,inner=inner)
 
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
-        reset_interval = settings['reset_interval']
+    def reset_intermediate(self):
+        self.clear_state_keys('g_prev')
+
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
+        reset_interval = setting['reset_interval']
         step = state.get('step', 0) + 1
-        state['step'] = step
 
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1
         g = tensor.ravel()
@@ -378,6 +413,11 @@ class ShorR(TensorwiseTransform):
         if ("H" not in state) or (reset_interval is not None and step % reset_interval == 0):
             state["H"] = torch.eye(g.numel(), device=g.device, dtype=g.dtype)
             state["g_prev"] = g.clone()
+            state['step'] = step
+            return
+
+        if "g_prev" not in state:
+            state['g_prev'] = tensor.clone()
             return
 
         H = state["H"]
@@ -385,9 +425,10 @@ class ShorR(TensorwiseTransform):
         y = g - g_prev
         g_prev.copy_(g)
 
-        state["H"] = shor_r_(H, y, settings['alpha'])
+        state["H"] = shor_r_(H, y, setting['alpha'])
+        state['step'] = step
 
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         H = state["H"]
         # return (B @ (B.T @ tensor.ravel())).view_as(tensor)
         return (H @ tensor.ravel()).view_as(tensor)

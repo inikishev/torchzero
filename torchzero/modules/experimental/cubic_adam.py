@@ -76,7 +76,7 @@ class CubicAdam(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         beta1,beta2,beta3,eps,alpha=unpack_dicts(settings, 'beta1','beta2','beta3','eps','alpha', cls=NumberList)

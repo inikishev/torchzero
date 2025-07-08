@@ -10,6 +10,9 @@ class EscapeAnnealing(Module):
         defaults = dict(max_region=max_region, max_iter=max_iter, tol=tol, n_tol=n_tol)
         super().__init__(defaults)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_params')
+
     @torch.no_grad
     def step(self, var):
         closure = var.closure

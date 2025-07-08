@@ -119,7 +119,7 @@ class MSAM(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
         s = self.settings[params[0]]
         lerp = s['lerp']

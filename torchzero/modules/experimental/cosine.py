@@ -24,7 +24,7 @@ class CosineStepSize(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         scale, init = unpack_dicts(settings, 'scale', 'init', cls=NumberList)
         unpack_states(states, tensors, 'alpha', init=init, cls=NumberList) # initializes alpha to init
         eps = settings[0]['eps']
@@ -67,7 +67,7 @@ class CosineDebounce(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         scale, damping = unpack_dicts(settings, 'scale', 'damping', cls=NumberList)
         eps = settings[0]['eps']
 
@@ -109,7 +109,7 @@ class CosineMomentum(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         scale, power = unpack_dicts(settings, 'scale', 'power', cls=NumberList)
         eps = settings[0]['eps']
         nesterov = settings[0]['nesterov']
@@ -140,7 +140,7 @@ class AdaptiveDifference(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
 
@@ -162,7 +162,7 @@ class AdaptiveDifferenceEMA(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         beta = unpack_dicts(settings, 'beta', cls=NumberList)
         prev, diff_exp_avg = unpack_states(states, tensors, 'prev', 'diff_exp_avg', init=[tensors,torch.zeros_like], cls=TensorList)
@@ -187,7 +187,7 @@ class ScaledAdaptiveDifference(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         scale, damping = unpack_dicts(settings, 'scale', 'damping', cls=NumberList)
         prev_tensors, prev_update = unpack_states(states, tensors, 'prev', 'prev_update', init=[tensors,tensors], cls=TensorList)

@@ -66,7 +66,7 @@ class Adan(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 

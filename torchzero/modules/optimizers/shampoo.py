@@ -154,7 +154,7 @@ class Shampoo(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         merged_tensors = [] # target with merged dims
 
         # update preconditioners

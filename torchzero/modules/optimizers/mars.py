@@ -77,7 +77,7 @@ class MARSCorrection(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
         beta, scaling = unpack_dicts(settings, 'beta', 'scaling', cls=NumberList)
         max_norm = settings[0]['max_norm']

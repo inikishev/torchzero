@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import torch
 
 from .quasi_newton import (
@@ -7,6 +9,28 @@ from .quasi_newton import (
     _safe_clip,
 )
 
+
+def _diag_Bv(self: HessianUpdateStrategy):
+    B, is_inverse = self.get_B()
+
+    if is_inverse:
+        H=B
+        def Hxv(v): return v/H
+        return Hxv
+
+    def Bv(v): return B*v
+    return Bv
+
+def _diag_Hv(self: HessianUpdateStrategy):
+    H, is_inverse = self.get_H()
+
+    if is_inverse:
+        B=H
+        def Bxv(v): return v/B
+        return Bxv
+
+    def Hv(v): return H*v
+    return Hv
 
 def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
@@ -23,11 +47,12 @@ def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float
 
 class DiagonalBFGS(_InverseHessianUpdateStrategyDefaults):
     """Diagonal BFGS. This is simply BFGS with only the diagonal being updated and used. It doesn't satisfy the secant equation but may still be useful."""
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return diagonal_bfgs_H_(H=H, s=s, y=y, tol=setting['tol'])
 
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)
 
 def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     z = s - H*y
@@ -44,12 +69,14 @@ def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     return H
 class DiagonalSR1(_InverseHessianUpdateStrategyDefaults):
     """Diagonal SR1. This is simply SR1 with only the diagonal being updated and used. It doesn't satisfy the secant equation but may still be useful."""
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_sr1_(H=H, s=s, y=y, tol=settings['tol'])
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return diagonal_sr1_(H=B, s=y, y=s, tol=settings['tol'])
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return diagonal_sr1_(H=H, s=s, y=y, tol=setting['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
+        return diagonal_sr1_(H=B, s=y, y=s, tol=setting['tol'])
+
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)
 
 
 
@@ -66,10 +93,12 @@ class DiagonalQuasiCauchi(_HessianUpdateStrategyDefaults):
     Reference:
         Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
     """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return diagonal_qc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
+
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)
 
 # Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
 def diagonal_wqc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
@@ -85,10 +114,12 @@ class DiagonalWeightedQuasiCauchi(_HessianUpdateStrategyDefaults):
     Reference:
         Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
     """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return diagonal_wqc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
+
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)
 
 
 # Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
@@ -104,12 +135,12 @@ class DNRTR(_HessianUpdateStrategyDefaults):
     Reference:
         Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
     """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return diagonal_wqc_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-    def _post_B(self, B, g, state, settings):
-        return torch.where(B>settings['tol'], B, 1), g
+
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)
 
 # Nosrati, Mahsa, and Keyvan Amini. "A new diagonal quasi-Newton algorithm for unconstrained optimization problems." Applications of Mathematics 69.4 (2024): 501-512.
 def new_dqn_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
@@ -124,9 +155,9 @@ class NewDQN(_HessianUpdateStrategyDefaults):
     Reference:
         Nosrati, Mahsa, and Keyvan Amini. "A new diagonal quasi-Newton algorithm for unconstrained optimization problems." Applications of Mathematics 69.4 (2024): 501-512.
     """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return new_dqn_B_(B=B, s=s, y=y)
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
-        return torch.ones(size, device=device, dtype=dtype)
-    def _post_B(self, B, g, state, settings):
-        return torch.where(B>settings['tol'], B, 1), g
+
+    def _init_M(self, size:int, device, dtype, is_inverse:bool): return torch.ones(size, device=device, dtype=dtype)
+    def make_Bv(self): return _diag_Bv(self)
+    def make_Hv(self): return _diag_Hv(self)

@@ -79,22 +79,8 @@ class TrustRegionBase(Module, ABC):
 
             else:
                 hessian_module = cast(HessianUpdateStrategy, self.children['hess_module'])
-
-                hessian_module.update_tensor(
-                    tensor=_flatten_tensors(var.get_update()),
-                    param = _flatten_tensors(params),
-                    grad = _flatten_tensors(var.grad) if var.grad is not None else None,
-                    loss = var.loss,
-                    state=hessian_module.state[params[0]],
-                    settings=hessian_module.defaults,
-                )
-                h_state = hessian_module.state[params[0]]
-                if "B" in h_state:
-                    P = h_state["B"]
-                    is_inverse=False
-                else:
-                    P = h_state["H"]
-                    is_inverse=True
+                hessian_module.update(var)
+                P, is_inverse = hessian_module.get_B()
 
             if self._update_freq != 0:
                 self.global_state['B'] = P
@@ -228,7 +214,7 @@ class TrustNCG(TrustRegionBase):
 
         if is_inverse:
             if P.ndim == 1: P = P.reciprocal()
-            else: P = torch.linalg.inv(P) #pylint:disable=not-callable # maybe there are better strats?
+            else: raise NotImplementedError()
         update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
 
         var.update, self.global_state['trust_region'] = _update_tr_radius(

@@ -17,8 +17,8 @@ class Previous(TensorwiseTransform):
 
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        n = settings['n']
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+        n = setting['n']
 
         if 'history' not in state:
             state['history'] = deque(maxlen=n+1)
@@ -31,19 +31,25 @@ class Previous(TensorwiseTransform):
 class LastDifference(Transform):
     """Outputs difference between past two updates."""
     def __init__(self,target: Target = 'update'):
-        super().__init__({}, uses_grad=False, target=target)
+        super().__init__({}, target=target)
+
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_tensors')
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
-        prev = unpack_states(states, tensors, 'prev_target') # initialized to 0
-        difference = torch._foreach_sub(tensors, prev)
-        for p, c in zip(prev, tensors): p.set_(c)
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        prev_tensors = unpack_states(states, tensors, 'prev_tensors') # initialized to 0
+        difference = torch._foreach_sub(tensors, prev_tensors)
+        for p, c in zip(prev_tensors, tensors): p.set_(c)
         return difference
 
 class LastGradDifference(Module):
     """Outputs difference between past two gradients."""
     def __init__(self):
         super().__init__({})
+
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_grad')
 
     @torch.no_grad
     def step(self, var):
@@ -58,6 +64,9 @@ class LastParamDifference(Module):
     """Outputs difference between past two parameters, which is the effective previous update."""
     def __init__(self):
         super().__init__({})
+
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_params')
 
     @torch.no_grad
     def step(self, var):
@@ -75,8 +84,11 @@ class LastProduct(Transform):
     def __init__(self,target: Target = 'update'):
         super().__init__({}, uses_grad=False, target=target)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev')
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init=torch.ones_like) # initialized to 1 for prod
         prod = torch._foreach_mul(tensors, prev)
         for p, c in zip(prev, tensors): p.set_(c)
@@ -88,8 +100,11 @@ class LastRatio(Transform):
         defaults = dict(numerator=numerator)
         super().__init__(defaults, uses_grad=False, target=target)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev')
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init = torch.ones_like) # initialized to ones
         numerator = settings[0]['numerator']
         if numerator == 'cur': ratio = torch._foreach_div(tensors, prev)
@@ -103,8 +118,11 @@ class LastAbsoluteRatio(Transform):
         defaults = dict(numerator=numerator, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev')
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init = torch.ones_like) # initialized to ones
         numerator = settings[0]['numerator']
         eps = NumberList(s['eps'] for s in settings)
@@ -123,7 +141,7 @@ class GradSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         return [t.copysign_(g) for t,g in zip(tensors, grads)]
 
@@ -133,7 +151,7 @@ class UpdateSign(Transform):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         return [g.copysign(t) for t,g in zip(tensors, grads)] # no in-place
 
@@ -144,7 +162,7 @@ class GraftToGrad(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(tensors).graft_(grads, tensorwise=tensorwise, ord=ord, eps=eps)
@@ -156,7 +174,7 @@ class GraftGradToUpdate(Transform):
         super().__init__(defaults, uses_grad=True, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(grads).graft(tensors, tensorwise=tensorwise, ord=ord, eps=eps)
@@ -169,7 +187,7 @@ class GraftToParams(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(settings[0])
         return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
@@ -180,7 +198,7 @@ class Relative(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         mul = TensorList(params).abs().clamp_([s['min_value'] for s in settings])
         torch._foreach_mul_(tensors, mul)
         return tensors
@@ -234,7 +252,7 @@ class NoiseSign(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = [s['alpha'] for s in settings]
         distribution = self.settings[params[0]]['distribution']
         return TensorList(tensors).sample_like(alpha, distribution).copysign_(tensors)
@@ -245,16 +263,22 @@ class HpuEstimate(Transform):
         defaults = dict()
         super().__init__(defaults, uses_grad=False)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_params', 'prev_update')
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
         prev_params, prev_update = self.get_state(params, 'prev_params', 'prev_update') # initialized to 0
         s = torch._foreach_sub(params, prev_params)
         y = torch._foreach_sub(tensors, prev_update)
         for p, c in zip(prev_params, params): p.copy_(c)
         for p, c in zip(prev_update, tensors): p.copy_(c)
-
         torch._foreach_div_(y, torch.linalg.norm(torch.cat([t.ravel() for t in s])).clip(min=1e-8)) # pylint:disable=not-callable
-        return y
+        self.store(params, ['s', 'y'], [s, y])
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        return [self.state[p]['y'] for p in params]
 
 class RandomHvp(Module):
     """Returns a hessian-vector product with a random vector"""

@@ -25,7 +25,7 @@ class PolyakStepSize(Transform):
         defaults = dict(alpha=alpha, max=max, f_star=f_star, use_grad=use_grad)
         super().__init__(defaults, uses_grad=use_grad, uses_loss=True, inner=inner)
 
-    def update(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
         assert grads is not None and loss is not None
         tensors = TensorList(tensors)
         grads = TensorList(grads)
@@ -44,7 +44,7 @@ class PolyakStepSize(Transform):
         self.global_state['step_size'] = step_size
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
         torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
@@ -90,8 +90,11 @@ class BarzilaiBorwein(Transform):
         defaults = dict(type=type, fallback=fallback)
         super().__init__(defaults, uses_grad=False, scale_first=scale_first, inner=inner)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_p', 'prev_g')
+
     @torch.no_grad
-    def update(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
         fallback = unpack_dicts(settings, 'fallback', cls=NumberList)
         type = settings[0]['type']
@@ -111,7 +114,7 @@ class BarzilaiBorwein(Transform):
         prev_p.copy_(params)
         prev_g.copy_(tensors)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
         torch._foreach_mul_(tensors, step_size)
         return tensors

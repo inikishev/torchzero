@@ -3,7 +3,7 @@ from collections.abc import Iterable
 import torch
 
 from ...core import Chainable, Module, Var
-
+from ...utils import TensorList
 
 def _sequential_step(self: Module, var: Var, sequential: bool):
     params = var.params
@@ -120,3 +120,39 @@ class NegateOnLossIncrease(Module):
         else:
             torch._foreach_zero_(var.update)
         return var
+
+
+class Online(Module):
+    """Allows certain modules to be used for mini-batch optimization."""
+    def __init__(self, module: Chainable,):
+        super().__init__()
+
+        self.set_child('module', module)
+
+    @torch.no_grad
+    def step(self, var):
+        closure = var.closure
+        if closure is None: raise ValueError("Closure must be passed for Online")
+        step = self.global_state.get('step', 0) + 1
+        self.global_state['step'] = step
+        params = TensorList(var.params)
+        p_cur = params.clone()
+        p_prev = self.get_state(params, 'p_prev', cls=TensorList)
+        module = self.children['module']
+
+        if step == 1:
+            var = module.step(var.clone(clone_update=False))
+
+            p_prev.copy_(params)
+            return var
+
+        # restore previous params
+        var_prev = Var(params=params, closure=closure, model=var.model, current_step=var.current_step)
+        params.set_(p_prev)
+        module.reset_intermediate()
+        module.update(var_prev)
+
+        # restore current params
+        params.set_(p_cur)
+        p_prev.copy_(params)
+        return module.step(var.clone(clone_update=False))

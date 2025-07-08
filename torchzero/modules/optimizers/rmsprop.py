@@ -72,7 +72,7 @@ class RMSprop(Transform):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
         smoothing, eps = unpack_dicts(settings, 'smoothing', 'eps', cls=NumberList)
         centered, debiased, amsgrad, pow, init = itemgetter('centered','debiased','amsgrad','pow','init')(settings[0])

@@ -363,6 +363,26 @@ class Module(ABC):
     #     # if isinstance(params, Vars): params = params.params
     #     return itemgetter(*keys)(self.settings[params[0]])
 
+    def clear_state_keys(self, *keys:str):
+        for s in self.state.values():
+            for k in keys:
+                if k in s: del s[k]
+
+    @overload
+    def store(self, params: Sequence[torch.Tensor], keys: str, values: Sequence): ...
+    @overload
+    def store(self, params: Sequence[torch.Tensor], keys: Sequence[str], values: Sequence[Sequence]): ...
+    def store(self, params: Sequence[torch.Tensor], keys: str | Sequence[str], values: Sequence):
+        if isinstance(keys, str):
+            for p,v in zip(params, values):
+                state = self.state[p]
+                state[keys] = v
+            return
+
+        for p, *p_v in zip(params, *values):
+            state = self.state[p]
+            for k,v in zip(keys, p_v): state[k] = v
+
     def state_dict(self):
         """state dict"""
         packed_state = {id(k):v for k,v in self.state.items()}
@@ -408,16 +428,32 @@ class Module(ABC):
         self._extra_unpack(state_dict['extra'])
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
-    @abstractmethod
     def step(self, var: Var) -> Var:
-        """performs a step, returns new var but may update them in-place."""
+        """performs a step, returns new var but may update it in-place."""
+        self.update(var)
+        return self.apply(var)
+
+    def update(self, var:Var) -> Any:
+        """Updates the internal state of this module. This should not modify `var.update`.
+
+        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
+        such as ::code::`tz.m.Online`.
+        """
+
+    def apply(self, var: Var) -> Var:
+        """Applies this module to ``var.get_update()``. This should not modify the internal state of this module if possible."""
+        raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
 
     def reset(self):
-        """Resets the internal state of the module (e.g. momentum)."""
+        """Resets the internal state of the module (e.g. momentum). By default clears state and global state."""
         # no complex logic is allowed there because this is overridden by many modules
         # where super().reset() shouldn't be called
         self.state.clear()
         self.global_state.clear()
+
+    def reset_intermediate(self):
+        """resets only the intermediate state of this module, e.g. previous parameters and gradient.
+        By default does nothing"""
 
     def _extra_pack(self):
         return {}

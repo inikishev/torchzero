@@ -61,14 +61,15 @@ class MatrixMomentum(Module):
         if hvp_tfm is not None:
             self.set_child('hvp_tfm', hvp_tfm)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_update')
+
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         assert var.closure is not None
-        prev_update = self.get_state(var.params, 'prev_update', cls=TensorList)
+        prev_update = self.get_state(var.params, 'prev_update')
         hvp_method = self.settings[var.params[0]]['hvp_method']
         h = self.settings[var.params[0]]['h']
-
-        mu,beta = self.get_settings(var.params, 'mu','beta', cls=NumberList)
 
         Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
         Hvp = [t.detach() for t in Hvp]
@@ -76,9 +77,15 @@ class MatrixMomentum(Module):
         if 'hvp_tfm' in self.children:
             Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
 
-        update = TensorList(var.get_update())
+        self.store(var.params, "Hvp", Hvp)
 
-        Hvp = as_tensorlist(Hvp)
+
+    @torch.no_grad
+    def apply(self, var):
+        update = TensorList(var.get_update())
+        Hvp, prev_update = self.get_state(var.params, 'Hvp', 'prev_update', cls=TensorList)
+        mu,beta = self.get_settings(var.params, 'mu','beta', cls=NumberList)
+
         update.add_(prev_update - Hvp*mu)
         prev_update.set_(update * beta)
         var.update = update
@@ -135,8 +142,11 @@ class AdaptiveMatrixMomentum(Module):
         if hvp_tfm is not None:
             self.set_child('hvp_tfm', hvp_tfm)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_params', 'prev_grad')
+
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         assert var.closure is not None
         prev_update, prev_params, prev_grad = self.get_state(var.params, 'prev_update', 'prev_params', 'prev_grad', cls=TensorList)
 
@@ -145,7 +155,7 @@ class AdaptiveMatrixMomentum(Module):
         h = settings['h']
         eps = settings['eps']
 
-        mu_mul, beta = self.get_settings(var.params, 'mu_mul','beta', cls=NumberList)
+        mu_mul = NumberList(self.settings[p]['mu_mul'] for p in var.params)
 
         Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
         Hvp = [t.detach() for t in Hvp]
@@ -154,19 +164,26 @@ class AdaptiveMatrixMomentum(Module):
             Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
 
         # adaptive part
-        update = TensorList(var.get_update())
-
         s_k = var.params - prev_params
         prev_params.copy_(var.params)
 
-        assert var.grad is not None
-        y_k = var.grad - prev_grad
-        prev_grad.copy_(var.grad)
+        if hvp_method != 'central': assert var.grad is not None
+        grad = var.get_grad()
+        y_k = grad - prev_grad
+        prev_grad.copy_(grad)
 
         ada_mu = (s_k.global_vector_norm() / (y_k.global_vector_norm() + eps)) * mu_mul
 
-        # matrix momentum uppdate
+        self.store(var.params, ['Hvp', 'ada_mu'], [Hvp, ada_mu])
+
+    @torch.no_grad
+    def apply(self, var):
+        Hvp, ada_mu = self.get_state(var.params, 'Hvp', 'ada_mu')
         Hvp = as_tensorlist(Hvp)
+        beta = NumberList(self.settings[p]['beta'] for p in var.params)
+        update = TensorList(var.get_update())
+        prev_update = TensorList(self.state[p]['prev_update'] for p in var.params)
+
         update.add_(prev_update - Hvp*ada_mu)
         prev_update.set_(update * beta)
         var.update = update

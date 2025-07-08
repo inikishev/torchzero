@@ -30,11 +30,11 @@ class ClipValueGrowth(TensorwiseTransform):
         target: Target = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
 
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
-        add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(settings)
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+        add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(setting)
         add: float | None
 
         if add is None and mul is None:
@@ -145,11 +145,11 @@ class ClipNormGrowth(Transform):
         target: Target = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay, ord=ord, parameterwise=parameterwise)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
 
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         parameterwise = settings[0]['parameterwise']
         tensors = TensorList(tensors)
 

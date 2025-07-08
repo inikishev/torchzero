@@ -182,10 +182,10 @@ class ClipValue(Transform):
     """
     def __init__(self, value: float, target: Target = 'update'):
         defaults = dict(value=value)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         value = [s['value'] for s in settings]
         return TensorList(tensors).clip_([-v for v in value], value)
 
@@ -241,10 +241,10 @@ class ClipNorm(Transform):
         target: Target = "update",
     ):
         defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,inverse_dims=inverse_dims)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         max_norm = NumberList(s['max_norm'] for s in settings)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
         _clip_norm_(
@@ -311,10 +311,10 @@ class Normalize(Transform):
         target: Target = "update",
     ):
         defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size, inverse_dims=inverse_dims)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         norm_value = NumberList(s['norm_value'] for s in settings)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
 
@@ -405,10 +405,10 @@ class Centralize(Transform):
         target: Target = "update",
     ):
         defaults = dict(dim=dim,min_size=min_size,inverse_dims=inverse_dims)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(settings[0])
 
         _centralize_(tensors_ = TensorList(tensors), dim=dim, inverse_dims=inverse_dims, min_size=min_size)

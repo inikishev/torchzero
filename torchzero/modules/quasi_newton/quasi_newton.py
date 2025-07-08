@@ -1,13 +1,15 @@
 """Use BFGS or maybe SR1."""
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Callable
 from typing import Any, Literal
+import warnings
 
 import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
 from ..functional import safe_scaling_
+
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -155,36 +157,75 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             else: M *= init_scale
 
     def update_H(self, H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
-                 p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], settings: Mapping[str, Any]) -> torch.Tensor:
+                 p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]) -> torch.Tensor:
         """update hessian inverse"""
         raise NotImplementedError
 
     def update_B(self, B:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
-                 p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], settings: Mapping[str, Any]) -> torch.Tensor:
+                 p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]) -> torch.Tensor:
         """update hessian"""
         raise NotImplementedError
 
+    def reset_intermediate(self):
+        self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
+
+    def get_B(self) -> tuple[torch.Tensor, bool]:
+        """returns (B or H, is_inverse)."""
+        state = next(iter(self.state.values()))
+        if "B" in state: return state["B"], False
+        return state["H"], True
+
+    def get_H(self) -> tuple[torch.Tensor, bool]:
+        """returns (H or B, is_inverse)."""
+        state = next(iter(self.state.values()))
+        if "H" in state: return state["H"], False
+        return state["B"], True
+
+    def make_Bv(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        B, is_inverse = self.get_B()
+
+        if is_inverse:
+            H=B
+            warnings.warn(f'{self} maintains H, so Bv will be inefficient!')
+            def Hxv(v): return torch.linalg.solve_ex(H, v)[0] # pylint:disable=not-callable
+            return Hxv
+
+        def Bv(v): return B@v
+        return Bv
+
+    def make_Hv(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        H, is_inverse = self.get_H()
+
+        if is_inverse:
+            B=H
+            warnings.warn(f'{self} maintains B, so Hv will be inefficient!')
+            def Bxv(v): return torch.linalg.solve_ex(B, v)[0] # pylint:disable=not-callable
+            return Bxv
+
+        def Hv(v): return H@v
+        return Hv
+
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
         p = param.view(-1); g = tensor.view(-1)
-        inverse = settings['inverse']
+        inverse = setting['inverse']
         M_key = 'H' if inverse else 'B'
         M = state.get(M_key, None)
         step = state.get('step', 0) + 1
         state['step'] = step
-        init_scale = settings['init_scale']
-        ptol = settings['ptol']
-        ptol_reset = settings['ptol_reset']
-        gtol = settings['gtol']
-        reset_interval = settings['reset_interval']
+        init_scale = setting['init_scale']
+        ptol = setting['ptol']
+        ptol_reset = setting['ptol_reset']
+        gtol = setting['gtol']
+        reset_interval = setting['reset_interval']
         if reset_interval == 'auto': reset_interval = tensor.numel() + 1
 
-        if M is None:
-            #M = torch.eye(p.size(0), device=p.device, dtype=p.dtype)
-            M = self._init_M(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
-            if isinstance(init_scale, (int, float)) and init_scale != 1:
-                if inverse: M /= init_scale
-                else: M *= init_scale
+        if M is None or 'f_prev' not in state:
+            if M is None: # won't be true on reset_intermediate
+                M = self._init_M(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
+                if isinstance(init_scale, (int, float)) and init_scale != 1:
+                    if inverse: M /= init_scale
+                    else: M *= init_scale
 
             state[M_key] = M
             state['f_prev'] = loss
@@ -217,56 +258,48 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             if inverse: M /= self._get_init_scale(s,y)
             else: M *= self._get_init_scale(s,y)
 
-        beta = settings['beta']
+        beta = setting['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
 
         if inverse:
-            H_new = self.update_H(H=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings)
+            H_new = self.update_H(H=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, setting=setting)
             _maybe_lerp_(state, 'H', H_new, beta)
 
         else:
-            B_new = self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, settings=settings)
+            B_new = self.update_B(B=M, s=s, y=y, p=p, g=g, p_prev=p_prev, g_prev=g_prev, state=state, setting=setting)
             _maybe_lerp_(state, 'B', B_new, beta)
 
         state['f_prev'] = loss
 
-    def _post_B(self, B: torch.Tensor, g: torch.Tensor, state, settings):
+    def _post_B(self, B: torch.Tensor, g: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
         """modifies B before appling the update rule. Must return (B, g)"""
         return B, g
 
-    def _post_H(self, H: torch.Tensor, g: torch.Tensor, state, settings):
+    def _post_H(self, H: torch.Tensor, g: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
         """modifies H before appling the update rule. Must return (H, g)"""
         return H, g
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         step = state.get('step', 0)
 
-        if settings['scale_second'] and step == 2:
+        if setting['scale_second'] and step == 2:
             tensor = safe_scaling_(tensor)
 
-        inverse = settings['inverse']
+        inverse = setting['inverse']
         if inverse:
             H = state['H']
-            H, g = self._post_H(H, tensor.view(-1), state, settings)
+            H, g = self._post_H(H, tensor.view(-1), state, setting)
             if H.ndim == 1: return g.mul_(H).view_as(tensor)
             return (H @ g).view_as(tensor)
 
         B = state['B']
-        H, g = self._post_B(B, tensor.view(-1), state, settings)
+        H, g = self._post_B(B, tensor.view(-1), state, setting)
 
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
         return safe_scaling_(tensor)
-
-    # def post_step(self, var):
-    #     if self._concat_params:
-    #         param = var.params[0]
-    #         if self.settings[param]['inverse']:
-    #             var.storage['hessian inverse'] = self.state[param]['H']
-    #         else:
-    #             var.storage['hessian'] = self.state[param]['B']
 
 class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
     '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
@@ -450,10 +483,10 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
             )
     """
 
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return bfgs_H_(H=H, s=s, y=y, tol=settings['tol'])
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return bfgs_B_(B=B, s=s, y=y, tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return bfgs_H_(H=H, s=s, y=y, tol=setting['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
+        return bfgs_B_(B=B, s=s, y=y, tol=setting['tol'])
 
 # ------------------------------------ SR1 ----------------------------------- #
 def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
@@ -538,10 +571,10 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
             )
     """
 
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return sr1_(H=H, s=s, y=y, tol=settings['tol'])
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return sr1_(H=B, s=y, y=s, tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return sr1_(H=H, s=s, y=y, tol=setting['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
+        return sr1_(H=B, s=y, y=s, tol=setting['tol'])
 
 
 # ------------------------------------ DFP ----------------------------------- #
@@ -583,10 +616,10 @@ class DFP(_InverseHessianUpdateStrategyDefaults):
         this uses roughly O(N^2) memory.
 
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return dfp_H_(H=H, s=s, y=y, tol=settings['tol'])
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
-        return dfp_B(B=B, s=s, y=y, tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return dfp_H_(H=H, s=s, y=y, tol=setting['tol'])
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
+        return dfp_B(B=B, s=s, y=y, tol=setting['tol'])
 
 
 # formulas for methods below from Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
@@ -646,9 +679,9 @@ class BroydenGood(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return broyden_good_H_(H=H, s=s, y=y)
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return broyden_good_B_(B=B, s=s, y=y)
 
 class BroydenBad(_InverseHessianUpdateStrategyDefaults):
@@ -666,9 +699,9 @@ class BroydenBad(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return broyden_bad_H_(H=H, s=s, y=y)
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return broyden_bad_B_(B=B, s=s, y=y)
 
 class Greenstadt1(_InverseHessianUpdateStrategyDefaults):
@@ -686,7 +719,7 @@ class Greenstadt1(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return greenstadt1_H_(H=H, s=s, y=y, g_prev=g_prev)
 
 class Greenstadt2(_InverseHessianUpdateStrategyDefaults):
@@ -705,7 +738,7 @@ class Greenstadt2(_InverseHessianUpdateStrategyDefaults):
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
 
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return greenstadt2_H_(H=H, s=s, y=y)
 
 
@@ -734,7 +767,7 @@ class ICUM(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return icum_H_(H=H, s=s, y=y)
 
 def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
@@ -766,7 +799,7 @@ class ThomasOptimalMethod(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975.
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
         H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y)
         return H
@@ -802,7 +835,7 @@ class PSB(_HessianUpdateStrategyDefaults):
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
     """
-    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_B(self, B, s, y, p, g, p_prev, g_prev, state, setting):
         return psb_B_(B=B, s=s, y=y)
 
 
@@ -830,7 +863,7 @@ class Pearson(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return pearson_H_(H=H, s=s, y=y)
 
 def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
@@ -856,7 +889,7 @@ class McCormick(_InverseHessianUpdateStrategyDefaults):
 
         This is "Algorithm 2", attributed to McCormick in this paper. However for some reason this method is also called Pearson's 2nd method in other sources.
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return mccormick_H_(H=H, s=s, y=y)
 
 def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
@@ -915,7 +948,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
             inner=inner,
         )
 
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         if 'R' not in state: state['R'] = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
         H, R = projected_newton_raphson_H_(H=H, R=state['R'], s=s, y=y)
         state["R"] = R
@@ -1040,8 +1073,8 @@ class SSVM(HessianUpdateStrategy):
             inner=inner,
         )
 
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return ssvm_H_(H=H, s=s, y=y, g=g, switch=settings['switch'], tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return ssvm_H_(H=H, s=s, y=y, g=g, switch=setting['switch'], tol=setting['tol'])
 
 # HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
 def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
@@ -1090,7 +1123,7 @@ class GradientCorrection(Transform):
     def __init__(self):
         super().__init__(None, uses_grad=False)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         if 'p_prev' not in states[0]:
             p_prev = unpack_states(states, tensors, 'p_prev', init=params)
             g_prev = unpack_states(states, tensors, 'g_prev', init=tensors)
@@ -1120,8 +1153,8 @@ class Horisho(_InverseHessianUpdateStrategyDefaults):
         HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
     """
 
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return hoshino_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return hoshino_H_(H=H, s=s, y=y, tol=setting['tol'])
 
 # Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
 def fletcher_vmm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
@@ -1153,8 +1186,8 @@ class FletcherVMM(_InverseHessianUpdateStrategyDefaults):
     Reference:
         Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
     """
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-        return fletcher_vmm_H_(H=H, s=s, y=y, tol=settings['tol'])
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
+        return fletcher_vmm_H_(H=H, s=s, y=y, tol=setting['tol'])
 
 
 # Moghrabi, I. A., Hassan, B. A., & Askar, A. (2022). New self-scaling quasi-newton methods for unconstrained optimization. Int. J. Math. Comput. Sci., 17, 1061U.
@@ -1225,7 +1258,7 @@ class NewSSM(HessianUpdateStrategy):
             inverse=True,
             inner=inner,
         )
-    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+    def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         f = state['f']
         f_prev = state['f_prev']
-        return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=settings['type'], tol=settings['tol'])
+        return new_ssm1(H=H, s=s, y=y, f=f, f_prev=f_prev, type=setting['type'], tol=setting['tol'])

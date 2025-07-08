@@ -83,7 +83,7 @@ class Adagrad(Transform):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
@@ -122,12 +122,12 @@ class FullMatrixAdagrad(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner,)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
         G = tensor.ravel()
         GG = torch.outer(G, G)
-        decay = settings['decay']
-        beta = settings['beta']
-        init = settings['init']
+        decay = setting['decay']
+        beta = setting['beta']
+        init = setting['init']
 
         if 'GG' not in state:
             if init == 'identity': state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
@@ -142,10 +142,10 @@ class FullMatrixAdagrad(TensorwiseTransform):
         state['i'] = state.get('i', 0) + 1 # number of GGTs in sum
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         GG = state['GG']
-        sqrt = settings['sqrt']
-        divide = settings['divide']
+        sqrt = setting['sqrt']
+        divide = setting['divide']
         if divide: GG = GG/state.get('i', 1)
 
         if tensor.numel() == 1:

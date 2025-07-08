@@ -50,7 +50,7 @@ class RandomSubspacePreconditioning(Transform):
 
         if inner is not None: self.set_child('inner', inner)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         settings = settings[0]
         g = torch.cat([t.view(-1) for t in tensors])
         k = settings['k']
@@ -98,7 +98,7 @@ class HistorySubspacePreconditioning(Transform):
 
         if inner is not None: self.set_child('inner', inner)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         settings = settings[0]
 
         g = torch.cat([t.view(-1) for t in tensors])

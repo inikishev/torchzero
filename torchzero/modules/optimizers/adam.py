@@ -76,7 +76,7 @@ class Adam(Transform):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         beta1,beta2,eps,alpha=unpack_dicts(settings, 'beta1','beta2','eps','alpha', cls=NumberList)

@@ -34,8 +34,14 @@ class AdaptiveHeavyBall(Transform):
         defaults = dict(f_star=f_star)
         super().__init__(defaults, uses_grad=False, uses_loss=True)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
+        ...
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert loss is not None
         tensors = TensorList(tensors)
         setting = settings[0]

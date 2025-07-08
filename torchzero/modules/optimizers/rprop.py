@@ -164,8 +164,12 @@ class Rprop(Transform):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, backtrack=backtrack)
         super().__init__(defaults, uses_grad=False)
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev','allowed')
+        self.global_state.pop('step', None)
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -224,7 +228,7 @@ class ScaleLRBySignChange(Transform):
         super().__init__(defaults, uses_grad=use_grad, target=target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -273,7 +277,7 @@ class BacktrackOnSignChange(Transform):
         super().__init__(defaults, uses_grad=use_grad)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -317,7 +321,7 @@ class SignConsistencyMask(Transform):
         super().__init__({}, uses_grad=False, target = target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', cls=TensorList)
         mask = prev.mul_(tensors).gt_(0)
         prev.copy_(tensors)
@@ -355,7 +359,7 @@ class SignConsistencyLRs(Transform):
         super().__init__(defaults, uses_grad=False, target = target)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 

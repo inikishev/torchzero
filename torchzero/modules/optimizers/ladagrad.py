@@ -122,14 +122,14 @@ class LMAdagrad(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
-        order = settings['order']
-        history_size = settings['history_size']
-        update_freq = settings['update_freq']
-        damping = settings['damping']
-        rdamping = settings['rdamping']
-        U_beta = settings['U_beta']
-        L_beta = settings['L_beta']
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
+        order = setting['order']
+        history_size = setting['history_size']
+        update_freq = setting['update_freq']
+        damping = setting['damping']
+        rdamping = setting['rdamping']
+        U_beta = setting['U_beta']
+        L_beta = setting['L_beta']
 
         if 'history' not in state: state['history'] = deque(maxlen=history_size)
         history = state['history']
@@ -170,7 +170,7 @@ class LMAdagrad(TensorwiseTransform):
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         U = state.get('U', None)
         if U is None:
             # make a conservative step to avoid issues due to different GD scaling

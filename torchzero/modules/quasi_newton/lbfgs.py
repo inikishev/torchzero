@@ -184,8 +184,12 @@ class LBFGS(Transform):
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
 
+    def reset_intermediate(self):
+        self.clear_state_keys('prev_l_params', 'prev_l_grad')
+        self.global_state.pop('step', None)
+
     @torch.no_grad
-    def update(self, tensors, params, grads, loss, states, settings):
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
         params = as_tensorlist(params)
         update = as_tensorlist(tensors)
         step = self.global_state.get('step', 0)
@@ -229,8 +233,14 @@ class LBFGS(Transform):
         self.global_state['y'] = y
         self.global_state['sy'] = sy
 
+    def make_Hv(self):
+        ...
+
+    def make_Bv(self):
+        ...
+
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
 
         s = self.global_state.pop('s')

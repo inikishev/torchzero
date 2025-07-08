@@ -197,9 +197,9 @@ class Orthogonalize(TensorwiseTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         orthogonalize, ns_steps, dual_norm_correction, adjust_lr, method = itemgetter(
-            'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(settings)
+            'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(setting)
 
         if not orthogonalize: return tensor
 
@@ -224,7 +224,7 @@ class DualNormCorrection(TensorwiseTransform):
     def __init__(self, target: Target='update'):
         super().__init__({}, uses_grad=True, target=target)
 
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         assert grad is not None
         if (tensor.ndim >= 2) and (tensor.size(0) > 1) and (tensor.size(1) > 1):
             return _dual_norm_correction(tensor, grad, batch_first=False)
@@ -238,7 +238,7 @@ class MuonAdjustLR(Transform):
         defaults = dict(alpha=alpha)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alphas = [s['alpha'] for s in settings]
         tensors_alphas = [(t, adjust_lr_for_muon(a, t.shape)) for t, a in zip(tensors, alphas) if _is_at_least_2d(t)]
         tensors = [i[0] for i in tensors_alphas]

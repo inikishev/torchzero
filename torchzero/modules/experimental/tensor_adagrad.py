@@ -17,10 +17,10 @@ class TensorAdagrad(TensorwiseTransform):
         super().__init__(defaults, uses_grad=False, update_freq=update_freq, inner=inner, concat_params=concat_params)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, settings):
-        reg = settings['reg']
+    def update_tensor(self, tensor, param, grad, loss, state, setting):
+        reg = setting['reg']
         if 'history' not in state:
-            state['history'] = deque(maxlen=settings['history_size'])
+            state['history'] = deque(maxlen=setting['history_size'])
 
         g = tensor.view(-1)
         history = state['history']
@@ -36,7 +36,7 @@ class TensorAdagrad(TensorwiseTransform):
         state['outer'] = outer.add_(I)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, settings):
+    def apply_tensor(self, tensor, param, grad, loss, state, setting):
         outer = state['outer']
         P = matrix_power_eigh(outer, -1/2)
         return (P @ tensor.ravel()).view_as(tensor)

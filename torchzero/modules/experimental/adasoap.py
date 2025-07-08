@@ -76,7 +76,7 @@ class AdaSOAP(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply(self, tensors, params, grads, loss, states, settings):
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
         updates = []
         # update preconditioners
         for i,(p,t, state, setting) in enumerate(zip(params, tensors, states, settings)):

@@ -1,4 +1,5 @@
 from .debug import PrintLoss, PrintParams, PrintShape, PrintUpdate
+from .escape import EscapeAnnealing
 from .gradient_accumulation import GradientAccumulation
 from .misc import (
     DivByLoss,
@@ -20,8 +21,7 @@ from .misc import (
     Relative,
     UpdateSign,
 )
-from .multistep import Multistep, NegateOnLossIncrease, Sequential
+from .multistep import Multistep, NegateOnLossIncrease, Online, Sequential
 from .regularization import Dropout, PerturbWeights, WeightDropout
 from .split import Split
 from .switch import Alternate, Switch
-from .escape import EscapeAnnealing
