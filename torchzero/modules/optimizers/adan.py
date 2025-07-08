@@ -49,7 +49,7 @@ class Adan(Transform):
         beta3 (float, optional): thrid (squared) momentum. Defaults to 0.99.
         eps (float, optional): epsilon. Defaults to 1e-8.
         use_n_prev (bool, optional):
-            whether to use previous gradient differences momementum.
+            whether to use previous gradient differences momentum.
 
     Reference:
         Xie, X., Zhou, P., Li, H., Lin, Z., & Yan, S. (2024). Adan: Adaptive nesterov momentum algorithm for faster optimizing deep models. IEEE Transactions on Pattern Analysis and Machine Intelligence. https://arxiv.org/abs/2208.06677
