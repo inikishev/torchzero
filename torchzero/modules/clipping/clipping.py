@@ -24,7 +24,7 @@ def _clip_norm_(
     min: float | NumberList | None,
     max: float | NumberList | None,
     norm_value: float | NumberList | None,
-    ord: float,
+    ord: float | Literal['mean_abs'],
     dim: int | Sequence[int] | Literal["global"] | None,
     inverse_dims: bool,
     min_size: int,
@@ -54,9 +54,13 @@ def _clip_norm_(
         size = math.prod(tensor.size(d) for d in real_dim)
         if size < min_size: continue
 
-        norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=real_dim, keepdim=True) # pylint:disable=not-callable
+        if ord == 'mean_abs':
+            norm = tensor.abs().mean(dim=real_dim, keepdim=True)
+        else:
+            norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=real_dim, keepdim=True) # pylint:disable=not-callable
+
         if norm.numel() == 1 and norm == 0: continue
-        norm = torch.where(norm == 0, 1, norm)
+        norm = torch.where(norm <= 1e-12, 1, norm)
 
         # normalize = True, perform normalization
         norm_v = norm_value[i] if isinstance(norm_value, (list,tuple)) else norm_value
@@ -90,7 +94,7 @@ def _clip_norm_(
 def clip_grad_norm_(
     params: Iterable[torch.Tensor],
     max_norm: float | None,
-    ord: float = 2,
+    ord: float | Literal['mean_abs'] = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
     inverse_dims: bool = False,
     min_size: int = 2,
@@ -118,7 +122,7 @@ def clip_grad_norm_(
 def normalize_grads_(
     params: Iterable[torch.Tensor],
     norm_value: float,
-    ord: float = 2,
+    ord: float | Literal['mean_abs'] = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
     inverse_dims: bool = False,
     min_size: int = 1,
@@ -230,7 +234,7 @@ class ClipNorm(Transform):
     def __init__(
         self,
         max_norm: float,
-        ord: float = 2,
+        ord: float | Literal['mean_abs'] = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
@@ -300,7 +304,7 @@ class Normalize(Transform):
     def __init__(
         self,
         norm_value: float = 1,
-        ord: float = 2,
+        ord: float | Literal['mean_abs'] = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,

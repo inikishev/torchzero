@@ -79,7 +79,7 @@ def _poly_minimize(trust_region, prox, de_iters: Any, c, x: torch.Tensor, deriva
     # this is just so that I can test that trust region works
     if trust_region is None:
         if len(derivatives) == 1: raise RuntimeError("trust region must be enabled because 1st order has no minima")
-        else: method = 'trust-exact'
+        method = 'trust-exact'
         de_bounds = list(zip(x0 - 10, x0 + 10))
         constraints = None
 
@@ -222,7 +222,7 @@ class HigherOrderNewton(Module):
         vectorize = settings['vectorize']
 
         trust_value = self.global_state.get('trust_region', init)
-        if trust_value < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
+        if trust_value < 1e-8 or trust_value > 1e16: trust_value = self.global_state['trust_region'] = settings['init']
 
 
         # ------------------------ calculate grad and hessian ------------------------ #

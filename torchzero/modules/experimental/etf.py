@@ -4,7 +4,7 @@ import warnings
 import torch
 
 from ...core import Module
-from ...utils import vec_to_tensors, vec_to_tensors_
+from ...utils import vec_to_tensors, vec_to_tensors_, as_tensorlist
 
 
 class ExponentialTrajectoryFit(Module):
@@ -13,8 +13,8 @@ class ExponentialTrajectoryFit(Module):
     .. warning::
         Experimental.
     """
-    def __init__(self, step_size=1e-3):
-        defaults = dict(step_size = step_size)
+    def __init__(self, step_size=1e-2, adaptive:bool=True):
+        defaults = dict(step_size = step_size,adaptive=adaptive)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -22,11 +22,17 @@ class ExponentialTrajectoryFit(Module):
         closure = var.closure
         assert closure is not None
         step_size = self.settings[var.params[0]]['step_size']
+        adaptive = self.settings[var.params[0]]['adaptive']
+
 
         # 1. perform 3 GD steps to obtain 4 points
         points = [torch.cat([p.view(-1) for p in var.params])]
         for i in range(3):
-            if i == 0: grad = var.get_grad()
+            if i == 0:
+                grad = var.get_grad()
+                if adaptive:
+                    step_size /= as_tensorlist(grad).abs().global_mean().clip(min=1e-4)
+
             else:
                 with torch.enable_grad(): closure()
                 grad = [cast(torch.Tensor, p.grad) for p in var.params]
@@ -77,8 +83,8 @@ class ExponentialTrajectoryFitV2(Module):
         Experimental.
 
     """
-    def __init__(self, step_size=1e-3, num_steps: int= 4):
-        defaults = dict(step_size = step_size, num_steps=num_steps)
+    def __init__(self, step_size=1e-3, num_steps: int= 4, adaptive:bool=True):
+        defaults = dict(step_size = step_size, num_steps=num_steps, adaptive=adaptive)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -87,9 +93,13 @@ class ExponentialTrajectoryFitV2(Module):
         assert closure is not None
         step_size = self.settings[var.params[0]]['step_size']
         num_steps = self.settings[var.params[0]]['num_steps']
+        adaptive = self.settings[var.params[0]]['adaptive']
 
         # 1. perform 3 GD steps to obtain 4 points (or more)
         grad = var.get_grad()
+        if adaptive:
+            step_size /= as_tensorlist(grad).abs().global_mean().clip(min=1e-4)
+
         points = [torch.cat([p.view(-1) for p in var.params])]
         point_grads = [torch.cat([g.view(-1) for g in grad])]
 

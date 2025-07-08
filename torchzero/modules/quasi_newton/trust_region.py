@@ -199,7 +199,7 @@ class TrustNCG(TrustRegionBase):
     """
     def __init__(
         self,
-        hess_module: HessianUpdateStrategy | None = None,
+        hess_module: HessianUpdateStrategy | None,
         eta: float= 0.15,
         nplus: float = 2,
         nminus: float = 0.25,
@@ -218,7 +218,7 @@ class TrustNCG(TrustRegionBase):
         g = _flatten_tensors(tensors)
 
         trust_region = self.global_state.get('trust_region', settings['init'])
-        if trust_region < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
+        if trust_region < 1e-8 or trust_region > 1e8: trust_region = self.global_state['trust_region'] = settings['init']
         reg = settings['reg']
 
         loss = var.loss
@@ -240,7 +240,7 @@ class TrustNCG(TrustRegionBase):
 
 
 # code from https://github.com/konstmish/opt_methods/blob/master/optmethods/second_order/cubic.py
-# i changed numpy to torch
+# ported to torch
 def ls_cubic_solver(f, g:torch.Tensor, H:torch.Tensor, M: float, is_inverse: bool, loss_plus, it_max=100, epsilon=1e-8, ):
     """
     Solve min_z <g, z-x> + 1/2<z-x, H(z-x)> + M/3 ||z-x||^3
@@ -361,7 +361,7 @@ class CubicRegularization(TrustRegionBase):
         g = _flatten_tensors(tensors)
 
         trust_region = self.global_state.get('trust_region', settings['init'])
-        if trust_region < 1e-8: trust_region = self.global_state['trust_region'] = settings['init']
+        if trust_region < 1e-8 or trust_region > 1e16: trust_region = self.global_state['trust_region'] = settings['init']
 
         maxiter = settings['maxiter']
         eps = settings['eps']

@@ -231,7 +231,8 @@ class NewtonCGSteihaug(Module):
                 tz.m.NewtonCGSteihaug(),
             )
 
-
+    Reference:
+        Steihaug, Trond. "The conjugate gradient method and trust regions in large scale optimization." SIAM Journal on Numerical Analysis 20.3 (1983): 626-637.
     """
     def __init__(
         self,

@@ -634,7 +634,8 @@ class TensorList(list[torch.Tensor | Any]):
         if dim is None: dim = ()
         return self.__class__(i.amin(dim=dim, keepdim=keepdim) for i in self)
 
-    def norm(self, ord: _Scalar, dtype=None):
+    def norm(self, ord: _Scalar|Literal["mean_abs"], dtype=None):
+        if isinstance(ord, str): return self.abs().mean()
         return self.__class__(torch._foreach_norm(self, ord, dtype))
 
     def mean(self, dim: _Dim = None, keepdim = False) -> Self | Any:
@@ -789,7 +790,7 @@ class TensorList(list[torch.Tensor | Any]):
         for t, o in zip(self, other): t.copysign_(o)
         return self
 
-    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: float | Literal['mean_abs'] = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -802,7 +803,7 @@ class TensorList(list[torch.Tensor | Any]):
 
         return self * (norm_other / norm_self.clip_(min=eps))
 
-    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: float = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: float | Literal['mean_abs'] = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -904,7 +905,7 @@ class TensorList(list[torch.Tensor | Any]):
         if eps!=0: std.add_(eps)
         return self.sub_(self.mean(dim = dim, keepdim=True)).div_(std)
 
-    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float = 2):
+    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
         """calculate multipler to clip self norm to min and max"""
         if tensorwise:
             self_norm = self.norm(ord)
@@ -925,12 +926,12 @@ class TensorList(list[torch.Tensor | Any]):
 
         return mul
 
-    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float = 2):
+    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self * self._clip_multiplier(min, max, tensorwise, ord)
 
-    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float = 2):
+    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self.mul_(self._clip_multiplier(min, max, tensorwise, ord))
