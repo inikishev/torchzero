@@ -220,7 +220,7 @@ class TrustCG(TrustRegionBase):
             if trust_region < 1e-8 or trust_region > 1e8:
                 trust_region = self.global_state['trust_region'] = settings['init']
 
-            update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
+            update_vec = steihaug_toint_cg(P, g, trust_region, reg=reg)
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 update_vec=update_vec, params=params, closure=closure,
