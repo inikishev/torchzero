@@ -1,9 +1,19 @@
 # pyright: reportArgumentType=false
 from collections.abc import Callable
-from typing import overload
+from typing import Any, overload
+
 import torch
 
-from .. import TensorList, generic_zeros_like, generic_vector_norm, generic_numel, generic_randn_like, generic_eq, generic_finfo_eps
+from .. import (
+    TensorList,
+    generic_eq,
+    generic_finfo_eps,
+    generic_numel,
+    generic_randn_like,
+    generic_vector_norm,
+    generic_zeros_like,
+)
+
 
 def _make_A_mm_reg(A_mm: Callable | torch.Tensor, reg):
     if callable(A_mm):
@@ -190,15 +200,23 @@ def nystrom_pcg(
         p = z + p*beta
 
 
+def _safe_clip(x: torch.Tensor):
+    """makes sure scalar tensor x is not smaller than epsilon"""
+    assert x.numel() == 1, x.shape
+    eps = torch.finfo(x.dtype).eps
+    if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
+    return x
 
-def _tr_tau(x,d,trust_region):
-    xd = x.dot(d)
-    dd = d.dot(d)
+def _trust_tau(x,d,trust_region):
     xx = x.dot(x)
+    xd = x.dot(d)
+    dd = _safe_clip(d.dot(d))
 
-    rad = (xd**2 - dd * (xx - trust_region**2)).sqrt()
+    rad = (xd**2 - dd * (xx - trust_region**2)).clip(min=0).sqrt()
     tau = (-xd + rad) / dd
+
     return x + tau * d
+
 
 @overload
 def steihaug_toint_cg(
@@ -253,27 +271,29 @@ def steihaug_toint_cg(
 
         d_Ad = d.dot(Ad)
         if d_Ad <= eps:
-            return _tr_tau(x, d, trust_region)
+            return _trust_tau(x, d, trust_region)
 
         alpha = r.dot(r) / d_Ad
         p_next = x + alpha * d
 
         # check if the step exceeds the trust-region boundary
         if generic_vector_norm(p_next) >= trust_region:
-            return _tr_tau(x, d, trust_region)
+            return _trust_tau(x, d, trust_region)
 
         # update step, residual and direction
         x = p_next
         r_next = r - alpha * Ad
 
         if generic_vector_norm(r_next) < tol:
-            break
+            return x
 
         beta = r_next.dot(r_next) / r.dot(r)
         d = r_next + beta * d
         r = r_next
 
     return x
+
+
 
 # Liu, Yang, and Fred Roosta. "MINRES: From negative curvature detection to monotonicity properties." SIAM Journal on Optimization 32.4 (2022): 2636-2661.
 @overload
@@ -285,6 +305,7 @@ def minres(
     maxiter: int | None = None,
     reg: float = 0,
     npc_terminate: bool=True,
+    trust_region: float | None = None,
 ) -> torch.Tensor: ...
 @overload
 def minres(
@@ -295,8 +316,8 @@ def minres(
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
+    trust_region: float | None = None,
 ) -> TensorList: ...
-
 def minres(
     A_mm,
     b,
@@ -305,6 +326,7 @@ def minres(
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
+    trust_region: float | None = None,
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
     eps = generic_finfo_eps(b)
@@ -317,7 +339,7 @@ def minres(
     else:
         R = b - A_mm_reg(x0)
 
-    X = x0
+    X: Any = x0
     beta = b_norm = generic_vector_norm(b)
     if b_norm < eps**2:
         return generic_zeros_like(b)
@@ -330,13 +352,10 @@ def minres(
 
     c = -1
     phi = tau = beta
-    s = delta1 = k = e = 0
+    s = delta1 = e = 0
 
 
-    while True:
-        k += 1
-        if k > maxiter:
-            return X
+    for _ in range(maxiter):
 
         P = A_mm_reg(V)
         alpha = V.dot(P)
@@ -349,14 +368,20 @@ def minres(
         e_next = s*beta
         delta1 = -c*beta
 
-        if npc_terminate:
-            if c*gamma1 >= 0: return R
+        cgamma1 = c*gamma1
+        if trust_region is not None and cgamma1 >= 0:
+            if npc_terminate: return _trust_tau(X, R, trust_region)
+            return _trust_tau(X, D, trust_region)
+
+        if npc_terminate and cgamma1 >= 0:
+            return R
 
         gamma2 = (gamma1**2 + beta**2)**(1/2)
 
         if abs(gamma2) <= eps: # singular system
             # c=0; s=1; tau=0
-            return X
+            if trust_region is None: return X
+            return _trust_tau(X, D, trust_region)
 
         c = gamma1 / gamma2
         s = beta/gamma2
@@ -368,6 +393,10 @@ def minres(
         e = e_next
         X = X + tau*D
 
+        if trust_region is not None:
+            if generic_vector_norm(X) > trust_region:
+                return _trust_tau(X, D, trust_region)
+
         if (abs(beta) < eps) or (phi / b_norm <= tol):
             # R = zeros(R)
             return X
@@ -375,3 +404,5 @@ def minres(
         V_prev = V
         V = P/beta
         R = s**2*R - phi*c*V
+
+    return X
