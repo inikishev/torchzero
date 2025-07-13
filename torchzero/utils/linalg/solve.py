@@ -51,6 +51,9 @@ def cg(
     reg: float | list[float] | tuple[float] = 0,
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
+    eps = generic_finfo_eps(b)
+
+    if tol is None: tol = eps
 
     if maxiter is None: maxiter = generic_numel(b)
     if x0_ is None: x0_ = generic_zeros_like(b)
@@ -60,8 +63,9 @@ def cg(
     p = residual.clone() # search direction
     r_norm = generic_vector_norm(residual)
     init_norm = r_norm
-    if tol is not None and r_norm < tol: return x
+    if r_norm < tol: return x
     k = 0
+
 
     while True:
         Ap = A_mm_reg(p)
@@ -71,7 +75,7 @@ def cg(
         new_r_norm = generic_vector_norm(residual)
 
         k += 1
-        if tol is not None and new_r_norm <= tol * init_norm: return x
+        if new_r_norm <= tol * init_norm: return x
         if k >= maxiter: return x
 
         beta = (new_r_norm**2) / (r_norm**2)
@@ -147,6 +151,8 @@ def nystrom_pcg(
         generator=generator,
     )
     lambd += reg
+    eps = torch.finfo(b.dtype).eps ** 2
+    if tol is None: tol = eps
 
     def A_mm_reg(x): # A_mm with regularization
         Ax = A_mm(x)
@@ -166,7 +172,7 @@ def nystrom_pcg(
     p = z.clone() # search direction
 
     init_norm = torch.linalg.vector_norm(residual) # pylint:disable=not-callable
-    if tol is not None and init_norm < tol: return x
+    if init_norm < tol: return x
     k = 0
     while True:
         Ap = A_mm_reg(p)
@@ -176,7 +182,7 @@ def nystrom_pcg(
         residual -= step_size * Ap
 
         k += 1
-        if tol is not None and torch.linalg.vector_norm(residual) <= tol * init_norm: return x # pylint:disable=not-callable
+        if torch.linalg.vector_norm(residual) <= tol * init_norm: return x # pylint:disable=not-callable
         if k >= maxiter: return x
 
         z = P_inv @ residual
@@ -200,7 +206,7 @@ def steihaug_toint_cg(
     b: torch.Tensor,
     trust_region: float,
     x0: torch.Tensor | None = None,
-    tol: float = 1e-4,
+    tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float = 0,
 ) -> torch.Tensor: ...
@@ -210,7 +216,7 @@ def steihaug_toint_cg(
     b: TensorList,
     trust_region: float,
     x0: TensorList | None = None,
-    tol: float = 1e-4,
+    tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
 ) -> TensorList: ...
@@ -219,7 +225,7 @@ def steihaug_toint_cg(
     b: torch.Tensor | TensorList,
     trust_region: float,
     x0: torch.Tensor | TensorList | None = None,
-    tol: float = 1e-4,
+    tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
 ):
@@ -230,10 +236,11 @@ def steihaug_toint_cg(
 
     x = x0
     if x is None: x = generic_zeros_like(b)
-    r = -b
+    r = b
     d = r.clone()
 
-    eps = generic_finfo_eps(b)
+    eps = generic_finfo_eps(b)**2
+    if tol is None: tol = eps
 
     if generic_vector_norm(r) < tol:
         return x
@@ -244,11 +251,11 @@ def steihaug_toint_cg(
     for _ in range(maxiter):
         Ad = A_mm_reg(d)
 
-        d_Bd = d.dot(Ad)
-        if d_Bd <= eps:
+        d_Ad = d.dot(Ad)
+        if d_Ad <= eps:
             return _tr_tau(x, d, trust_region)
 
-        alpha = r.dot(r) / d_Bd
+        alpha = r.dot(r) / d_Ad
         p_next = x + alpha * d
 
         # check if the step exceeds the trust-region boundary
@@ -267,3 +274,104 @@ def steihaug_toint_cg(
         r = r_next
 
     return x
+
+# Liu, Yang, and Fred Roosta. "MINRES: From negative curvature detection to monotonicity properties." SIAM Journal on Optimization 32.4 (2022): 2636-2661.
+@overload
+def minres(
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
+    b: torch.Tensor,
+    x0: torch.Tensor | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
+    reg: float = 0,
+    npc_terminate: bool=True,
+) -> torch.Tensor: ...
+@overload
+def minres(
+    A_mm: Callable[[TensorList], TensorList],
+    b: TensorList,
+    x0: TensorList | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
+    reg: float | list[float] | tuple[float] = 0,
+    npc_terminate: bool=True,
+) -> TensorList: ...
+
+def minres(
+    A_mm,
+    b,
+    x0: torch.Tensor | TensorList | None = None,
+    tol: float | None = 1e-4,
+    maxiter: int | None = None,
+    reg: float | list[float] | tuple[float] = 0,
+    npc_terminate: bool=True,
+):
+    A_mm_reg = _make_A_mm_reg(A_mm, reg)
+    eps = generic_finfo_eps(b)
+    if tol is None: tol = eps**2
+
+    if maxiter is None: maxiter = generic_numel(b)
+    if x0 is None:
+        R = b
+        x0 = generic_zeros_like(b)
+    else:
+        R = b - A_mm_reg(x0)
+
+    X = x0
+    beta = b_norm = generic_vector_norm(b)
+    if b_norm < eps**2:
+        return generic_zeros_like(b)
+
+
+    V = b / beta
+    V_prev = generic_zeros_like(b)
+    D = generic_zeros_like(b)
+    D_prev = generic_zeros_like(b)
+
+    c = -1
+    phi = tau = beta
+    s = delta1 = k = e = 0
+
+
+    while True:
+        k += 1
+        if k > maxiter:
+            return X
+
+        P = A_mm_reg(V)
+        alpha = V.dot(P)
+        P -= beta*V_prev
+        P -= alpha*V
+        beta = generic_vector_norm(P)
+
+        delta2 = c*delta1 + s*alpha
+        gamma1 = s*delta1 - c*alpha
+        e_next = s*beta
+        delta1 = -c*beta
+
+        if npc_terminate:
+            if c*gamma1 >= 0: return R
+
+        gamma2 = (gamma1**2 + beta**2)**(1/2)
+
+        if abs(gamma2) <= eps: # singular system
+            # c=0; s=1; tau=0
+            return X
+
+        c = gamma1 / gamma2
+        s = beta/gamma2
+        tau = c*phi
+        phi = s*phi
+
+        D_prev = D
+        D = (V - delta2*D - e*D_prev) / gamma2
+        e = e_next
+        X = X + tau*D
+
+        if (abs(beta) < eps) or (phi / b_norm <= tol):
+            # R = zeros(R)
+            return X
+
+        V_prev = V
+        V = P/beta
+        R = s**2*R - phi*c*V
