@@ -139,9 +139,11 @@ class ScipyMinimize(Optimizer):
 
         # make bounds
         lb, ub = self.group_vals('lb', 'ub', cls=list)
-        bounds = []
-        for p, l, u in zip(params, lb, ub):
-            bounds.extend([(l, u)] * p.numel())
+        bounds = None
+        if any(b is not None for b in lb) or any(b is not None for b in ub):
+            bounds = []
+            for p, l, u in zip(params, lb, ub):
+                bounds.extend([(l, u)] * p.numel())
 
         if self.method is not None and (self.method.lower() == 'tnc' or self.method.lower() == 'slsqp'):
             x0 = x0.astype(np.float64) # those methods error without this

@@ -240,3 +240,87 @@ class Newton(Module):
         var.update = vec_to_tensors(update, params)
 
         return var
+
+class InverseFreeNewton(Module):
+    """
+    Reference
+        Massalski, Marcin, and Magdalena Nockowska-Rosiak. "INVERSE-FREE NEWTON'S METHOD." Journal of Applied Analysis & Computation 15.4 (2025): 2238-2257.
+    """
+    def __init__(
+        self,
+        update_freq: int = 1,
+        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
+        vectorize: bool = True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(hessian_method=hessian_method, vectorize=vectorize, update_freq=update_freq)
+        super().__init__(defaults)
+
+        if inner is not None:
+            self.set_child('inner', inner)
+
+    @torch.no_grad
+    def step(self, var):
+        params = TensorList(var.params)
+        closure = var.closure
+        if closure is None: raise RuntimeError('NewtonCG requires closure')
+
+        settings = self.settings[params[0]]
+        hessian_method = settings['hessian_method']
+        vectorize = settings['vectorize']
+        update_freq = settings['update_freq']
+
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        g_list = var.grad
+        Y = None
+        if step % update_freq == 0:
+            # ------------------------ calculate grad and hessian ------------------------ #
+            if hessian_method == 'autograd':
+                with torch.enable_grad():
+                    loss = var.loss = var.loss_approx = closure(False)
+                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
+                    g_list = [t[0] for t in g_list] # remove leading dim from loss
+                    var.grad = g_list
+                    H = hessian_list_to_mat(H_list)
+
+            elif hessian_method in ('func', 'autograd.functional'):
+                strat = 'forward-mode' if vectorize else 'reverse-mode'
+                with torch.enable_grad():
+                    g_list = var.get_grad(retain_graph=True)
+                    H = hessian_mat(partial(closure, backward=False), params,
+                                    method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
+
+            else:
+                raise ValueError(hessian_method)
+
+            # inverse free part
+            if 'Y' not in self.global_state:
+                num = H.T
+                denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
+                eps = torch.finfo(H.dtype).eps
+                self.global_state['Y'] = num.div_(denom.clip(min=eps, max=1/eps))
+
+            Y = self.global_state['Y']
+            I = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
+            I -= H @ Y
+            Y = self.global_state['Y'] = Y @ I
+
+        if Y is None:
+            Y = self.global_state["Y"]
+
+        # var.storage['hessian'] = H
+
+        # -------------------------------- inner step -------------------------------- #
+        update = var.get_update()
+        if 'inner' in self.children:
+            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+
+        g = torch.cat([t.ravel() for t in update])
+
+
+        # ----------------------------------- solve ---------------------------------- #
+        var.update = vec_to_tensors(Y@g, params)
+
+        return var

@@ -309,6 +309,9 @@ class NewtonCGSteihaug(Module):
         if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         trust_region = self.global_state.get('trust_region', init)
+        if trust_region < 1e-8 or trust_region > 1e8:
+            trust_region = self.global_state['trust_region'] = init
+
         x = steihaug_toint_cg(A_mm=H_mm, b=b, trust_region=trust_region, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
         if warm_start:
             assert x0 is not None
