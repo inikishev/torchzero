@@ -167,22 +167,13 @@ class TrustCG(TrustRegionBase):
         inner (Chainable | None, optional): preconditioning is applied to output of thise module. Defaults to None.
 
     Examples:
-        Trust-Newton
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.ExactTrustRegion(),
-            )
-
         Trust-SR1
 
         .. code-block:: python
 
             opt = tz.Modular(
                 model.parameters(),
-                tz.m.ExactTrustRegion(hess_module=tz.m.SR1(inverse=False)),
+                tz.m.TrustCG(hess_module=tz.m.SR1(inverse=False)),
             )
     """
     def __init__(
