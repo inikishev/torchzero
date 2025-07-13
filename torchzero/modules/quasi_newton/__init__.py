@@ -43,4 +43,4 @@ from .quasi_newton import (
     ThomasOptimalMethod,
     ShorR,
 )
-from .trust_region import CubicRegularization, TrustNCG, TrustRegionBase
+from .trust_region import CubicRegularization, TrustCG, TrustRegionBase

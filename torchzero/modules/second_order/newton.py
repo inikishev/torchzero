@@ -242,7 +242,19 @@ class Newton(Module):
         return var
 
 class InverseFreeNewton(Module):
-    """
+    """Inverse-free newton's method
+
+    .. note::
+        In most cases Newton should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+
+    .. note::
+        This module requires the a closure passed to the optimizer step,
+        as it needs to re-evaluate the loss and gradients for calculating the hessian.
+        The closure must accept a ``backward`` argument (refer to documentation).
+
+    .. warning::
+        this uses roughly O(N^2) memory.
+
     Reference
         Massalski, Marcin, and Magdalena Nockowska-Rosiak. "INVERSE-FREE NEWTON'S METHOD." Journal of Applied Analysis & Computation 15.4 (2025): 2238-2257.
     """
@@ -300,17 +312,17 @@ class InverseFreeNewton(Module):
                 num = H.T
                 denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
                 eps = torch.finfo(H.dtype).eps
-                self.global_state['Y'] = num.div_(denom.clip(min=eps, max=1/eps))
+                Y = self.global_state['Y'] = num.div_(denom.clip(min=eps, max=1/eps))
 
-            Y = self.global_state['Y']
-            I = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
-            I -= H @ Y
-            Y = self.global_state['Y'] = Y @ I
+            else:
+                Y = self.global_state['Y']
+                I = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
+                I -= H @ Y
+                Y = self.global_state['Y'] = Y @ I
 
         if Y is None:
             Y = self.global_state["Y"]
 
-        # var.storage['hessian'] = H
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()

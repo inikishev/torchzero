@@ -213,11 +213,6 @@ class NewtonCGSteihaug(Module):
         h (float, optional):
             The step size for finite differences if :code:`hvp_method` is
             ``"forward"`` or ``"central"``. Defaults to 1e-3.
-        warm_start (bool, optional):
-            If ``True``, the conjugate gradient solver is initialized with the
-            solution from the previous optimization step. This can accelerate
-            convergence, especially in truncated Newton methods.
-            Defaults to False.
         inner (Chainable | None, optional):
             NewtonCG will attempt to apply preconditioning to the output of this module.
 
@@ -245,10 +240,10 @@ class NewtonCGSteihaug(Module):
         reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         h: float = 1e-3,
-        warm_start=False,
+        max_attempts: int = 10,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, warm_start=warm_start, eta=eta, nplus=nplus, nminus=nminus, init=init)
+        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -266,7 +261,7 @@ class NewtonCGSteihaug(Module):
         maxiter = settings['maxiter']
         hvp_method = settings['hvp_method']
         h = settings['h']
-        warm_start = settings['warm_start']
+        max_attempts = settings['max_attempts']
 
         eta = settings['eta']
         nplus = settings['nplus']
@@ -305,41 +300,45 @@ class NewtonCGSteihaug(Module):
         b = as_tensorlist(b).neg_()
 
         # ---------------------------------- run cg ---------------------------------- #
-        x0 = None
-        if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
+        success = False
+        x = None
+        while not success:
+            max_attempts -= 1
+            if max_attempts < 0: break
 
-        trust_region = self.global_state.get('trust_region', init)
-        if trust_region < 1e-8 or trust_region > 1e8:
-            trust_region = self.global_state['trust_region'] = init
+            trust_region = self.global_state.get('trust_region', init)
+            if trust_region < 1e-8 or trust_region > 1e8:
+                trust_region = self.global_state['trust_region'] = init
 
-        x = steihaug_toint_cg(A_mm=H_mm, b=b, trust_region=trust_region, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
-        if warm_start:
-            assert x0 is not None
-            x0.copy_(x)
+            x = steihaug_toint_cg(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg)
 
-        # ------------------------------- trust region ------------------------------- #
-        Hx = H_mm(x)
-        pred_reduction = b.dot(x) - 0.5 * x.dot(Hx)
+            # ------------------------------- trust region ------------------------------- #
+            Hx = H_mm(x)
+            pred_reduction = b.dot(x) - 0.5 * x.dot(Hx)
 
-        params -= x
-        loss_star = closure(False)
-        params += x
-        reduction = var.get_loss(False) - loss_star
+            params -= x
+            loss_star = closure(False)
+            params += x
+            reduction = var.get_loss(False) - loss_star
 
-        rho = reduction / (pred_reduction.clip(min=1e-8))
+            rho = reduction / (pred_reduction.clip(min=1e-8))
 
-        # failed step
-        if rho < 0.25:
-            self.global_state['trust_region'] = trust_region * nminus
+            # failed step
+            if rho < 0.25:
+                self.global_state['trust_region'] = trust_region * nminus
 
-        # very good step
-        elif rho > 0.75:
-            diff = trust_region - x.abs()
-            if (diff.global_min() / trust_region) > 1e-4: # hits boundary
-                self.global_state['trust_region'] = trust_region * nplus
+            # very good step
+            elif rho > 0.75:
+                diff = trust_region - x.abs()
+                if (diff.global_min() / trust_region) > 1e-4: # hits boundary
+                    self.global_state['trust_region'] = trust_region * nplus
 
-        # if the ratio is high enough then accept the proposed step
-        if rho > eta:
+            # if the ratio is high enough then accept the proposed step
+            if rho > eta:
+                success = True
+
+        assert x is not None
+        if success:
             var.update = x
 
         else:

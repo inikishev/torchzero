@@ -43,7 +43,7 @@ class TensorizeProjection(ProjectionBase):
         return [vec.view(dims)]
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
         remainder = self.global_state['remainder']
         # warnings.warn(f'{tensors[0].shape = }')
         vec = projected_tensors[0].view(-1)
@@ -84,7 +84,7 @@ class BlockPartition(ProjectionBase):
         return partitioned
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
         ti = iter(projected_tensors)
         unprojected = []
         for p in params:

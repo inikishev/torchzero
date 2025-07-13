@@ -130,8 +130,8 @@ class ProjectionBase(Module, ABC):
         params: list[torch.Tensor],
         grads: list[torch.Tensor] | None,
         loss: torch.Tensor | None,
-        projected_states: list[dict[str, Any]],
-        projected_settings: list[ChainMap[str, Any]],
+        states: list[dict[str, Any]],
+        settings: list[ChainMap[str, Any]],
         current: str,
     ) -> Iterable[torch.Tensor]:
         """unprojects `tensors`. Note that this can be called multiple times per step with `params`, `grads`, and `update`.
@@ -141,8 +141,8 @@ class ProjectionBase(Module, ABC):
             params (list[torch.Tensor]): original, unprojected parameters.
             grads (list[torch.Tensor] | None): original, unprojected gradients
             loss (torch.Tensor | None): loss at initial point.
-            projected_states (list[dict[str, Any]]): list of state dictionaries per each projected tensor.
-            projected_settings (list[ChainMap[str, Any]]): list of setting dictionaries per each projected tensor.
+            states (list[dict[str, Any]]): list of state dictionaries per each UNPROJECTED tensor.
+            settings (list[ChainMap[str, Any]]): list of setting dictionaries per each UNPROJECTED tensor.
             current (str): string representing what is being unprojected, e.g. "params", "grads" or "update".
 
         Returns:
@@ -155,7 +155,7 @@ class ProjectionBase(Module, ABC):
         settings = [self.settings[p] for p in params]
 
         def _project(tensors: list[torch.Tensor], current: Literal['params', 'grads', 'update']):
-            states = self._states.setdefault(current, [{} for _ in tensors])
+            states = self._states.setdefault(current, [{} for _ in params])
             return list(self.project(
                 tensors=tensors,
                 params=params,
@@ -238,17 +238,17 @@ class ProjectionBase(Module, ABC):
                 empty_p.set_(new_p.view_as(new_p).requires_grad_()) # pyright: ignore[reportArgumentType]
 
         projected_params = self._projected_params
-        projected_settings = [self.settings[p] for p in projected_params]
+        # projected_settings = [self.settings[p] for p in projected_params]
 
         def _unproject(projected_tensors: list[torch.Tensor], current: Literal['params', 'grads', 'update']):
-            projected_states = self._states.setdefault(f'projected_{current}', [{} for _ in projected_tensors])
+            states = self._states.setdefault(current, [{} for _ in params])
             return list(self.unproject(
                 projected_tensors=projected_tensors,
                 params=params,
                 grads=var.grad,
                 loss=var.loss,
-                projected_states=projected_states,
-                projected_settings=projected_settings,
+                states=states,
+                settings=settings,
                 current=current,
             ))
 
@@ -260,7 +260,6 @@ class ProjectionBase(Module, ABC):
         elif closure is not None:
             projected_var.closure = _FakeProjectedClosure(closure, project_fn=_project,
                                                           params=params, fake_params=projected_params)
-
 
         else:
             projected_var.closure = None
@@ -314,7 +313,7 @@ class VectorProjection(ProjectionBase):
         return [torch.cat([t.ravel() for t in tensors])]
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
         return vec_to_tensors(vec=projected_tensors[0], reference=params)
 
 
@@ -334,6 +333,6 @@ class ScalarProjection(ProjectionBase):
         return [s for t in tensors for s in t.ravel().unbind(0)]
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
         return vec_to_tensors(vec=torch.stack(projected_tensors), reference=params)
 

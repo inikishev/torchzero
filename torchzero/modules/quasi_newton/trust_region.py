@@ -1,3 +1,4 @@
+"""Trust region API is currently experimental, it will probably change completely"""
 # pylint:disable=not-callable
 from abc import ABC, abstractmethod
 from typing import Any, Literal, cast, final
@@ -139,16 +140,16 @@ def _update_tr_radius(update_vec:torch.Tensor, params: Sequence[torch.Tensor], c
         if (diff.amin() / trust_region) > 1e-4: # hits boundary
             trust_region *= settings["nplus"]
 
-    # if the ratio is high enough then accept the proposed step
-    if rho > settings["eta"]:
-        update = vec_to_tensors(update_vec, params)
+    # # if the ratio is high enough then accept the proposed step
+    # if rho > settings["eta"]:
+    #     update = vec_to_tensors(update_vec, params)
 
-    else:
-        update = params.zeros_like()
+    # else:
+    #     update = params.zeros_like()
 
-    return update, trust_region
+    return trust_region, rho > settings["eta"]
 
-class TrustNCG(TrustRegionBase):
+class TrustCG(TrustRegionBase):
     """Trust region via Steihaug-Toint Conjugate Gradient method. This is mainly useful for quasi-newton methods.
     If you don't use :code:`hess_module`, use the matrix-free :code:`tz.m.NewtonCGSteihaug` which only uses hessian-vector products.
 
@@ -193,20 +194,20 @@ class TrustNCG(TrustRegionBase):
         init: float = 1,
         update_freq: int = 1,
         reg: float = 0,
+        max_attempts: int = 10,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg, max_attempts=max_attempts)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
     def trust_region_step(self, var, tensors, P, is_inverse):
-        params = var.params
+        params = TensorList(var.params)
         settings = self.settings[params[0]]
         g = _flatten_tensors(tensors)
 
-        trust_region = self.global_state.get('trust_region', settings['init'])
-        if trust_region < 1e-8 or trust_region > 1e8: trust_region = self.global_state['trust_region'] = settings['init']
         reg = settings['reg']
+        max_attempts = settings['max_attempts']
 
         loss = var.loss
         closure = var.closure
@@ -216,12 +217,28 @@ class TrustNCG(TrustRegionBase):
         if is_inverse:
             if P.ndim == 1: P = P.reciprocal()
             else: raise NotImplementedError()
-        update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
 
-        var.update, self.global_state['trust_region'] = _update_tr_radius(
-            update_vec=update_vec, params=params, closure=closure,
-            loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
-        )
+        success = False
+        update_vec = None
+        while not success:
+            max_attempts -= 1
+            if max_attempts < 0: break
+
+            trust_region = self.global_state.get('trust_region', settings['init'])
+
+            if trust_region < 1e-8 or trust_region > 1e8:
+                trust_region = self.global_state['trust_region'] = settings['init']
+
+            update_vec = steihaug_toint_cg(P, -g, trust_region, reg=reg)
+
+            self.global_state['trust_region'], success = _update_tr_radius(
+                update_vec=update_vec, params=params, closure=closure,
+                loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
+            )
+
+        assert update_vec is not None
+        if success: var.update = vec_to_tensors(update_vec, params)
+        else: var.update = params.zeros_like()
 
         return var
 
@@ -336,9 +353,10 @@ class CubicRegularization(TrustRegionBase):
         maxiter: int = 100,
         eps: float = 1e-8,
         update_freq: int = 1,
+        max_attempts: int = 10,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, maxiter=maxiter, eps=eps)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -347,10 +365,8 @@ class CubicRegularization(TrustRegionBase):
         settings = self.settings[params[0]]
         g = _flatten_tensors(tensors)
 
-        trust_region = self.global_state.get('trust_region', settings['init'])
-        if trust_region < 1e-8 or trust_region > 1e16: trust_region = self.global_state['trust_region'] = settings['init']
-
         maxiter = settings['maxiter']
+        max_attempts = settings['max_attempts']
         eps = settings['eps']
 
         loss = var.loss
@@ -365,13 +381,26 @@ class CubicRegularization(TrustRegionBase):
             params.sub_(x_unflat)
             return loss_x
 
-        update_vec, _ = ls_cubic_solver(f=loss, g=g, H=P, M=1/trust_region, is_inverse=is_inverse,
-                                 loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
-        update_vec.neg_()
+        success = False
+        update_vec = None
+        while not success:
+            max_attempts -= 1
+            if max_attempts < 0: break
 
-        var.update, self.global_state['trust_region'] = _update_tr_radius(
-            update_vec=update_vec, params=params, closure=closure,
-            loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
-        )
+            trust_region = self.global_state.get('trust_region', settings['init'])
+            if trust_region < 1e-8 or trust_region > 1e16: trust_region = self.global_state['trust_region'] = settings['init']
+
+            update_vec, _ = ls_cubic_solver(f=loss, g=g, H=P, M=1/trust_region, is_inverse=is_inverse,
+                                    loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
+            update_vec.neg_()
+
+            self.global_state['trust_region'], success = _update_tr_radius(
+                update_vec=update_vec, params=params, closure=closure,
+                loss=loss, g=g, H=P, trust_region=trust_region, settings = settings,
+            )
+
+        assert update_vec is not None
+        if success: var.update = vec_to_tensors(update_vec, params)
+        else: var.update = params.zeros_like()
 
         return var

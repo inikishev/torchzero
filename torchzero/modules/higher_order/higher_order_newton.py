@@ -195,6 +195,7 @@ class HigherOrderNewton(Module):
         nminus: float = 0.25,
         init: float | None = None,
         eta: float = 1e-6,
+        max_attempts = 10,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
@@ -202,7 +203,7 @@ class HigherOrderNewton(Module):
             if trust_method == 'bounds': init = 1
             else: init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters)
+        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -219,11 +220,8 @@ class HigherOrderNewton(Module):
         init = settings['init']
         trust_method = settings['trust_method']
         de_iters = settings['de_iters']
+        max_attempts = settings['max_attempts']
         vectorize = settings['vectorize']
-
-        trust_value = self.global_state.get('trust_region', init)
-        if trust_value < 1e-8 or trust_value > 1e16: trust_value = self.global_state['trust_region'] = settings['init']
-
 
         # ------------------------ calculate grad and hessian ------------------------ #
         with torch.enable_grad():
@@ -248,59 +246,70 @@ class HigherOrderNewton(Module):
 
         x0 = torch.cat([p.ravel() for p in params])
 
-        if trust_method is None: trust_method = 'none'
-        else: trust_method = trust_method.lower()
-
-        if trust_method == 'none':
-            trust_region = None
-            prox = 0
-
-        elif trust_method == 'bounds':
-            trust_region = trust_value
-            prox = 0
-
-        elif trust_method == 'proximal':
-            trust_region = None
-            prox = 1 / trust_value
-
-        else:
-            raise ValueError(trust_method)
-
-        x_star, expected_loss = _poly_minimize(
-            trust_region=trust_region,
-            prox=prox,
-            de_iters=de_iters,
-            c=loss.item(),
-            x=x0,
-            derivatives=derivatives,
-        )
-
-        # trust region
         success = False
-        if trust_method == 'none':
-            success = True
-        else:
-            pred_reduction = loss - expected_loss
+        x_star = None
+        while not success:
+            max_attempts -= 1
+            if max_attempts < 0: break
 
-            vec_to_tensors_(x_star, params)
-            loss_star = closure(False)
-            vec_to_tensors_(x0, params)
-            reduction = loss - loss_star
+            # load trust region value
+            trust_value = self.global_state.get('trust_region', init)
+            if trust_value < 1e-8 or trust_value > 1e16: trust_value = self.global_state['trust_region'] = settings['init']
 
-            rho = reduction / (max(pred_reduction, 1e-8))
-            # failed step
-            if rho < 0.25:
-                self.global_state['trust_region'] = trust_value * nminus
+            if trust_method is None: trust_method = 'none'
+            else: trust_method = trust_method.lower()
 
-            # very good step
-            elif rho > 0.75:
-                diff = trust_value - (x0 - x_star).abs_()
-                if (diff.amin() / trust_value) > 1e-4: # hits boundary
-                    self.global_state['trust_region'] = trust_value * nplus
+            if trust_method == 'none':
+                trust_region = None
+                prox = 0
 
-            # if the ratio is high enough then accept the proposed step
-            success = rho > eta
+            elif trust_method == 'bounds':
+                trust_region = trust_value
+                prox = 0
 
+            elif trust_method == 'proximal':
+                trust_region = None
+                prox = 1 / trust_value
+
+            else:
+                raise ValueError(trust_method)
+
+            # minimize the model
+            x_star, expected_loss = _poly_minimize(
+                trust_region=trust_region,
+                prox=prox,
+                de_iters=de_iters,
+                c=loss.item(),
+                x=x0,
+                derivatives=derivatives,
+            )
+
+            # update trust region
+            if trust_method == 'none':
+                success = True
+            else:
+                pred_reduction = loss - expected_loss
+
+                vec_to_tensors_(x_star, params)
+                loss_star = closure(False)
+                vec_to_tensors_(x0, params)
+                reduction = loss - loss_star
+
+                rho = reduction / (max(pred_reduction, 1e-8))
+                # failed step
+                if rho < 0.25:
+                    self.global_state['trust_region'] = trust_value * nminus
+
+                # very good step
+                elif rho > 0.75:
+                    diff = trust_value - (x0 - x_star).abs_()
+                    if (diff.amin() / trust_value) > 1e-4: # hits boundary
+                        self.global_state['trust_region'] = trust_value * nplus
+
+                # if the ratio is high enough then accept the proposed step
+                success = rho > eta
+
+        assert x_star is not None
         if success:
             difference = vec_to_tensors(x0 - x_star, params)
             var.update = list(difference)
