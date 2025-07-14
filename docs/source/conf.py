@@ -52,7 +52,7 @@ exclude_patterns = []
 #html_theme = 'alabaster'
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
-html_style = 'css/my_theme.css'
+# html_style = 'css/my_theme.css'
 
 
 # OTHER STUFF I FOUND ON THE INTERNET AND PUT THERE HOPING IT DOES SOMETHING USEFUL SURE HOPE IT ISN'T SOME KIND OF MALWARE
