@@ -1,5 +1,5 @@
 # NEW VERSION TUTORIAL FOR MYSELF
-# STEP 1 - COMMIT NEW CHANGES BUT DON'T PUSH THEM YET
+# STEP 1 - COMMIT NEW CHANGES AND PUSH THEM
 # STEP 2 - BUMP VERSION AND COMMIT IT (DONT PUSH!!!!)
 # STEP 3 - CREATE TAG WITH THAT VERSION
 # STEP 4 - PUSH (SYNC) CHANGES
@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 name = "torchzero"
 description = "Modular optimization library for PyTorch."
 
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
   "torch",
   "numpy",
