@@ -72,20 +72,7 @@ for epoch in range(100):
 `torchzero` provides a huge number of various modules:
 
 * **Optimizers**: Optimization algorithms.
-  * `Adam`.
-  * `Adan`.
-  * `Adagrad`, `FullMatrixAdagrad`, and `LMAdagrad` (limited-memory Adagrad).
-  * `AdaHessian`.
-  * `OrthoGrad`.
-  * `Lion`.
-  * `MARS`.
-  * `Muon`.
-  * `RMSprop`.
-  * `Rprop`.
-  * `SAM`, `ASAM`, `MSAM`.
-  * `Shampoo`.
-  * `SOAP` (my current recommendation).
-  * `SophiaH`.
+  * `Adam`, `Adan`, `Adagrad`, `ESGD`, `FullMatrixAdagrad`, `LMAdagrad`, `AdaHessian`, `AdaptiveHeavyBall`, `OrthoGrad`, `Lion`, `MARS`, `MatrixMomentum`, `AdaptiveMatrixMomentum`, `Muon`, `RMSprop`, `Rprop`, `SAM`, `ASAM`, `MSAM`, `Shampoo`, `SOAP`, `SophiaH`.
 
   Additionally many other optimizers can be easily defined via modules:
   * Grams: `[tz.m.Adam(), tz.m.GradSign()]`
@@ -95,12 +82,11 @@ for epoch in range(100):
   * Cautious version of any optimizer, like SOAP: `[tz.m.SOAP(), tz.m.Cautious()]`
 
 * **Momentum**:
-  * `NAG`: Nesterov Accelerated Gradient.
   * `HeavyBall`: Classic momentum (Polyak's momentum).
+  * `NAG`: Nesterov Accelerated Gradient.
   * `EMA`: Exponential moving average.
-  * `Averaging` (`Medianveraging`, `WeightedAveraging`): Simple, median, or weighted averaging of updates.
+  * `Averaging` (`MedianAveraging`, `WeightedAveraging`): Simple, median, or weighted averaging of updates.
   * `Cautious`, `ScaleByGradCosineSimilarity`: Momentum cautioning.
-  * `MatrixMomentum`, `AdaptiveMatrixMomentum`: Second order momentum.
 
 * **Stabilization**: Gradient stabilization techniques.
   * `ClipNorm`: Clips gradient L2 norm.
@@ -117,32 +103,42 @@ for epoch in range(100):
 
 * **Second order**: Second order methods.
   * `Newton`: Classic Newton's method.
-  * `NewtonCG`: Matrix-free newton's method with conjugate gradient solver.
+  * `InverseFreeNewton`: Inverse-free version of Newton's method.
+  * `NewtonCG`: Matrix-free newton's method with conjugate gradient or minimal residual solvers.
+  * `TruncatedNewtonCG`: Steihaug-Toint Trust-region NewtonCG via a truncated CG solver.
   * `NystromSketchAndSolve`: Nyström sketch-and-solve method.
-  * `NystromPCG`: NewtonCG with Nyström preconditioning (with tuning beats NewtonCG).
+  * `NystromPCG`: NewtonCG with Nyström preconditioning.
   * `HigherOrderNewton`: Higher order Newton's method with trust region.
 
 * **Quasi-Newton**: Approximate second-order optimization methods.
   * `LBFGS`: Limited-memory BFGS.
   * `LSR1`: Limited-memory SR1.
   * `OnlineLBFGS`: Online LBFGS.
-  * `BFGS`, `DFP`, `PSB`, `SR1`, `SSVM`, `BroydenBad`, `BroydenGood`, `ColumnUpdatingMethod`, `FletcherVMM`, `GradientCorrection`, `Greenstadt1`, `Greenstadt2`, `Horisho`, `McCormick`, `Pearson`, `ProjectedNewtonRaphson`, `ThomasOptimalMethod`: Classic full-matrix quasi-newton methods.
+  * `BFGS`, `DFP`, `ICUM`, `PSB`, `SR1`, `SSVM`, `BroydenBad`, `BroydenGood`, `FletcherVMM`, `GradientCorrection`, `Greenstadt1`, `Greenstadt2`, `Horisho`, `McCormick`, `NewSSM`, `Pearson`, `ProjectedNewtonRaphson`, `ThomasOptimalMethod`, `ShorR`: Full-matrix quasi-newton methods.
+  * `DiagonalBFGS`, `DiagonalSR1`, `DiagonalQuasiCauchi`, `DiagonalWeightedQuasiCauchi`, `DNRTR`, `NewDQN`: Diagonal quasi-newton methods.
   * `PolakRibiere`, `FletcherReeves`, `HestenesStiefel`, `DaiYuan`, `LiuStorey`, `ConjugateDescent`, `HagerZhang`, `HybridHS_DY`, `ProjectedGradientMethod`: Conjugate gradient methods.
+
+* **Trust Region** Trust region can work with exact hessian or any of the quasi-newton methods (L-BFGS support is WIP)
+  * `TrustCG`: Trust-region, uses a Steihaug-Toint truncated CG solver.
+  * `CubicRegularization`: Cubic regularization, works better with exact hessian.
 
 * **Line Search**:
   * `Backtracking`, `AdaptiveBacktracking`: Backtracking line searches (adaptive is my own).
   * `StrongWolfe`: Cubic interpolation line search satisfying strong Wolfe conditions.
   * `ScipyMinimizeScalar`: Wrapper for SciPy's scalar minimization for line search.
-  * `TrustRegion`: First order trust region method.
 
 * **Learning Rate**:
   * `LR`: Controls learning rate and adds support for LR schedulers.
-  * `PolyakStepSize`: Polyak's method.
-  * `Warmup`: Learning rate warmup.
+  * `PolyakStepSize`: Polyak's subgradient method.
+  * `BarzilaiBorwein`: Barzilai-Borwein step-size.
+  * `Warmup`, `WarmupNormCLip`: Learning rate warmup.
 
 * **Projections**: This can implement things like GaLore but I haven't done that yet.
-  * `FFTProjection`, `DCTProjection`: Use any update rule in Fourier or DCT domain (doesn't seem to help though).
-  * `VectorProjection`, `TensorizeProjection`, `BlockPartition`, `TensorNormsProjection`: Structural projection methods (for block BFGS etc.).
+  <!-- * `FFTProjection`, `DCTProjection`: Use any update rule in Fourier or DCT domain (doesn't seem to help though).
+  * `VectorProjection`, `TensorizeProjection`, `BlockPartition`, `TensorNormsProjection`: Structural projection methods (for block BFGS etc.). -->
+  This is WIP
+  * `To`: this casts everything to any other dtype and device for other modules, e.g. if you want better precision
+  * `ViewAsReal`: put if you have complex paramters.
 
 * **Smoothing**: Smoothing-based optimization methods.
   * `LaplacianSmoothing`: Laplacian smoothing for gradients (implements Laplacian Smooth GD).

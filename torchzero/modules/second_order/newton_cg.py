@@ -172,7 +172,7 @@ class NewtonCG(Module):
         return var
 
 
-class NewtonCGSteihaug(Module):
+class TruncatedNewtonCG(Module):
     """Trust region Newton's method with a matrix-free Steihaug-Toint conjugate gradient or MINRES solver.
 
     This optimizer implements Newton's method using a matrix-free conjugate
