@@ -31,6 +31,7 @@ from .hnewton import HNewton
 from .modular_lbfgs import ModularLBFGS
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
+from .parabolic_search import CubicParabolaSearch, ParabolaSearch
 from .reduce_outward_lr import ReduceOutwardLR
 from .structural_projections import BlockPartition, TensorizeProjection
 from .subspace_preconditioners import (

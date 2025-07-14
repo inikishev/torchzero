@@ -19,12 +19,12 @@ def backtracking_line_search(
     """
 
     Args:
-        objective_fn: evaluates step size along some descent direction.
-        dir_derivative: directional derivative along the descent direction.
-        alpha_init: initial step size.
+        f: evaluates step size along some descent direction.
+        g_0: directional derivative along the descent direction.
+        init: initial step size.
         beta: The factor by which to decrease alpha in each iteration
         c: The constant for the Armijo sufficient decrease condition
-        max_iter: Maximum number of backtracking iterations (default: 10).
+        maxiter: Maximum number of backtracking iterations (default: 10).
 
     Returns:
         step size
@@ -72,7 +72,7 @@ class Backtracking(LineSearchBase):
         c (float, optional): acceptance value for Armijo condition. Defaults to 1e-4.
         maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
         adaptive (bool, optional):
-            when enabled, if line search failed, initial step size is reduced.
+            when enabled, if line search failed, beta is reduced.
             Otherwise it is reset to initial value. Defaults to True.
         try_negative (bool, optional): Whether to perform line search in opposite direction on fail. Defaults to False.
 
