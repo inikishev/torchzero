@@ -61,7 +61,7 @@ def cg(
     reg: float | list[float] | tuple[float] = 0,
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
-    eps = generic_finfo_eps(b)
+    eps = generic_finfo_eps(b)**2
 
     if tol is None: tol = eps
 

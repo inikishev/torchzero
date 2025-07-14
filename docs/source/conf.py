@@ -57,3 +57,4 @@ html_static_path = ['_static']
 # OTHER STUFF I FOUND ON THE INTERNET AND PUT THERE HOPING IT DOES SOMETHING USEFUL
 source_suffix = ['.rst', '.md']
 master_doc = 'index'
+html_theme_options = {'body_max_width': '70%'}
