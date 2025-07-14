@@ -54,8 +54,8 @@ class DCTProjection(ProjectionBase):
         return projected
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
-        settings = projected_settings[0]
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
+        settings = settings[0]
         dims = settings['dims']
         norm = settings['norm']
 

@@ -60,8 +60,8 @@ class FFTProjection(ProjectionBase):
         return [torch.view_as_real(torch.fft.rfftn(t, norm=norm)) if t.numel() > 1 else t for t in tensors] # pylint:disable=not-callable
 
     @torch.no_grad
-    def unproject(self, projected_tensors, params, grads, loss, projected_states, projected_settings, current):
-        settings = projected_settings[0]
+    def unproject(self, projected_tensors, params, grads, loss, states, settings, current):
+        settings = settings[0]
         one_d = settings['one_d']
         norm = settings['norm']
 
