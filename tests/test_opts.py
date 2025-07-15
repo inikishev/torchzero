@@ -668,8 +668,8 @@ UpdateSign = Run(
     sphere_steps=10, sphere_loss=0,
 )
 GradAccumulation = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.05), 10), ),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.5), 10), ),
+    func_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.05), n=10), ),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.5), n=10), ),
     needs_closure=False,
     func='booth', steps=50, loss=25, merge_invariant=True,
     sphere_steps=20, sphere_loss=1e-11,

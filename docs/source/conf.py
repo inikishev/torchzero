@@ -58,4 +58,5 @@ html_static_path = ['_static']
 # OTHER STUFF I FOUND ON THE INTERNET AND PUT THERE HOPING IT DOES SOMETHING USEFUL SURE HOPE IT ISN'T SOME KIND OF MALWARE
 source_suffix = ['.rst', '.md']
 master_doc = 'index'
+#html_theme_options = {'body_max_width': '70%'}
 html_theme_options = {'body_max_width': '70%'}
