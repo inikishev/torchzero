@@ -6,6 +6,8 @@
 
 `torchzero` is a PyTorch library providing a highly modular framework for creating and experimenting with a huge number of various optimization algorithms - various momentum techniques, gradient clipping, gradient approximations, line searches, quasi newton methods and more. All algorithms are implemented as modules that can be chained together freely.
 
+> **note:** This project is still under development and API might change.
+
 ## Installation
 
 ```bash
