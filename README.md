@@ -358,6 +358,26 @@ A wrapper for [nevergrad](https://facebookresearch.github.io/nevergrad/) which h
 
 A wrapper for [fast-cma-es](https://github.com/dietmarwo/fast-cma-es), which implements various gradient free algorithms. Notably it includes [BITEOPT](https://github.com/avaneev/biteopt) which seems to have very good performance in benchmarks.
 
+# Roadmap
+
+**Things I will add/change soon:**
+
+* Gauss-Newton and other NNLS methods.
+
+* PSGD variants. This is a very strong method and competitive with SOAP, but I don't have a good understanding of how it works, which is why I haven't worked on this. I might take code from the official implementation <https://github.com/lixilinx/psgd_torch/blob/master/psgd.py> in the meantime.
+
+* Loss transforms such as sqrt(objective), this makes a homogenized problem which might be easier than the original problem. <https://arxiv.org/pdf/2306.17683> for an example.
+
+* Trust region will be reworked, I am working out on how to structure it. QN currently uses Steihaug CG simply because I haven't implemented other trust region methods, but they will be added once I figure out a good trust region API.
+
+**Longer term additions:**
+
+* Constrained and structured optimization, e.g. minimize difference of two functions, or min-max problems. I am not as familiar with those and don't have good uses for them, however that does fit in really well with torchzero API.
+
+* Gradient free methods and global methods. I can think of a few ways they can be "modularized", but it is more tricky than gradient-based methods, and I will only do that if I figure out some really good way to do it.
+
+* I am working on docs and a good set of examples, this one just takes time and hopefully will get done over time...
+
 # License
 
 This project is licensed under the MIT License
