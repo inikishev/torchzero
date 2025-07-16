@@ -2,6 +2,7 @@
 from .absoap import ABSOAP
 from .adadam import Adadam
 from .adam_lambertw import AdamLambertW
+from .adam_expclogmul import AdamExpclogmul
 from .adamY import AdamY
 from .adaptive_step_size import AdaptiveStepSize
 from .adasoap import AdaSOAP

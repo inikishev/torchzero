@@ -10,9 +10,19 @@ from .module import Module, Var, Chain, Chainable
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 
 class Transform(Module, ABC):
-    """Base class for a transform. This is an abstract class, to use it, subclass it and override `update` and `apply` methods.
+    """Base class for a transform.
+    This is an abstract class, to use it, subclass it and override ``update_tensors`` and ``apply_tensors`` methods.
 
     A transform is a module that can also be applied manually to an arbitrary sequence of tensors.
+
+    Transform can be applied to update corresponding to custom parameters
+    by calling ``keyed_transform_update`` and ``keyed_transform_apply``,
+    parameters will be keys to store per-parameter states, so they should remain the same python objects.
+
+    Alternatively transform can be applied to arbitrary tensors by calling ``transform_update`` and ``transform_apply``,
+    where you manually provide a list of state dictionaries for each tensor.
+
+    A transform is also able to function as a closure modification by passing ``target="closure"``.
 
     Args:
         defaults (dict[str,Any] | None): dict with default values.
@@ -21,6 +31,7 @@ class Transform(Module, ABC):
             `grad` is always computed and can't be None. Otherwise set to False.
         target (Target, optional):
             what to set on var. Defaults to 'update'.
+
     """
     def __init__(
         self,

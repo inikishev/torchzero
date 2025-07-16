@@ -504,6 +504,11 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_pow_(input, self)
         return self
 
+    def square(self): return self.__class__(torch._foreach_pow(self, 2))
+    def square_(self):
+        torch._foreach_pow_(self, 2)
+        return self
+
     def sqrt(self): return self.__class__(torch._foreach_sqrt(self))
     def sqrt_(self):
         torch._foreach_sqrt_(self)
