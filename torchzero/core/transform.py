@@ -14,15 +14,22 @@ class Transform(Module, ABC):
     This is an abstract class, to use it, subclass it and override ``update_tensors`` and ``apply_tensors`` methods.
 
     A transform is a module that can also be applied manually to an arbitrary sequence of tensors.
+    It has two methods:
 
-    Transform can be applied to update corresponding to custom parameters
+    - ``update_tensors`` updates the internal state of this transform, it doesn't modify tensors. \
+            It may be called multiple times before ``apply_tensors``.
+    - ``apply_tensors`` applies this transform to tensors, without modifying the internal state if possible.
+
+    Alternatively, if update-apply structure doesn't make sense for a transform, all logic can be defined within ``apply_tensors``.
+
+    Transform can be applied to tensors corresponding to custom parameters
     by calling ``keyed_transform_update`` and ``keyed_transform_apply``,
     parameters will be keys to store per-parameter states, so they should remain the same python objects.
 
-    Alternatively transform can be applied to arbitrary tensors by calling ``transform_update`` and ``transform_apply``,
-    where you manually provide a list of state dictionaries for each tensor.
+    Alternatively you can manually create a list of state dictionaries per each tensor and pass it to
+    ``transform_update`` and ``transform_apply``.
 
-    A transform is also able to function as a closure modification by passing ``target="closure"``.
+    A transform can modify the closure instead of directly modifying update by passing ``target="closure"``.
 
     Args:
         defaults (dict[str,Any] | None): dict with default values.
@@ -327,7 +334,7 @@ class Transform(Module, ABC):
 class TensorwiseTransform(Transform, ABC):
     """Base class for a parameter-wise transform.
 
-    This is an abstract class, to use it, subclass it and override `transform`.
+    This is an abstract class, to use it, subclass it and override `update_tensor` and `apply_tensor`.
 
     Args:
         defaults (dict[str,Any] | None): dict with default values.
