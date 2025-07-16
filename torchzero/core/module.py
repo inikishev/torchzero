@@ -402,7 +402,8 @@ class Module(ABC):
         }
         return state_dict
 
-    def load_state_dict(self, state_dict: dict[str, Any], id_to_tensor: dict[int, torch.Tensor]):
+    def _load_state_dict(self, state_dict: dict[str, Any], id_to_tensor: dict[int, torch.Tensor]):
+        """loads state_dict, ``id_to_tensor`` is passed by ``Modular``"""
         # load state
         state = state_dict['state']
         self.state.clear()
@@ -421,7 +422,7 @@ class Module(ABC):
 
         # children
         for k, v in state_dict['children']:
-            if k in self.children: self.children[k].load_state_dict(v, id_to_tensor)
+            if k in self.children: self.children[k]._load_state_dict(v, id_to_tensor)
             else: warnings.warn(f'State dict for {self} has child {k}, which is missing in {self}')
 
         # extra info
@@ -437,11 +438,15 @@ class Module(ABC):
         """Updates the internal state of this module. This should not modify `var.update`.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ::code::`tz.m.Online`.
+        such as ::code::`tz.m.Online`. Alternatively, simply override the ``step`` method.
         """
 
     def apply(self, var: Var) -> Var:
-        """Applies this module to ``var.get_update()``. This should not modify the internal state of this module if possible."""
+        """Applies this module to ``var.get_update()``. This should not modify the internal state of this module if possible.
+
+        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
+        such as ::code::`tz.m.Online`. Alternatively, simply override the ``step`` method.
+        """
         raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
 
     def reset(self):
@@ -452,14 +457,24 @@ class Module(ABC):
         self.global_state.clear()
 
     def reset_for_online(self):
-        """resets only the intermediate state of this module, e.g. previous parameters and gradient."""
+        """Resets buffers that depend on previous evaluation, such as previous gradient,
+        which may become inaccurate due to mini-batching.
+
+        ``Online`` module calls `reset_for_online`,
+        then it calls `update` with previous parameters,
+        then it calls `update` with current parameters,
+        and then `apply`.
+        """
         for c in self.children.values(): c.reset_for_online()
 
     def _extra_pack(self):
+        """extra information to store in state_dict of this optimizer.
+        Will be passed to ``_extra_unpack`` when loading the state_dict."""
         return {}
 
     def _extra_unpack(self, x):
-        pass
+        """``_extra_pack`` return will be passed to this method when loading state_dict.
+        This method is called after loading the rest of the state dict"""
 
 
     # ------------------------------ HELPER METHODS ------------------------------ #
@@ -673,7 +688,7 @@ class Modular(torch.optim.Optimizer):
 
         id_to_tensor = {state_dict['idx_to_id'][i]: p for i,p in enumerate(state_dict['params'])}
         for m, sd in zip(self.unrolled_modules, state_dict['modules'].values()):
-            m.load_state_dict(sd, id_to_tensor)
+            m._load_state_dict(sd, id_to_tensor)
 
 
     def step(self, closure=None): # pyright: ignore[reportIncompatibleMethodOverride]
