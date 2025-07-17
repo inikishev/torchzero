@@ -196,6 +196,7 @@ class HigherOrderNewton(Module):
         init: float | None = None,
         eta: float = 1e-6,
         max_attempts = 10,
+        boundary_tol: float = 1e-3,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
@@ -203,7 +204,7 @@ class HigherOrderNewton(Module):
             if trust_method == 'bounds': init = 1
             else: init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts)
+        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts, boundary_tol=boundary_tol)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -222,6 +223,7 @@ class HigherOrderNewton(Module):
         de_iters = settings['de_iters']
         max_attempts = settings['max_attempts']
         vectorize = settings['vectorize']
+        boundary_tol = settings['boundary_tol']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         with torch.enable_grad():
@@ -302,8 +304,9 @@ class HigherOrderNewton(Module):
 
                 # very good step
                 elif rho > 0.75:
-                    diff = trust_value - (x0 - x_star).abs_()
-                    if (diff.amin() / trust_value) > 1e-4: # hits boundary
+                    step = (x_star - x0)
+                    magn = torch.linalg.vector_norm(step) # pylint:disable=not-callable
+                    if (magn - trust_value).abs() / trust_value > boundary_tol: # close to boundary
                         self.global_state['trust_region'] = trust_value * nplus
 
                 # if the ratio is high enough then accept the proposed step

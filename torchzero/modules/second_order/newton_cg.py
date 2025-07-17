@@ -255,9 +255,10 @@ class TruncatedNewtonCG(Module):
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3,
         max_attempts: int = 10,
+        boundary_tol: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver)
+        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -277,6 +278,7 @@ class TruncatedNewtonCG(Module):
         h = settings['h']
         max_attempts = settings['max_attempts']
         solver = settings['solver'].lower().strip()
+        boundary_tol = settings['boundary_tol'].lower().strip()
 
         eta = settings['eta']
         nplus = settings['nplus']
@@ -354,8 +356,8 @@ class TruncatedNewtonCG(Module):
 
             # very good step
             elif rho > 0.75:
-                diff = trust_region - x.abs()
-                if (diff.global_min() / trust_region) > 1e-4: # hits boundary
+                magn = torch.linalg.vector_norm(x) # pylint:disable=not-callable
+                if (magn - trust_region).abs() / trust_region > boundary_tol: # close to boundary
                     self.global_state['trust_region'] = trust_region * nplus
 
             # if the ratio is high enough then accept the proposed step

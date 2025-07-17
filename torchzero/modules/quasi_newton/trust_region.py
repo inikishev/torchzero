@@ -136,8 +136,8 @@ def _update_tr_radius(update_vec:torch.Tensor, params: Sequence[torch.Tensor], c
 
     # very good step
     elif rho > 0.75:
-        diff = trust_region - update_vec.abs()
-        if (diff.amin() / trust_region) > 1e-4: # hits boundary
+        magn = torch.linalg.vector_norm(update_vec) # pylint:disable=not-callable
+        if (magn - trust_region).abs() / trust_region > settings['boundary_tol']: # close to boundary
             trust_region *= settings["nplus"]
 
     # # if the ratio is high enough then accept the proposed step
@@ -186,9 +186,10 @@ class TrustCG(TrustRegionBase):
         update_freq: int = 1,
         reg: float = 0,
         max_attempts: int = 10,
+        boundary_tol: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg, max_attempts=max_attempts)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg, max_attempts=max_attempts,boundary_tol=boundary_tol)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -345,9 +346,10 @@ class CubicRegularization(TrustRegionBase):
         eps: float = 1e-8,
         update_freq: int = 1,
         max_attempts: int = 10,
+        boundary_tol: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts, boundary_tol=boundary_tol)
         super().__init__(defaults, hess_module=hess_module, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
