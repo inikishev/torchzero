@@ -357,7 +357,7 @@ class TruncatedNewtonCG(Module):
             # very good step
             elif rho > 0.75:
                 magn = torch.linalg.vector_norm(x) # pylint:disable=not-callable
-                if (magn - trust_region).abs() / trust_region > boundary_tol: # close to boundary
+                if (magn - trust_region) / trust_region > -boundary_tol: # close to boundary
                     self.global_state['trust_region'] = trust_region * nplus
 
             # if the ratio is high enough then accept the proposed step

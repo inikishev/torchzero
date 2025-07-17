@@ -137,7 +137,7 @@ def _update_tr_radius(update_vec:torch.Tensor, params: Sequence[torch.Tensor], c
     # very good step
     elif rho > 0.75:
         magn = torch.linalg.vector_norm(update_vec) # pylint:disable=not-callable
-        if (magn - trust_region).abs() / trust_region > settings['boundary_tol']: # close to boundary
+        if (magn - trust_region) / trust_region > -settings['boundary_tol']: # close to boundary
             trust_region *= settings["nplus"]
 
     # # if the ratio is high enough then accept the proposed step
