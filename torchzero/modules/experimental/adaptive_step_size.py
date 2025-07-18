@@ -50,7 +50,7 @@ class AdaptiveStepSize(LineSearchBase):
         nminus_mul = self.global_state.setdefault('nminus_mul', 1)
 
 
-        f_0 = self.evaluate_step_size(0, var, backward=False)
+        f_0 = self.evaluate_f(0, var, backward=False)
 
         # directional derivative (0 if c = 0 because it is not needed)
         if c == 0: d = 0
@@ -59,7 +59,7 @@ class AdaptiveStepSize(LineSearchBase):
         # test step size
         sufficient_f = f_0 + c * step_size * min(d, 0) # pyright:ignore[reportArgumentType]
 
-        f_1 = self.evaluate_step_size(step_size, var, backward=False)
+        f_1 = self.evaluate_f(step_size, var, backward=False)
 
         proposed = step_size
 

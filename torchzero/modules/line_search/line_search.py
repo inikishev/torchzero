@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from functools import partial
 from operator import itemgetter
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -149,7 +149,7 @@ class LineSearchBase(Module, ABC):
 
         return tofloat(loss)
 
-    def _loss_derivative(self, step_size: float, var: Var, closure,
+    def _loss_derivative_gradient(self, step_size: float, var: Var, closure,
                          params: list[torch.Tensor], update: list[torch.Tensor]):
         # if step_size is 0, we might already know the derivative
         if (var.grad is not None) and (step_size == 0):
@@ -164,17 +164,30 @@ class LineSearchBase(Module, ABC):
             derivative = - sum(t.sum() for t in torch._foreach_mul([p.grad if p.grad is not None
                                                                     else torch.zeros_like(p) for p in params], update))
 
-        return loss, tofloat(derivative)
+        assert var.grad is not None
+        return loss, tofloat(derivative), var.grad
 
-    def evaluate_step_size(self, step_size: float, var: Var, backward:bool=False):
+    def _loss_derivative(self, step_size: float, var: Var, closure,
+                         params: list[torch.Tensor], update: list[torch.Tensor]):
+        return self._loss_derivative_gradient(step_size=step_size, var=var,closure=closure,params=params,update=update)[:2]
+
+    def evaluate_f(self, step_size: float, var: Var, backward:bool=False):
+        """evaluate function value at alpha `step_size`."""
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
         return self._loss(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update(),backward=backward)
 
-    def evaluate_step_size_loss_and_derivative(self, step_size: float, var: Var):
+    def evaluate_f_d(self, step_size: float, var: Var):
+        """evaluate function value and directional derivative in the direction of the update at step size `step_size`."""
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
         return self._loss_derivative(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update())
+
+    def evaluate_f_d_g(self, step_size: float, var: Var):
+        """evaluate function value, directional derivative, and gradient list at step size `step_size`."""
+        closure = var.closure
+        if closure is None: raise RuntimeError('line search requires closure')
+        return self._loss_derivative_gradient(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update())
 
     def make_objective(self, var: Var, backward:bool=False):
         closure = var.closure
@@ -186,6 +199,11 @@ class LineSearchBase(Module, ABC):
         if closure is None: raise RuntimeError('line search requires closure')
         return partial(self._loss_derivative, var=var, closure=closure, params=var.params, update=var.get_update())
 
+    def make_objective_with_derivative_and_gradient(self, var: Var):
+        closure = var.closure
+        if closure is None: raise RuntimeError('line search requires closure')
+        return partial(self._loss_derivative_gradient, var=var, closure=closure, params=var.params, update=var.get_update())
+
     @abstractmethod
     def search(self, update: list[torch.Tensor], var: Var) -> float:
         """Finds the step size to use"""
@@ -193,6 +211,7 @@ class LineSearchBase(Module, ABC):
     @torch.no_grad
     def step(self, var: Var) -> Var:
         self._reset()
+
         params = var.params
         update = var.get_update()
 
@@ -223,17 +242,61 @@ class LineSearchBase(Module, ABC):
 
 
 
-# class GridLineSearch(LineSearch):
-#     """Mostly for testing, this is not practical"""
-#     def __init__(self, start, end, num):
-#         defaults = dict(start=start,end=end,num=num)
-#         super().__init__(defaults)
+class GridLineSearch(LineSearchBase):
+    """"""
+    def __init__(self, start, end, num):
+        defaults = dict(start=start,end=end,num=num)
+        super().__init__(defaults)
 
-#     @torch.no_grad
-#     def search(self, update, var):
-#         start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
+    @torch.no_grad
+    def search(self, update, var):
+        start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
 
-#         for lr in torch.linspace(start,end,num):
-#             self.evaluate_step_size(lr.item(), var=var, backward=False)
+        for lr in torch.linspace(start,end,num):
+            self.evaluate_f(lr.item(), var=var, backward=False)
 
-#         return self._best_step_size
+        return self._best_step_size
+
+
+def sufficient_decrease(f_0, g_0, f_a, a, c):
+    return f_a <= f_0 + c*a*min(g_0, 0)
+
+def curvature(g_0, g_a, c):
+    if g_0 > 0: return True
+    return g_a >= c * g_0
+
+def strong_curvature(g_0, g_a, c):
+    """same as curvature condition except curvature can't be too positive (which indicates overstep)"""
+    if g_0 > 0: return True
+    return abs(g_a) <= c * abs(g_0)
+
+def wolfe(f_0, g_0, f_a, g_a, a, c1, c2):
+    return sufficient_decrease(f_0, g_0, f_a, a, c1) and curvature(g_0, g_a, c2)
+
+def strong_wolfe(f_0, g_0, f_a, g_a, a, c1, c2):
+    return sufficient_decrease(f_0, g_0, f_a, a, c1) and strong_curvature(g_0, g_a, c2)
+
+def goldstein(f_0, g_0, f_a, a, c):
+    """same as armijo (sufficient_decrease) but additional lower bound"""
+    return f_0 + (1-c)*a*g_0 <= f_a <= f_a + c*a*g_0
+
+TerminationCondition = Literal["armijo", "curvature", "strong_curvature", "wolfe", "strong_wolfe", "goldstein", "decrease"]
+def termination_condition(
+    condition: TerminationCondition,
+    f_0,
+    g_0,
+    f_a,
+    g_a: Any | None,
+    a,
+    c,
+    c2=None,
+):
+    if not math.isfinite(f_a): return False
+    if condition == 'armijo': return sufficient_decrease(f_0, g_0, f_a, a, c)
+    if condition == 'curvature': return curvature(g_0, g_a, c)
+    if condition == 'strong_curvature': return strong_curvature(g_0, g_a, c)
+    if condition == 'wolfe': return wolfe(f_0, g_0, f_a, g_a, a, c, c2)
+    if condition == 'strong_wolfe': return strong_wolfe(f_0, g_0, f_a, g_a, a, c, c2)
+    if condition == 'goldstein': return goldstein(f_0, g_0, f_a, a, c)
+    if condition == 'decrease': return f_a < f_0
+    raise ValueError(f"unknown condition {condition}")

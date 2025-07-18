@@ -292,7 +292,7 @@ def ls_cubic_solver(f, g:torch.Tensor, H:torch.Tensor, M: float, is_inverse: boo
         s_lam = -torch.linalg.solve(H + lam*id_matrix, g)
         solver_it += 1
         crit = conv_criterion(s_lam, r_try)
-        if np.abs(crit) < epsilon:
+        if torch.abs(crit) < epsilon:
             return s_lam, solver_it
         if crit < 0:
             r_min = r_try

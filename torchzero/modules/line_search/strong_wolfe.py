@@ -1,186 +1,171 @@
-"""this needs to be reworked maybe but it also works"""
 import math
 import warnings
 from operator import itemgetter
+from typing import Literal
 
+import numpy as np
 import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
-from .line_search import LineSearchBase
-from ...utils import totensor
+from ...utils import as_tensorlist, totensor
+from ._polyinterp import polyinterp
+from .line_search import LineSearchBase, TerminationCondition, termination_condition
 
 
-def _zoom(f,
-          a_l, a_h,
-          f_l, g_l,
-          f_h, g_h,
-          f_0, g_0,
-          c1, c2,
-          maxzoom):
+def _isfinite(x):
+    if isinstance(x, torch.Tensor): return torch.isfinite(x).all()
+    return math.isfinite(x)
 
-    for i in range(maxzoom):
-        a_j = _cubic_interpolate(
-            *(totensor(i) for i in (a_l, f_l, g_l, a_h, f_h, g_h))
+def _totensor(x):
+    if not isinstance(x, torch.Tensor): return torch.tensor(x, dtype=torch.float32)
+    return x
 
-        )
+class _StrongWolfe:
+    def __init__(
+        self,
+        f,
+        f_0,
+        g_0,
+        d_norm,
+        a_init,
+        a_max,
+        c1,
+        c2,
+        maxiter,
+        maxeval,
+        maxzoom,
+        tol_change,
+        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"],
+    ):
+        self._f = f
+        self.f_0 = f_0
+        self.g_0 = g_0
+        self.d_norm = d_norm
+        self.a_init = a_init
+        self.a_max = a_max
+        self.c1 = c1
+        self.c2 = c2
+        self.maxiter = maxiter
+        if maxeval is None: maxeval = float('inf')
+        self.maxeval = maxeval
+        self.tol_change = tol_change
+        self.num_evals = 0
+        self.maxzoom = maxzoom
+        self.interpolation = interpolation
 
-        # if interpolation fails or produces endpoint, bisect
-        delta = abs(a_h - a_l)
-        if a_j is None or a_j == a_l or a_j == a_h:
-            a_j = a_l + 0.5 * delta
+        self.history = {}
 
+    def f(self, a):
+        if a in self.history: return self.history[a]
+        self.num_evals += 1
+        f_a, g_a = self._f(a)
+        self.history[a] = (f_a, g_a)
+        return f_a, g_a
 
-        f_j, g_j = f(a_j)
+    def interpolate(self, a_lo, f_lo, g_lo, a_hi, f_hi, g_hi, bounds=None):
+        if self.interpolation == 'cubic':
+            # pytorch cubic interpolate needs tensors
+            a_lo = _totensor(a_lo); f_lo = _totensor(f_lo); g_lo = _totensor(g_lo)
+            a_hi = _totensor(a_hi); f_hi = _totensor(f_hi); g_hi = _totensor(g_hi)
+            return float(_cubic_interpolate(x1=a_lo, f1=f_lo, g1=g_lo, x2=a_hi, f2=f_hi, g2=g_hi, bounds=bounds))
 
-        # check armijo
-        armijo = f_j <= f_0 + c1 * a_j * g_0
+        if self.interpolation == 'bisection':
+            return a_lo + 0.5 * (a_hi - a_lo)
 
-        # check strong wolfe
-        wolfe = abs(g_j) <= c2 * abs(g_0)
+        if self.interpolation == 'quadratic':
+            raise NotImplementedError(self.interpolation)
 
+        if self.interpolation == 'polynomial':
+            finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
+            if bounds is None: bounds = (None, None)
+            return polyinterp(np.array(finite_history), *bounds) # pyright:ignore[reportArgumentType]
 
-        # minimum between alpha_low and alpha_j
-        if not armijo or f_j >= f_l:
-            a_h = a_j
-            f_h = f_j
-            g_h = g_j
         else:
-            # alpha_j satisfies armijo
-            if wolfe:
-                return a_j, f_j
+            raise ValueError(self.interpolation)
 
-            # minimum between alpha_j and alpha_high
-            if g_j * (a_h - a_l) >= 0:
-                # between alpha_low and alpha_j
-                # a_h = a_l
-                # f_h = f_l
-                # g_h = g_l
-                a_h = a_j
-                f_h = f_j
-                g_h = g_j
+    def zoom(self, a_lo, f_lo, g_lo, a_hi, f_hi, g_hi):
+        if a_lo >= a_hi:
+            a_hi, f_hi, g_hi, a_lo, f_lo, g_lo = a_lo, f_lo, g_lo, a_hi, f_hi, g_hi
 
-            # is this messing it up?
+        insuf_progress = False
+        for _ in range(self.maxzoom):
+            if self.num_evals >= self.maxeval: break
+            if (a_hi - a_lo) * self.d_norm < self.tol_change: break # small bracket
+
+            if not (_isfinite(f_hi) and _isfinite(g_hi)):
+                a_hi = a_hi / 2
+                f_hi, g_hi = self.f(a_hi)
+                continue
+
+            a_j = self.interpolate(a_lo, f_lo, g_lo, a_hi, f_hi, g_hi, bounds=(a_lo, min(a_hi, self.a_max)))
+
+            # this part is from https://github.com/pytorch/pytorch/blob/main/torch/optim/lbfgs.py:
+            eps = 0.1 * (a_hi - a_lo)
+            if min(a_hi - a_j, a_j - a_lo) < eps:
+                # interpolation close to boundary
+                if insuf_progress or a_j >= a_hi or a_j <= a_lo:
+                    # evaluate at 0.1 away from boundary
+                    if abs(a_j - a_hi) < abs(a_j - a_lo):
+                        a_j = a_hi - eps
+                    else:
+                        a_j = a_lo + eps
+                    insuf_progress = False
+                else:
+                    insuf_progress = True
             else:
-                a_l = a_j
-                f_l = f_j
-                g_l = g_j
+                insuf_progress = False
 
+            f_j, g_j = self.f(a_j)
 
+            if f_j > self.f_0 + self.c1*a_j*self.g_0 or f_j > f_lo:
+                a_hi, f_hi, g_hi = a_j, f_j, g_j
 
+            else:
+                if abs(g_j) <= -self.c2 * self.g_0:
+                    return a_j, f_j, g_j
 
-        # check if interval too small
-        delta = abs(a_h - a_l)
-        if delta <= 1e-9 or delta <= 1e-6 * max(abs(a_l), abs(a_h)):
-            l_satisfies_wolfe = (f_l <= f_0 + c1 * a_l * g_0) and (abs(g_l) <= c2 * abs(g_0))
-            h_satisfies_wolfe = (f_h <= f_0 + c1 * a_h * g_0) and (abs(g_h) <= c2 * abs(g_0))
+                if g_j * (a_hi - a_lo) >= 0:
+                    a_hi, f_hi, g_hi = a_lo, f_lo, g_lo
 
-            if l_satisfies_wolfe and h_satisfies_wolfe: return a_l if f_l <= f_h else a_h, f_h
-            if l_satisfies_wolfe: return a_l, f_l
-            if h_satisfies_wolfe: return a_h, f_h
-            if f_l <= f_0 + c1 * a_l * g_0: return a_l, f_l
-            return None,None
+                a_lo, f_lo, g_lo = a_j, f_j, g_j
 
-        if a_j is None or a_j == a_l or a_j == a_h:
-            a_j = a_l + 0.5 * delta
+        # fail
+        return None, None, None
 
+    def search(self):
+        a_i = min(self.a_init, self.a_max)
+        f_i = g_i = None
+        a_prev = 0
+        f_prev = self.f_0
+        g_prev = self.g_0
+        for i in range(self.maxiter):
+            if self.num_evals >= self.maxeval: break
+            f_i, g_i = self.f(a_i)
 
-    return None,None
+            if f_i > self.f_0 + self.c1*a_i*self.g_0 or (i > 0 and f_i > f_prev):
+                return self.zoom(a_prev, f_prev, g_prev, a_i, f_i, g_i)
 
+            if abs(g_i) <= -self.c2 * self.g_0:
+                return a_i, f_i, g_i
 
-def strong_wolfe(
-    f,
-    f_0,
-    g_0,
-    init: float = 1.0,
-    c1: float = 1e-4,
-    c2: float = 0.9,
-    maxiter: int = 25,
-    maxzoom: int = 15,
-    # a_max: float = 1e30,
-    expand: float = 2.0,  # Factor to increase alpha in bracketing
-    plus_minus: bool = False,
-) -> tuple[float,float] | tuple[None,None]:
-    a_prev = 0.0
+            if g_i >= 0:
+                return self.zoom(a_i, f_i, g_i, a_prev, f_prev, g_prev)
 
-    if g_0 == 0: return None,None
-    if g_0 > 0:
-        # if direction is not a descent direction, perform line search in opposite direction
-        if plus_minus:
-            def inverted_objective(alpha):
-                l, g = f(-alpha)
-                return l, -g
-            a, v = strong_wolfe(
-                inverted_objective,
-                init=init,
-                f_0=f_0,
-                g_0=-g_0,
-                c1=c1,
-                c2=c2,
-                maxiter=maxiter,
-                # a_max=a_max,
-                expand=expand,
-                plus_minus=False,
-            )
-            if a is not None and v is not None: return -a, v
-        return None, None
+            # from pytorch
+            min_step = a_i + 0.01 * (a_i - a_prev)
+            max_step = a_i * 10
+            a_i_next = self.interpolate(a_prev, f_prev, g_prev, a_i, f_i, g_i, bounds=(min_step, min(max_step, self.a_max)))
+            # a_i_next = self.interpolate(a_prev, f_prev, g_prev, a_i, f_i, g_i, bounds=(0, self.a_max))
 
-    f_prev = f_0
-    g_prev = g_0
-    a_cur = init
+            a_prev, f_prev, g_prev = a_i, f_i, g_i
+            a_i = a_i_next
 
-    # bracket
-    for i in range(maxiter):
+        if self.num_evals < self.maxeval:
+            assert f_i is not None and g_i is not None
+            return self.zoom(0, self.f_0, self.g_0, a_i, f_i, g_i)
 
-        f_cur, g_cur = f(a_cur)
+        return None, None, None
 
-        # check armijo
-        armijo_violated = f_cur > f_0 + c1 * a_cur * g_0
-        func_increased = f_cur >= f_prev and i > 0
-
-        if armijo_violated or func_increased:
-            return _zoom(f,
-                         a_prev, a_cur,
-                         f_prev, g_prev,
-                         f_cur, g_cur,
-                         f_0, g_0,
-                         c1, c2,
-                         maxzoom=maxzoom,
-                         )
-
-
-
-        # check strong wolfe
-        if abs(g_cur) <= c2 * abs(g_0):
-            return a_cur, f_cur
-
-        # minimum is bracketed
-        if g_cur >= 0:
-            return _zoom(f,
-                        #alpha_curr, alpha_prev,
-                        a_prev, a_cur,
-                        #phi_curr, phi_prime_curr,
-                        f_prev, g_prev,
-                        f_cur, g_cur,
-                        f_0, g_0,
-                        c1, c2,
-                        maxzoom=maxzoom,)
-
-        # otherwise continue bracketing
-        a_next = a_cur * expand
-
-        # update previous point and continue loop with increased step size
-        a_prev = a_cur
-        f_prev = f_cur
-        g_prev = g_cur
-        a_cur = a_next
-
-
-    # max iters reached
-    return None, None
-
-def _notfinite(x):
-    if isinstance(x, torch.Tensor): return not torch.isfinite(x).all()
-    return not math.isfinite(x)
 
 class StrongWolfe(LineSearchBase):
     """Cubic interpolation line search satisfying Strong Wolfe condition.
@@ -225,19 +210,22 @@ class StrongWolfe(LineSearchBase):
     """
     def __init__(
         self,
-        init: float = 1.0,
         c1: float = 1e-4,
         c2: float = 0.9,
+        a_init: Literal['fo', 'quad', 'quad_clip', 'prev', 'init'] = 'init',
+        a_max: float = 1e12,
+        init_value: float = 1,
         maxiter: int = 25,
         maxzoom: int = 10,
-        # a_max: float = 1e10,
-        expand: float = 2.0,
-        use_prev: bool = False,
+        maxeval: int | None = None,
+        tol_change: float = 1e-8,
+        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"] = 'cubic',
         adaptive = True,
+        fallback:bool = True,
         plus_minus = False,
     ):
-        defaults=dict(init=init,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom,
-                      expand=expand, adaptive=adaptive, plus_minus=plus_minus,use_prev=use_prev)
+        defaults=dict(init_value=init_value,init=a_init,a_max=a_max,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom, fallback=fallback,
+                      maxeval=maxeval, adaptive=adaptive, interpolation=interpolation, plus_minus=plus_minus, tol_change=tol_change)
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
@@ -245,32 +233,93 @@ class StrongWolfe(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
+        self._g_prev = self._f_prev = None
         objective = self.make_objective_with_derivative(var=var)
 
-        init, c1, c2, maxiter, maxzoom, expand, adaptive, plus_minus, use_prev = itemgetter(
-            'init', 'c1', 'c2', 'maxiter', 'maxzoom',
-            'expand', 'adaptive', 'plus_minus', 'use_prev')(self.settings[var.params[0]])
+        init_value, init, c1, c2, a_max, maxiter, maxzoom, maxeval, interpolation, adaptive, plus_minus, fallback, tol_change = itemgetter(
+            'init_value', 'init', 'c1', 'c2', 'a_max', 'maxiter', 'maxzoom',
+            'maxeval', 'interpolation', 'adaptive', 'plus_minus', 'fallback', 'tol_change')(self.settings[var.params[0]])
 
-        f_0, g_0 = objective(0)
-        if use_prev: init = self.global_state.get('prev_alpha', init)
+        dir = as_tensorlist(var.get_update())
+        grad_list = var.get_grad()
 
-        step_size,f_a = strong_wolfe(
-            objective,
-            f_0=f_0, g_0=g_0,
-            init=init * self.global_state.setdefault("initial_scale", 1),
+        g_0 = -sum(t.sum() for t in torch._foreach_mul(grad_list, dir))
+        f_0 = var.get_loss(False)
+        dir_norm = dir.global_vector_norm()
+
+        inverted = False
+        if plus_minus and g_0 > 0:
+            def inverted_objective(a):
+                l, g_a = objective(-a)
+                return l, -g_a
+            objective = inverted_objective
+            inverted = True
+
+        # --------------------- determine initial step size guess -------------------- #
+        init = init.lower().strip()
+
+        a_init = init_value
+        if init == 'init':
+            pass # use init_value
+
+        elif init == 'prev':
+            if 'a_prev' in self.global_state:
+                a_init = self.global_state['a_prev']
+
+        elif init == 'fo':
+            if 'g_prev' in self.global_state and g_0 < -1e-10:
+                a_prev = self.global_state['a_prev']
+                g_prev = self.global_state['g_prev']
+                if g_prev < 0:
+                    a_init = a_prev * g_prev / g_0
+
+        elif init in ('quad', 'quad_clip'):
+            if 'f_prev' in self.global_state and g_0 < -1e-10:
+                f_prev = self.global_state['f_prev']
+                if f_0 < f_prev:
+                    a_init = 2 * (f_0 - f_prev) / g_0
+                    if init == 'quad_clip': a_init = min(1, 1.01*a_init)
+
+        else:
+            raise ValueError(init)
+
+        strong_wolfe = _StrongWolfe(
+            f=objective,
+            f_0=f_0,
+            g_0=g_0,
+            d_norm=dir_norm,
+            a_init=a_init,
+            a_max=a_max,
             c1=c1,
             c2=c2,
             maxiter=maxiter,
             maxzoom=maxzoom,
-            expand=expand,
-            plus_minus=plus_minus,
+            maxeval=maxeval,
+            tol_change=tol_change,
+            interpolation=interpolation,
         )
 
-        if f_a is not None and (f_a > f_0 or _notfinite(f_a)): step_size = None
-        if step_size is not None and step_size != 0 and not _notfinite(step_size):
-            self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))
-            self.global_state['prev_alpha'] = step_size
-            return step_size
+        a, f_a, g_a = strong_wolfe.search()
+        if inverted and a is not None: a = -a
+        if f_a is not None and (f_a > f_0 or not _isfinite(f_a)): a = None
 
+        if fallback:
+            if a is None or a==0 or not _isfinite(a):
+                lowest = min(strong_wolfe.history.items(), key=lambda x: x[1][0])
+                if lowest[1][0] < f_0:
+                    a = lowest[0]
+                    f_a, g_a = lowest[1]
+                    if inverted: a = -a
+
+
+
+        if a is not None and a != 0 and _isfinite(a):
+            self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))
+            self.global_state['a_prev'] = a
+            self.global_state['f_prev'] = f_0
+            self.global_state['g_prev'] = g_0
+            return a
+
+        # fail
         if adaptive: self.global_state['initial_scale'] *= 0.5
         return 0

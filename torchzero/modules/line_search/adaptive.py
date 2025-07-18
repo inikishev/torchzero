@@ -4,47 +4,74 @@ from operator import itemgetter
 
 import torch
 
-from .line_search import LineSearchBase
+from .line_search import LineSearchBase, TerminationCondition, termination_condition
 
 
 
 def adaptive_tracking(
     f,
-    x_0,
+    a_0,
+    g_0,
     maxiter: int,
     nplus: float = 2,
     nminus: float = 0.5,
+    c1: float = 1e-4,
+    c2: float = 0.9,
+    condition: TerminationCondition = 'armijo',
 ):
     f_0 = f(0)
 
-    t = x_0
-    f_t = f(t)
+    def satisfies(f_a, a):
+        return termination_condition(condition, f_0=f_0, g_0=g_0, f_a=f_a, g_a=None, a=a, c=c1, c2=c2)
+
+    a = a_0
+    f_a = f(a)
 
     # backtrack
-    if f_t > f_0:
-        while f_t > f_0:
+    if f_a > f_0 or not math.isfinite(f_a):
+        while not satisfies(f_a, a):
             maxiter -= 1
             if maxiter < 0: return 0, f_0
-            t = t*nminus
-            f_t = f(t)
-        return t, f_t
+            a = a*nminus
+            f_a = f(a)
+        return a, f_a
 
     # forwardtrack
-    f_prev = f_t
-    t *= nplus
-    f_t = f(t)
-    if f_prev < f_t: return t / nplus, f_prev
-    while f_prev >= f_t:
-        maxiter -= 1
-        if maxiter < 0: return t, f_t
-        f_prev = f_t
-        t *= nplus
-        f_t = f(t)
-    return t / nplus, f_prev
+    f_prev = f_a
+    a_prev = a
+    a *= nplus
+    f_a = f(a)
+    if f_prev < f_a or not math.isfinite(f_a):
+        if satisfies(f_prev, a_prev): return a_prev, f_prev
+        return 0, f_0
 
-class AdaptiveLineSearch(LineSearchBase):
+    sat_prev = satisfies(f_a, a)
+    a_largest = None
+    f_a_largest = None
+    if sat_prev:
+        a_largest = a
+        f_a_largest = f_a
+
+    while f_prev >= f_a and math.isfinite(f_a):
+        maxiter -= 1
+        if maxiter < 0: break
+        f_prev = f_a
+        a_prev = a
+        a *= nplus
+        f_a = f(a)
+        sat = satisfies(f_a, a)
+        if sat:
+            a_largest = a
+            f_a_largest = f_a
+        if sat_prev and not sat:
+            return a_prev, f_prev
+        sat_prev = sat
+
+    if a_largest is None: a_largest, f_a_largest = 0, f_0
+    return a_largest, f_a_largest
+
+class AdaptiveTracking(LineSearchBase):
     """Adaptive line search, similar to backtracking but also has forward tracking mode.
-    Currently doesn't check for weak curvature condition.
 
     Args:
         init (float, optional): initial step size. Defaults to 1.0.
@@ -60,9 +87,12 @@ class AdaptiveLineSearch(LineSearchBase):
         nplus: float = 2,
         nminus: float = 0.5,
         maxiter: int = 10,
+        c1: float = 1e-4,
+        c2: float = 0.9,
+        condition: TerminationCondition = 'armijo',
         adaptive=True,
     ):
-        defaults=dict(init=init,nplus=nplus,nminus=nminus,maxiter=maxiter,adaptive=adaptive,)
+        defaults=dict(init=init,nplus=nplus,nminus=nminus,maxiter=maxiter,adaptive=adaptive,c1=c1,c2=c2,condition=condition)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
@@ -72,28 +102,40 @@ class AdaptiveLineSearch(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        init, nplus, nminus, maxiter, adaptive = itemgetter(
-            'init', 'nplus', 'nminus', 'maxiter', 'adaptive')(self.settings[var.params[0]])
+        init, nplus, nminus, maxiter, adaptive, c1, c2, condition = itemgetter(
+            'init', 'nplus', 'nminus', 'maxiter', 'adaptive', 'c1', 'c2', 'condition')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
-        # # directional derivative
-        # d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
+        # directional derivative
+        if c1 == 0: d = 0
+        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
         beta_scale = self.global_state.get('beta_scale', 1)
-        x_prev = self.global_state.get('prev_x', 1)
+        a_prev = self.global_state.get('a_prev', init)
 
         if adaptive: nminus = nminus * beta_scale
 
-
-        step_size, f = adaptive_tracking(objective, x_prev, maxiter, nplus=nplus, nminus=nminus)
+        step_size, f = adaptive_tracking(
+            objective,
+            a_0=a_prev,
+            g_0=d,
+            maxiter=maxiter,
+            nplus=nplus,
+            nminus=nminus,
+            c1=c1,
+            c2=c2,
+            condition=condition,
+        )
 
         # found an alpha that reduces loss
         if step_size != 0:
             self.global_state['beta_scale'] = min(1.0, self.global_state['beta_scale'] * math.sqrt(1.5))
+            self.global_state['a_prev'] = max(min(step_size, 1e16), 1e-10)
             return step_size
 
         # on fail reduce beta scale value
         self.global_state['beta_scale'] /= 1.5
+        self.global_state['a_prev'] = init
         return 0

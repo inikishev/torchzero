@@ -1,7 +1,7 @@
 from typing import Literal, overload
 import torch
 
-from ...utils import TensorList, as_tensorlist, NumberList
+from ...utils import TensorList, as_tensorlist, NumberList, generic_vector_norm
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 from ...core import Chainable, apply_transform, Module
@@ -102,6 +102,9 @@ class NewtonCG(Module):
         if inner is not None:
             self.set_child('inner', inner)
 
+        self._num_hvps = 0
+        self._num_hvps_last_step = 0
+
     @torch.no_grad
     def step(self, var):
         params = TensorList(var.params)
@@ -117,11 +120,13 @@ class NewtonCG(Module):
         h = settings['h']
         warm_start = settings['warm_start']
 
+        self._num_hvps_last_step = 0
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
             grad = var.get_grad(create_graph=True)
 
             def H_mm(x):
+                self._num_hvps_last_step += 1
                 with torch.enable_grad():
                     return TensorList(hvp(params, grad, x, retain_graph=True))
 
@@ -132,10 +137,12 @@ class NewtonCG(Module):
 
             if hvp_method == 'forward':
                 def H_mm(x):
+                    self._num_hvps_last_step += 1
                     return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
 
             elif hvp_method == 'central':
                 def H_mm(x):
+                    self._num_hvps_last_step += 1
                     return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
 
             else:
@@ -169,6 +176,8 @@ class NewtonCG(Module):
             x0.copy_(x)
 
         var.update = x
+
+        self._num_hvps += self._num_hvps_last_step
         return var
 
 
@@ -264,6 +273,9 @@ class TruncatedNewtonCG(Module):
         if inner is not None:
             self.set_child('inner', inner)
 
+        self._num_hvps = 0
+        self._num_hvps_last_step = 0
+
     @torch.no_grad
     def step(self, var):
         params = TensorList(var.params)
@@ -278,18 +290,21 @@ class TruncatedNewtonCG(Module):
         h = settings['h']
         max_attempts = settings['max_attempts']
         solver = settings['solver'].lower().strip()
-        boundary_tol = settings['boundary_tol'].lower().strip()
+        boundary_tol = settings['boundary_tol']
 
         eta = settings['eta']
         nplus = settings['nplus']
         nminus = settings['nminus']
         init = settings['init']
 
+        self._num_hvps_last_step = 0
+
         # ---------------------- Hessian vector product function --------------------- #
         if hvp_method == 'autograd':
             grad = var.get_grad(create_graph=True)
 
             def H_mm(x):
+                self._num_hvps_last_step += 1
                 with torch.enable_grad():
                     return TensorList(hvp(params, grad, x, retain_graph=True))
 
@@ -300,10 +315,12 @@ class TruncatedNewtonCG(Module):
 
             if hvp_method == 'forward':
                 def H_mm(x):
+                    self._num_hvps_last_step += 1
                     return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
 
             elif hvp_method == 'central':
                 def H_mm(x):
+                    self._num_hvps_last_step += 1
                     return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
 
             else:
@@ -356,7 +373,7 @@ class TruncatedNewtonCG(Module):
 
             # very good step
             elif rho > 0.75:
-                magn = torch.linalg.vector_norm(x) # pylint:disable=not-callable
+                magn = generic_vector_norm(x)
                 if (magn - trust_region) / trust_region > -boundary_tol: # close to boundary
                     self.global_state['trust_region'] = trust_region * nplus
 
@@ -371,6 +388,7 @@ class TruncatedNewtonCG(Module):
         else:
             var.update = params.zeros_like()
 
+        self._num_hvps += self._num_hvps_last_step
         return var
 
 
