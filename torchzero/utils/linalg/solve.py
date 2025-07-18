@@ -33,67 +33,7 @@ def _make_A_mm_reg(A_mm: Callable | torch.Tensor, reg):
     return Ax_reg
 
 
-@overload
-def cg(
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
-    b: torch.Tensor,
-    x0_: torch.Tensor | None = None,
-    tol: float | None = 1e-4,
-    maxiter: int | None = None,
-    reg: float = 0,
-) -> torch.Tensor: ...
-@overload
-def cg(
-    A_mm: Callable[[TensorList], TensorList],
-    b: TensorList,
-    x0_: TensorList | None = None,
-    tol: float | None = 1e-4,
-    maxiter: int | None = None,
-    reg: float | list[float] | tuple[float] = 0,
-) -> TensorList: ...
-
-def cg(
-    A_mm: Callable | torch.Tensor,
-    b: torch.Tensor | TensorList,
-    x0_: torch.Tensor | TensorList | None = None,
-    tol: float | None = 1e-4,
-    maxiter: int | None = None,
-    reg: float | list[float] | tuple[float] = 0,
-):
-    A_mm_reg = _make_A_mm_reg(A_mm, reg)
-    eps = generic_finfo_eps(b)**2
-
-    if tol is None: tol = eps
-
-    if maxiter is None: maxiter = generic_numel(b)
-    if x0_ is None: x0_ = generic_zeros_like(b)
-
-    x = x0_
-    residual = b - A_mm_reg(x)
-    p = residual.clone() # search direction
-    r_norm = generic_vector_norm(residual)
-    init_norm = r_norm
-    if r_norm < tol: return x
-    k = 0
-
-
-    while True:
-        Ap = A_mm_reg(p)
-        step_size = (r_norm**2) / p.dot(Ap)
-        x += step_size * p # Update solution
-        residual -= step_size * Ap # Update residual
-        new_r_norm = generic_vector_norm(residual)
-
-        k += 1
-        if new_r_norm <= tol * init_norm: return x
-        if k >= maxiter: return x
-
-        beta = (new_r_norm**2) / (r_norm**2)
-        p = residual + beta*p
-        r_norm = new_r_norm
-
-
-# https://arxiv.org/pdf/2110.02820 algorithm 2.1 apparently supposed to be diabolical
+# https://arxiv.org/pdf/2110.02820
 def nystrom_approximation(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     ndim: int,
@@ -115,7 +55,6 @@ def nystrom_approximation(
     lambd = (S.pow(2) - v).clip(min=0) #Remove shift, compute eigs
     return U, lambd
 
-# this one works worse
 def nystrom_sketch_and_solve(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
@@ -141,7 +80,6 @@ def nystrom_sketch_and_solve(
     term2 = (1.0 / reg) * (b - U @ Uᵀb)
     return (term1 + term2).squeeze(-1)
 
-# this one is insane
 def nystrom_pcg(
     A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
@@ -219,42 +157,46 @@ def _trust_tau(x,d,trust_region):
 
 
 @overload
-def steihaug_toint_cg(
+def cg(
     A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
     b: torch.Tensor,
-    trust_region: float,
     x0: torch.Tensor | None = None,
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float = 0,
+    trust_region: float | None = None,
 ) -> torch.Tensor: ...
 @overload
-def steihaug_toint_cg(
+def cg(
     A_mm: Callable[[TensorList], TensorList],
     b: TensorList,
-    trust_region: float,
     x0: TensorList | None = None,
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
+    trust_region: float | None = None,
 ) -> TensorList: ...
-def steihaug_toint_cg(
+def cg(
     A_mm: Callable | torch.Tensor,
     b: torch.Tensor | TensorList,
-    trust_region: float,
     x0: torch.Tensor | TensorList | None = None,
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
+    trust_region: float | None = None,
 ):
     """
     Solution is bounded to have L2 norm no larger than :code:`trust_region`. If solution exceeds :code:`trust_region`, CG is terminated early, so it is also faster.
     """
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
 
-    x = x0
-    if x is None: x = generic_zeros_like(b)
-    r = b
+    if x0 is None:
+        x = generic_zeros_like(b)
+        r = b
+    else:
+        x = x0
+        r = b - A_mm_reg(x)
+
     d = r.clone()
 
     eps = generic_finfo_eps(b)**2
@@ -270,14 +212,14 @@ def steihaug_toint_cg(
         Ad = A_mm_reg(d)
 
         d_Ad = d.dot(Ad)
-        if d_Ad <= eps:
+        if trust_region is not None and d_Ad <= eps:
             return _trust_tau(x, d, trust_region)
 
         alpha = r.dot(r) / d_Ad
         p_next = x + alpha * d
 
         # check if the step exceeds the trust-region boundary
-        if generic_vector_norm(p_next) >= trust_region:
+        if trust_region is not None and generic_vector_norm(p_next) >= trust_region:
             return _trust_tau(x, d, trust_region)
 
         # update step, residual and direction
@@ -326,7 +268,7 @@ def minres(
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
-    trust_region: float | None = None,
+    trust_region: float | None = None, #trust region is experimental
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
     eps = generic_finfo_eps(b)

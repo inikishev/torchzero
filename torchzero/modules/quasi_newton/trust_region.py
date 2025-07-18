@@ -15,7 +15,7 @@ from ...utils.derivatives import (
     jacobian_and_hessian_wrt,
 )
 from .quasi_newton import HessianUpdateStrategy
-from ...utils.linalg import steihaug_toint_cg
+from ...utils.linalg import cg
 
 
 def trust_lstsq(H: torch.Tensor, g: torch.Tensor, trust_region: float):
@@ -221,7 +221,7 @@ class TrustCG(TrustRegionBase):
             if trust_region < 1e-8 or trust_region > 1e8:
                 trust_region = self.global_state['trust_region'] = settings['init']
 
-            update_vec = steihaug_toint_cg(P, g, trust_region, reg=reg)
+            update_vec = cg(P, g, trust_region=trust_region, reg=reg)
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 update_vec=update_vec, params=params, closure=closure,

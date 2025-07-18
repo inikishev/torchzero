@@ -5,7 +5,7 @@ from ...utils import TensorList, as_tensorlist, NumberList, generic_vector_norm
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 from ...core import Chainable, apply_transform, Module
-from ...utils.linalg.solve import cg, steihaug_toint_cg, minres
+from ...utils.linalg.solve import cg, minres
 
 class NewtonCG(Module):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
@@ -160,7 +160,7 @@ class NewtonCG(Module):
         if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         if solver == 'cg':
-            x = cg(A_mm=H_mm, b=b, x0_=x0, tol=tol, maxiter=maxiter, reg=reg)
+            x = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
 
         elif solver == 'minres':
             x = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
@@ -181,7 +181,7 @@ class NewtonCG(Module):
         return var
 
 
-class TruncatedNewtonCG(Module):
+class NewtonCGSteihaug(Module):
     """Trust region Newton's method with a matrix-free Steihaug-Toint conjugate gradient or MINRES solver.
 
     This optimizer implements Newton's method using a matrix-free conjugate
@@ -345,7 +345,7 @@ class TruncatedNewtonCG(Module):
                 trust_region = self.global_state['trust_region'] = init
 
             if solver == 'cg':
-                x = steihaug_toint_cg(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg)
+                x = cg(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg)
 
             elif solver == 'minres':
                 x = minres(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
