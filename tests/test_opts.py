@@ -728,7 +728,7 @@ SSVM = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_reset=True), tz.m.StrongWolfe(fallback=True)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_reset=True), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
-    func='rosen', steps=50, loss=0.01, merge_invariant=True,
+    func='rosen', steps=50, loss=0.2, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 
