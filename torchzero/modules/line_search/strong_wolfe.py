@@ -229,7 +229,6 @@ class StrongWolfe(LineSearchBase):
         super().__init__(defaults=defaults)
 
         self.global_state['initial_scale'] = 1.0
-        self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
     def search(self, update, var):
@@ -283,6 +282,9 @@ class StrongWolfe(LineSearchBase):
         else:
             raise ValueError(init)
 
+        if adaptive:
+            a_init *= self.global_state.get('initial_scale', 1)
+
         strong_wolfe = _StrongWolfe(
             f=objective,
             f_0=f_0,
@@ -314,12 +316,12 @@ class StrongWolfe(LineSearchBase):
 
 
         if a is not None and a != 0 and _isfinite(a):
-            self.global_state['initial_scale'] = min(1.0, self.global_state['initial_scale'] * math.sqrt(2))
+            self.global_state['initial_scale'] = min(1.0, self.global_state.get('initial_scale', 1) * math.sqrt(2))
             self.global_state['a_prev'] = a
             self.global_state['f_prev'] = f_0
             self.global_state['g_prev'] = g_0
             return a
 
         # fail
-        if adaptive: self.global_state['initial_scale'] *= 0.5
+        if adaptive: self.global_state['initial_scale'] = self.global_state.get('initial_scale', 1) * 0.5
         return 0
