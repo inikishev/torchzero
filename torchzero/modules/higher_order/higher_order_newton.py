@@ -306,7 +306,7 @@ class HigherOrderNewton(Module):
                 elif rho > 0.75:
                     step = (x_star - x0)
                     magn = torch.linalg.vector_norm(step) # pylint:disable=not-callable
-                    if (magn - trust_value) / trust_value > -boundary_tol: # close to boundary
+                    if trust_method == 'proximal' or (magn - trust_value) / trust_value > -boundary_tol: # close to boundary
                         self.global_state['trust_region'] = trust_value * nplus
 
                 # if the ratio is high enough then accept the proposed step
