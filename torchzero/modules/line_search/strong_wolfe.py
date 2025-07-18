@@ -221,7 +221,7 @@ class StrongWolfe(LineSearchBase):
         tol_change: float = 1e-8,
         interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"] = 'cubic',
         adaptive = True,
-        fallback:bool = True,
+        fallback:bool = False,
         plus_minus = False,
     ):
         defaults=dict(init_value=init_value,init=a_init,a_max=a_max,c1=c1,c2=c2,maxiter=maxiter,maxzoom=maxzoom, fallback=fallback,
