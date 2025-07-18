@@ -281,7 +281,7 @@ class HagerZhang(ConguateGradientBase):
 
 
 # ----------------------------------- DYHS ---------------------------------- #
-def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
+def dyhs_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     grad_diff = g - prev_g
     denom = prev_d.dot(grad_diff)
     if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
@@ -304,7 +304,7 @@ class DYHS(ConguateGradientBase):
         super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
-        return hs_dy_beta(g, prev_d, prev_g)
+        return dyhs_beta(g, prev_d, prev_g)
 
 
 def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
