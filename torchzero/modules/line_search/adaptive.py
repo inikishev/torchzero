@@ -15,14 +15,13 @@ def adaptive_tracking(
     maxiter: int,
     nplus: float = 2,
     nminus: float = 0.5,
-    c1: float = 1e-4,
-    c2: float = 0.9,
+    c: float = 1e-4,
     condition: TerminationCondition = 'armijo',
 ):
     f_0 = f(0)
 
     def satisfies(f_a, a):
-        return termination_condition(condition, f_0=f_0, g_0=g_0, f_a=f_a, g_a=None, a=a, c=c1, c2=c2)
+        return termination_condition(condition, f_0=f_0, g_0=g_0, f_a=f_a, g_a=None, a=a, c=c)
 
     a = a_0
     f_a = f(a)
@@ -75,10 +74,19 @@ class AdaptiveTracking(LineSearchBase):
 
     Args:
         init (float, optional): initial step size. Defaults to 1.0.
-        beta (float, optional): multiplies each consecutive step size by this value. Defaults to 0.5.
-        maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
+        nplus (float, optional): multiplier to step size if initial step size is optimal. Defaults to 2.
+        nminus (float, optional): multiplier to step size if initial step size is too big. Defaults to 0.5.
+        maxiter (int, optional): maximum number of function evaluations per step. Defaults to 10.
+        c (float, optional): termination condition value, type of condition depends on value of ``condition`` argument. Defaults to 1e-4.
+        condition (TerminationCondition, optional):
+            type of termination condition, only ones that do not use gradient at f(x+a*d) can be specified.
+            - "armijo" - sufficient decrease condition.
+            - "goldstein" - sufficient decrease plus second condition which prevents small step sizes, can be used with Newton-type methods.
+            - "decrease" - any decrease in objective function value satisfies the condition.
+
+            Defaults to 'armijo'.
         adaptive (bool, optional):
-            when enabled, if line search failed, beta size is reduced.
+            when enabled, if line search failed, ``beta`` parameter is reduced by 1.5 times.
             Otherwise it is reset to initial value. Defaults to True.
     """
     def __init__(
@@ -87,12 +95,11 @@ class AdaptiveTracking(LineSearchBase):
         nplus: float = 2,
         nminus: float = 0.5,
         maxiter: int = 10,
-        c1: float = 1e-4,
-        c2: float = 0.9,
+        c: float = 1e-4,
         condition: TerminationCondition = 'armijo',
         adaptive=True,
     ):
-        defaults=dict(init=init,nplus=nplus,nminus=nminus,maxiter=maxiter,adaptive=adaptive,c1=c1,c2=c2,condition=condition)
+        defaults=dict(init=init,nplus=nplus,nminus=nminus,maxiter=maxiter,adaptive=adaptive,c1=c,condition=condition)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
@@ -102,13 +109,13 @@ class AdaptiveTracking(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        init, nplus, nminus, maxiter, adaptive, c1, c2, condition = itemgetter(
-            'init', 'nplus', 'nminus', 'maxiter', 'adaptive', 'c1', 'c2', 'condition')(self.settings[var.params[0]])
+        init, nplus, nminus, maxiter, adaptive, c, condition = itemgetter(
+            'init', 'nplus', 'nminus', 'maxiter', 'adaptive', 'c', 'condition')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
         # directional derivative
-        if c1 == 0: d = 0
+        if c == 0: d = 0
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
@@ -124,8 +131,7 @@ class AdaptiveTracking(LineSearchBase):
             maxiter=maxiter,
             nplus=nplus,
             nminus=nminus,
-            c1=c1,
-            c2=c2,
+            c=c,
             condition=condition,
         )
 

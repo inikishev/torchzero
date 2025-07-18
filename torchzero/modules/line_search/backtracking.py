@@ -12,8 +12,7 @@ def backtracking_line_search(
     g_0: float | torch.Tensor,
     init: float = 1.0,
     beta: float = 0.5,
-    c1: float = 1e-4,
-    c2: float = 0.9,
+    c: float = 1e-4,
     maxiter: int = 10,
     condition: TerminationCondition = 'armijo',
 ) -> float | None:
@@ -45,7 +44,7 @@ def backtracking_line_search(
             return a / beta # new value is larger than previous value
         f_prev = f_a
 
-        if termination_condition(condition, f_0=f_0, g_0=g_0, f_a=f_a, g_a=None, a=a, c=c1, c2=c2):
+        if termination_condition(condition, f_0=f_0, g_0=g_0, f_a=f_a, g_a=None, a=a, c=c):
             # found an acceptable alpha
             return a
 
@@ -56,15 +55,22 @@ def backtracking_line_search(
     return None
 
 class Backtracking(LineSearchBase):
-    """Backtracking line search satisfying the Armijo condition.
+    """Backtracking line search.
 
     Args:
         init (float, optional): initial step size. Defaults to 1.0.
         beta (float, optional): multiplies each consecutive step size by this value. Defaults to 0.5.
-        c (float, optional): acceptance value for Armijo condition. Defaults to 1e-4.
-        maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
+        c (float, optional): sufficient decrease condition. Defaults to 1e-4.
+        condition (TerminationCondition, optional):
+            termination condition, only ones that do not use gradient at f(x+a*d) can be specified.
+            - "armijo" - sufficient decrease condition.
+            - "decrease" - any decrease in objective function value satisfies the condition.
+
+            "goldstein" can techincally be specified but it doesn't make sense because there is not zoom stage.
+            Defaults to 'armijo'.
+        maxiter (int, optional): maximum number of function evaluations per step. Defaults to 10.
         adaptive (bool, optional):
-            when enabled, if line search failed, beta is reduced.
+            when enabled, if line search failed, ``beta`` parameter is reduced by 1.5 times.
             Otherwise it is reset to initial value. Defaults to True.
 
     Examples:
@@ -77,7 +83,7 @@ class Backtracking(LineSearchBase):
                 tz.m.Backtracking()
             )
 
-        LBFGS with backtracking line search:
+        L-BFGS with backtracking line search:
 
         .. code-block:: python
 
@@ -92,13 +98,12 @@ class Backtracking(LineSearchBase):
         self,
         init: float = 1.0,
         beta: float = 0.5,
-        c1: float = 1e-4,
-        c2: float = 0.9,
+        c: float = 1e-4,
         condition: TerminationCondition = 'armijo',
         maxiter: int = 10,
         adaptive=True,
     ):
-        defaults=dict(init=init,beta=beta,c1=c1,c2=c2,condition=condition,maxiter=maxiter,adaptive=adaptive)
+        defaults=dict(init=init,beta=beta,c=c,condition=condition,maxiter=maxiter,adaptive=adaptive)
         super().__init__(defaults=defaults)
         self.global_state['beta_scale'] = 1.0
 
@@ -108,19 +113,19 @@ class Backtracking(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        init, beta, c1, c2, condition, maxiter, adaptive = itemgetter(
-            'init', 'beta', 'c1', 'c2', 'condition', 'maxiter', 'adaptive')(self.settings[var.params[0]])
+        init, beta, c, condition, maxiter, adaptive = itemgetter(
+            'init', 'beta', 'c', 'condition', 'maxiter', 'adaptive')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
         # # directional derivative
-        if c1 == 0: d = 0
+        if c == 0: d = 0
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
         if adaptive: beta = beta * self.global_state['beta_scale']
 
-        step_size = backtracking_line_search(objective, d, init=init,beta=beta,c1=c1, c2=c2, condition=condition, maxiter=maxiter)
+        step_size = backtracking_line_search(objective, d, init=init,beta=beta,c=c, condition=condition, maxiter=maxiter)
 
         # found an alpha that reduces loss
         if step_size is not None:
@@ -139,31 +144,37 @@ class AdaptiveBacktracking(LineSearchBase):
     such that optimal step size in the procedure would be found on the second line search iteration.
 
     Args:
-        init (float, optional): step size for the first step. Defaults to 1.0.
+        init (float, optional): initial step size. Defaults to 1.0.
         beta (float, optional): multiplies each consecutive step size by this value. Defaults to 0.5.
-        c (float, optional): acceptance value for Armijo condition. Defaults to 1e-4.
-        maxiter (int, optional): Maximum line search function evaluations. Defaults to 10.
+        c (float, optional): sufficient decrease condition. Defaults to 1e-4.
+        condition (TerminationCondition, optional):
+            termination condition, only ones that do not use gradient at f(x+a*d) can be specified.
+            - "armijo" - sufficient decrease condition.
+            - "decrease" - any decrease in objective function value satisfies the condition.
+
+            "goldstein" can techincally be specified but it doesn't make sense because there is not zoom stage.
+            Defaults to 'armijo'.
+        maxiter (int, optional): maximum number of function evaluations per step. Defaults to 10.
         target_iters (int, optional):
-            target number of iterations that would be performed until optimal step size is found. Defaults to 1.
+            sets next step size such that this number of iterations are expected
+            to be performed until optimal step size is found. Defaults to 1.
         nplus (float, optional):
-            Multiplier to initial step size if it was found to be the optimal step size. Defaults to 2.0.
+            if initial step size is optimal, it is multiplied by this value. Defaults to 2.0.
         scale_beta (float, optional):
-            Momentum for initial step size, at 0 disables momentum. Defaults to 0.0.
-        try_negative (bool, optional): Whether to perform line search in opposite direction on fail. Defaults to False.
+            momentum for initial step size, at 0 disables momentum. Defaults to 0.0.
     """
     def __init__(
         self,
         init: float = 1.0,
         beta: float = 0.5,
-        c1: float = 1e-4,
-        c2: float = 0.9,
+        c: float = 1e-4,
         condition: TerminationCondition = 'armijo',
         maxiter: int = 20,
         target_iters = 1,
         nplus = 2.0,
         scale_beta = 0.0,
     ):
-        defaults=dict(init=init,beta=beta,c1=c1,c2=c2,condition=condition,maxiter=maxiter,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta)
+        defaults=dict(init=init,beta=beta,c=c,condition=condition,maxiter=maxiter,target_iters=target_iters,nplus=nplus,scale_beta=scale_beta)
         super().__init__(defaults=defaults)
 
         self.global_state['beta_scale'] = 1.0
@@ -176,13 +187,13 @@ class AdaptiveBacktracking(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        init, beta, c1,c2,condition, maxiter, target_iters, nplus, scale_beta=itemgetter(
-            'init','beta','c1','c2','condition', 'maxiter','target_iters','nplus','scale_beta')(self.settings[var.params[0]])
+        init, beta, c,condition, maxiter, target_iters, nplus, scale_beta=itemgetter(
+            'init','beta','c','condition', 'maxiter','target_iters','nplus','scale_beta')(self.settings[var.params[0]])
 
         objective = self.make_objective(var=var)
 
         # directional derivative (0 if c = 0 because it is not needed)
-        if c1 == 0: d = 0
+        if c == 0: d = 0
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), update))
 
         # scale beta
@@ -191,7 +202,7 @@ class AdaptiveBacktracking(LineSearchBase):
         # scale step size so that decrease is expected at target_iters
         init = init * self.global_state['initial_scale']
 
-        step_size = backtracking_line_search(objective, d, init=init, beta=beta, c1=c1, c2=c2, condition=condition, maxiter=maxiter)
+        step_size = backtracking_line_search(objective, d, init=init, beta=beta, c=c, condition=condition, maxiter=maxiter)
 
         # found an alpha that reduces loss
         if step_size is not None:
