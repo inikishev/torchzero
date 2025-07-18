@@ -185,8 +185,8 @@ class StrongWolfe(LineSearchBase):
             - "previous" - uses final step size found on previous iteration.
 
             For 2nd order methods it is usually best to leave at "fixed".
-            For methods that do not produce well scaled search directions,
-            another strategy may be beneficial. Defaults to 'init'.
+            For methods that do not produce well scaled search directions, e.g. conjugate gradient,
+            "first-order" or "quadratic-clip" are recommended. Defaults to 'init'.
         a_max (float, optional): upper bound for the proposed step sizes. Defaults to 1e12.
         init_value (float, optional):
             initial step size. Used when ``a_init``="fixed", and with other strategies as fallback value. Defaults to 1.
