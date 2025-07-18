@@ -4,7 +4,7 @@ from .cg import (
     FletcherReeves,
     HagerZhang,
     HestenesStiefel,
-    HybridHS_DY,
+    DYHS,
     LiuStorey,
     PolakRibiere,
     ProjectedGradientMethod,

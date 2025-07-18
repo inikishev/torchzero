@@ -280,7 +280,7 @@ class HagerZhang(ConguateGradientBase):
         return hager_zhang_beta(g, prev_d, prev_g)
 
 
-# ----------------------------------- HS-DY ---------------------------------- #
+# ----------------------------------- DYHS ---------------------------------- #
 def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
     grad_diff = g - prev_g
     denom = prev_d.dot(grad_diff)
@@ -294,8 +294,8 @@ def hs_dy_beta(g: TensorList, prev_d: TensorList,prev_g: TensorList):
 
     return max(0, min(dy_beta, hs_beta)) # type:ignore
 
-class HybridHS_DY(ConguateGradientBase):
-    """HS-DY hybrid conjugate gradient method.
+class DYHS(ConguateGradientBase):
+    """Dai-Yuan - Hestenes–Stiefel hybrid conjugate gradient method.
 
     .. note::
         - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
