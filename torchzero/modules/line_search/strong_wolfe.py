@@ -73,7 +73,10 @@ class _StrongWolfe:
             return a_lo + 0.5 * (a_hi - a_lo)
 
         if self.interpolation == 'quadratic':
-            raise NotImplementedError(self.interpolation)
+            a = a_hi - a_lo
+            num = g_lo * a**2
+            denom = 2 * (f_hi - f_lo - g_lo*a)
+            return num / -denom
 
         if self.interpolation == 'polynomial':
             finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
@@ -168,22 +171,46 @@ class _StrongWolfe:
 
 
 class StrongWolfe(LineSearchBase):
-    """Cubic interpolation line search satisfying Strong Wolfe condition.
+    """Interpolation line search satisfying Strong Wolfe condition.
 
     Args:
-        init (float, optional): Initial step size. Defaults to 1.0.
-        c1 (float, optional): Acceptance value for weak wolfe condition. Defaults to 1e-4.
-        c2 (float, optional): Acceptance value for strong wolfe condition (set to 0.1 for conjugate gradient). Defaults to 0.9.
-        maxiter (int, optional): Maximum number of line search iterations. Defaults to 25.
-        maxzoom (int, optional): Maximum number of zoom iterations. Defaults to 10.
-        expand (float, optional): Expansion factor (multipler to step size when weak condition not satisfied). Defaults to 2.0.
-        use_prev (bool, optional):
-            if True, previous step size is used as the initial step size on the next step.
+        c1 (float, optional): sufficient descent condition. Defaults to 1e-4.
+        c2 (float, optional): strong curvature condition. For CG set to 0.1. Defaults to 0.9.
+        a_init (str, optional):
+            strategy for initializing the initial step size guess.
+            - "fixed" - uses a fixed value specified in `init_value` argument.
+            - "first-order" - assumes first-order change in the function at iterate will be the same as that obtained at the previous step.
+            - "quadratic" - interpolates quadratic to f(x_{-1}) and f_x.
+            - "quadratic-clip" - same as quad, but uses min(1, 1.01*alpha) as described in Numerical Optimization.
+            - "previous" - uses final step size found on previous iteration.
+
+            For 2nd order methods it is usually best to leave at "fixed".
+            For methods that do not produce well scaled search directions,
+            another strategy may be beneficial. Defaults to 'init'.
+        a_max (float, optional): upper bound for the proposed step sizes. Defaults to 1e12.
+        init_value (float, optional):
+            initial step size. Used when ``a_init``="fixed", and with other strategies as fallback value. Defaults to 1.
+        maxiter (int, optional): maximum number of line search iterations. Defaults to 25.
+        maxzoom (int, optional): maximum number of zoom iterations. Defaults to 10.
+        maxeval (int | None, optional): maximum number of function evaluations. Defaults to None.
+        tol_change (float, optional): tolerance, terminates on small brackets. Defaults to 1e-9.
+        interpolation (str, optional):
+            What type of interpolation to use.
+            - "bisection" - uses the middle point.
+            - "quadratic" - minimizes a quadratic model.
+            - "cubic" - minimizes a cubic model.
+            - "polynomial" - fits a a polynomial to all points obtained during line search.
+
+            Defaults to 'cubic'.
         adaptive (bool, optional):
-            when enabled, if line search failed, initial step size is reduced.
-            Otherwise it is reset to initial value. Defaults to True.
+            if True, the initial step size will be halved when line search failed to find a good direction.
+            When a good direction is found, initial step size is reset to the original value. Defaults to True.
+        fallback (bool, optional):
+            if True, when no point satisfied strong wolfe criteria,
+            returns a point with value lower than initial value that doesn't satisfy the criteria. Defaults to False.
         plus_minus (bool, optional):
-            If enabled and the direction is not descent direction, performs line search in opposite direction. Defaults to False.
+            if True, enables the plus-minus variant, where if curvature is negative, line search is performed
+            in the opposite direction. Defaults to False.
 
 
     Examples:
@@ -194,7 +221,7 @@ class StrongWolfe(LineSearchBase):
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.PolakRibiere(),
-                tz.m.StrongWolfe(c2=0.1)
+                tz.m.StrongWolfe(c2=0.1, a_init="first-order")
             )
 
         LBFGS strong wolfe line search:
@@ -212,13 +239,13 @@ class StrongWolfe(LineSearchBase):
         self,
         c1: float = 1e-4,
         c2: float = 0.9,
-        a_init: Literal['fo', 'quad', 'quad_clip', 'prev', 'init'] = 'init',
+        a_init: Literal['first-order', 'quadratic', 'quadratic-clip', 'previous', 'fixed'] = 'fixed',
         a_max: float = 1e12,
         init_value: float = 1,
         maxiter: int = 25,
         maxzoom: int = 10,
         maxeval: int | None = None,
-        tol_change: float = 1e-8,
+        tol_change: float = 1e-9,
         interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"] = 'cubic',
         adaptive = True,
         fallback:bool = False,
@@ -258,26 +285,26 @@ class StrongWolfe(LineSearchBase):
         init = init.lower().strip()
 
         a_init = init_value
-        if init == 'init':
+        if init == 'fixed':
             pass # use init_value
 
-        elif init == 'prev':
+        elif init == 'previous':
             if 'a_prev' in self.global_state:
                 a_init = self.global_state['a_prev']
 
-        elif init == 'fo':
+        elif init == 'first-order':
             if 'g_prev' in self.global_state and g_0 < -1e-10:
                 a_prev = self.global_state['a_prev']
                 g_prev = self.global_state['g_prev']
                 if g_prev < 0:
                     a_init = a_prev * g_prev / g_0
 
-        elif init in ('quad', 'quad_clip'):
+        elif init in ('quadratic', 'quadratic-clip'):
             if 'f_prev' in self.global_state and g_0 < -1e-10:
                 f_prev = self.global_state['f_prev']
                 if f_0 < f_prev:
                     a_init = 2 * (f_0 - f_prev) / g_0
-                    if init == 'quad_clip': a_init = min(1, 1.01*a_init)
+                    if init == 'quadratic-clip': a_init = min(1, 1.01*a_init)
 
         else:
             raise ValueError(init)
