@@ -761,8 +761,8 @@ LSR1 = Run(
 
 # ---------------------------- second_order/newton --------------------------- #
 Newton = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     func='rosen', steps=20, loss=1e-7, merge_invariant=True,
     sphere_steps=2, sphere_loss=1e-9,
@@ -770,8 +770,8 @@ Newton = Run(
 
 # --------------------------- second_order/newton_cg -------------------------- #
 NewtonCG = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     func='rosen', steps=20, loss=1e-7, merge_invariant=True,
     sphere_steps=2, sphere_loss=3e-4,
