@@ -20,6 +20,13 @@ def _totensor(x):
     if not isinstance(x, torch.Tensor): return torch.tensor(x, dtype=torch.float32)
     return x
 
+def _within_bounds(x, bounds):
+    if bounds is None: return True
+    lb,ub = bounds
+    if lb is not None and x < lb: return False
+    if ub is not None and x > ub: return False
+    return True
+
 class _StrongWolfe:
     def __init__(
         self,
@@ -74,9 +81,13 @@ class _StrongWolfe:
 
         if self.interpolation == 'quadratic':
             a = a_hi - a_lo
-            num = g_lo * a**2
             denom = 2 * (f_hi - f_lo - g_lo*a)
-            return num / -denom
+            if denom > 1e-10:
+                num = g_lo * a**2
+                a_min = num / -denom
+                if _within_bounds(a_min, bounds):
+                    return num / -denom
+            return a_lo + 0.5 * (a_hi - a_lo)
 
         if self.interpolation == 'polynomial':
             finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
@@ -201,6 +212,8 @@ class StrongWolfe(LineSearchBase):
             - "cubic" - minimizes a cubic model.
             - "polynomial" - fits a a polynomial to all points obtained during line search.
 
+            Generally "cubic" and "polynomial" give the best performance,
+            while "bisection" may be more robust on non-smooth functions.
             Defaults to 'cubic'.
         adaptive (bool, optional):
             if True, the initial step size will be halved when line search failed to find a good direction.

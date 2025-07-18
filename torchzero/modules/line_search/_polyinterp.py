@@ -68,8 +68,9 @@ def polyinterp(points, x_min_bound=None, x_max_bound=None, plot=False):
         # d2 = sqrt(d1^2 - g1*g2)
         # x_min = x2 - (x2 - x1)*((g2 + d2 - d1)/(g2 - g1 + 2*d2))
         d1 = points[0, 2] + points[1, 2] - 3 * ((points[0, 1] - points[1, 1]) / (points[0, 0] - points[1, 0]))
-        d2 = np.sqrt(d1 ** 2 - points[0, 2] * points[1, 2])
-        if np.isreal(d2):
+        value = d1 ** 2 - points[0, 2] * points[1, 2]
+        if value > 0:
+            d2 = np.sqrt(value)
             x_sol = points[1, 0] - (points[1, 0] - points[0, 0]) * ((points[1, 2] + d2 - d1) / (points[1, 2] - points[0, 2] + 2 * d2))
             x_sol = np.minimum(np.maximum(x_min_bound, x_sol), x_max_bound)
         else:
@@ -123,11 +124,13 @@ def polyinterp(points, x_min_bound=None, x_max_bound=None, plot=False):
             f_min = np.inf
             x_sol = (x_min_bound + x_max_bound) / 2 # defaults to bisection
             for crit_pt in crit_pts:
-                if np.isreal(crit_pt) and crit_pt >= x_min_bound and crit_pt <= x_max_bound:
-                    F_cp = np.polyval(coeff, crit_pt)
-                    if np.isreal(F_cp) and F_cp < f_min:
-                        x_sol = np.real(crit_pt)
-                        f_min = np.real(F_cp)
+                if np.isreal(crit_pt):
+                    if not np.isrealobj(crit_pt): crit_pt = crit_pt.real
+                    if crit_pt >= x_min_bound and crit_pt <= x_max_bound:
+                        F_cp = np.polyval(coeff, crit_pt)
+                        if np.isreal(F_cp) and F_cp < f_min:
+                            x_sol = np.real(crit_pt)
+                            f_min = np.real(F_cp)
 
             if(plot):
                 import matplotlib.pyplot as plt
