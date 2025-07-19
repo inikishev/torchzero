@@ -108,8 +108,7 @@ class LineSearchBase(Module, ABC):
         step_size = max(min(tofloat(step_size), 1e36), -1e36)
 
         # skip is parameters are already at suggested step size
-        alpha = self._current_step_size - step_size
-        if alpha == 0: return
+        if self._current_step_size == step_size: return
 
         # this was basically causing floating point imprecision to build up
         #if False:
@@ -139,12 +138,14 @@ class LineSearchBase(Module, ABC):
         #     torch._foreach_add_(params, torch._foreach_mul(update, alpha))
         assert self._initial_params is not None
         if not np.isfinite(step_size).all(): step_size = [0 for _ in step_size]
+
         if any(s!=0 for s in step_size):
             new_params = torch._foreach_sub(self._initial_params, torch._foreach_mul(update, step_size))
         else:
             new_params = [p.clone() for p in self._initial_params]
-            for c, n in zip(params, new_params):
-                set_storage_(c, n)
+
+        for c, n in zip(params, new_params):
+            set_storage_(c, n)
 
     def _loss(self, step_size: float, var: Var, closure, params: list[torch.Tensor],
               update: list[torch.Tensor], backward:bool=False) -> float:

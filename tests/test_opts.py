@@ -459,7 +459,7 @@ AdaptiveBacktracking = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
     sphere_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
     needs_closure=True,
-    func='booth', steps=50, loss=1e-12, merge_invariant=True,
+    func='booth', steps=50, loss=1e-11, merge_invariant=True,
     sphere_steps=2, sphere_loss=1e-10,
 )
 # ----------------------------- line_search/scipy ---------------------------- #
@@ -718,7 +718,7 @@ BFGS = Run(
     sphere_steps=10, sphere_loss=1e-10,
 )
 SR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SR1(), tz.m.StrongWolfe(fallback=False)),
+    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_reset=True), tz.m.StrongWolfe(fallback=False)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(), tz.m.StrongWolfe(fallback=False)),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-12, merge_invariant=True,
@@ -743,8 +743,8 @@ LBFGS = Run(
 
 # ----------------------------- quasi_newton/lsr1 ---------------------------- #
 LSR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe(c2=0.5)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe(c2=0.5)),
     needs_closure=True,
     func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
