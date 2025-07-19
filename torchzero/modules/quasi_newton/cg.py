@@ -220,39 +220,22 @@ class LiuStorey(ConguateGradientBase):
         return liu_storey_beta(g, prev_d, prev_g)
 
 # ----------------------------- Conjugate Descent ---------------------------- #
-class ConjugateDescent(Transform):
+def conjugate_descent_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList):
+    denom = prev_g.dot(prev_d)
+    if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
+    return - g.dot(g) / denom
+
+class ConjugateDescent(ConguateGradientBase):
     """Conjugate Descent (CD).
 
     .. note::
         - This requires step size to be determined via a line search, so put a line search like :code:`StrongWolfe(c2=0.1)` after this.
     """
-    def __init__(self, inner: Chainable | None = None):
-        super().__init__(defaults={}, uses_grad=False)
+    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
 
-        if inner is not None:
-            self.set_child('inner', inner)
-
-
-    @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        g = as_tensorlist(tensors)
-
-        prev_d = unpack_states(states, tensors, 'prev_dir', cls=TensorList, init=torch.zeros_like)
-        if 'denom' not in self.global_state:
-            self.global_state['denom'] = torch.tensor(0.).to(g[0])
-
-        prev_gd = self.global_state.get('prev_gd', 0)
-        if abs(prev_gd) <= torch.finfo(g[0].dtype).eps: beta = 0
-        else: beta = g.dot(g) / prev_gd
-
-        # inner step
-        if 'inner' in self.children:
-            g = as_tensorlist(apply_transform(self.children['inner'], g, params, grads))
-
-        dir = g.add_(prev_d.mul_(beta))
-        prev_d.copy_(dir)
-        self.global_state['prev_gd'] = g.dot(dir)
-        return dir
+    def get_beta(self, p, g, prev_g, prev_d):
+        return conjugate_descent_beta(g, prev_d, prev_g)
 
 
 # -------------------------------- Hager-Zhang ------------------------------- #

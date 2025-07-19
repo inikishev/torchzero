@@ -160,21 +160,25 @@ def _quad_interp(points):
         if abs(denom) > 1e-10:
             return -points[0, 2] * points[1, 0] ** 2 / denom
     else:
-        a = -(points[0, 1] - points[1, 1] - points[0, 2] * (points[0, 0] - points[1, 0])) / (points[0, 0] - points[1, 0]) ** 2
-        if a > 1e-10:
-            return points[0, 0] - points[0, 2]/(2*a)
+        denom = (points[0, 0] - points[1, 0]) ** 2
+        if denom > 1e-10:
+            a = -(points[0, 1] - points[1, 1] - points[0, 2] * (points[0, 0] - points[1, 0])) / denom
+            if a > 1e-10:
+                return points[0, 0] - points[0, 2]/(2*a)
     return None
 
 def _cubic_interp(points, lb, ub):
     assert points.shape[0] == 2, points.shape
-    d1 = points[0, 2] + points[1, 2] - 3 * ((points[0, 1] - points[1, 1]) / (points[0, 0] - points[1, 0]))
-    value = d1 ** 2 - points[0, 2] * points[1, 2]
-    if value > 0:
-        d2 = np.sqrt(value)
-        denom = points[1, 2] - points[0, 2] + 2 * d2
-        if abs(denom) > 1e-10:
-            x_sol = points[1, 0] - (points[1, 0] - points[0, 0]) * ((points[1, 2] + d2 - d1) / denom)
-            if _within_bounds(x_sol, lb, ub): return x_sol
+    denom = points[0, 0] - points[1, 0]
+    if abs(denom) > 1e-10:
+        d1 = points[0, 2] + points[1, 2] - 3 * ((points[0, 1] - points[1, 1]) / denom)
+        value = d1 ** 2 - points[0, 2] * points[1, 2]
+        if value > 0:
+            d2 = np.sqrt(value)
+            denom = points[1, 2] - points[0, 2] + 2 * d2
+            if abs(denom) > 1e-10:
+                x_sol = points[1, 0] - (points[1, 0] - points[0, 0]) * ((points[1, 2] + d2 - d1) / denom)
+                if _within_bounds(x_sol, lb, ub): return x_sol
 
     # try quadratic interpolations
     x_sol = _quad_interp(points)
