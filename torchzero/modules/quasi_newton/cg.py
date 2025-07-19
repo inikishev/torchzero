@@ -50,8 +50,6 @@ class ConguateGradientBase(Transform, ABC):
         if inner is not None:
             self.set_child('inner', inner)
 
-    def reset(self):
-        super().reset()
 
     def reset_for_online(self):
         super().reset_for_online()

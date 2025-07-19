@@ -297,8 +297,9 @@ class StrongWolfe(LineSearchBase):
 
         inverted = False
         if plus_minus and g_0 > 0:
+            original_objective = objective
             def inverted_objective(a):
-                l, g_a = objective(-a)
+                l, g_a = original_objective(-a)
                 return l, -g_a
             objective = inverted_objective
             inverted = True
