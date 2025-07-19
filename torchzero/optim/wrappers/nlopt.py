@@ -75,8 +75,6 @@ class NLOptWrapper(Optimizer):
     so usually you would want to perform a single step, although performing multiple steps will refine the
     solution.
 
-    Some algorithms are buggy with numpy>=2.
-
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.
         algorithm (int | _ALGOS_LITERAL): optimization algorithm from https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/

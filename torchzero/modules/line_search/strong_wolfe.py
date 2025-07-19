@@ -27,6 +27,13 @@ def _within_bounds(x, bounds):
     if ub is not None and x > ub: return False
     return True
 
+def _apply_bounds(x, bounds):
+    if bounds is None: return True
+    lb,ub = bounds
+    if lb is not None and x < lb: return lb
+    if ub is not None and x > ub: return ub
+    return x
+
 class _StrongWolfe:
     def __init__(
         self,
@@ -77,7 +84,8 @@ class _StrongWolfe:
             return float(_cubic_interpolate(x1=a_lo, f1=f_lo, g1=g_lo, x2=a_hi, f2=f_hi, g2=g_hi, bounds=bounds))
 
         if self.interpolation == 'bisection':
-            return a_lo + 0.5 * (a_hi - a_lo)
+            return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
+
 
         if self.interpolation == 'quadratic':
             a = a_hi - a_lo
@@ -85,15 +93,16 @@ class _StrongWolfe:
             if denom > 1e-10:
                 num = g_lo * a**2
                 a_min = num / -denom
-                if _within_bounds(a_min, bounds):
-                    return num / -denom
-            return a_lo + 0.5 * (a_hi - a_lo)
+                return _apply_bounds(a_min, bounds)
+            return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
 
         if self.interpolation == 'polynomial':
             finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
             if bounds is None: bounds = (None, None)
-            return polyinterp(np.array(finite_history), *bounds) # pyright:ignore[reportArgumentType]
-
+            try:
+                return polyinterp(np.array(finite_history), *bounds) # pyright:ignore[reportArgumentType]
+            except torch.linalg.LinAlgError:
+                return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
         else:
             raise ValueError(self.interpolation)
 

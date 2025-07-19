@@ -599,6 +599,7 @@ class Modular(torch.optim.Optimizer):
     param_groups: list[ChainMap[str, Any]] # pyright:ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, params: Params | torch.nn.Module, *modules: Module):
+        if len(modules) == 0: raise RuntimeError("Empty list of modules passed to `Modular`")
         self.model: torch.nn.Module | None = None
         """The model whose parameters are being optimized, if a model instance was passed to `__init__`."""
         if isinstance(params, torch.nn.Module):
@@ -711,9 +712,10 @@ class Modular(torch.optim.Optimizer):
             var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
             self.num_evaluations += 1
 
+        n_modules = len(self.modules)
+        if n_modules == 0: raise RuntimeError("There are no modules in this `Modular` optimizer")
         last_module = self.modules[-1]
         last_lr = last_module.defaults.get('lr', None)
-        n_modules = len(self.modules)
 
         # step
         for i, module in enumerate(self.modules):

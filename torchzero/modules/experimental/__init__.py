@@ -1,8 +1,8 @@
 """This submodule contains various untested experimental modules, some of them are to be moved out of experimental when properly tested, some are to remain here forever or to be deleted depending on the degree of their usefulness."""
 from .absoap import ABSOAP
 from .adadam import Adadam
-from .adam_lambertw import AdamLambertW
 from .adam_expclogmul import AdamExpclogmul
+from .adam_lambertw import AdamLambertW
 from .adamY import AdamY
 from .adaptive_step_size import AdaptiveStepSize
 from .adasoap import AdaSOAP
@@ -33,6 +33,7 @@ from .modular_lbfgs import ModularLBFGS
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
 from .parabolic_search import CubicParabolaSearch, ParabolaSearch
+from .polyss import PolyStepSize
 from .reduce_outward_lr import ReduceOutwardLR
 from .structural_projections import BlockPartition, TensorizeProjection
 from .subspace_preconditioners import (
