@@ -3,10 +3,10 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, TensorwiseTransform, Transform, apply_transform
+from ...core import Chainable, TensorwiseTransform, Transform, apply_transform, Module, Var, Modular
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 from .quasi_newton import _safe_clip, HessianUpdateStrategy
-
+from ..line_search import LineSearchBase
 
 class ConguateGradientBase(Transform, ABC):
     """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.
@@ -350,3 +350,100 @@ class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain he
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return projected_gradient_(H=H, y=y)
+
+
+def _restart_hook(optimizer: Modular, var: Var):
+    for module in optimizer.unrolled_modules:
+        if not isinstance(module, LineSearchBase): module.reset()
+
+class PowellRestart(Module):
+    """Powell's two restarting criterions for conjugate gradient methods.
+
+    This should be placed **after** a conjugate gradient module and **before** the line search, other types of modules can also be used.
+    The restart clears all states of all modules except line searches.
+
+    Args:
+        cond1 (float | None, optional):
+            criterion that checks for nonconjugacy of the search directions.
+            Restart is performed whenevr g^Tg_{k+1} >= cond1*||g_{k+1}||^2.
+            The default condition value of 0.2 is suggested by Powell. Can be None to disable that criterion.
+        cond2 (float | None, optional):
+            criterion that checks if direction is not effectively downhill.
+            Restart is performed if -1.2||g||^2 < d^Tg < -0.8||g||^2.
+            Defaults to 0.2. Can be None to disable that criterion.
+
+    Reference:
+        Powell, Michael James David. "Restart procedures for the conjugate gradient method." Mathematical programming 12.1 (1977): 241-254.
+    """
+    def __init__(self, cond1:float | None = 0.2, cond2:float | None = 0.2):
+        defaults=dict(cond1=cond1, cond2=cond2)
+        super().__init__(defaults)
+
+    def step(self, var):
+        g = TensorList(var.get_grad())
+        if 'step' not in self.global_state:
+            self.global_state['step'] = 0
+            g_prev = self.get_state(var.params, 'prev_g', init=g)
+            return var
+
+        setting = self.settings[var.params[0]]
+        cond1 = setting['cond1']; cond2 = setting['cond2']
+
+        g_g = g.dot(g)
+
+        if cond1 is not None:
+            g_prev = self.get_state(var.params, 'prev_g', must_exist=True, cls=TensorList)
+            g_g_prev = g_prev.dot(g)
+
+            if g_g_prev.abs() >= cond1 * g_g:
+                var.post_step_hooks.append(_restart_hook)
+                var.update = g.clone()
+                return var
+
+        if cond2 is not None:
+            d_g = TensorList(var.get_update()).dot(g)
+            if (-1-cond2) * g_g < d_g < (-1 + cond2) * g_g:
+                var.post_step_hooks.append(_restart_hook)
+                var.update = g.clone()
+                return var
+
+        self.global_state['step'] = self.global_state['step'] + 1
+        return var
+
+class BirginMartinezRestart(Module):
+    """the restart criterion for conjugate gradient methods designed by Birgin and Martinez.
+
+    This criterion restarts when when the angle between dk+1 and −gk+1 is not acute enough.
+
+    This should be placed **after** a conjugate gradient module and before the line search, other types of modules can also be used.
+    The restart clears all states of all modules.
+
+    Args:
+        cond (float, optional):
+            Restart is performed whenevr d^Tg > -cond*||d||*||g||.
+            The default condition value of 1e-3 is suggested by Birgin and Martinez.
+
+    Reference:
+        Birgin, Ernesto G., and José Mario Martínez. "A spectral conjugate gradient method for unconstrained optimization." Applied Mathematics & Optimization 43.2 (2001): 117-128.
+    """
+    def __init__(self, cond:float = 1e-3):
+        defaults=dict(cond=cond)
+        super().__init__(defaults)
+
+    def step(self, var):
+        setting = self.settings[var.params[0]]
+        cond = setting['cond']
+
+        g = TensorList(var.get_grad())
+        d = TensorList(var.get_update())
+        d_g = d.dot(g)
+        d_norm = d.global_vector_norm()
+        g_norm = g.global_vector_norm()
+
+        if d_g > -cond * d_norm * g_norm:
+            var.post_step_hooks.append(_restart_hook)
+            var.update = g.clone()
+            return var
+
+        self.global_state['step'] = self.global_state['step'] + 1
+        return var

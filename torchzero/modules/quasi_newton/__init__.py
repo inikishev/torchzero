@@ -8,6 +8,8 @@ from .cg import (
     LiuStorey,
     PolakRibiere,
     ProjectedGradientMethod,
+    PowellRestart,
+    BirginMartinezRestart,
 )
 from .diagonal_quasi_newton import (
     DNRTR,

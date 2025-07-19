@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from ...core import Module, Target, Var
-from ...utils import tofloat
+from ...utils import tofloat, set_storage_
 
 
 class MaxLineSearchItersReached(Exception): pass
@@ -94,6 +94,7 @@ class LineSearchBase(Module, ABC):
         self._lowest_loss = float('inf')
         self._best_step_size: float = 0
         self._current_iter = 0
+        self._initial_params = None
 
     def set_step_size_(
         self,
@@ -102,10 +103,28 @@ class LineSearchBase(Module, ABC):
         update: list[torch.Tensor],
     ):
         if not math.isfinite(step_size): return
-        step_size = max(min(tofloat(step_size), 1e36), -1e36) # fixes overflow when backtracking keeps increasing alpha after converging
+
+         # fixes overflow when backtracking keeps increasing alpha after converging
+        step_size = max(min(tofloat(step_size), 1e36), -1e36)
+
+        # skip is parameters are already at suggested step size
         alpha = self._current_step_size - step_size
-        if alpha != 0:
-            torch._foreach_add_(params, update, alpha=alpha)
+        if alpha == 0: return
+
+        # this was basically causing floating point imprecision to build up
+        #if False:
+        # if abs(alpha) < abs(step_size) and step_size != 0:
+        #     torch._foreach_add_(params, update, alpha=alpha)
+
+        # else:
+        assert self._initial_params is not None
+        if step_size == 0:
+            new_params = [p.clone() for p in self._initial_params]
+        else:
+            new_params = torch._foreach_sub(self._initial_params, update, alpha=step_size)
+        for c, n in zip(params, new_params):
+            set_storage_(c, n)
+
         self._current_step_size = step_size
 
     def _set_per_parameter_step_size_(
@@ -114,10 +133,18 @@ class LineSearchBase(Module, ABC):
         params: list[torch.Tensor],
         update: list[torch.Tensor],
     ):
-        if not np.isfinite(step_size): step_size = [0 for _ in step_size]
-        alpha = [self._current_step_size - s for s in step_size]
-        if any(a!=0 for a in alpha):
-            torch._foreach_add_(params, torch._foreach_mul(update, alpha))
+        # if not np.isfinite(step_size): step_size = [0 for _ in step_size]
+        # alpha = [self._current_step_size - s for s in step_size]
+        # if any(a!=0 for a in alpha):
+        #     torch._foreach_add_(params, torch._foreach_mul(update, alpha))
+        assert self._initial_params is not None
+        if not np.isfinite(step_size).all(): step_size = [0 for _ in step_size]
+        if any(s!=0 for s in step_size):
+            new_params = torch._foreach_sub(self._initial_params, torch._foreach_mul(update, step_size))
+        else:
+            new_params = [p.clone() for p in self._initial_params]
+            for c, n in zip(params, new_params):
+                set_storage_(c, n)
 
     def _loss(self, step_size: float, var: Var, closure, params: list[torch.Tensor],
               update: list[torch.Tensor], backward:bool=False) -> float:
@@ -213,6 +240,7 @@ class LineSearchBase(Module, ABC):
         self._reset()
 
         params = var.params
+        self._initial_params = [p.clone() for p in params]
         update = var.get_update()
 
         try:
@@ -225,7 +253,6 @@ class LineSearchBase(Module, ABC):
 
         # this is last module - set step size to found step_size times lr
         if var.is_last:
-
             if var.last_module_lrs is None:
                 self.set_step_size_(step_size, params=params, update=update)
 

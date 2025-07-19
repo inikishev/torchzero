@@ -86,7 +86,6 @@ class _StrongWolfe:
         if self.interpolation == 'bisection':
             return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
 
-
         if self.interpolation == 'quadratic':
             a = a_hi - a_lo
             denom = 2 * (f_hi - f_lo - g_lo*a)
@@ -335,6 +334,7 @@ class StrongWolfe(LineSearchBase):
         if adaptive:
             a_init *= self.global_state.get('initial_scale', 1)
 
+
         strong_wolfe = _StrongWolfe(
             f=objective,
             f_0=f_0,
@@ -363,10 +363,9 @@ class StrongWolfe(LineSearchBase):
                     f_a, g_a = lowest[1]
                     if inverted: a = -a
 
-
-
         if a is not None and a != 0 and _isfinite(a):
-            self.global_state['initial_scale'] = min(1.0, self.global_state.get('initial_scale', 1) * math.sqrt(2))
+            #self.global_state['initial_scale'] = min(1.0, self.global_state.get('initial_scale', 1) * math.sqrt(2))
+            self.global_state['initial_scale'] = 1
             self.global_state['a_prev'] = a
             self.global_state['f_prev'] = f_0
             self.global_state['g_prev'] = g_0
