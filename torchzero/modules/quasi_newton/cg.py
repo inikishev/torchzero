@@ -223,7 +223,7 @@ class LiuStorey(ConguateGradientBase):
 def conjugate_descent_beta(g:TensorList, prev_d:TensorList, prev_g:TensorList):
     denom = prev_g.dot(prev_d)
     if denom.abs() <= torch.finfo(g[0].dtype).eps: return 0
-    return - g.dot(g) / denom
+    return g.dot(g) / denom
 
 class ConjugateDescent(ConguateGradientBase):
     """Conjugate Descent (CD).
