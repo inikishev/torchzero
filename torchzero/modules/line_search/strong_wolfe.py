@@ -8,7 +8,7 @@ import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
 from ...utils import as_tensorlist, totensor
-from ._polyinterp import polyinterp
+from ._polyinterp import polyinterp, polyinterp2
 from .line_search import LineSearchBase, TerminationCondition, termination_condition
 
 
@@ -49,7 +49,7 @@ class _StrongWolfe:
         maxeval,
         maxzoom,
         tol_change,
-        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"],
+        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial", "polynomial2"],
     ):
         self._f = f
         self.f_0 = f_0
@@ -96,11 +96,12 @@ class _StrongWolfe:
                 return _apply_bounds(a_min, bounds)
             return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
 
-        if self.interpolation == 'polynomial':
+        if self.interpolation in ('polynomial', 'polynomial2'):
             finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
             if bounds is None: bounds = (None, None)
+            polyinterp_fn = polyinterp if self.interpolation == 'polynomial' else polyinterp2
             try:
-                return polyinterp(np.array(finite_history), *bounds) # pyright:ignore[reportArgumentType]
+                return  _apply_bounds(polyinterp_fn(np.array(finite_history), *bounds), bounds) # pyright:ignore[reportArgumentType]
             except torch.linalg.LinAlgError:
                 return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
         else:
@@ -216,13 +217,13 @@ class StrongWolfe(LineSearchBase):
         tol_change (float, optional): tolerance, terminates on small brackets. Defaults to 1e-9.
         interpolation (str, optional):
             What type of interpolation to use.
-            - "bisection" - uses the middle point.
-            - "quadratic" - minimizes a quadratic model.
-            - "cubic" - minimizes a cubic model.
+            - "bisection" - uses the middle point. This is robust, especially if the objective function is non-smooth, however it may need more function evaluations.
+            - "quadratic" - minimizes a quadratic model, generally outperformed by "cubic".
+            - "cubic" - minimizes a cubic model - this is the most widely used interpolation strategy.
             - "polynomial" - fits a a polynomial to all points obtained during line search.
+            - "polynomial2" - alternative polynomial fit, where if a point is outside of bounds, a lower degree polynomial is tried.
+            This may have faster convergence than "cubic" and "polynomial".
 
-            Generally "cubic" and "polynomial" give the best performance,
-            while "bisection" may be more robust on non-smooth functions.
             Defaults to 'cubic'.
         adaptive (bool, optional):
             if True, the initial step size will be halved when line search failed to find a good direction.
@@ -268,7 +269,7 @@ class StrongWolfe(LineSearchBase):
         maxzoom: int = 10,
         maxeval: int | None = None,
         tol_change: float = 1e-9,
-        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial"] = 'cubic',
+        interpolation: Literal["quadratic", "cubic", "bisection", "polynomial", 'polynomial2'] = 'cubic',
         adaptive = True,
         fallback:bool = False,
         plus_minus = False,

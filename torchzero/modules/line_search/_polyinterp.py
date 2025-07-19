@@ -141,3 +141,142 @@ def polyinterp(points, x_min_bound=None, x_max_bound=None, plot=False):
                 plt.plot(x_sol, f_min, 'x')
 
     return x_sol
+
+
+# polynomial interpolation
+# this code is based on https://github.com/hjmshi/PyTorch-LBFGS/blob/master/functions/LBFGS.py
+# PyTorch-LBFGS: A PyTorch Implementation of L-BFGS
+# this one is modified where instead of clipping the solution by bounds, it tries a lower degree polynomial
+# all the way to bisection
+def _within_bounds(x, lb, ub):
+    if lb is not None and x < lb: return False
+    if ub is not None and x > ub: return False
+    return True
+
+def _quad_interp(points):
+    assert points.shape[0] == 2, points.shape
+    if points[0, 0] == 0:
+        denom = 2 * (points[1, 1] - points[0, 1] - points[0, 2] * points[1, 0])
+        if abs(denom) > 1e-10:
+            return -points[0, 2] * points[1, 0] ** 2 / denom
+    else:
+        a = -(points[0, 1] - points[1, 1] - points[0, 2] * (points[0, 0] - points[1, 0])) / (points[0, 0] - points[1, 0]) ** 2
+        if a > 1e-10:
+            return points[0, 0] - points[0, 2]/(2*a)
+    return None
+
+def _cubic_interp(points, lb, ub):
+    assert points.shape[0] == 2, points.shape
+    d1 = points[0, 2] + points[1, 2] - 3 * ((points[0, 1] - points[1, 1]) / (points[0, 0] - points[1, 0]))
+    value = d1 ** 2 - points[0, 2] * points[1, 2]
+    if value > 0:
+        d2 = np.sqrt(value)
+        denom = points[1, 2] - points[0, 2] + 2 * d2
+        if abs(denom) > 1e-10:
+            x_sol = points[1, 0] - (points[1, 0] - points[0, 0]) * ((points[1, 2] + d2 - d1) / denom)
+            if _within_bounds(x_sol, lb, ub): return x_sol
+
+    # try quadratic interpolations
+    x_sol = _quad_interp(points)
+    if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
+
+    return None
+
+def _poly_interp(points, lb, ub):
+    no_points = points.shape[0]
+    assert no_points > 2, points.shape
+    order = np.sum(1 - np.isnan(points[:, 1:3]).astype('int')) - 1
+
+    # define linear constraints
+    A = np.zeros((0, order + 1))
+    b = np.zeros((0, 1))
+
+    # add linear constraints on function values
+    for i in range(no_points):
+        if not np.isnan(points[i, 1]):
+            constraint = np.zeros((1, order + 1))
+            for j in range(order, -1, -1):
+                constraint[0, order - j] = points[i, 0] ** j
+            A = np.append(A, constraint, 0)
+            b = np.append(b, points[i, 1])
+
+    # add linear constraints on gradient values
+    for i in range(no_points):
+        if not np.isnan(points[i, 2]):
+            constraint = np.zeros((1, order + 1))
+            for j in range(order):
+                constraint[0, j] = (order - j) * points[i, 0] ** (order - j - 1)
+            A = np.append(A, constraint, 0)
+            b = np.append(b, points[i, 2])
+
+    # check if system is solvable
+    if A.shape[0] != A.shape[1] or np.linalg.matrix_rank(A) != A.shape[0]:
+        return None
+
+    # solve linear system for interpolating polynomial
+    coeff = np.linalg.solve(A, b)
+
+    # compute critical points
+    dcoeff = np.zeros(order)
+    for i in range(len(coeff) - 1):
+        dcoeff[i] = coeff[i] * (order - i)
+
+    lower = np.min(points[:, 0]) if lb is None else lb
+    upper = np.max(points[:, 0]) if ub is None else ub
+
+    crit_pts = np.array([lower, upper])
+    crit_pts = np.append(crit_pts, points[:, 0])
+
+    if not np.isinf(dcoeff).any():
+        roots = np.roots(dcoeff)
+        crit_pts = np.append(crit_pts, roots)
+
+    # test critical points
+    f_min = np.inf
+    x_sol = None
+    for crit_pt in crit_pts:
+        if np.isreal(crit_pt):
+            if not np.isrealobj(crit_pt): crit_pt = crit_pt.real
+            if _within_bounds(crit_pt, lb, ub):
+                F_cp = np.polyval(coeff, crit_pt)
+                if np.isreal(F_cp) and F_cp < f_min:
+                    x_sol = np.real(crit_pt)
+                    f_min = np.real(F_cp)
+
+    return x_sol
+
+def polyinterp2(points, lb, ub, unbounded: bool = False):
+    no_points = points.shape[0]
+    order = np.sum(1 - np.isnan(points[:, 1:3]).astype('int')) - 1
+
+    x_min = np.min(points[:, 0])
+    x_max = np.max(points[:, 0])
+
+    # compute bounds of interpolation area
+    if not unbounded:
+        if lb is None:
+            lb = x_min
+        if ub is None:
+            ub = x_max
+
+    if no_points == 2 and order == 2:
+        x_sol = _quad_interp(points)
+        if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
+        return (lb + ub)/2
+
+    if no_points == 2 and order == 3:
+        x_sol = _cubic_interp(points, lb, ub) # includes fallback on _quad_interp
+        if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
+        return (lb + ub)/2
+
+    if no_points <= 2: # order < 2
+        return (lb + ub)/2
+
+    if no_points == 3:
+        for p in (points[:2], points[1:], points[::2]):
+            x_sol = _cubic_interp(p, lb, ub)
+            if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
+
+    x_sol = _poly_interp(points, lb, ub)
+    if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
+    return polyinterp2(points[1:], lb, ub)
