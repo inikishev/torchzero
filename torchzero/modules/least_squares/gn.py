@@ -17,9 +17,11 @@ class SumOfSquares(Module):
         if closure is not None:
             def sos_closure(backward=True):
                 if backward:
+                    var.zero_grad()
                     with torch.enable_grad():
                         loss = closure(False)
-                        loss.pow(2).sum().backward()
+                        loss = loss.pow(2).sum()
+                        loss.backward()
                     return loss
 
                 loss = closure(False)
@@ -53,21 +55,27 @@ class GaussNewton(Module):
         with torch.enable_grad():
             f = var.get_loss(backward=False)
             assert isinstance(f, torch.Tensor)
+            var.loss = f.pow(2).sum()
+            assert isinstance(f, torch.Tensor)
             G_list = jacobian_wrt([f], params, batched=batched)
 
-        self.global_state["f"] = f.detach()
-        self.global_state["G"] = flatten_jacobian(G_list) # (n_out, ndim)
+
+        G = self.global_state["G"] = flatten_jacobian(G_list) # (n_out, ndim)
+        Gtf = G.T @ f.detach() # (ndim)
+        self.global_state["Gtf"] = Gtf
+        var.grad = vec_to_tensors(Gtf, var.params)
 
         # set closure to calculate sum of squares for line searches etc
         def sos_closure(backward=True):
             if backward:
+                var.zero_grad()
                 with torch.enable_grad():
-                    loss = closure(False)
-                    loss.pow(2).sum().backward()
+                    loss = closure(False).pow(2).sum()
+                    loss.backward()
                 return loss
 
-            loss = closure(False)
-            return loss.pow(2).sum()
+            loss = closure(False).pow(2).sum()
+            return loss
 
         var.closure = sos_closure
 
@@ -77,14 +85,14 @@ class GaussNewton(Module):
         setting = self.settings[params[0]]
         reg = setting['reg']
 
-        f = self.global_state['f']
         G = self.global_state['G']
+        Gtf = self.global_state['Gtf']
+
         GtG = G.T @ G # (ndim, ndim)
         if reg != 0:
             GtG.add_(torch.eye(GtG.size(0), device=GtG.device, dtype=GtG.dtype).mul_(reg))
 
-        Gtf = G.T @ f # (ndim)
-        v = torch.linalg.lstsq(GtG, Gtf) # pylint:disable=not-callable
+        v = torch.linalg.lstsq(GtG, Gtf).solution # pylint:disable=not-callable
 
         var.update = vec_to_tensors(v, var.params)
         return var

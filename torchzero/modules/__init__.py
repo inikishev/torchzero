@@ -13,5 +13,6 @@ from .wrappers import *
 from .second_order import *
 from .higher_order import *
 from .misc import *
+from .least_squares import *
 
 from . import experimental

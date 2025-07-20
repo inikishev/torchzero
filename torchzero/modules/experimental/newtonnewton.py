@@ -92,6 +92,7 @@ class NewtonNewton(Module):
         self.global_state["Hs"] = Hs
         self.global_state['xp'] = xp.nan_to_num_(0,0,0)
 
+    @torch.no_grad
     def apply(self, var):
         params = var.params
         xp = self.global_state['xp']
