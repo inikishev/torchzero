@@ -9,11 +9,6 @@ from ...core import Chainable, Transform
 from ...utils import as_tensorlist, tofloat, tonumpy
 from ..line_search._polyinterp import polyinterp, polyinterp2
 
-
-def _isfinite(x):
-    if isinstance(x, torch.Tensor): return torch.isfinite(x).all()
-    return math.isfinite(x)
-
 # based on https://github.com/pytorch/pytorch/blob/main/torch/optim/lbfgs.py
 def _cubic_interpolate_unbounded(x1, f1, g1, x2, f2, g2):
     d1 = g1 + g2 - 3 * (f1 - f2) / (x1 - x2)
@@ -97,7 +92,7 @@ class PolyStepSize(Transform):
                     except np.linalg.LinAlgError:
                         t_min = None
 
-            if t_min is not None and _isfinite(t_min) and t_min > 0:
+            if t_min is not None and math.isfinite(t_min) and t_min > 0:
                 step_size = float(t_min)
                 self.global_state['step_size'] = step_size
 

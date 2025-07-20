@@ -11,11 +11,6 @@ from ...utils import as_tensorlist, totensor
 from ._polyinterp import polyinterp, polyinterp2
 from .line_search import LineSearchBase, TerminationCondition, termination_condition
 
-
-def _isfinite(x):
-    if isinstance(x, torch.Tensor): return torch.isfinite(x).all()
-    return math.isfinite(x)
-
 def _totensor(x):
     if not isinstance(x, torch.Tensor): return torch.tensor(x, dtype=torch.float32)
     return x
@@ -96,7 +91,7 @@ class _StrongWolfe:
             return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
 
         if self.interpolation in ('polynomial', 'polynomial2'):
-            finite_history = [(a, f, g) for a, (f,g) in self.history.items() if _isfinite(a) and _isfinite(f) and _isfinite(g)]
+            finite_history = [(a, f, g) for a, (f,g) in self.history.items() if math.isfinite(a) and math.isfinite(f) and math.isfinite(g)]
             if bounds is None: bounds = (None, None)
             polyinterp_fn = polyinterp if self.interpolation == 'polynomial' else polyinterp2
             try:
@@ -115,7 +110,7 @@ class _StrongWolfe:
             if self.num_evals >= self.maxeval: break
             if (a_hi - a_lo) * self.d_norm < self.tol_change: break # small bracket
 
-            if not (_isfinite(f_hi) and _isfinite(g_hi)):
+            if not (math.isfinite(f_hi) and math.isfinite(g_hi)):
                 a_hi = a_hi / 2
                 f_hi, g_hi = self.f(a_hi)
                 continue
@@ -354,17 +349,17 @@ class StrongWolfe(LineSearchBase):
 
         a, f_a, g_a = strong_wolfe.search()
         if inverted and a is not None: a = -a
-        if f_a is not None and (f_a > f_0 or not _isfinite(f_a)): a = None
+        if f_a is not None and (f_a > f_0 or not math.isfinite(f_a)): a = None
 
         if fallback:
-            if a is None or a==0 or not _isfinite(a):
+            if a is None or a==0 or not math.isfinite(a):
                 lowest = min(strong_wolfe.history.items(), key=lambda x: x[1][0])
                 if lowest[1][0] < f_0:
                     a = lowest[0]
                     f_a, g_a = lowest[1]
                     if inverted: a = -a
 
-        if a is not None and a != 0 and _isfinite(a):
+        if a is not None and a != 0 and math.isfinite(a):
             #self.global_state['initial_scale'] = min(1.0, self.global_state.get('initial_scale', 1) * math.sqrt(2))
             self.global_state['initial_scale'] = 1
             self.global_state['a_prev'] = a

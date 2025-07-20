@@ -1,3 +1,4 @@
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, cast, final
@@ -119,9 +120,14 @@ class TrustRegionBase(Module, ABC):
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_apply(var=var, tensors=update, B=B, H=H)
 
+def _l2_bound_check(d: torch.Tensor, trust_region: float, boundary_tol: float | None):
+    if boundary_tol is None: return True
+    magn = torch.linalg.vector_norm(d) # pylint:disable=not-callable
+    return (magn - trust_region) / trust_region > boundary_tol
+
 def _update_tr_radius(params: Sequence[torch.Tensor], closure,
                       d:torch.Tensor, f, g:torch.Tensor, H: LinearOperator | None, B:LinearOperator | None,
-                      trust_region:float, settings: Mapping):
+                      trust_region:float, settings: Mapping, boundary_check: Callable | None=_l2_bound_check):
     """returns (new trust_region value, success). If B is not specified this depends on how accurate `d` is,
     so don't pass different subproblems.
 
@@ -137,6 +143,9 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
         H (LinearOperator | None): hessian inverse approximation.
         B (LinearOperator | None): hessian approximation
         trust_region (float): current trust region value
+        boundary_check (Callable | None, optional):
+            function that accepts ``(d: torch.Tensor, trust_region: float, boundary_tol: float | None)``,
+            checks if ``d`` is on the boundary and returns ``True`` if trust region should be increased.
     """
     # evaluate actual loss reduction
     update_unflattned = vec_to_tensors(d, params)
@@ -160,13 +169,12 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
     rho = reduction / (pred_reduction.clip(min=1e-8))
 
     # failed step
-    if rho < settings['rho_bad']:
+    if rho < settings['rho_bad'] or not math.isfinite(f):
         trust_region *= settings["nminus"]
 
     # very good step
     elif rho > settings['rho_good']:
-        magn = torch.linalg.vector_norm(d) # pylint:disable=not-callable
-        if settings['boundary_tol'] is None or (magn - trust_region) / trust_region > -settings['boundary_tol']: # close to boundary
+        if boundary_check is None or boundary_check(d=d, trust_region=trust_region, boundary_tol=settings["boundary_tol"]):
             trust_region *= settings["nplus"]
 
     return trust_region, rho > settings["eta"]

@@ -137,11 +137,10 @@ class CubicRegularization(TrustRegionBase):
         eps: float = 1e-8,
         update_freq: int = 1,
         max_attempts: int = 10,
-        boundary_tol: float | None = None,
         fallback: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, rho_good=rho_good, rho_bad=rho_bad, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts, boundary_tol=boundary_tol)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, rho_good=rho_good, rho_bad=rho_bad, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
         super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
@@ -159,7 +158,7 @@ class CubicRegularization(TrustRegionBase):
         loss = var.loss
         closure = var.closure
         if closure is None: raise RuntimeError("Trust region requires closure")
-        if loss is None: loss = closure(False)
+        if loss is None: loss = var.get_loss(False)
 
         def loss_plus(x):
             x_unflat = vec_to_tensors(x, params)
@@ -182,7 +181,7 @@ class CubicRegularization(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=None, H=H,
-                trust_region=trust_region, settings = settings,
+                trust_region=trust_region, settings = settings, boundary_check=None,
             )
 
         assert d is not None

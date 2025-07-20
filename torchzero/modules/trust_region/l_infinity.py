@@ -1,4 +1,6 @@
+import numpy as np
 import torch
+from scipy.optimize import lsq_linear
 
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
@@ -9,14 +11,12 @@ from .trust_region import TrustRegionBase, _update_tr_radius
 def _flatten_tensors(tensors: list[torch.Tensor]):
     return torch.cat([t.ravel() for t in tensors])
 
-class TrustCG(TrustRegionBase):
-    """Trust region via Steihaug-Toint Conjugate Gradient method.
+def _linf_boundary_check(d: torch.Tensor, trust_region, boundary_tol):
+    if boundary_tol is None: return True
+    return ((trust_region - d.abs()).amin() / trust_region) < boundary_tol
 
-    .. note::
-
-        If you wish to use exact hessian, use the matrix-free :code:`tz.m.NewtonCGSteihaug`
-        which only uses hessian-vector products. While passing ``tz.m.Newton`` to this
-        is possible, it is usually less efficient.
+class InfinityNormTrustRegion(TrustRegionBase):
+    """Trust region with L-infinity norm via ``scipy.optimize.lsq_linear``.
 
     Args:
         hess_module (Module | None, optional):
@@ -34,13 +34,13 @@ class TrustCG(TrustRegionBase):
             if ratio of actual to predicted rediction is less than this, trust region size is multiplied by `nminus`.
         init (float, optional): Initial trust region value. Defaults to 1.
         update_freq (int, optional): frequency of updating the hessian. Defaults to 1.
-        reg (int, optional): regularization parameter for conjugate gradient. Defaults to 0.
         max_attempts (max_attempts, optional):
             maximum number of trust region size size reductions per step. A zero update vector is returned when
             this limit is exceeded. Defaults to 10.
         boundary_tol (float | None, optional):
             The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
             This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
+        tol (float | None, optional): tolerance for least squares solver.
         fallback (bool, optional):
             if ``True``, when ``hess_module`` maintains hessian inverse which can't be inverted efficiently, it will
             be inverted anyway. When ``False`` (default), a ``RuntimeError`` will be raised instead.
@@ -66,13 +66,13 @@ class TrustCG(TrustRegionBase):
         rho_bad: float = 0.25,
         init: float = 1,
         update_freq: int = 1,
-        reg: float = 0,
         max_attempts: int = 10,
         boundary_tol: float | None = 1e-2,
+        tol: float = 1e-10,
         fallback: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, tol=tol, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
         super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
@@ -83,7 +83,7 @@ class TrustCG(TrustRegionBase):
         settings = self.settings[params[0]]
         g = _flatten_tensors(tensors)
 
-        reg = settings['reg']
+        tol = settings['tol']
         max_attempts = settings['max_attempts']
 
         loss = var.loss
@@ -99,14 +99,20 @@ class TrustCG(TrustRegionBase):
 
             trust_region = self.global_state.get('trust_region', settings['init'])
 
-            if trust_region < 1e-8 or trust_region > 1e8:
+            if trust_region < 1e-10 or trust_region > 1e16:
                 trust_region = self.global_state['trust_region'] = settings['init']
 
-            d = cg(B.matvec, g, trust_region=trust_region, reg=reg)
+            d_np = lsq_linear(
+                B.scipy(),
+                g.numpy(force=True).astype(np.float64),
+                tol=tol,
+                bounds=(-trust_region, trust_region),
+            ).x
+            d = torch.as_tensor(d_np, device=g.device, dtype=g.dtype)
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings = settings,
+                trust_region=trust_region, settings=settings, boundary_check=_linf_boundary_check
             )
 
         assert d is not None

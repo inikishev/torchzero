@@ -7,10 +7,15 @@ import numpy as np
 import torch
 
 
-def totensor(x):
-    if isinstance(x, torch.Tensor): return x
-    if isinstance(x, np.ndarray): return torch.from_numpy(x)
-    return torch.from_numpy(np.asarray(x))
+def totensor(x, device=None, dtype=None):
+    if device is None and dtype is None:
+        if isinstance(x, torch.Tensor): return x
+        if isinstance(x, np.ndarray): return torch.from_numpy(x)
+        return torch.from_numpy(np.asarray(x))
+
+    if isinstance(x, torch.Tensor): return x.to(device=device, dtype=dtype)
+    if isinstance(x, np.ndarray): return torch.as_tensor(x, device=device, dtype=dtype)
+    return torch.as_tensor(np.asarray(x), device=device, dtype=dtype)
 
 def tonumpy(x):
     if isinstance(x, np.ndarray): return x

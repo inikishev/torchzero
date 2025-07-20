@@ -1,12 +1,18 @@
-"""very simplified version of https://linear-operator.readthedocs.io/en/latest/linear_operator.html. This is used for trust regions."""
+"""simplified version of https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.LinearOperator.html. This is used for trust regions."""
+from functools import partial
 import math
 from abc import ABC, abstractmethod
+from importlib.util import find_spec
 from typing import cast, final
 
 import torch
 
-from ..torch_tools import tofloat
+from ..torch_tools import tofloat, tonumpy, totensor
 
+if find_spec('scipy') is not None:
+    from scipy.sparse.linalg import LinearOperator as _ScipyLinearOperator
+else:
+    _ScipyLinearOperator = None
 
 class LinearOperator(ABC):
     """this is used for trust region"""
@@ -16,7 +22,10 @@ class LinearOperator(ABC):
     def matvec(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement matvec")
 
-    def matmul(self, x: torch.Tensor) -> "LinearOperator":
+    def rmatvec(self, x: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement rmatvec")
+
+    def matmat(self, x: torch.Tensor) -> "LinearOperator":
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement matmul")
 
     def solve(self, x: torch.Tensor) -> torch.Tensor:
@@ -63,6 +72,29 @@ class LinearOperator(ABC):
     def ndim(self) -> int:
         return self.ndimension()
 
+    def _numpy_matvec(self, x, dtype=None):
+        """returns Ax ndarray for scipy's LinearOperator"""
+        Ax = self.matvec(totensor(x, device=self.device, dtype=self.dtype))
+        Ax = tonumpy(Ax)
+        if dtype is not None: Ax = Ax.astype(dtype)
+        return Ax
+
+    def _numpy_rmatvec(self, x, dtype=None):
+        """returns Ax ndarray for scipy's LinearOperator"""
+        Ax = self.rmatvec(totensor(x, device=self.device, dtype=self.dtype))
+        Ax = tonumpy(Ax)
+        if dtype is not None: Ax = Ax.astype(dtype)
+        return Ax
+
+    def scipy(self, dtype=None):
+        if _ScipyLinearOperator is None: raise ModuleNotFoundError("Scipy needs to be installed")
+        return _ScipyLinearOperator(
+            dtype=dtype,
+            shape=self.size(),
+            matvec=partial(self._numpy_matvec, dtype=dtype), # pyright:ignore[reportCallIssue]
+            rmatvec=partial(self._numpy_rmatvec, dtype=dtype), # pyright:ignore[reportCallIssue]
+        )
+
 class Dense(LinearOperator):
     def __init__(self, x: torch.Tensor | LinearOperator):
         if isinstance(x, LinearOperator): x = x.to_tensor()
@@ -71,7 +103,8 @@ class Dense(LinearOperator):
         self.dtype = self.A.dtype
 
     def matvec(self, x): return self.A @ x
-    def matmul(self, x): return Dense(self.A @ x)
+    def rmatvec(self, x): return x @ self.A
+    def matmat(self, x): return Dense(self.A @ x)
     def solve(self, x): return torch.linalg.solve(self.A, x) # pylint:disable=not-callable
     def add(self, x): return Dense(self.A + x)
     def add_diagonal(self, x):
@@ -92,7 +125,8 @@ class Diagonal(LinearOperator):
         self.dtype = self.A.dtype
 
     def matvec(self, x): return self.A * x
-    def matmul(self, x): return Dense(x * self.A.unsqueeze(-1))
+    def rmatvec(self, x): return self.A * x
+    def matmat(self, x): return Dense(x * self.A.unsqueeze(-1))
     def solve(self, x): return x/self.A
     def add(self, x): return Dense(x + self.A.diag_embed())
     def add_diagonal(self, x): return Diagonal(self.A + x)
@@ -112,7 +146,8 @@ class ScaledIdentity(LinearOperator):
         self._shape = shape
 
     def matvec(self, x): return x * self.s
-    def matmul(self, x): return Dense(x * self.s)
+    def rmatvec(self, x): return x * self.s
+    def matmat(self, x): return Dense(x * self.s)
     def solve(self, x): return x / self.s
     def add(self, x): return Dense(x + self.s)
     def add_diagonal(self, x):
@@ -131,7 +166,7 @@ class ScaledIdentity(LinearOperator):
 
     def size(self):
         if self._shape is None: raise RuntimeError("Shape is None")
-        return self.shape
+        return self._shape
 
 
 class AtA(LinearOperator):
@@ -140,3 +175,5 @@ class AtA(LinearOperator):
 
     def matvec(self, x):
         return self.M.T @ (self.M @ x)
+    def rmatvec(self, x):
+        return (x @ self.M.T) @ self.M
