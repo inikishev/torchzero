@@ -10,7 +10,7 @@ import torch
 from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
-    hessian_list_to_mat,
+    flatten_jacobian,
     jacobian_wrt,
 )
 from ..second_order.newton import (
@@ -19,7 +19,7 @@ from ..second_order.newton import (
     least_squares_solve,
     lu_solve,
 )
-
+from ...utils.linalg.linear_operator import Dense
 
 class NewtonNewton(Module):
     """Applies Newton-like preconditioning to Newton step.
@@ -51,7 +51,7 @@ class NewtonNewton(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         params = TensorList(var.params)
         closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
@@ -64,6 +64,7 @@ class NewtonNewton(Module):
         eigval_tfm = settings['eigval_tfm']
 
         # ------------------------ calculate grad and hessian ------------------------ #
+        Hs = []
         with torch.enable_grad():
             loss = var.loss = var.loss_approx = closure(False)
             g_list = torch.autograd.grad(loss, params, create_graph=True)
@@ -76,8 +77,9 @@ class NewtonNewton(Module):
                 is_last = o == order
                 H_list = jacobian_wrt([xp], params, create_graph=not is_last, batched=vectorize)
                 with torch.no_grad() if is_last else nullcontext():
-                    H = hessian_list_to_mat(H_list)
+                    H = flatten_jacobian(H_list)
                     if reg != 0: H = H + I * reg
+                    Hs.append(H)
 
                     x = None
                     if search_negative or (is_last and eigval_tfm is not None):
@@ -87,6 +89,16 @@ class NewtonNewton(Module):
                     if x is None: x = least_squares_solve(H, xp)
                     xp = x.squeeze()
 
-        var.update = vec_to_tensors(xp.nan_to_num_(0,0,0), params)
+        self.global_state["Hs"] = Hs
+        self.global_state['xp'] = xp.nan_to_num_(0,0,0)
+
+    def apply(self, var):
+        params = var.params
+        xp = self.global_state['xp']
+        var.update = vec_to_tensors(xp, params)
         return var
 
+    def get_B(self, var):
+        Hs = self.global_state["Hs"]
+        if len(Hs) == 1: return Dense(Hs[0])
+        return Dense(torch.linalg.multi_dot(self.global_state["Hs"])) # pylint:disable=not-callable

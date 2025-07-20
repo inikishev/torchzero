@@ -13,7 +13,7 @@ import torch
 from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
-    hessian_list_to_mat,
+    flatten_jacobian,
     jacobian_wrt,
 )
 
@@ -243,7 +243,7 @@ class HigherOrderNewton(Module):
                 T_list = jacobian_wrt([T], params, create_graph=not is_last, batched=vectorize)
                 with torch.no_grad() if is_last else nullcontext():
                     # the shape is (ndim, ) * order
-                    T = hessian_list_to_mat(T_list).view(n, n, *T.shape[1:])
+                    T = flatten_jacobian(T_list).view(n, n, *T.shape[1:])
                     derivatives.append(T)
 
         x0 = torch.cat([p.ravel() for p in params])

@@ -10,7 +10,7 @@ import torch
 from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
-    hessian_list_to_mat,
+    flatten_jacobian,
     jacobian_wrt, jacobian_and_hessian_wrt, hessian_mat,
 )
 
@@ -69,7 +69,7 @@ class EigenDescent(Module):
                 g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                 g_list = [t[0] for t in g_list] # remove leading dim from loss
                 var.grad = g_list
-                H = hessian_list_to_mat(H_list)
+                H = flatten_jacobian(H_list)
 
         elif hessian_method in ('func', 'autograd.functional'):
             strat = 'forward-mode' if vectorize else 'reverse-mode'

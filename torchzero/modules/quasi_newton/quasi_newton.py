@@ -9,7 +9,7 @@ import torch
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
 from ..functional import safe_scaling_
-
+from ...utils.linalg import linear_operator
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -139,22 +139,14 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
 
-    def _init_M(self, size:int, device, dtype, is_inverse:bool):
+    def reset_for_online(self):
+        super().reset_for_online()
+        self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
+
+    # ---------------------------- methods to override --------------------------- #
+    def initialize_P(self, size:int, device, dtype, is_inverse:bool) -> torch.Tensor:
+        """returns the initial torch.Tensor for H or B"""
         return torch.eye(size, device=device, dtype=dtype)
-
-    def _get_init_scale(self,s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
-        """returns multiplier to H or B"""
-        ys = y.dot(s)
-        yy = y.dot(y)
-        if ys != 0 and yy != 0: return yy/ys
-        return 1
-
-    def _reset_M_(self, M: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]):
-        set_storage_(M, self._init_M(s.numel(), device=M.device, dtype=M.dtype, is_inverse=inverse))
-        if init_scale == 'auto': init_scale = self._get_init_scale(s,y)
-        if init_scale >= 1:
-            if inverse: M /= init_scale
-            else: M *= init_scale
 
     def update_H(self, H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
                  p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]) -> torch.Tensor:
@@ -166,45 +158,29 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         """update hessian"""
         raise NotImplementedError
 
-    def reset_for_online(self):
-        super().reset_for_online()
-        self.clear_state_keys('f_prev', 'p_prev', 'g_prev')
+    def modify_B(self, B: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
+        """modifies B out of place before appling the update rule, doesn't affect the buffer B."""
+        return B
 
-    def get_B(self) -> tuple[torch.Tensor, bool]:
-        """returns (B or H, is_inverse)."""
-        state = next(iter(self.state.values()))
-        if "B" in state: return state["B"], False
-        return state["H"], True
+    def modify_H(self, H: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
+        """modifies H out of place before appling the update rule, doesn't affect the buffer H."""
+        return H
 
-    def get_H(self) -> tuple[torch.Tensor, bool]:
-        """returns (H or B, is_inverse)."""
-        state = next(iter(self.state.values()))
-        if "H" in state: return state["H"], False
-        return state["B"], True
+    # ------------------------------ common methods ------------------------------ #
+    def auto_initial_scale(self, s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
+        """returns multiplier to H or B on 2nd step if ``init_scale='auto'``"""
+        ys = y.dot(s)
+        yy = y.dot(y)
+        if ys != 0 and yy != 0: return yy/ys
+        return 1
 
-    def make_Bv(self) -> Callable[[torch.Tensor], torch.Tensor]:
-        B, is_inverse = self.get_B()
-
-        if is_inverse:
-            H=B
-            warnings.warn(f'{self} maintains H, so Bv will be inefficient!')
-            def Hxv(v): return torch.linalg.solve_ex(H, v)[0] # pylint:disable=not-callable
-            return Hxv
-
-        def Bv(v): return B@v
-        return Bv
-
-    def make_Hv(self) -> Callable[[torch.Tensor], torch.Tensor]:
-        H, is_inverse = self.get_H()
-
-        if is_inverse:
-            B=H
-            warnings.warn(f'{self} maintains B, so Hv will be inefficient!')
-            def Bxv(v): return torch.linalg.solve_ex(B, v)[0] # pylint:disable=not-callable
-            return Bxv
-
-        def Hv(v): return H@v
-        return Hv
+    def reset_P(self, P: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]) -> None:
+        """resets ``P`` which is either B or H"""
+        set_storage_(P, self.initialize_P(s.numel(), device=P.device, dtype=P.dtype, is_inverse=inverse))
+        if init_scale == 'auto': init_scale = self.auto_initial_scale(s,y)
+        if init_scale >= 1:
+            if inverse: P /= init_scale
+            else: P *= init_scale
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, loss, state, setting):
@@ -223,7 +199,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         if M is None or 'f_prev' not in state:
             if M is None: # won't be true on reset_for_online
-                M = self._init_M(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
+                M = self.initialize_P(p.numel(), device=p.device, dtype=p.dtype, is_inverse=inverse)
                 if isinstance(init_scale, (int, float)) and init_scale != 1:
                     if inverse: M /= init_scale
                     else: M *= init_scale
@@ -243,12 +219,12 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         state['g_prev'].copy_(g)
 
         if reset_interval is not None and step % reset_interval == 0:
-            self._reset_M_(M, s, y, inverse, init_scale, state)
+            self.reset_P(M, s, y, inverse, init_scale, state)
             return
 
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None and s.abs().max() <= ptol:
-            if ptol_reset: self._reset_M_(M, s, y, inverse, init_scale, state) # reset history
+            if ptol_reset: self.reset_P(M, s, y, inverse, init_scale, state) # reset history
             return
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
@@ -256,8 +232,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             return
 
         if step == 2 and init_scale == 'auto':
-            if inverse: M /= self._get_init_scale(s,y)
-            else: M *= self._get_init_scale(s,y)
+            if inverse: M /= self.auto_initial_scale(s,y)
+            else: M *= self.auto_initial_scale(s,y)
 
         beta = setting['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
@@ -272,14 +248,6 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         state['f_prev'] = loss
 
-    def _post_B(self, B: torch.Tensor, g: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
-        """modifies B before appling the update rule. Must return (B, g)"""
-        return B, g
-
-    def _post_H(self, H: torch.Tensor, g: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
-        """modifies H before appling the update rule. Must return (H, g)"""
-        return H, g
-
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, setting):
         step = state.get('step', 0)
@@ -288,19 +256,55 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             tensor = safe_scaling_(tensor)
 
         inverse = setting['inverse']
+        g = tensor.view(-1)
+
         if inverse:
             H = state['H']
-            H, g = self._post_H(H, tensor.view(-1), state, setting)
+            H = self.modify_H(H, state, setting)
             if H.ndim == 1: return g.mul_(H).view_as(tensor)
             return (H @ g).view_as(tensor)
 
         B = state['B']
-        B, g = self._post_B(B, tensor.view(-1), state, setting)
+        B = self.modify_B(B, state, setting)
 
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
         return safe_scaling_(tensor)
+
+    def get_B(self, var):
+        param = var.params[0]
+        state = self.state[param]
+        settings = self.settings[param]
+        if "B" in state:
+            B = self.modify_B(state["B"], state, settings)
+            if B.ndim == 2: return linear_operator.Dense(B)
+            assert B.ndim == 1, B.shape
+            return linear_operator.Diagonal(B)
+
+        if "H" in state:
+            H = self.modify_H(state["H"], state, settings)
+            if H.ndim != 1: return None
+            return linear_operator.Diagonal(1/H)
+
+        return None
+
+    def get_H(self, var):
+        param = var.params[0]
+        state = self.state[param]
+        settings = self.settings[param]
+        if "H" in state:
+            H = self.modify_H(state["H"], state, settings)
+            if H.ndim == 2: return linear_operator.Dense(H)
+            assert H.ndim == 1, H.shape
+            return linear_operator.Diagonal(H)
+
+        if "B" in state:
+            B = self.modify_B(state["B"], state, settings)
+            if B.ndim != 1: return None
+            return linear_operator.Diagonal(1/B)
+
+        return None
 
 class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
     '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
@@ -805,8 +809,8 @@ class ThomasOptimalMethod(_InverseHessianUpdateStrategyDefaults):
         H, state['R'] = thomas_H_(H=H, R=state['R'], s=s, y=y)
         return H
 
-    def _reset_M_(self, M, s, y,inverse, init_scale, state):
-        super()._reset_M_(M, s, y, inverse, init_scale, state)
+    def reset_P(self, P, s, y, inverse, init_scale, state):
+        super().reset_P(P, s, y, inverse, init_scale, state)
         for st in self.state.values():
             st.pop("R", None)
 
@@ -955,9 +959,9 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         state["R"] = R
         return H
 
-    def _reset_M_(self, M, s, y, inverse, init_scale, state):
+    def reset_P(self, P, s, y, inverse, init_scale, state):
         assert inverse
-        M.copy_(state["R"])
+        P.copy_(state["R"])
 
 # Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.
 def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, switch: tuple[float,float] | Literal[1,2,3,4], tol: float):

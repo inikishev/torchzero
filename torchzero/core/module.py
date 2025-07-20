@@ -16,6 +16,7 @@ from ..utils import (
 )
 from ..utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 from ..utils.python_tools import flatten
+from ..utils.linalg.linear_operator import LinearOperator
 
 
 def _closure_backward(closure, params, retain_graph, create_graph):
@@ -449,6 +450,14 @@ class Module(ABC):
         """
         raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
 
+    def get_B(self, var: Var) -> LinearOperator | None:
+        """returns a LinearOperator corresponding to hessian or hessian approximation"""
+        return None
+
+    def get_H(self, var:Var) -> LinearOperator | None:
+        """returns a LinearOperator corresponding to hessian inverse or hessian inverse approximation"""
+        return None
+
     def reset(self):
         """Resets the internal state of the module (e.g. momentum). By default clears state and global state."""
         # no complex logic is allowed there because this is overridden by many modules
@@ -475,6 +484,7 @@ class Module(ABC):
     def _extra_unpack(self, x):
         """``_extra_pack`` return will be passed to this method when loading state_dict.
         This method is called after loading the rest of the state dict"""
+
 
 
     # ------------------------------ HELPER METHODS ------------------------------ #

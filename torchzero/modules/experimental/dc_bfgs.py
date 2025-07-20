@@ -4,7 +4,7 @@ import torch
 
 from ...core import Chainable
 from ..quasi_newton.quasi_newton import HessianUpdateStrategy, _safe_clip, bfgs_B_
-
+from ...utils.linalg import linear_operator
 
 def dc_bfgs_B_(B_p:torch.Tensor, B_m: torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
@@ -67,15 +67,13 @@ class DCBFGS(HessianUpdateStrategy):
         state['B_m'] = B_m
         return B
 
-    def _post_B(self, B, g, state, setting):
-        if "B_m" not in state: return B, g
+    def modify_B(self, B, state, setting):
+        if "B_m" not in state: return B
         alpha = setting['alpha']
-        return (B - state["B_m"]*alpha), g
+        return (B - state["B_m"]*alpha)
 
-    def get_B(self) -> tuple[torch.Tensor, bool]:
-        state = next(iter(self.state.values()))
-        setting = next(iter(self.settings.values()))
-        if "B_m" in state:
-            alpha = setting['alpha']
-            return state["B"] - state["B_m"]*alpha, False
-        return state["B"], False
+    def get_B(self, var):
+        param = var.params[0]
+        state = self.state[param]
+        settings = self.settings[param]
+        return linear_operator.Dense(self.modify_B(state["B"], state, settings))

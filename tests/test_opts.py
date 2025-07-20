@@ -60,8 +60,9 @@ def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, step
                     opt.zero_grad()
                     loss.backward()
                 return loss
-            loss = opt.step(closure)
-            assert loss is not None
+            ret = opt.step(closure)
+            assert ret is not None # the return should be the loss
+            loss = objective() # in case f(x_0) is not evaluated
             assert torch.isfinite(loss), f"{opt}: Inifinite loss - {[l.item() for l in losses]}"
             losses.append(loss)
 

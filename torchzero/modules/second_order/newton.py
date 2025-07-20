@@ -8,14 +8,14 @@ import torch
 from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
-    hessian_list_to_mat,
+    flatten_jacobian,
     hessian_mat,
     hvp,
     hvp_fd_central,
     hvp_fd_forward,
     jacobian_and_hessian_wrt,
 )
-
+from ...utils.linalg.linear_operator import Dense
 
 def lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
@@ -162,18 +162,15 @@ class Newton(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         params = TensorList(var.params)
         closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
         reg = settings['reg']
-        search_negative = settings['search_negative']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
-        H_tfm = settings['H_tfm']
-        eigval_tfm = settings['eigval_tfm']
         update_freq = settings['update_freq']
 
         step = self.global_state.get('step', 0)
@@ -189,7 +186,7 @@ class Newton(Module):
                     g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                     g_list = [t[0] for t in g_list] # remove leading dim from loss
                     var.grad = g_list
-                    H = hessian_list_to_mat(H_list)
+                    H = flatten_jacobian(H_list)
 
             elif hessian_method in ('func', 'autograd.functional'):
                 strat = 'forward-mode' if vectorize else 'reverse-mode'
@@ -202,22 +199,24 @@ class Newton(Module):
                 raise ValueError(hessian_method)
 
             H = tikhonov_(H, reg)
-            if update_freq != 1:
-                self.global_state['H'] = H
+            self.global_state['H'] = H
 
-        if H is None:
-            H = self.global_state["H"]
+    @torch.no_grad
+    def apply(self, var):
+        H = self.global_state["H"]
 
-        # var.storage['hessian'] = H
+        params = var.params
+        settings = self.settings[params[0]]
+        search_negative = settings['search_negative']
+        H_tfm = settings['H_tfm']
+        eigval_tfm = settings['eigval_tfm']
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+            update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
 
         g = torch.cat([t.ravel() for t in update])
-
-
         # ----------------------------------- solve ---------------------------------- #
         update = None
         if H_tfm is not None:
@@ -240,6 +239,32 @@ class Newton(Module):
         var.update = vec_to_tensors(update, params)
 
         return var
+
+    def get_B(self,var):
+        B = self.global_state["H"]
+        settings = self.settings[var.params[0]]
+        if settings['eigval_tfm'] is not None:
+            try:
+                L, Q = torch.linalg.eigh(B) # pylint:disable=not-callable
+                B = Q @ settings['eigval_tfm'](L).diag_embed() @ Q.mH
+
+            except torch.linalg.LinAlgError:
+                pass
+
+        return Dense(self.global_state["H"])
+
+    def get_H(self,var):
+        B = self.global_state["H"]
+        settings = self.settings[var.params[0]]
+        if settings['eigval_tfm'] is not None:
+            try:
+                L, Q = torch.linalg.eigh(B) # pylint:disable=not-callable
+                return Dense(Q @ settings['eigval_tfm'](L).repciprocal().diag_embed() @ Q.mH)
+
+            except torch.linalg.LinAlgError:
+                return None
+
+        return None
 
 class InverseFreeNewton(Module):
     """Inverse-free newton's method
@@ -272,7 +297,7 @@ class InverseFreeNewton(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         params = TensorList(var.params)
         closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
@@ -295,7 +320,7 @@ class InverseFreeNewton(Module):
                     g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
                     g_list = [t[0] for t in g_list] # remove leading dim from loss
                     var.grad = g_list
-                    H = hessian_list_to_mat(H_list)
+                    H = flatten_jacobian(H_list)
 
             elif hessian_method in ('func', 'autograd.functional'):
                 strat = 'forward-mode' if vectorize else 'reverse-mode'
@@ -306,6 +331,8 @@ class InverseFreeNewton(Module):
 
             else:
                 raise ValueError(hessian_method)
+
+            self.global_state["H"] = H
 
             # inverse free part
             if 'Y' not in self.global_state:
@@ -320,19 +347,25 @@ class InverseFreeNewton(Module):
                 I -= H @ Y
                 Y = self.global_state['Y'] = Y @ I
 
-        if Y is None:
-            Y = self.global_state["Y"]
 
+    def apply(self, var):
+        Y = self.global_state["Y"]
+        params = var.params
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=g_list, var=var)
+            update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
 
         g = torch.cat([t.ravel() for t in update])
-
 
         # ----------------------------------- solve ---------------------------------- #
         var.update = vec_to_tensors(Y@g, params)
 
         return var
+
+    def get_B(self,var):
+        return Dense(self.global_state["H"])
+
+    def get_H(self,var):
+        return Dense(self.global_state["Y"])

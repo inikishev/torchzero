@@ -34,10 +34,27 @@ def _jacobian_batched(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor
         is_grads_batched=True,
     )
 
+def flatten_jacobian(jacs: Sequence[torch.Tensor]) -> torch.Tensor:
+    """Converts the output of jacobian_wrt (a list of tensors) into a single 2D matrix.
+
+    Args:
+        jacs (Sequence[torch.Tensor]):
+            output from jacobian_wrt where ach tensor has the shape `(*output.shape, *wrt[i].shape)`.
+
+    Returns:
+        torch.Tensor: has the shape `(output.ndim, wrt.ndim)`.
+    """
+    if not jacs:
+        return torch.empty(0, 0)
+
+    n_out = jacs[0].shape[0]
+    return torch.cat([j.reshape(n_out, -1) for j in jacs], dim=1)
+
+
 def jacobian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
     """Calculate jacobian of a sequence of tensors w.r.t another sequence of tensors.
     Returns a sequence of tensors with the length as `wrt`.
-    Each tensor will have the shape `(*input.shape, *wrt[i].shape)`.
+    Each tensor will have the shape `(*output.shape, *wrt[i].shape)`.
 
     Args:
         input (Sequence[torch.Tensor]): input sequence of tensors.
@@ -74,10 +91,10 @@ def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch
     return jac, jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
 
 
-def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
-    """takes output of `hessian` and returns the 2D hessian matrix.
-    Note - I only tested this for cases where input is a scalar."""
-    return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)
+# def hessian_list_to_mat(hessians: Sequence[torch.Tensor]):
+#     """takes output of `hessian` and returns the 2D hessian matrix.
+#     Note - I only tested this for cases where input is a scalar."""
+#     return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)
 
 def jacobian_and_hessian_mat_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
@@ -97,7 +114,7 @@ def jacobian_and_hessian_mat_wrt(output: Sequence[torch.Tensor], wrt: Sequence[t
     """
     jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
     H_list = jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
-    return torch.cat([j.view(-1) for j in jac]), hessian_list_to_mat(H_list)
+    return flatten_jacobian(jac), flatten_jacobian(H_list)
 
 def hessian(
     fn,
