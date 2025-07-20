@@ -64,7 +64,7 @@ from .utility import (
     Grad,
     GradToNone,
     Identity,
-    NoOp,
+    Noop,
     Ones,
     Params,
     Randn,

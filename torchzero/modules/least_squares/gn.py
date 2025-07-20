@@ -155,4 +155,4 @@ class GaussNewton(Module):
 
     def get_B(self, var):
         G = self.global_state['G']
-        return linear_operator.MtM(G)
+        return linear_operator.AtA(G)

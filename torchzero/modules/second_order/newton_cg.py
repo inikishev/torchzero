@@ -264,7 +264,7 @@ class NewtonCGSteihaug(Module):
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3,
         max_attempts: int = 10,
-        boundary_tol: float = 1e-3,
+        boundary_tol: float = 1e-2,
         inner: Chainable | None = None,
     ):
         defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol)

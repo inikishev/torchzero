@@ -4,7 +4,7 @@ import torch
 
 from ...core import Module, Target, Transform
 from ...utils.tensorlist import Distributions, TensorList
-
+from ...utils.linalg.linear_operator import ScaledIdentity
 
 class Clone(Module):
     """Clones input. May be useful to store some intermediate result and make sure it doesn't get affected by in-place operations"""
@@ -112,9 +112,14 @@ class UpdateToNone(Module):
         return var
 
 class Identity(Module):
-    """A placeholder identity operator that is argument-insensitive."""
+    """Identity operator that is argument-insensitive. This also can be used as identity hessian for trust region methods."""
     def __init__(self, *args, **kwargs): super().__init__()
     def step(self, var): return var
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(shape=(n,n), device=p.device, dtype=p.dtype)
+    def get_B(self, var): return self.get_H(var)
 
-NoOp = Identity
+Noop = Identity
 """A placeholder identity operator that is argument-insensitive."""
