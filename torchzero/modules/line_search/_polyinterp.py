@@ -251,6 +251,9 @@ def _poly_interp(points, lb, ub):
 
 def polyinterp2(points, lb, ub, unbounded: bool = False):
     no_points = points.shape[0]
+    if no_points <= 1:
+        return (lb + ub)/2
+
     order = np.sum(1 - np.isnan(points[:, 1:3]).astype('int')) - 1
 
     x_min = np.min(points[:, 0])

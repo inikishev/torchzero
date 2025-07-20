@@ -295,7 +295,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             return (H @ g).view_as(tensor)
 
         B = state['B']
-        H, g = self._post_B(B, tensor.view(-1), state, setting)
+        B, g = self._post_B(B, tensor.view(-1), state, setting)
 
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable

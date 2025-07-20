@@ -1,5 +1,5 @@
 from .debug import PrintLoss, PrintParams, PrintShape, PrintUpdate
-from .escape import EscapeAnnealing
+from .escape import EscapeAnnealing, ResetOnStuck
 from .gradient_accumulation import GradientAccumulation
 from .misc import (
     DivByLoss,

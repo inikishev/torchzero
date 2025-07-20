@@ -570,7 +570,7 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
 # ---------------------------------- Modular --------------------------------- #
 
 class _EvalCounterClosure:
-    """keeps track of how many times closure has been evaluated"""
+    """keeps track of how many times closure has been evaluated, and sets closure return"""
     __slots__ = ("modular", "closure")
     def __init__(self, modular: "Modular", closure):
         self.modular = modular
@@ -580,8 +580,14 @@ class _EvalCounterClosure:
         if self.closure is None:
             raise RuntimeError("One of the modules requires closure to be passed to the step method")
 
+        v = self.closure(*args, **kwargs)
+
+        # set closure return on 1st evaluation
+        if self.modular._closure_return is None:
+            self.modular._closure_return = v
+
         self.modular.num_evaluations += 1
-        return self.closure(*args, **kwargs)
+        return v
 
 # have to inherit from Modular to support lr schedulers
 # although Accelerate doesn't work due to converting param_groups to a dict
@@ -645,6 +651,11 @@ class Modular(torch.optim.Optimizer):
         self.num_evaluations = 0
         """number of times the objective has been evaluated (number of closure calls or number of steps if closure is None)."""
 
+        # reformulations will change the closure to return a different loss (e.g. a sqrt homotopy, gaussian homotopy)
+        # we want to return original loss so this attribute is used
+        self._closure_return = None
+        """on each step, first time a closure is evaluated, this attribute is set to the returned value. `step` method returns this."""
+
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]
         self.param_groups.append(ChainMap(proc_param_group, self.defaults))
@@ -693,6 +704,9 @@ class Modular(torch.optim.Optimizer):
 
 
     def step(self, closure=None): # pyright: ignore[reportIncompatibleMethodOverride]
+        # clear closure return from previous step
+        self._closure_return = None
+
         # propagate global per-parameter setting overrides
         for g in self.param_groups:
             settings = dict(g.maps[0]) # ignore defaults
@@ -739,7 +753,8 @@ class Modular(torch.optim.Optimizer):
             hook(self, var)
 
         self.current_step += 1
-        return var.loss if var.loss is not None else var.loss_approx
+        #return var.loss if var.loss is not None else var.loss_approx
+        return self._closure_return
 
     def __repr__(self):
         return f'Modular({", ".join(str(m) for m in self.modules)})'

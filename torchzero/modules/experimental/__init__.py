@@ -41,3 +41,4 @@ from .subspace_preconditioners import (
     RandomSubspacePreconditioning,
 )
 from .tensor_adagrad import TensorAdagrad
+from .dc_bfgs import DCBFGS
