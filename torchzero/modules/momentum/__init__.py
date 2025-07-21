@@ -7,8 +7,6 @@ from .cautious import (
     UpdateGradientSignConsistency,
 )
 from .ema import EMA, Debias, Debias2, EMASquared, SqrtEMASquared, CenteredEMASquared, CenteredSqrtEMASquared
-from .experimental import CoordinateMomentum
-# from .matrix_momentum import MatrixMomentum
 
 from .momentum import NAG, HeavyBall
 from .matrix_momentum import MatrixMomentum, AdaptiveMatrixMomentum

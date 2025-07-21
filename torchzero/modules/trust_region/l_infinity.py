@@ -4,7 +4,6 @@ from scipy.optimize import lsq_linear
 
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
-from ...utils.linalg import cg
 from .trust_region import TrustRegionBase, _update_tr_radius
 
 
@@ -131,4 +130,3 @@ class InfinityNormTrustRegion(TrustRegionBase):
         else: var.update = params.zeros_like()
 
         return var
-

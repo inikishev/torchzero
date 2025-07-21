@@ -4,8 +4,6 @@ import torch
 
 from ...core import Module, Target, Transform, Chainable, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_forward, hvp_fd_central
-
 def sophia_H(
     tensors: TensorList,
     h: TensorList | None,

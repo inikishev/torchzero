@@ -1,6 +1,4 @@
 from operator import itemgetter
-from functools import partial
-import math
 import torch
 
 from ...core import Module, Target, Transform, apply_transform, Chainable
@@ -8,7 +6,6 @@ from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     debias, debiased_step_size,
     ema_,
-    sqrt_ema_sq_,
 )
 
 

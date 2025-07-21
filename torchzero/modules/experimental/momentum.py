@@ -8,8 +8,8 @@ import torch
 from ...core import Target, Transform
 from ...utils import NumberList, TensorList, unpack_states, unpack_dicts
 from ..functional import ema_, ema_sq_, sqrt_ema_sq_
-from .ema import EMASquared, SqrtEMASquared
-from .momentum import nag_
+from ..momentum.ema import EMASquared, SqrtEMASquared
+from ..momentum.momentum import nag_
 
 
 def precentered_ema_sq_(

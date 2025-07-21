@@ -1,12 +1,10 @@
 import math
-from collections.abc import Callable
 from typing import Literal
 
 import torch
 
 from ...core import Chainable, Module, Target, Transform, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 
 
 def _block_average(x: torch.Tensor, block_size: int | None, enable: bool):

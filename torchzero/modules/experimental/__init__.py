@@ -30,6 +30,12 @@ from .fft import FFTProjection
 from .gradmin import GradMin
 from .hnewton import HNewton
 from .modular_lbfgs import ModularLBFGS
+from .momentum import (
+    CoordinateMomentum,
+    NesterovEMASquared,
+    PrecenteredEMASquared,
+    SqrtNesterovEMASquared,
+)
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
 from .parabolic_search import CubicParabolaSearch, ParabolaSearch
@@ -41,4 +47,3 @@ from .subspace_preconditioners import (
     RandomSubspacePreconditioning,
 )
 from .tensor_adagrad import TensorAdagrad
-from .dc_bfgs import DCBFGS
