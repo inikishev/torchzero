@@ -120,14 +120,14 @@ class TrustRegionBase(Module, ABC):
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_apply(var=var, tensors=update, B=B, H=H)
 
-def _l2_bound_check(d: torch.Tensor, trust_region: float, boundary_tol: float | None):
+def _l2_boundary_check(d: torch.Tensor, trust_region: float, boundary_tol: float | None):
     if boundary_tol is None: return True
     magn = torch.linalg.vector_norm(d) # pylint:disable=not-callable
-    return (magn - trust_region) / trust_region > boundary_tol
+    return (trust_region - magn) / trust_region < boundary_tol
 
 def _update_tr_radius(params: Sequence[torch.Tensor], closure,
                       d:torch.Tensor, f, g:torch.Tensor, H: LinearOperator | None, B:LinearOperator | None,
-                      trust_region:float, settings: Mapping, boundary_check: Callable | None=_l2_bound_check):
+                      trust_region:float, settings: Mapping, boundary_check: Callable | None=_l2_boundary_check):
     """returns (new trust_region value, success). If B is not specified this depends on how accurate `d` is,
     so don't pass different subproblems.
 

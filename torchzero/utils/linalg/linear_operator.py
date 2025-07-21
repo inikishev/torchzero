@@ -86,7 +86,7 @@ class LinearOperator(ABC):
         if dtype is not None: Ax = Ax.astype(dtype)
         return Ax
 
-    def scipy(self, dtype=None):
+    def scipy_linop(self, dtype=None):
         if _ScipyLinearOperator is None: raise ModuleNotFoundError("Scipy needs to be installed")
         return _ScipyLinearOperator(
             dtype=dtype,
@@ -95,6 +95,9 @@ class LinearOperator(ABC):
             rmatvec=partial(self._numpy_rmatvec, dtype=dtype), # pyright:ignore[reportCallIssue]
         )
 
+    def is_dense(self) -> bool:
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement is_dense")
+
 class Dense(LinearOperator):
     def __init__(self, x: torch.Tensor | LinearOperator):
         if isinstance(x, LinearOperator): x = x.to_tensor()
@@ -102,9 +105,12 @@ class Dense(LinearOperator):
         self.device = self.A.device
         self.dtype = self.A.dtype
 
-    def matvec(self, x): return self.A @ x
-    def rmatvec(self, x): return x @ self.A
-    def matmat(self, x): return Dense(self.A @ x)
+    def matvec(self, x): return self.A.mv(x)
+    def rmatvec(self, x): return self.A.mH.mv(x)
+
+    def matmat(self, x): return Dense(self.A.mm(x))
+    def rmatmat(self, x): return Dense(self.A.mH.mm(x))
+
     def solve(self, x): return torch.linalg.solve(self.A, x) # pylint:disable=not-callable
     def add(self, x): return Dense(self.A + x)
     def add_diagonal(self, x):
@@ -115,7 +121,7 @@ class Dense(LinearOperator):
     def inv(self): return Dense(torch.linalg.inv(self.A)) # pylint:disable=not-callable
     def to_tensor(self): return self.A
     def size(self): return self.A.size()
-
+    def is_dense(self): return True
 
 class Diagonal(LinearOperator):
     def __init__(self, x: torch.Tensor):
@@ -126,7 +132,10 @@ class Diagonal(LinearOperator):
 
     def matvec(self, x): return self.A * x
     def rmatvec(self, x): return self.A * x
+
     def matmat(self, x): return Dense(x * self.A.unsqueeze(-1))
+    def rmatmat(self, x): return Dense(x * self.A.unsqueeze(-1))
+
     def solve(self, x): return x/self.A
     def add(self, x): return Dense(x + self.A.diag_embed())
     def add_diagonal(self, x): return Diagonal(self.A + x)
@@ -134,6 +143,7 @@ class Diagonal(LinearOperator):
     def inv(self): return Diagonal(1/self.A)
     def to_tensor(self): return self.A.diag_embed()
     def size(self): return (self.A.numel(), self.A.numel())
+    def is_dense(self): return False
 
 class ScaledIdentity(LinearOperator):
     def __init__(self, s: float | torch.Tensor = 1., shape=None, device=None, dtype=None):
@@ -147,7 +157,10 @@ class ScaledIdentity(LinearOperator):
 
     def matvec(self, x): return x * self.s
     def rmatvec(self, x): return x * self.s
+
     def matmat(self, x): return Dense(x * self.s)
+    def rmatmat(self, x): return Dense(x * self.s)
+
     def solve(self, x): return x / self.s
     def add(self, x): return Dense(x + self.s)
     def add_diagonal(self, x):
@@ -168,12 +181,20 @@ class ScaledIdentity(LinearOperator):
         if self._shape is None: raise RuntimeError("Shape is None")
         return self._shape
 
+    def __repr__(self):
+        return f"ScaledIdentity(s={self.s}, shape={self._shape}, dtype={self.dtype}, device={self.device})"
+
+    def is_dense(self): return False
 
 class AtA(LinearOperator):
-    def __init__(self, M: torch.Tensor):
-        self.M = M
+    def __init__(self, A: torch.Tensor):
+        self.A = A
 
-    def matvec(self, x):
-        return self.M.T @ (self.M @ x)
-    def rmatvec(self, x):
-        return (x @ self.M.T) @ self.M
+    def matvec(self, x): return self.A.T.mv(self.A.mv(x))
+    def rmatvec(self, x): return self.A.T.mv(self.A.mv(x))
+
+    def matmat(self, x): return torch.linalg.multi_dot([self.A.T, self.A, x]) # pylint:disable=not-callable
+    def rmatmat(self, x): return torch.linalg.multi_dot([self.A.T, self.A, x]) # pylint:disable=not-callable
+
+    def is_dense(self): return False
+    def to_tensor(self): return self.A.T @ self.A
