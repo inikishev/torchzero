@@ -11,9 +11,11 @@ from .trust_region import TrustRegionBase, _update_tr_radius
 def _flatten_tensors(tensors: list[torch.Tensor]):
     return torch.cat([t.ravel() for t in tensors])
 
-def _linf_boundary_check(d: torch.Tensor, trust_region, boundary_tol):
+
+def _linf_bound_check(d: torch.Tensor, trust_region: float, boundary_tol: float | None):
     if boundary_tol is None: return True
-    return ((trust_region - d.abs()).amin() / trust_region) < boundary_tol
+    magn = torch.linalg.vector_norm(d, ord=torch.inf) # pylint:disable=not-callable
+    return (magn - trust_region) / trust_region > boundary_tol
 
 class InfinityNormTrustRegion(TrustRegionBase):
     """Trust region with L-infinity norm via ``scipy.optimize.lsq_linear``.
@@ -112,7 +114,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings=settings, boundary_check=_linf_boundary_check
+                trust_region=trust_region, settings=settings, boundary_check=_linf_bound_check
             )
 
         assert d is not None
