@@ -21,6 +21,9 @@ class LevenbergMarquardt(TrustRegionBase):
             A module that maintains a hessian approximation (not hessian inverse!).
             This includes all full-matrix quasi-newton methods, ``tz.m.Newton`` and ``tz.m.GaussNewton``.
             When using quasi-newton methods, set `inverse=False` when constructing them.
+        y (float, optional):
+            when ``y=0``, identity matrix is added to hessian, when ``y=1``, diagonal of the hessian approximation
+            is added. Values between interpolate. This should only be used with Gauss-Newton. Defaults to 0.
         eta (float, optional):
             if ratio of actual to predicted rediction is larger than this, step is accepted.
             When :code:`hess_module` is GaussNewton, this can be set to 0. Defaults to 0.15.
@@ -75,6 +78,7 @@ class LevenbergMarquardt(TrustRegionBase):
     def __init__(
         self,
         hess_module: Module,
+        y: float = 0,
         eta: float= 0.0,
         nplus: float = 2,
         nminus: float = 1/3,
@@ -87,7 +91,7 @@ class LevenbergMarquardt(TrustRegionBase):
         fallback: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
+        defaults = dict(y=y, init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
         super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
@@ -99,6 +103,7 @@ class LevenbergMarquardt(TrustRegionBase):
         g = _flatten_tensors(tensors)
 
         max_attempts = settings['max_attempts']
+        y = settings['y']
 
         loss = var.loss
         closure = var.closure
@@ -117,7 +122,13 @@ class LevenbergMarquardt(TrustRegionBase):
                 trust_region = self.global_state['trust_region'] = settings['init']
 
             reg = 1/trust_region
-            d = B.add_diagonal(reg).solve(g)
+            if y == 0:
+                d = B.add_diagonal(reg).solve(g)
+            else:
+                diag = B.diagonal()
+                diag = torch.where(diag < 1e-10, 1, diag)
+                if y != 1: diag = (diag*y) + (1-y)
+                d = B.add_diagonal(diag*reg).solve(g)
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,

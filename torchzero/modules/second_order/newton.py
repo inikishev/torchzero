@@ -251,7 +251,7 @@ class Newton(Module):
             except torch.linalg.LinAlgError:
                 pass
 
-        return Dense(self.global_state["H"])
+        return Dense(B)
 
     def get_H(self,var):
         B = self.global_state["H"]
