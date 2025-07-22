@@ -1,7 +1,9 @@
+import math
+
 import torch
 
-from ...core import Module, Modular, Var
-from ...utils import TensorList, NumberList
+from ...core import Modular, Module, Var
+from ...utils import NumberList, TensorList
 
 
 class EscapeAnnealing(Module):
@@ -47,7 +49,7 @@ class EscapeAnnealing(Module):
                 params.add_(pert)
                 f_star = closure(False)
 
-                if f_star < f_0-1e-10:
+                if math.isfinite(f_star) and f_star < f_0-1e-10:
                     var.update = None
                     var.stop = True
                     var.skip_update = True

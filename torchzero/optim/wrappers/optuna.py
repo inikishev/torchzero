@@ -6,7 +6,7 @@ import torch
 
 import optuna
 
-from ...utils import Optimizer
+from ...utils import Optimizer, totensor, tofloat
 
 def silence_optuna():
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -65,6 +65,6 @@ class OptunaSampler(Optimizer):
         params.from_vec_(vec)
 
         loss = closure()
-        with torch.enable_grad(): self.study.tell(trial, loss)
+        with torch.enable_grad(): self.study.tell(trial, tofloat(torch.nan_to_num(totensor(loss), 1e32)))
 
         return loss

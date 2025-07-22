@@ -43,7 +43,7 @@ def exp_adam_(
 
     exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)
-    return (exp_avg_.lazy_mul(alpha) / exp_avg_exp_.log().add_(eps))
+    return (exp_avg_.lazy_mul(alpha) / exp_avg_exp_.log().abs_().add_(eps))
 
 class ExpAdam(Transform):
     """Adam but uses abs exp and log instead of square and sqrt.

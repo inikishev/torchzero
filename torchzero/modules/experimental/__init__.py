@@ -47,3 +47,4 @@ from .subspace_preconditioners import (
     RandomSubspacePreconditioning,
 )
 from .tensor_adagrad import TensorAdagrad
+from .scipy_newton_cg import ScipyNewtonCG
