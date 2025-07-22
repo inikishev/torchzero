@@ -68,7 +68,7 @@ class TrustCG(TrustRegionBase):
         update_freq: int = 1,
         reg: float = 0,
         max_attempts: int = 10,
-        boundary_tol: float | None = 1e-2,
+        boundary_tol: float | None = 1e-1,
         fallback: bool = False,
         inner: Chainable | None = None,
     ):

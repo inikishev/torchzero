@@ -167,14 +167,15 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
         pred_reduction = 0.5 * trust_region * d.dot(d) + 0.5 * g.dot(d)
 
     rho = reduction / (pred_reduction.clip(min=1e-8))
+    is_finite = math.isfinite(loss_star)
 
     # failed step
-    if rho < settings['rho_bad'] or not math.isfinite(f):
+    if rho < settings['rho_bad'] or not is_finite:
         trust_region *= settings["nminus"]
 
     # very good step
-    elif rho > settings['rho_good']:
+    elif rho > settings['rho_good'] and is_finite:
         if boundary_check is None or boundary_check(d=d, trust_region=trust_region, boundary_tol=settings["boundary_tol"]):
             trust_region *= settings["nplus"]
 
-    return trust_region, rho > settings["eta"]
+    return trust_region, rho > settings["eta"] and is_finite
