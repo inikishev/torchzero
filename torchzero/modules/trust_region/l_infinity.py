@@ -68,7 +68,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
         init: float = 1,
         update_freq: int = 1,
         max_attempts: int = 10,
-        boundary_tol: float | None = 1e-2,
+        boundary_tol: float | None = None,
         tol: float = 1e-10,
         fallback: bool = False,
         inner: Chainable | None = None,
