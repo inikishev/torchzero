@@ -80,18 +80,17 @@ class LevenbergMarquardt(TrustRegionBase):
         hess_module: Module,
         y: float = 0,
         eta: float= 0.0,
-        nplus: float = 2,
-        nminus: float = 1/3,
+        nplus: float = 3,
+        nminus: float = 1/2,
         rho_good: float = 0.25,
         rho_bad: float = 0.0,
         init: float = 1,
         update_freq: int = 1,
         max_attempts: int = 10,
-        boundary_tol: float | None = 1e-2,
         fallback: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(y=y, init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
+        defaults = dict(y=y, init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts, rho_bad=rho_bad, rho_good=rho_good)
         super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
@@ -132,7 +131,7 @@ class LevenbergMarquardt(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings = settings,
+                trust_region=trust_region, settings = settings, boundary_check=None,
             )
 
         assert d is not None
