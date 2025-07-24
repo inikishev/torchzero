@@ -127,7 +127,7 @@ def _l2_boundary_check(d: torch.Tensor, trust_region: float, boundary_tol: float
 
 def _update_tr_radius(params: Sequence[torch.Tensor], closure,
                       d:torch.Tensor, f, g:torch.Tensor, H: LinearOperator | None, B:LinearOperator | None,
-                      trust_region:float, settings: Mapping, boundary_check: Callable | None=_l2_boundary_check):
+                      trust_region:float, settings: Mapping, boundary_fn: Callable | None=torch.linalg.vector_norm,):
     """returns (new trust_region value, success). If B is not specified this depends on how accurate `d` is,
     so don't pass different subproblems.
 
@@ -140,12 +140,12 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
             (e.g. cubic regularization).
         f (float | torch.Tensor): loss at x0
         g (torch.Tensor): gradient vector
-        H (LinearOperator | None): hessian inverse approximation.
+        H (LinearOperator | None): hessian inverse approximation (currently not used).
         B (LinearOperator | None): hessian approximation
         trust_region (float): current trust region value
         boundary_check (Callable | None, optional):
-            function that accepts ``(d: torch.Tensor, trust_region: float, boundary_tol: float | None)``,
-            checks if ``d`` is on the boundary and returns ``True`` if trust region should be increased.
+            function that accepts ``(d: torch.Tensor)`` and returns the actual region of ``d``
+            (e.g. L2) norm for L2 trust region.
     """
     # evaluate actual loss reduction
     update_unflattned = vec_to_tensors(d, params)
@@ -169,13 +169,19 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
     rho = reduction / (pred_reduction.clip(min=1e-8))
     is_finite = math.isfinite(loss_star)
 
+    # find boundary of current step
+    if boundary_fn is None: d_region = trust_region
+    else: d_region = boundary_fn(trust_region)
+
     # failed step
     if rho < settings['rho_bad'] or not is_finite:
-        trust_region *= settings["nminus"]
+        trust_region = d_region*settings["nminus"]
 
     # very good step
     elif rho > settings['rho_good'] and is_finite:
-        if boundary_check is None or boundary_check(d=d, trust_region=trust_region, boundary_tol=settings["boundary_tol"]):
-            trust_region *= settings["nplus"]
+        boundary_tol=settings["boundary_tol"]
+        if (boundary_tol is None) or (trust_region-d_region)/trust_region < boundary_tol:
+            trust_region = max(trust_region, d_region*settings["nplus"])
 
+    # return new trust region and success boolean
     return trust_region, rho > settings["eta"] and is_finite

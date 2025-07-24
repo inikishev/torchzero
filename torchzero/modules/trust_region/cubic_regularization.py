@@ -128,10 +128,10 @@ class CubicRegularization(TrustRegionBase):
         self,
         hess_module: Module,
         eta: float= 0.0,
-        nplus: float = 2,
+        nplus: float = 3.5,
         nminus: float = 0.25,
-        rho_good: float = 0.75,
-        rho_bad: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float = 1,
         maxiter: int = 100,
         eps: float = 1e-8,
@@ -181,7 +181,7 @@ class CubicRegularization(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=None, H=H,
-                trust_region=trust_region, settings = settings, boundary_check=None,
+                trust_region=trust_region, settings = settings, boundary_fn=None,
             )
 
         assert d is not None

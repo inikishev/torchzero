@@ -61,10 +61,10 @@ class InfinityNormTrustRegion(TrustRegionBase):
         self,
         hess_module: Module,
         eta: float= 0.15,
-        nplus: float = 2,
+        nplus: float = 3.5,
         nminus: float = 0.25,
-        rho_good: float = 0.75,
-        rho_bad: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float = 1,
         update_freq: int = 1,
         max_attempts: int = 10,
@@ -122,7 +122,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings=settings, boundary_check=_linf_boundary_check
+                trust_region=trust_region, settings=settings, boundary_fn=_linf_boundary_check
             )
 
         assert d is not None

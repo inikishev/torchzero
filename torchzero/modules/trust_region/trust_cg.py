@@ -60,10 +60,12 @@ class TrustCG(TrustRegionBase):
         self,
         hess_module: Module,
         eta: float= 0.15,
-        nplus: float = 2,
+        # Gould, Nicholas IM, et al. "Sensitivity of trust-region algorithms to their parameters." 4OR 3.3 (2005): 227-241.
+        # which I found from https://github.com/patrick-kidger/optimistix/blob/c1dad7e75fc35bd5a4977ac3a872991e51e83d2c/optimistix/_solver/trust_region.py#L113-200
+        nplus: float = 3.5,
         nminus: float = 0.25,
-        rho_good: float = 0.75,
-        rho_bad: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float = 1,
         update_freq: int = 1,
         reg: float = 0,

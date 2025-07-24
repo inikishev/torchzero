@@ -80,10 +80,10 @@ class LevenbergMarquardt(TrustRegionBase):
         hess_module: Module,
         y: float = 0,
         eta: float= 0.0,
-        nplus: float = 3,
-        nminus: float = 1/2,
-        rho_good: float = 0.25,
-        rho_bad: float = 0.0,
+        nplus: float = 3.5,
+        nminus: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float = 1,
         update_freq: int = 1,
         max_attempts: int = 10,
@@ -131,7 +131,7 @@ class LevenbergMarquardt(TrustRegionBase):
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings = settings, boundary_check=None,
+                trust_region=trust_region, settings = settings, boundary_fn=None,
             )
 
         assert d is not None
