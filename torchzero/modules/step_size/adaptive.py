@@ -52,28 +52,28 @@ class PolyakStepSize(Transform):
         if f_star is None: f_star = f_best - y_val
 
         # calculate the step size
-        if gg <= torch.finfo(gg.dtype).eps: step_size = 0 # converged
-        else: step_size = (loss - f_star) / gg
+        if gg <= torch.finfo(gg.dtype).eps: alpha = 0 # converged
+        else: alpha = (loss - f_star) / gg
 
         # clip
         if max is not None:
-            if step_size > max: step_size = max
+            if alpha > max: alpha = max
 
         # store state
         self.global_state['f_best'] = f_best
         self.global_state['y_val'] = y_val * (1 - y_decay)
-        self.global_state['step_size'] = step_size
+        self.global_state['alpha'] = alpha
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        step_size = self.global_state.get('step_size', 1)
-        torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha', cls=NumberList))
+        alpha = self.global_state.get('alpha', 1)
+        torch._foreach_mul_(tensors, alpha * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
     def get_H(self, var):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
-        return ScaledIdentity(self.global_state.get('step_size', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
 
 def _bb_short(s: TensorList, y: TensorList, sy, eps):
@@ -253,7 +253,9 @@ class BBStab(Transform):
                     niters = self.global_state.get('niters', 0) # this accounts for skipped negative curvature steps
                     self.global_state['niters'] = niters + 1
 
-                    if niters < inf_iters:
+
+                    if niters == 0: pass # 1st iteration is scaled GD step, shouldn't be used to find s_norm_min
+                    elif niters <= inf_iters:
                         s_norm_min = self.global_state.get('s_norm_min', None)
                         if s_norm_min is None: s_norm_min = s.global_vector_norm()
                         else: s_norm_min = min(s_norm_min, s.global_vector_norm())

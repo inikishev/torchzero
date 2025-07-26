@@ -9,7 +9,6 @@ from .adam_sqrt import AdamSqrt
 from .adamY import AdamY
 from .adaptive_step_size import AdaptiveStepSize
 from .adasoap import AdaSOAP
-from .bbstabplus import BBStabPlus
 from .cosine import (
     AdaptiveDifference,
     AdaptiveDifferenceEMA,
