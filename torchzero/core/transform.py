@@ -1,13 +1,14 @@
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal, final
 
 import torch
 
-from ..utils import set_storage_, TensorList, vec_to_tensors
-from .module import Module, Var, Chain, Chainable
+from ..utils import TensorList, set_storage_, vec_to_tensors
+from .module import Chain, Chainable, Module, Var
 
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
+
 
 class Transform(Module, ABC):
     """Base class for a transform.
@@ -47,7 +48,6 @@ class Transform(Module, ABC):
         uses_loss: bool = False,
         concat_params: bool = False,
         update_freq: int = 1,
-        scale_first: bool = False,
         inner: Chainable | None = None,
         target: Target = 'update',
     ):
@@ -57,7 +57,6 @@ class Transform(Module, ABC):
         self._uses_loss = uses_loss
         self._concat_params = concat_params
         self._update_freq = update_freq
-        self._scale_first = scale_first
         self._inner = inner
 
     def update_tensors(
@@ -161,12 +160,6 @@ class Transform(Module, ABC):
 
         # apply transform
         tensors = list(self.apply_tensors(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings))
-
-        # scale initial step, when preconditioner might not have been applied
-        if self._scale_first and step == 1:
-            scale_factor = 1 / TensorList(tensors).abs().global_sum().clip(min=1)
-            scale_factor = scale_factor.clip(min=torch.finfo(tensors[0].dtype).eps)
-            torch._foreach_mul_(tensors, scale_factor)
 
         if self._concat_params:
             tensors = vec_to_tensors(vec=tensors[0], reference=un_tensors)
@@ -347,7 +340,6 @@ class TensorwiseTransform(Transform, ABC):
         uses_loss: bool = False,
         concat_params: bool = False,
         update_freq: int = 1,
-        scale_first: bool = False,
         inner: Chainable | None = None,
         target: Target = 'update',
     ):
@@ -356,7 +348,6 @@ class TensorwiseTransform(Transform, ABC):
             uses_grad=uses_grad,
             concat_params=concat_params,
             update_freq=update_freq,
-            scale_first=scale_first,
             uses_loss=uses_loss,
             inner=inner,
             target=target,

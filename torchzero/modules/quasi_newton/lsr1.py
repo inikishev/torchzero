@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
-from ..functional import initial_scaling_
+from ..functional import initial_step_size
 from .lbfgs import _lerp_params_update_
 
 
@@ -18,7 +18,8 @@ def lsr1_(
 ):
     if len(s_history) == 0:
         # initial step size guess from pytorch
-        return initial_scaling_(TensorList(tensors_))
+        tensors = TensorList(tensors_)
+        return tensors.mul_(initial_step_size(tensors_))
 
     m = len(s_history)
 
@@ -200,12 +201,14 @@ class LSR1(Transform):
         if tol is not None:
             if s is not None and s.abs().global_max() <= tol:
                 if tol_reset: self.reset()
-                return initial_scaling_(TensorList(tensors))
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if tol is not None:
             if y is not None and y.abs().global_max() <= gtol:
-                return initial_scaling_(TensorList(tensors))
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # precondition
         dir = lsr1_(

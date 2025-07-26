@@ -1,15 +1,15 @@
-"""Use BFGS or maybe SR1."""
-from abc import ABC, abstractmethod
-from collections.abc import Mapping, Callable
-from typing import Any, Literal
 import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping
+from typing import Any, Literal
 
 import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
-from ..functional import initial_scaling_
 from ...utils.linalg import linear_operator
+from ..functional import initial_step_size
+
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -130,14 +130,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, inverse=inverse, beta=beta, reset_interval=reset_interval, scale_first=scale_first))
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
@@ -250,10 +249,10 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, setting):
-        step = state.get('step', 0)
+        step = state['step']
 
-        if setting['scale_second'] and step == 2:
-            tensor = initial_scaling_(tensor)
+        if setting['scale_first'] and step == 1:
+            tensor *= initial_step_size(tensor)
 
         inverse = setting['inverse']
         g = tensor.view(-1)
@@ -270,7 +269,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
-        return initial_scaling_(tensor)
+
+        self.reset() # failed to solve linear system, so reset state
+        return tensor.mul_(initial_step_size(tensor))
 
     def get_H(self, var):
         param = var.params[0]
@@ -324,7 +325,6 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
         inner: Chainable | None = None,
@@ -340,7 +340,6 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=inverse,
             inner=inner,
@@ -358,7 +357,6 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = False,
         inner: Chainable | None = None,
@@ -374,7 +372,6 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=inverse,
             inner=inner,
@@ -916,7 +913,6 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -930,7 +926,6 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1039,7 +1034,6 @@ class SSVM(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -1055,7 +1049,6 @@ class SSVM(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1226,7 +1219,6 @@ class NewSSM(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -1241,7 +1233,6 @@ class NewSSM(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1291,7 +1282,6 @@ class ShorR(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
-        scale_second: bool = False,
         concat_params: bool = True,
         # inverse: bool = True,
         inner: Chainable | None = None,
@@ -1308,7 +1298,6 @@ class ShorR(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,

@@ -121,7 +121,6 @@ class DNRTR(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -137,7 +136,6 @@ class DNRTR(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=False,
             inner=inner,

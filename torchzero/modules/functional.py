@@ -12,7 +12,14 @@ from typing import overload
 
 import torch
 
-from ..utils import NumberList, TensorList, generic_finfo_eps, generic_max, generic_sum
+from ..utils import (
+    NumberList,
+    TensorList,
+    generic_finfo_eps,
+    generic_max,
+    generic_sum,
+    tofloat,
+)
 
 inf = float('inf')
 
@@ -208,38 +215,30 @@ def sqrt_centered_ema_sq_(
         ema_sq_fn=lambda *a, **kw: centered_ema_sq_(*a, **kw, exp_avg_=exp_avg_)
     )
 
-@overload
-def initial_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
-@overload
-def initial_scaling_(tensors_: TensorList) -> TensorList: ...
-def initial_scaling_(tensors_: torch.Tensor | TensorList):
-    """initial scaling taken from pytorch L-BFGS, and made safer to avoid making steps that are too small"""
-    tensors_abs = tensors_.abs()
+def initial_step_size(tensors: torch.Tensor | TensorList) -> float:
+    """initial scaling taken from pytorch L-BFGS to avoid requiring a lot of line search iterations,
+    this version is safer and makes sure largest value isn't smaller than epsilon."""
+    tensors_abs = tensors.abs()
     tensors_sum = generic_sum(tensors_abs)
     tensors_max = generic_max(tensors_abs)
-    eps = generic_finfo_eps(tensors_)
+    eps = generic_finfo_eps(tensors)
 
     # scale should not make largest value smaller than epsilon
     min = eps / tensors_max
-    if min >= 1: return tensors_
+    if min >= 1: return 1.0
 
     scale = 1 / tensors_sum
     scale = scale.clip(min=min.item(), max=1)
-    return tensors_.mul_(scale)
+    return scale.item()
 
 
-@overload
-def epsilon_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
-@overload
-def epsilon_scaling_(tensors_: TensorList) -> TensorList: ...
-def epsilon_scaling_(tensors_: torch.Tensor | TensorList):
-    """largest value is at most epsilon"""
-    tensors_abs = tensors_.abs()
+def epsilon_step_size(tensors: torch.Tensor | TensorList, alpha=1e-7) -> float:
+    """makes sure largest value isn't smaller than epsilon."""
+    tensors_abs = tensors.abs()
     tensors_max = generic_max(tensors_abs)
-    eps = generic_finfo_eps(tensors_)
-    if tensors_max < eps: return tensors_
+    if tensors_max < alpha: return 1.0
 
-    scale = eps / tensors_max
-    return tensors_.mul_(scale)
+    if tensors_max < 1: alpha = alpha / tensors_max
+    return tofloat(alpha)
 
 

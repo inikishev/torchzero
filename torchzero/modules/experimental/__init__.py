@@ -2,12 +2,14 @@
 from .absoap import ABSOAP
 from .adadam import Adadam
 from .adam_abs import AdamAbs
+from .adam_exp import AdamExp
 from .adam_expclogmul import AdamExpclogmul
 from .adam_lambertw import AdamLambertW
 from .adam_sqrt import AdamSqrt
 from .adamY import AdamY
 from .adaptive_step_size import AdaptiveStepSize
 from .adasoap import AdaSOAP
+from .bbstabplus import BBStabPlus
 from .cosine import (
     AdaptiveDifference,
     AdaptiveDifferenceEMA,
@@ -26,7 +28,6 @@ from .etf import (
     ExponentialTrajectoryFitV2,
     PointwiseExponential,
 )
-from .adam_exp import AdamExp
 from .expanded_lbfgs import ExpandedLBFGS
 from .fft import FFTProjection
 from .gradmin import GradMin

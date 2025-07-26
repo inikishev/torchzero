@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
-from ..functional import initial_scaling_
+from ..functional import initial_step_size
 
 
 def _adaptive_damping(
@@ -40,7 +40,8 @@ def lbfgs(
     if len(s_history) == 0 or y is None or sy is None:
 
         # initial step size guess modified from pytorch L-BFGS
-        return initial_scaling_(TensorList(tensors_))
+        tensors_ = TensorList(tensors_)
+        return tensors_.mul_(initial_step_size(tensors_))
 
     # 1st loop
     alpha_list = []
@@ -259,12 +260,14 @@ class LBFGS(Transform):
         if tol is not None:
             if s is not None and s.abs().global_max() <= tol:
                 if tol_reset: self.reset()
-                return initial_scaling_(TensorList(tensors))
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if tol is not None:
             if y is not None and y.abs().global_max() <= gtol:
-                return initial_scaling_(TensorList(tensors))
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # lerp initial H^-1 @ q guess
         z_ema = None

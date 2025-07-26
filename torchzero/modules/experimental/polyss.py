@@ -6,8 +6,10 @@ import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
 from ...core import Chainable, Transform
-from ...utils import as_tensorlist, tofloat, tonumpy
+from ...utils import TensorList, as_tensorlist, tofloat, tonumpy
+from ..functional import epsilon_step_size
 from ..line_search._polyinterp import polyinterp, polyinterp2
+
 
 # based on https://github.com/pytorch/pytorch/blob/main/torch/optim/lbfgs.py
 def _cubic_interpolate_unbounded(x1, f1, g1, x2, f2, g2):
@@ -25,9 +27,9 @@ def _cubic_interpolate_unbounded(x1, f1, g1, x2, f2, g2):
 
 class PolyStepSize(Transform):
     """Projects past points onto current update and fits a cubic or a polynomial, also could try putting ``tz.m.Normalize`` BEFORE this."""
-    def __init__(self, order: int = 3, use_grad=True, scale_first:bool=True, init:float=1e-3, try_lower_degree: bool = True, tol=1e-10, inner:Chainable|None = None):
-        defaults = dict(order=order, scale_first=scale_first, init=init, try_lower_degree=try_lower_degree, tol=tol)
-        super().__init__(defaults, uses_grad=use_grad, scale_first=scale_first, inner=inner, uses_loss=True)
+    def __init__(self, order: int = 3, use_grad=True, init:float | None=None, try_lower_degree: bool = True, tol=1e-10, inner:Chainable|None = None):
+        defaults = dict(order=order, init=init, try_lower_degree=try_lower_degree, tol=tol)
+        super().__init__(defaults, uses_grad=use_grad, inner=inner, uses_loss=True)
 
     def _init_state(self, settings):
         order = settings[0]['order']
@@ -96,6 +98,9 @@ class PolyStepSize(Transform):
                 step_size = float(t_min)
                 self.global_state['step_size'] = step_size
 
+            else:
+                self.reset()
+
             if (p - p_history[-1]).abs().global_max() < tol:
                 self._init_state(settings)
 
@@ -104,7 +109,11 @@ class PolyStepSize(Transform):
         g_history.append(g.clone())
 
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        step_size = self.global_state.get('step_size', settings[0]['init'])
+        step_size = self.global_state.get('step_size', None)
+        if step_size is None:
+            step_size = settings[0]['init']
+            if step_size is None: step_size = epsilon_step_size(TensorList(tensors))
+
         torch._foreach_mul_(tensors, step_size)
         return tensors
 

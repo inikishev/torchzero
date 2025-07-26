@@ -12,6 +12,7 @@ from ...utils import (
     unpack_dicts,
     unpack_states,
 )
+from ..functional import epsilon_step_size
 
 
 class CosineStepSize(Transform):
@@ -27,26 +28,37 @@ class CosineStepSize(Transform):
         inner (Chainable | None, optional):
             inner modules applied after calculating cosine similarity and before step size correction. Defaults to None.
     """
-    def __init__(self, scale:float = 0.95, init:float=1, eps:float=1e-12, stochastic: bool=False, inner:Chainable | None = None):
+    def __init__(self, scale:float = 0.95, init:float | None=None, eps:float=1e-12, stochastic: bool=False, inner:Chainable | None = None):
         defaults = dict(scale=scale, init=init, eps=eps, stochastic=stochastic)
-        super().__init__(defaults, uses_grad=False, scale_first=True)
+        super().__init__(defaults, uses_grad=False)
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        scale, init = unpack_dicts(settings, 'scale', 'init', cls=NumberList)
-        unpack_states(states, tensors, 'alpha', init=init, cls=NumberList) # initializes alpha to init
-        eps = settings[0]['eps']
-        stochastic = settings[0]['stochastic']
-
         tensors = as_tensorlist(tensors)
         prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
+        scale, init = unpack_dicts(settings, 'scale', 'init', cls=NumberList)
+        if init[0] is None: init = epsilon_step_size(tensors)
+        alpha = unpack_states(states, tensors, 'alpha', init=init, cls=NumberList) # initializes alpha to init
+
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        if step == 0:
+            prev.copy_(tensors)
+            if loss is not None: self.global_state['prev_loss'] = tofloat(loss)
+            torch._foreach_mul_(tensors, alpha)
+            return tensors
+
+        eps = settings[0]['eps']
+        stochastic = settings[0]['stochastic']
 
         if loss is not None:
             if (not math.isfinite(loss)) or (not stochastic):
                 if 'prev_loss' in self.global_state and self.global_state['prev_loss'] < loss:
                     ret = prev.neg()
-                    prev.zero_()
+                    self.clear_state_keys('prev')
+                    self.global_state['step'] = 0
                     del self.global_state['prev_loss']
                     for s, sc in zip(states, scale): s['alpha'] /= 2
                     return ret
@@ -64,7 +76,7 @@ class CosineStepSize(Transform):
 
         tensors.mul_(new_alpha)
         prev.copy_(tensors)
-        self.global_state['prev_loss'] = tofloat(loss)
+        if loss is not None: self.global_state['prev_loss'] = tofloat(loss)
 
         return tensors
 
