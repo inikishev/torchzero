@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from ...core import Modular, Module, Var
+from ...core import Modular, Module, Var, Chainable
 from ...utils import NumberList, TensorList
 
 
@@ -61,31 +61,24 @@ class EscapeAnnealing(Module):
             self.global_state['n_bad'] = 0
         return var
 
-def _reset_hook(optimizer: Modular, var: Var):
-    for module in optimizer.unrolled_modules:
-        module.reset()
-
 class ResetOnStuck(Module):
     """Resets optimizer state when update is close to zero for multiple steps in a row. This should be the last module."""
-    def __init__(self, tol=1e-10, n_tol: int = 4):
+    def __init__(self, modules: Chainable, tol=1e-10, n_tol: int = 4):
         defaults = dict(tol=tol, n_tol=n_tol)
         super().__init__(defaults)
-
+        self.set_child('modules', modules)
 
     @torch.no_grad
     def step(self, var):
-        if not var.is_last: raise RuntimeError("ResetOnStuck must be the last module!")
-
-        closure = var.closure
-        if closure is None: raise RuntimeError("Escape requries closure")
-
         params = TensorList(var.params)
         settings = self.settings[params[0]]
         tol = settings['tol']
         n_tol = settings['n_tol']
-
         n_bad = self.global_state.get('n_bad', 0)
         is_bad = False
+
+        modules = self.children['modules']
+        var = modules.step(var.clone(clone_update=False))
 
         if var.skip_update:
             is_bad = True
@@ -102,7 +95,7 @@ class ResetOnStuck(Module):
 
         # no progress
         if n_bad >= n_tol:
+            modules.reset()
             self.global_state['n_bad'] = 0
-            var.post_step_hooks.append(_reset_hook)
 
         return var

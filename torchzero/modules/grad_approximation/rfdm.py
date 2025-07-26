@@ -280,6 +280,7 @@ class RandomizedFDM(GradApproximator):
         generator = self.global_state.get('generator', None) # avoid resetting generator
         self.global_state.clear()
         if generator is not None: self.global_state['generator'] = generator
+        for c in self.children.values(): c.reset()
 
     def _get_generator(self, seed: int | None | torch.Generator, params: list[torch.Tensor]):
         if 'generator' not in self.global_state:

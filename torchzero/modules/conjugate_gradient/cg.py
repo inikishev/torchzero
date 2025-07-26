@@ -358,15 +358,12 @@ class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain he
         return projected_gradient_(H=H, y=y)
 
 
-def _restart_hook(optimizer: Modular, var: Var):
-    for module in optimizer.unrolled_modules:
-        if not isinstance(module, LineSearchBase): module.reset()
-
 class PowellRestart(Module):
     """Powell's two restarting criterions for conjugate gradient methods.
 
     This should be placed **after** a conjugate gradient module and **before** the line search, other types of modules can also be used.
-    The restart clears all states of all modules except line searches.
+
+    The restart clears all states of ``modules``.
 
     Args:
         cond1 (float | None, optional):
@@ -381,11 +378,16 @@ class PowellRestart(Module):
     Reference:
         Powell, Michael James David. "Restart procedures for the conjugate gradient method." Mathematical programming 12.1 (1977): 241-254.
     """
-    def __init__(self, cond1:float | None = 0.2, cond2:float | None = 0.2):
+    def __init__(self, modules: Chainable, cond1:float | None = 0.2, cond2:float | None = 0.2):
         defaults=dict(cond1=cond1, cond2=cond2)
         super().__init__(defaults)
 
+        self.set_child("modules", modules)
+
     def step(self, var):
+        modules = self.children['modules']
+        var = modules.step(var.clone(clone_update=False))
+
         g = TensorList(var.get_grad())
         if 'step' not in self.global_state:
             self.global_state['step'] = 0
@@ -402,14 +404,16 @@ class PowellRestart(Module):
             g_g_prev = g_prev.dot(g)
 
             if g_g_prev.abs() >= cond1 * g_g:
-                var.post_step_hooks.append(_restart_hook)
+                modules.reset()
+                self.reset()
                 var.update = g.clone()
                 return var
 
         if cond2 is not None:
             d_g = TensorList(var.get_update()).dot(g)
             if (-1-cond2) * g_g < d_g < (-1 + cond2) * g_g:
-                var.post_step_hooks.append(_restart_hook)
+                modules.reset()
+                self.reset()
                 var.update = g.clone()
                 return var
 
@@ -422,7 +426,8 @@ class BirginMartinezRestart(Module):
     This criterion restarts when when the angle between dk+1 and −gk+1 is not acute enough.
 
     This should be placed **after** a conjugate gradient module and before the line search, other types of modules can also be used.
-    The restart clears all states of all modules.
+
+    The restart clears all states of ``modules``.
 
     Args:
         cond (float, optional):
@@ -432,11 +437,16 @@ class BirginMartinezRestart(Module):
     Reference:
         Birgin, Ernesto G., and José Mario Martínez. "A spectral conjugate gradient method for unconstrained optimization." Applied Mathematics & Optimization 43.2 (2001): 117-128.
     """
-    def __init__(self, cond:float = 1e-3):
+    def __init__(self, modules: Chainable, cond:float = 1e-3):
         defaults=dict(cond=cond)
         super().__init__(defaults)
 
+        self.set_child("modules", modules)
+
     def step(self, var):
+        modules = self.children['modules']
+        var = modules.step(var.clone(clone_update=False))
+
         setting = self.settings[var.params[0]]
         cond = setting['cond']
 
@@ -447,7 +457,8 @@ class BirginMartinezRestart(Module):
         g_norm = g.global_vector_norm()
 
         if d_g > -cond * d_norm * g_norm:
-            var.post_step_hooks.append(_restart_hook)
+            modules.reset()
+            self.reset()
             var.update = g.clone()
             return var
 

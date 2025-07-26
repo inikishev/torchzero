@@ -27,13 +27,13 @@ class GradientAccumulation(Module):
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.GradientAccumulation(
-                    tz.m.Adam(), tz.m.LR(1e-2),
+                    [tz.m.Adam(), tz.m.LR(1e-2)],
                     n=16
                 )
             )
 
     """
-    def __init__(self, *modules: Module, n: int, mean=True, stop=True):
+    def __init__(self, modules: Chainable, n: int, mean=True, stop=True):
         defaults = dict(n=n, mean=mean, stop=stop)
         super().__init__(defaults)
         self.set_child('modules', modules)

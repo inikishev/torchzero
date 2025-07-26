@@ -455,11 +455,10 @@ class Module(ABC):
         return None
 
     def reset(self):
-        """Resets the internal state of the module (e.g. momentum). By default clears state and global state."""
-        # no complex logic is allowed there because this is overridden by many modules
-        # where super().reset() shouldn't be called
+        """Resets the internal state of the module (e.g. momentum) and all children. By default clears state and global state."""
         self.state.clear()
         self.global_state.clear()
+        for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
         """Resets buffers that depend on previous evaluation, such as previous gradient,

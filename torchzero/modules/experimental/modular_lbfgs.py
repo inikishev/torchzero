@@ -162,6 +162,7 @@ class ModularLBFGS(Module):
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
         self.global_state['sy_history'].clear()
+        for c in self.children.values(): c.reset()
 
     @torch.no_grad
     def step(self, var):

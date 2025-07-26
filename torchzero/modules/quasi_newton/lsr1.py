@@ -144,6 +144,7 @@ class LSR1(Transform):
         self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
+        for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
         super().reset_for_online()

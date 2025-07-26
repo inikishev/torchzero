@@ -42,7 +42,7 @@ class TrustCG(TrustRegionBase):
             The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
             This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
         prefer_exact (bool, optional):
-            when exact solution can be calculated without CG (e.g. hessian is stored as diagonal or scaled identity),
+            when exact solution can be easily calculated without CG (e.g. hessian is stored as diagonal or scaled identity),
             uses the exact solution. If False, always uses CG. Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to output of thise module. Defaults to None.
 
