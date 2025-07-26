@@ -155,9 +155,6 @@ class Transform(Module, ABC):
             if self._concat_params:
                 tensors = [torch.cat([t.ravel() for t in tensors])]
 
-        step = self.global_state["__step"] # extract before apply which can reset state
-        assert step > 0
-
         # apply transform
         tensors = list(self.apply_tensors(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings))
 

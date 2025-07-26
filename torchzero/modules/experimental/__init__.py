@@ -14,7 +14,6 @@ from .cosine import (
     AdaptiveDifferenceEMA,
     CosineDebounce,
     CosineMomentum,
-    CosineStepSize,
     ScaledAdaptiveDifference,
 )
 from .cubic_adam import CubicAdam
@@ -41,7 +40,6 @@ from .momentum import (
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
 from .parabolic_search import CubicParabolaSearch, ParabolaSearch
-from .polyss import PolyStepSize
 from .reduce_outward_lr import ReduceOutwardLR
 from .scipy_newton_cg import ScipyNewtonCG
 from .structural_projections import BlockPartition, TensorizeProjection
