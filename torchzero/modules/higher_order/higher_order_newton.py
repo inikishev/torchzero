@@ -191,8 +191,10 @@ class HigherOrderNewton(Module):
         self,
         order: int = 4,
         trust_method: Literal['bounds', 'proximal', 'none'] | None = 'bounds',
-        nplus: float = 2,
+        nplus: float = 3.5,
         nminus: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float | None = None,
         eta: float = 1e-6,
         max_attempts = 10,
@@ -204,7 +206,7 @@ class HigherOrderNewton(Module):
             if trust_method == 'bounds': init = 1
             else: init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts, boundary_tol=boundary_tol)
+        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -224,6 +226,8 @@ class HigherOrderNewton(Module):
         max_attempts = settings['max_attempts']
         vectorize = settings['vectorize']
         boundary_tol = settings['boundary_tol']
+        rho_good = settings['rho_good']
+        rho_bad = settings['rho_bad']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         with torch.enable_grad():
@@ -299,11 +303,11 @@ class HigherOrderNewton(Module):
 
                 rho = reduction / (max(pred_reduction, 1e-8))
                 # failed step
-                if rho < 0.25:
+                if rho < rho_bad:
                     self.global_state['trust_region'] = trust_value * nminus
 
                 # very good step
-                elif rho > 0.75:
+                elif rho > rho_good:
                     step = (x_star - x0)
                     magn = torch.linalg.vector_norm(step) # pylint:disable=not-callable
                     if trust_method == 'proximal' or (magn - trust_value) / trust_value > -boundary_tol: # close to boundary
