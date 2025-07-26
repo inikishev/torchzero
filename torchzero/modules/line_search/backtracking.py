@@ -70,8 +70,8 @@ class Backtracking(LineSearchBase):
             Defaults to 'armijo'.
         maxiter (int, optional): maximum number of function evaluations per step. Defaults to 10.
         adaptive (bool, optional):
-            when enabled, if line search failed, ``beta`` parameter is reduced by 1.5 times.
-            Otherwise it is reset to initial value. Defaults to True.
+            when enabled, if line search failed, step size will continue decreasing on the next step.
+            Otherwise it will restart the line search from ``init`` step size. Defaults to True.
 
     Examples:
         Gradient descent with backtracking line search:
@@ -105,11 +105,9 @@ class Backtracking(LineSearchBase):
     ):
         defaults=dict(init=init,beta=beta,c=c,condition=condition,maxiter=maxiter,adaptive=adaptive)
         super().__init__(defaults=defaults)
-        self.global_state['beta_scale'] = 1.0
 
     def reset(self):
         super().reset()
-        self.global_state['beta_scale'] = 1.0
 
     @torch.no_grad
     def search(self, update, var):
@@ -123,18 +121,18 @@ class Backtracking(LineSearchBase):
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
-        if adaptive: beta = beta * self.global_state['beta_scale']
+        if adaptive: beta = beta * self.global_state.get('init_scale', 1)
 
         step_size = backtracking_line_search(objective, d, init=init,beta=beta,c=c, condition=condition, maxiter=maxiter)
 
         # found an alpha that reduces loss
         if step_size is not None:
             #self.global_state['beta_scale'] = min(1.0, self.global_state['beta_scale'] * math.sqrt(1.5))
-            self.global_state['beta_scale'] = 1
+            self.global_state['init_scale'] = 1
             return step_size
 
-        # on fail reduce beta scale value
-        self.global_state['beta_scale'] /= 1.5
+        # on fail set init_scale to continue decreasing the step size
+        self.global_state['init_scale'] = self.global_state.get('init_scale', 1) * beta**maxiter
         return 0
 
 def _lerp(start,end,weight):
