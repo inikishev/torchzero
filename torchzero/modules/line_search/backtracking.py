@@ -120,10 +120,10 @@ class Backtracking(LineSearchBase):
         if c == 0: d = 0
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
-        # scale beta (beta is multiplicative and i think may be better than scaling initial step size)
-        if adaptive: beta = beta * self.global_state.get('init_scale', 1)
+        # scale init
+        if adaptive: init = max(init * self.global_state.get('init_scale', 1), 1e-12)
 
-        step_size = backtracking_line_search(objective, d, init=init,beta=beta,c=c, condition=condition, maxiter=maxiter)
+        step_size = backtracking_line_search(objective, d, init=init, beta=beta,c=c, condition=condition, maxiter=maxiter)
 
         # found an alpha that reduces loss
         if step_size is not None:
