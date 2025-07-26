@@ -288,13 +288,13 @@ class BBStab(Transform):
 
 
 
-class AdaptiveGD(Transform):
-    """Adaptive Gradient Descent (https://arxiv.org/abs/1910.09529)
+class AdGD(Transform):
+    """AdGD and AdGD-2 (https://proceedings.neurips.cc/paper_files/paper/2024/file/b676cbd80be73a4a7af178f12035a801-Paper-Conference.pdf)
 
     A parameter-free step size method.
     """
-    def __init__(self, y0:float | None = None, sqrt:bool=False, alpha:float = 1, inner: Chainable | None = None,):
-        defaults = dict(y0=y0, sqrt=sqrt, alpha=alpha)
+    def __init__(self, variant:Literal[1,2]=2, alpha_0:float | None = None, sqrt:bool=True, inner: Chainable | None = None,):
+        defaults = dict(variant=variant, alpha_0=alpha_0, sqrt=sqrt)
         super().__init__(defaults, uses_grad=False, inner=inner,)
 
     def reset_for_online(self):
@@ -304,9 +304,13 @@ class AdaptiveGD(Transform):
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
-        theta = self.global_state.get('theta', math.inf)
+        variant = settings[0]['variant']
+        theta_0 = 0 if variant == 1 else 1/3
+        theta = self.global_state.get('theta', theta_0)
+
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
+
         p = TensorList(params); g = TensorList(tensors)
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
 
@@ -318,40 +322,48 @@ class AdaptiveGD(Transform):
             return
 
         if step == 0:
-            y0 = settings[0]['y0']
-            if y0 is None: y0 = torch.finfo(g[0].dtype).eps
-            self.global_state['y']  = y0
+            alpha_0 = settings[0]['alpha_0']
+            if alpha_0 is None: alpha_0 = torch.finfo(g[0].dtype).eps
+            self.global_state['alpha']  = alpha_0
             prev_p.copy_(p)
             prev_g.copy_(g)
             return
 
         sqrt = settings[0]['sqrt']
+        alpha = self.global_state.get('alpha', math.inf)
+        L = (g - prev_g).global_vector_norm() / (p - prev_p).global_vector_norm()
 
-        y = self.global_state.get('y', math.inf)
+        if variant == 1:
+            a1 = math.sqrt(1 + theta)*alpha
+            val = math.sqrt(2) if sqrt else 2
+            if L > 1e-12: a2 = 1 / (val*L)
+            else: a2 = math.inf
 
-        y1 = math.sqrt(1 + theta)*y
+        elif variant == 2:
+            a1 = math.sqrt(2/3 + theta)*alpha
+            a2 = alpha / math.sqrt(max(1e-10, 2 * alpha**2 * L**2 - 1))
 
-        val = math.sqrt(2) if sqrt else 2
-        y2 = (p - prev_p).global_vector_norm() / (val * (g - prev_g).global_vector_norm())
+        else:
+            raise ValueError(variant)
 
-        y_new = min(y1, y2)
-        self.global_state['theta'] = y_new/y
-        self.global_state['y'] = y_new
+        alpha_new = min(a1, a2)
+        self.global_state['theta'] = alpha_new/alpha
+        self.global_state['alpha'] = alpha_new
 
         prev_p.copy_(p)
         prev_g.copy_(g)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        y = self.global_state.get('y', math.inf)
-        if not math.isfinite(y):
+        alpha = self.global_state.get('alpha', math.inf)
+
+        isfinite = math.isfinite(alpha)
+        if alpha < 0 or not isfinite:
             self.reset()
-            y0 = settings[0]['y0']
-            if y0 is None: y0 = torch.finfo(tensors[0].dtype).eps
-            torch._foreach_mul_(tensors, y0)
+            alpha_0 = settings[0]['alpha_0']
+            if alpha_0 is None: alpha_0 = torch.finfo(tensors[0].dtype).eps
+            torch._foreach_mul_(tensors, alpha_0)
             return tensors
 
-        alpha = unpack_dicts(settings, 'alpha', cls=NumberList)
-        torch._foreach_mul_(tensors, y*alpha)
+        torch._foreach_mul_(tensors, min(alpha, 1e32))
         return tensors
-
