@@ -11,7 +11,7 @@ from collections.abc import Callable
 from typing import overload
 import torch
 
-from ..utils import NumberList, TensorList
+from ..utils import NumberList, TensorList, generic_max, generic_sum, generic_finfo_eps
 
 inf = float('inf')
 
@@ -212,8 +212,16 @@ def safe_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
 @overload
 def safe_scaling_(tensors_: TensorList) -> TensorList: ...
 def safe_scaling_(tensors_: torch.Tensor | TensorList):
-    if isinstance(tensors_, torch.Tensor): scale = 1 / tensors_.abs().sum()
-    else: scale = 1 / tensors_.abs().global_sum()
-    scale = scale.clip(min=torch.finfo(tensors_[0].dtype).eps, max=1)
+    tensors_abs = tensors_.abs()
+    tensors_sum = generic_sum(tensors_abs)
+    tensors_max = generic_max(tensors_abs)
+    eps = generic_finfo_eps(tensors_)
+
+    # scale should not make largest value smaller than epsilon
+    min = eps / tensors_max
+    if min >= 1: return tensors_
+
+    scale = 1 / tensors_sum
+    scale = scale.clip(min=min.item(), max=1)
     return tensors_.mul_(scale)
 

@@ -6,7 +6,7 @@ import torch
 from ...core import Transform, Chainable
 from ...utils import TensorList, unpack_dicts, unpack_states, NumberList, tofloat
 from ...utils.linalg.linear_operator import ScaledIdentity
-
+from ..functional import safe_scaling_
 
 class PolyakStepSize(Transform):
     """Polyak's subgradient method with known or unknown f*.
@@ -274,4 +274,11 @@ class BBStab(Transform):
         if step_size is None: step_size = unpack_dicts(settings, 'fallback', cls=NumberList)
         torch._foreach_mul_(tensors, alpha*step_size)
         return tensors
+
+
+
+class AdaptiveGD(Transform):
+    def __init__(self, a_0:float | None = None):
+        defaults = dict(a_0=a_0)
+        super().__init__(defaults)
 
