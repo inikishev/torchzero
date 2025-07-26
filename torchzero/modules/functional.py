@@ -9,9 +9,10 @@ Additional functional variants are present in most module files, e.g. `adam_`, `
 """
 from collections.abc import Callable
 from typing import overload
+
 import torch
 
-from ..utils import NumberList, TensorList, generic_max, generic_sum, generic_finfo_eps
+from ..utils import NumberList, TensorList, generic_finfo_eps, generic_max, generic_sum
 
 inf = float('inf')
 
@@ -208,10 +209,11 @@ def sqrt_centered_ema_sq_(
     )
 
 @overload
-def safe_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
+def initial_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
 @overload
-def safe_scaling_(tensors_: TensorList) -> TensorList: ...
-def safe_scaling_(tensors_: torch.Tensor | TensorList):
+def initial_scaling_(tensors_: TensorList) -> TensorList: ...
+def initial_scaling_(tensors_: torch.Tensor | TensorList):
+    """initial scaling taken from pytorch L-BFGS, and made safer to avoid making steps that are too small"""
     tensors_abs = tensors_.abs()
     tensors_sum = generic_sum(tensors_abs)
     tensors_max = generic_max(tensors_abs)
@@ -224,4 +226,20 @@ def safe_scaling_(tensors_: torch.Tensor | TensorList):
     scale = 1 / tensors_sum
     scale = scale.clip(min=min.item(), max=1)
     return tensors_.mul_(scale)
+
+
+@overload
+def epsilon_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
+@overload
+def epsilon_scaling_(tensors_: TensorList) -> TensorList: ...
+def epsilon_scaling_(tensors_: torch.Tensor | TensorList):
+    """largest value is at most epsilon"""
+    tensors_abs = tensors_.abs()
+    tensors_max = generic_max(tensors_abs)
+    eps = generic_finfo_eps(tensors_)
+    if tensors_max < eps: return tensors_
+
+    scale = eps / tensors_max
+    return tensors_.mul_(scale)
+
 

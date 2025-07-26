@@ -8,7 +8,7 @@ import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
-from ..functional import safe_scaling_
+from ..functional import initial_scaling_
 from ...utils.linalg import linear_operator
 
 def _safe_dict_update_(d1_:dict, d2:dict):
@@ -253,7 +253,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         step = state.get('step', 0)
 
         if setting['scale_second'] and step == 2:
-            tensor = safe_scaling_(tensor)
+            tensor = initial_scaling_(tensor)
 
         inverse = setting['inverse']
         g = tensor.view(-1)
@@ -270,7 +270,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
-        return safe_scaling_(tensor)
+        return initial_scaling_(tensor)
 
     def get_H(self, var):
         param = var.params[0]

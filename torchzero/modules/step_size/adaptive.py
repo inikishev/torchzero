@@ -1,12 +1,15 @@
 """Various step size strategies"""
-from typing import Any, Literal
+import math
 from operator import itemgetter
+from typing import Any, Literal
+
 import torch
 
-from ...core import Transform, Chainable
-from ...utils import TensorList, unpack_dicts, unpack_states, NumberList, tofloat
+from ...core import Chainable, Transform
+from ...utils import NumberList, TensorList, tofloat, unpack_dicts, unpack_states
 from ...utils.linalg.linear_operator import ScaledIdentity
-from ..functional import safe_scaling_
+from ..functional import epsilon_scaling_
+
 
 class PolyakStepSize(Transform):
     """Polyak's subgradient method with known or unknown f*.
@@ -120,7 +123,7 @@ class BarzilaiBorwein(Transform):
     def reset_for_online(self):
         super().reset_for_online()
         self.clear_state_keys('prev_g')
-        self.global_state.pop('step', None)
+        self.global_state['reset'] = True
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
@@ -134,7 +137,10 @@ class BarzilaiBorwein(Transform):
         g = grads if self._uses_grad else tensors
         assert g is not None
 
-        if step != 0:
+        reset = self.global_state.get('reset', False)
+        self.global_state.pop('reset', None)
+
+        if step != 0 and not reset:
             s = params-prev_p
             y = g-prev_g
             sy = s.dot(y)
@@ -156,6 +162,7 @@ class BarzilaiBorwein(Transform):
         p = var.params[0]
         return ScaledIdentity(self.global_state.get('step_size', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
+    @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
         alpha = unpack_dicts(settings, 'alpha', cls=NumberList)
@@ -205,7 +212,7 @@ class BBStab(Transform):
     def reset_for_online(self):
         super().reset_for_online()
         self.clear_state_keys('prev_g')
-        self.global_state.pop('step', None)
+        self.global_state['reset'] = True
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
@@ -223,7 +230,10 @@ class BBStab(Transform):
         assert g is not None
         g = TensorList(g)
 
-        if step != 0:
+        reset = self.global_state.get('reset', False)
+        self.global_state.pop('reset', None)
+
+        if step != 0 and not reset:
             s = params-prev_p
             y = g-prev_g
             sy = s.dot(y)
@@ -268,6 +278,7 @@ class BBStab(Transform):
         p = var.params[0]
         return ScaledIdentity(self.global_state.get('step_size', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
+    @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
         alpha = unpack_dicts(settings, 'alpha', cls=NumberList)
@@ -278,7 +289,69 @@ class BBStab(Transform):
 
 
 class AdaptiveGD(Transform):
-    def __init__(self, a_0:float | None = None):
-        defaults = dict(a_0=a_0)
-        super().__init__(defaults)
+    """Adaptive Gradient Descent (https://arxiv.org/abs/1910.09529)
+
+    A parameter-free step size method.
+    """
+    def __init__(self, y0:float | None = None, sqrt:bool=False, alpha:float = 1, inner: Chainable | None = None,):
+        defaults = dict(y0=y0, sqrt=sqrt, alpha=alpha)
+        super().__init__(defaults, uses_grad=False, inner=inner,)
+
+    def reset_for_online(self):
+        super().reset_for_online()
+        self.clear_state_keys('prev_g')
+        self.global_state['reset'] = True
+
+    @torch.no_grad
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
+        theta = self.global_state.get('theta', math.inf)
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+        p = TensorList(params); g = TensorList(tensors)
+        prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
+
+        # online
+        if self.global_state.get('reset', False):
+            del self.global_state['reset']
+            prev_p.copy_(p)
+            prev_g.copy_(g)
+            return
+
+        if step == 0:
+            y0 = settings[0]['y0']
+            if y0 is None: y0 = torch.finfo(g[0].dtype).eps
+            self.global_state['y']  = y0
+            prev_p.copy_(p)
+            prev_g.copy_(g)
+            return
+
+        sqrt = settings[0]['sqrt']
+
+        y = self.global_state.get('y', math.inf)
+
+        y1 = math.sqrt(1 + theta)*y
+
+        val = math.sqrt(2) if sqrt else 2
+        y2 = (p - prev_p).global_vector_norm() / (val * (g - prev_g).global_vector_norm())
+
+        y_new = min(y1, y2)
+        self.global_state['theta'] = y_new/y
+        self.global_state['y'] = y_new
+
+        prev_p.copy_(p)
+        prev_g.copy_(g)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        y = self.global_state.get('y', math.inf)
+        if not math.isfinite(y):
+            self.reset()
+            y0 = settings[0]['y0']
+            if y0 is None: y0 = torch.finfo(tensors[0].dtype).eps
+            torch._foreach_mul_(tensors, y0)
+            return tensors
+
+        alpha = unpack_dicts(settings, 'alpha', cls=NumberList)
+        torch._foreach_mul_(tensors, y*alpha)
+        return tensors
 
