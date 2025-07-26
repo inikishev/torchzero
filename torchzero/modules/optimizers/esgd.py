@@ -61,7 +61,7 @@ class ESGD(Module):
               more accurate HVP approximation. This requires two extra
               gradient evaluations.
             Defaults to "autograd".
-        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        fd_h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
         n_samples (int, optional):
             number of hessian-vector products with random vectors to evaluate each time when updating
             the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.

@@ -119,7 +119,6 @@ class Identity(Module):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
         return ScaledIdentity(shape=(n,n), device=p.device, dtype=p.dtype)
-    def get_B(self, var): return self.get_H(var)
 
 Noop = Identity
 """A placeholder identity operator that is argument-insensitive."""

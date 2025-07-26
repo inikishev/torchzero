@@ -87,10 +87,10 @@ def root(tensors_:TensorList, p:float, inplace: bool):
         if p == 1: return tensors_.abs_()
         if p == 2: return tensors_.sqrt_()
         return tensors_.pow_(1/p)
-    else:
-        if p == 1: return tensors_.abs()
-        if p == 2: return tensors_.sqrt()
-        return tensors_.pow(1/p)
+
+    if p == 1: return tensors_.abs()
+    if p == 2: return tensors_.sqrt()
+    return tensors_.pow(1/p)
 
 
 def ema_(

@@ -1,4 +1,5 @@
 from .clipping import *
+from .conjugate_gradient import *
 from .grad_approximation import *
 from .higher_order import *
 from .least_squares import *
@@ -9,6 +10,7 @@ from .ops import *
 from .optimizers import *
 from .projections import *
 from .quasi_newton import *
+from .root import *
 from .second_order import *
 from .smoothing import *
 from .step_size import *

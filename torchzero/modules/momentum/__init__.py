@@ -6,7 +6,5 @@ from .cautious import (
     ScaleModulesByCosineSimilarity,
     UpdateGradientSignConsistency,
 )
-from .ema import EMA, Debias, Debias2, EMASquared, SqrtEMASquared, CenteredEMASquared, CenteredSqrtEMASquared
 
-from .momentum import NAG, HeavyBall
-from .matrix_momentum import MatrixMomentum, AdaptiveMatrixMomentum
+from .momentum import NAG, HeavyBall, EMA

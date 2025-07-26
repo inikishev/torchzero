@@ -15,7 +15,7 @@ from ...utils.derivatives import (
     hvp_fd_forward,
     jacobian_and_hessian_wrt,
 )
-from ...utils.linalg.linear_operator import Dense
+from ...utils.linalg.linear_operator import DenseWithInverse, Dense
 
 def lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
@@ -40,40 +40,43 @@ def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_ne
         L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
         if tfm is not None: L = tfm(L)
         if search_negative and L[0] < 0:
-            d = Q[0]
-             # use eigvec or -eigvec depending on if it points in same direction as gradient
-            return g.dot(d).sign() * d
+            neg_mask = L < 0
+            Q_neg = Q[:, neg_mask] * L[neg_mask]
+            return (Q_neg * (g @ Q_neg).sign()).sum(1)
 
         return Q @ ((Q.mH @ g) / L)
 
     except torch.linalg.LinAlgError:
         return None
 
-def tikhonov_(H: torch.Tensor, reg: float):
-    if reg!=0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(reg))
-    return H
+
 
 
 class Newton(Module):
     """Exact newton's method via autograd.
 
-    .. note::
+    Newton's method produces a direction jumping to the stationary point of quadratic approximation of the target function.
+    The update rule is given by ``(H + yI)⁻¹g``, where ``H`` is the hessian and ``g`` is the gradient, ``y`` is the ``damping`` parameter.
+    ``g`` can be output of another module, if it is specifed in ``inner`` argument.
+
+    Note:
         In most cases Newton should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
 
-    .. note::
+    Note:
         This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating the hessian.
         The closure must accept a ``backward`` argument (refer to documentation).
 
-    .. warning::
-        this uses roughly O(N^2) memory.
-
-
     Args:
-        reg (float, optional): tikhonov regularizer value. Defaults to 1e-6.
+        damping (float, optional): tikhonov regularizer value. Set this to 0 when using trust region. Defaults to 0.
         search_negative (bool, Optional):
             if True, whenever a negative eigenvalue is detected,
-            search direction is proposed along an eigenvector corresponding to a negative eigenvalue.
+            search direction is proposed along weighted sum of eigenvectors corresponding to negative eigenvalues.
+        use_lstsq (bool, Optional):
+            if True, least squares will be used to solve the linear system, this may generate reasonable directions
+            when hessian is not invertible. If False, tries cholesky, if it fails tries LU, and then least squares.
+            If ``eigval_tfm`` is specified, eigendecomposition will always be used to solve the linear system and this
+            argument will be ignored.
         hessian_method (str):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
@@ -92,62 +95,80 @@ class Newton(Module):
             optional eigenvalues transform, for example :code:`torch.abs` or :code:`lambda L: torch.clip(L, min=1e-8)`.
             If this is specified, eigendecomposition will be used to invert the hessian.
 
-    Examples:
-        Newton's method with backtracking line search
+    # See also
 
-        .. code-block:: python
+    * ``tz.m.NewtonCG``: uses a matrix-free conjugate gradient solver and hessian-vector products,
+    useful for large scale problems as it doesn't form the full hessian.
+    * ``tz.m.NewtonCGSteihaug``: trust region version of ``tz.m.NewtonCG``.
+    * ``tz.m.InverseFreeNewton``: an inverse-free variant of Newton's method.
+    * ``tz.m.quasi_newton``: large collection of quasi-newton methods that estimate the hessian.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Newton(),
-                tz.m.Backtracking()
-            )
+    # Notes
 
-        Newton's method modified for non-convex functions by taking matrix absolute value of the hessian
+    ## Implementation details
 
-        .. code-block:: python
+    ``(H + yI)⁻¹g`` is calculated by solving the linear system ``(H + yI)x = g``.
+    The linear system is solved via cholesky decomposition, if that fails, LU decomposition, and if that fails, least squares.
+    Least squares can be forced by setting ``use_lstsq=True``, which may generate better search directions when linear system is overdetermined.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Newton(eigval_tfm=lambda x: torch.abs(x).clip(min=0.1)),
-                tz.m.Backtracking()
-            )
+    Additionally, if ``eigval_tfm`` is specified or ``search_negative`` is ``True``,
+    eigendecomposition of the hessian is computed, ``eigval_tfm`` is applied to the eigenvalues,
+    and ``(H + yI)⁻¹`` is computed using the computed eigenvectors and transformed eigenvalues.
+    This is more generally more computationally expensive.
 
-        Newton's method modified for non-convex functions by searching along negative curvature directions
+    ## Handling non-convexity
 
-        .. code-block:: python
+    Standard Newton's method does not handle non-convexity well without some modifications.
+    This is because it jumps to the stationary point, which may be the maxima of the quadratic approximation.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Newton(search_negative=True),
-                tz.m.Backtracking()
-            )
+    The first modification to handle non-convexity is to modify the eignevalues to be positive,
+    for example by setting ``eigval_tfm = lambda L: L.abs().clip(min=1e-4)``.
 
-        Newton preconditioning applied to momentum
+    Second modification is ``search_negative=True``, which will search along a negative curvature direction if one is detected.
+    This also requires an eigendecomposition.
 
-        .. code-block:: python
+    The Newton direction can also be forced to be a descent direction by using ``tz.m.GradSign()`` or ``tz.m.Cautious``,
+    but that may be significantly less efficient.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Newton(inner=tz.m.EMA(0.9)),
-                tz.m.LR(0.1)
-            )
+    # Examples:
 
-        Diagonal newton example. This will still evaluate the entire hessian so it isn't efficient, but if you wanted to see how diagonal newton behaves or compares to full newton, you can use this.
+    Newton's method with backtracking line search
 
-        .. code-block:: python
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Newton(),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Newton(H_tfm = lambda H, g: g/H.diag()),
-                tz.m.Backtracking()
-            )
+    Newton preconditioning applied to momentum
+
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Newton(inner=tz.m.EMA(0.9)),
+        tz.m.LR(0.1)
+    )
+    ```
+
+    Diagonal newton example. This will still evaluate the entire hessian so it isn't efficient,
+    but if you wanted to see how diagonal newton behaves or compares to full newton, you can use this.
+
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Newton(H_tfm = lambda H, g: g/H.diag()),
+        tz.m.Backtracking()
+    )
+    ```
 
     """
     def __init__(
         self,
-        reg: float = 1e-6,
+        damping: float = 0,
         search_negative: bool = False,
+        use_lstsq: bool = False,
         update_freq: int = 1,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
@@ -155,7 +176,7 @@ class Newton(Module):
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(reg=reg, hessian_method=hessian_method, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative, update_freq=update_freq)
+        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative, update_freq=update_freq)
         super().__init__(defaults)
 
         if inner is not None:
@@ -168,7 +189,7 @@ class Newton(Module):
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
-        reg = settings['reg']
+        damping = settings['damping']
         hessian_method = settings['hessian_method']
         vectorize = settings['vectorize']
         update_freq = settings['update_freq']
@@ -198,7 +219,7 @@ class Newton(Module):
             else:
                 raise ValueError(hessian_method)
 
-            H = tikhonov_(H, reg)
+            if damping != 0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping))
             self.global_state['H'] = H
 
     @torch.no_grad
@@ -210,6 +231,7 @@ class Newton(Module):
         search_negative = settings['search_negative']
         H_tfm = settings['H_tfm']
         eigval_tfm = settings['eigval_tfm']
+        use_lstsq = settings['use_lstsq']
 
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
@@ -217,6 +239,7 @@ class Newton(Module):
             update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
 
         g = torch.cat([t.ravel() for t in update])
+
         # ----------------------------------- solve ---------------------------------- #
         update = None
         if H_tfm is not None:
@@ -232,6 +255,7 @@ class Newton(Module):
         if search_negative or (eigval_tfm is not None):
             update = eigh_solve(H, g, eigval_tfm, search_negative=search_negative)
 
+        if update is None and use_lstsq: update = least_squares_solve(H, g)
         if update is None: update = cholesky_solve(H, g)
         if update is None: update = lu_solve(H, g)
         if update is None: update = least_squares_solve(H, g)
@@ -240,31 +264,22 @@ class Newton(Module):
 
         return var
 
-    def get_B(self,var):
-        B = self.global_state["H"]
+    def get_H(self,var):
+        H = self.global_state["H"]
         settings = self.settings[var.params[0]]
         if settings['eigval_tfm'] is not None:
             try:
-                L, Q = torch.linalg.eigh(B) # pylint:disable=not-callable
-                B = Q @ settings['eigval_tfm'](L).diag_embed() @ Q.mH
+                L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
+                L = settings['eigval_tfm'](L)
+                H = Q @ L.diag_embed() @ Q.mH
+                H_inv = Q @ L.reciprocal().diag_embed() @ Q.mH
+                return DenseWithInverse(H, H_inv)
 
             except torch.linalg.LinAlgError:
                 pass
 
-        return Dense(B)
+        return Dense(H)
 
-    def get_H(self,var):
-        B = self.global_state["H"]
-        settings = self.settings[var.params[0]]
-        if settings['eigval_tfm'] is not None:
-            try:
-                L, Q = torch.linalg.eigh(B) # pylint:disable=not-callable
-                return Dense(Q @ settings['eigval_tfm'](L).repciprocal().diag_embed() @ Q.mH)
-
-            except torch.linalg.LinAlgError:
-                return None
-
-        return None
 
 class InverseFreeNewton(Module):
     """Inverse-free newton's method
@@ -364,8 +379,5 @@ class InverseFreeNewton(Module):
 
         return var
 
-    def get_B(self,var):
-        return Dense(self.global_state["H"])
-
     def get_H(self,var):
-        return Dense(self.global_state["Y"])
+        return DenseWithInverse(A = self.global_state["H"], A_inv=self.global_state["Y"])

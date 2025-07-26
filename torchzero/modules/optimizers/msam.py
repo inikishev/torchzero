@@ -112,10 +112,10 @@ class MSAM(Transform):
                 tz.m.Debias(0.9, 0.999),
             )
     """
-    USES_LR = True
+    _USES_LR = True
     def __init__(self, lr: float, momentum:float=0.9, rho:float=0.3,  weight_decay:float=0, nesterov=False, lerp=False,):
         defaults = dict(momentum=momentum,rho=rho, nesterov=nesterov, lerp=lerp, weight_decay=weight_decay)
-        if self.USES_LR: defaults['lr'] = lr
+        if self._USES_LR: defaults['lr'] = lr
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
@@ -125,7 +125,7 @@ class MSAM(Transform):
         lerp = s['lerp']
         nesterov = s['nesterov']
 
-        if self.USES_LR:
+        if self._USES_LR:
             lr, momentum, rho, weight_decay = unpack_dicts(settings, 'lr','momentum','rho','weight_decay', cls=NumberList)
 
         else:
@@ -179,7 +179,7 @@ class MSAMObjective(MSAM):
                 )
             )
     """
-    USES_LR = False
+    _USES_LR = False
     def __init__(self, modules: Chainable, momentum:float=0.9, rho:float=0.3, weight_decay:float=0, nesterov=False, lerp=False):
         super().__init__(lr=0, momentum=momentum, rho=rho, weight_decay=weight_decay, nesterov=nesterov, lerp=lerp)
         self.set_child('modules', modules)

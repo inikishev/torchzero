@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 import torch
 from scipy.optimize import lsq_linear
@@ -9,12 +11,6 @@ from .trust_region import TrustRegionBase, _update_tr_radius
 
 def _flatten_tensors(tensors: list[torch.Tensor]):
     return torch.cat([t.ravel() for t in tensors])
-
-
-def _linf_boundary_check(d: torch.Tensor, trust_region: float, boundary_tol: float | None):
-    if boundary_tol is None: return True
-    magn = torch.linalg.vector_norm(d, ord=torch.inf) # pylint:disable=not-callable
-    return (trust_region - magn) / trust_region < boundary_tol
 
 class InfinityNormTrustRegion(TrustRegionBase):
     """Trust region with L-infinity norm via ``scipy.optimize.lsq_linear``.
@@ -74,11 +70,11 @@ class InfinityNormTrustRegion(TrustRegionBase):
         inner: Chainable | None = None,
     ):
         defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, tol=tol, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
-        super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
+        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
-    def trust_region_apply(self, var, tensors, B, H):
-        assert B is not None
+    def trust_region_apply(self, var, tensors, H):
+        assert H is not None
 
         params = TensorList(var.params)
         settings = self.settings[params[0]]
@@ -103,14 +99,14 @@ class InfinityNormTrustRegion(TrustRegionBase):
             if trust_region < 1e-10 or trust_region > 1e16:
                 trust_region = self.global_state['trust_region'] = settings['init']
 
-            if B.is_dense():
+            if H.is_dense():
                 # convert to array if possible to avoid many conversions
                 # between torch and numpy, plus it seems that it uses
                 # a better solver
-                A = B.to_tensor().numpy(force=True).astype(np.float64)
+                A = H.to_tensor().numpy(force=True).astype(np.float64)
             else:
                 # memory efficient linear operator
-                A = B.scipy_linop()
+                A = H.scipy_linop()
 
             d_np = lsq_linear(
                 A,
@@ -121,8 +117,9 @@ class InfinityNormTrustRegion(TrustRegionBase):
             d = torch.as_tensor(d_np, device=g.device, dtype=g.dtype)
 
             self.global_state['trust_region'], success = _update_tr_radius(
-                params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
-                trust_region=trust_region, settings=settings, boundary_fn=_linf_boundary_check
+                params=params, closure=closure, d=d, f=loss, g=g, H=H,
+                trust_region=trust_region, settings=settings,
+                boundary_fn=partial(torch.linalg.vector_norm, ord=torch.inf) # pylint:disable=not-callable
             )
 
         assert d is not None

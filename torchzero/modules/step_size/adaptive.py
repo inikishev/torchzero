@@ -5,6 +5,7 @@ import torch
 
 from ...core import Transform, Chainable
 from ...utils import TensorList, unpack_dicts, unpack_states, NumberList, tofloat
+from ...utils.linalg.linear_operator import ScaledIdentity
 
 
 class PolyakStepSize(Transform):
@@ -66,25 +67,36 @@ class PolyakStepSize(Transform):
         torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
-def _bb_short(s: TensorList, y: TensorList, sy, eps, fallback):
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(self.global_state.get('step_size', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+
+
+def _bb_short(s: TensorList, y: TensorList, sy, eps):
     yy = y.dot(y)
     if yy < eps:
-        if sy < eps: return fallback # try to fallback on long
+        if sy < eps: return None # try to fallback on long
         ss = s.dot(s)
         return ss/sy
     return sy/yy
 
-def _bb_long(s: TensorList, y: TensorList, sy, eps, fallback):
+def _bb_long(s: TensorList, y: TensorList, sy, eps):
     ss = s.dot(s)
     if sy < eps:
         yy = y.dot(y) # try to fallback on short
-        if yy < eps: return fallback
+        if yy < eps: return None
         return sy/yy
     return ss/sy
 
-def _bb_geom(s: TensorList, y: TensorList, sy, eps, fallback):
-    short = _bb_short(s, y, sy, eps, fallback)
-    long = _bb_long(s, y, sy, eps, fallback)
+def _bb_geom(s: TensorList, y: TensorList, sy, eps, fallback:bool):
+    short = _bb_short(s, y, sy, eps)
+    long = _bb_long(s, y, sy, eps)
+    if long is None or short is None:
+        if fallback:
+            if short is not None: return short
+            if long is not None: return long
+        return None
     return (short * long) ** 0.5
 
 class BarzilaiBorwein(Transform):
@@ -101,8 +113,8 @@ class BarzilaiBorwein(Transform):
             step size will be applied to outputs of this module. Defaults to None.
 
     """
-    def __init__(self, type: Literal['long', 'short', 'geom'] = 'geom', use_grad=True, scale_first:bool=True, fallback:float=1e-3, inner:Chainable|None = None):
-        defaults = dict(type=type, fallback=fallback)
+    def __init__(self, type: Literal['long', 'short', 'geom', 'geom-fallback'] = 'geom', use_grad=True, scale_first:bool=True, fallback:float=1e-4, alpha:float=1, inner:Chainable|None = None):
+        defaults = dict(type=type, fallback=fallback, alpha=alpha)
         super().__init__(defaults, uses_grad=use_grad, scale_first=scale_first, inner=inner)
 
     def reset_for_online(self):
@@ -116,7 +128,6 @@ class BarzilaiBorwein(Transform):
         self.global_state['step'] = step + 1
 
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
-        fallback = unpack_dicts(settings, 'fallback', cls=NumberList)
         setting = settings[0]
         type = setting['type']
 
@@ -129,18 +140,26 @@ class BarzilaiBorwein(Transform):
             sy = s.dot(y)
             eps = torch.finfo(sy.dtype).eps
 
-            if type == 'short': step_size = _bb_short(s, y, sy, eps, fallback)
-            elif type == 'long': step_size = _bb_long(s, y, sy, eps, fallback)
-            elif type == 'geom': step_size = _bb_geom(s, y, sy, eps, fallback)
+            if type == 'short': step_size = _bb_short(s, y, sy, eps)
+            elif type == 'long': step_size = _bb_long(s, y, sy, eps)
+            elif type == 'geom': step_size = _bb_geom(s, y, sy, eps, fallback=False)
+            elif type == 'geom-fallback': step_size = _bb_geom(s, y, sy, eps, fallback=True)
             else: raise ValueError(type)
 
-            self.global_state['step_size'] = step_size
+            if step_size is not None: self.global_state['step_size'] = step_size
 
         prev_p.copy_(params)
         prev_g.copy_(g)
 
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(self.global_state.get('step_size', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         step_size = self.global_state.get('step_size', 1)
-        torch._foreach_mul_(tensors, step_size)
+        alpha = unpack_dicts(settings, 'alpha', cls=NumberList)
+        if step_size is None: step_size = unpack_dicts(settings, 'fallback', cls=NumberList)
+        torch._foreach_mul_(tensors, alpha*step_size)
         return tensors
 

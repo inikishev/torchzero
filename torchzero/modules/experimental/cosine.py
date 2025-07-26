@@ -1,8 +1,17 @@
 """A bunch of useless modules that I hate and that didn't work"""
+import math
+
 import torch
 
 from ...core import Chainable, Transform, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...utils import (
+    NumberList,
+    TensorList,
+    as_tensorlist,
+    tofloat,
+    unpack_dicts,
+    unpack_states,
+)
 
 
 class CosineStepSize(Transform):
@@ -18,9 +27,9 @@ class CosineStepSize(Transform):
         inner (Chainable | None, optional):
             inner modules applied after calculating cosine similarity and before step size correction. Defaults to None.
     """
-    def __init__(self, scale:float = 0.95, init:float=1, eps:float=1e-12, inner:Chainable | None = None):
-        defaults = dict(scale=scale, init=init, eps=eps)
-        super().__init__(defaults, uses_grad=False)
+    def __init__(self, scale:float = 0.95, init:float=1, eps:float=1e-12, stochastic: bool=False, inner:Chainable | None = None):
+        defaults = dict(scale=scale, init=init, eps=eps, stochastic=stochastic)
+        super().__init__(defaults, uses_grad=False, scale_first=True)
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
@@ -28,9 +37,19 @@ class CosineStepSize(Transform):
         scale, init = unpack_dicts(settings, 'scale', 'init', cls=NumberList)
         unpack_states(states, tensors, 'alpha', init=init, cls=NumberList) # initializes alpha to init
         eps = settings[0]['eps']
+        stochastic = settings[0]['stochastic']
 
         tensors = as_tensorlist(tensors)
         prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
+
+        if loss is not None:
+            if (not math.isfinite(loss)) or (not stochastic):
+                if 'prev_loss' in self.global_state and self.global_state['prev_loss'] < loss:
+                    ret = prev.neg()
+                    prev.zero_()
+                    del self.global_state['prev_loss']
+                    for s, sc in zip(states, scale): s['alpha'] /= 2
+                    return ret
 
         tensors_norm = tensors.global_vector_norm()
         cos_sim = (tensors.dot(prev) / (tensors_norm * prev.global_vector_norm()).clip(min=eps)).item()
@@ -45,6 +64,7 @@ class CosineStepSize(Transform):
 
         tensors.mul_(new_alpha)
         prev.copy_(tensors)
+        self.global_state['prev_loss'] = tofloat(loss)
 
         return tensors
 
@@ -127,9 +147,9 @@ class CosineMomentum(Transform):
         if nesterov:
             exp_avg.add_(tensors.mul(beta))
             return tensors.add_(exp_avg)
-        else:
-            exp_avg.add_(tensors.mul_(beta))
-            return exp_avg.clone()
+
+        exp_avg.add_(tensors.mul_(beta))
+        return exp_avg.clone()
 
 
 class AdaptiveDifference(Transform):

@@ -9,7 +9,6 @@ import torch
 
 from ...utils import Optimizer, TensorList
 from ...utils.derivatives import jacobian_and_hessian_mat_wrt, jacobian_wrt, flatten_jacobian
-from ...modules.second_order.newton import tikhonov_
 
 def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
@@ -76,7 +75,6 @@ class ScipyMinimize(Optimizer):
         options = None,
         jac: Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
-        tikhonov: float | None = 0,
         min_eigval: float | None = None,
     ):
         defaults = dict(lb=lb, ub=ub)
@@ -90,7 +88,6 @@ class ScipyMinimize(Optimizer):
 
         self.jac = jac
         self.hess = hess
-        self.tikhonov: float | None = tikhonov
 
         self.use_jac_autograd = jac.lower() == 'autograd' and (method is None or method.lower() in [
             'cg', 'bfgs', 'newton-cg', 'l-bfgs-b', 'tnc', 'slsqp', 'dogleg',
@@ -111,7 +108,6 @@ class ScipyMinimize(Optimizer):
         with torch.enable_grad():
             value = closure(False)
             _, H = jacobian_and_hessian_mat_wrt([value], wrt = params)
-        if self.tikhonov is not None: H = tikhonov_(H, self.tikhonov)
         if self.min_eigval is not None: H = matrix_clamp(H, self.min_eigval)
         return H.detach().cpu().numpy()
 

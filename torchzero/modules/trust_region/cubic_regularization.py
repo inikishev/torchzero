@@ -14,7 +14,7 @@ def _flatten_tensors(tensors: list[torch.Tensor]):
 
 # code from https://github.com/konstmish/opt_methods/blob/master/optmethods/second_order/cubic.py
 # ported to pytorch
-def ls_cubic_solver(f, g:torch.Tensor, B:LinearOperator, M: float, loss_plus: Callable, it_max=100, epsilon=1e-8, ):
+def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_plus: Callable, it_max=100, epsilon=1e-8, ):
     """
     Solve min_z <g, z-x> + 1/2<z-x, H(z-x)> + M/3 ||z-x||^3
 
@@ -26,15 +26,15 @@ def ls_cubic_solver(f, g:torch.Tensor, B:LinearOperator, M: float, loss_plus: Ca
         https://people.maths.ox.ac.uk/cartis/papers/ARCpI.pdf
     """
     solver_it = 1
-    newton_step = B.solve(g).neg_()
+    newton_step = H.solve(g).neg_()
     if M == 0:
         return newton_step, solver_it
 
-    def cauchy_point(g, B:LinearOperator, M):
+    def cauchy_point(g, H:LinearOperator, M):
         if torch.linalg.vector_norm(g) == 0 or M == 0:
             return 0 * g
         g_dir = g / torch.linalg.vector_norm(g)
-        H_g_g = B.matvec(g_dir) @ g_dir
+        H_g_g = H.matvec(g_dir) @ g_dir
         R = -H_g_g / (2*M) + torch.sqrt((H_g_g/M)**2/4 + torch.linalg.vector_norm(g)/M)
         return -R * g_dir
 
@@ -47,7 +47,7 @@ def ls_cubic_solver(f, g:torch.Tensor, B:LinearOperator, M: float, loss_plus: Ca
         return 1/s_norm - 1/r
 
     # Solution s satisfies ||s|| >= Cauchy_radius
-    r_min = torch.linalg.vector_norm(cauchy_point(g, B, M))
+    r_min = torch.linalg.vector_norm(cauchy_point(g, H, M))
 
     if f > loss_plus(newton_step):
         return newton_step, solver_it
@@ -60,7 +60,7 @@ def ls_cubic_solver(f, g:torch.Tensor, B:LinearOperator, M: float, loss_plus: Ca
     for _ in range(it_max):
         r_try = (r_min + r_max) / 2
         lam = r_try * M
-        s_lam = B.add_diagonal(lam).solve(g).neg()
+        s_lam = H.add_diagonal(lam).solve(g).neg()
         # s_lam = -torch.linalg.solve(B + lam*id_matrix, g)
         solver_it += 1
         crit = conv_criterion(s_lam, r_try)
@@ -104,9 +104,6 @@ class CubicRegularization(TrustRegionBase):
         max_attempts (max_attempts, optional):
             maximum number of trust region size size reductions per step. A zero update vector is returned when
             this limit is exceeded. Defaults to 10.
-        boundary_tol (float | None, optional):
-            The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
-            This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
         fallback (bool, optional):
             if ``True``, when ``hess_module`` maintains hessian inverse which can't be inverted efficiently, it will
             be inverted anyway. When ``False`` (default), a ``RuntimeError`` will be raised instead.
@@ -141,11 +138,11 @@ class CubicRegularization(TrustRegionBase):
         inner: Chainable | None = None,
     ):
         defaults = dict(init=init, nplus=nplus, nminus=nminus, rho_good=rho_good, rho_bad=rho_bad, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
-        super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
+        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
 
     @torch.no_grad
-    def trust_region_apply(self, var, tensors, B, H):
-        assert B is not None # have to use B to calculate predicted reduction
+    def trust_region_apply(self, var, tensors, H):
+        assert H is not None
 
         params = TensorList(var.params)
         settings = self.settings[params[0]]
@@ -176,11 +173,11 @@ class CubicRegularization(TrustRegionBase):
             trust_region = self.global_state.get('trust_region', settings['init'])
             if trust_region < 1e-8 or trust_region > 1e16: trust_region = self.global_state['trust_region'] = settings['init']
 
-            d, _ = ls_cubic_solver(f=loss, g=g, B=B, M=1/trust_region, loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
+            d, _ = ls_cubic_solver(f=loss, g=g, H=H, M=1/trust_region, loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
             d.neg_()
 
             self.global_state['trust_region'], success = _update_tr_radius(
-                params=params, closure=closure, d=d, f=loss, g=g, B=None, H=H,
+                params=params, closure=closure, d=d, f=loss, g=g, H=H,
                 trust_region=trust_region, settings = settings, boundary_fn=None,
             )
 

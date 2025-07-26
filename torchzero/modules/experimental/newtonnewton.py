@@ -54,7 +54,7 @@ class NewtonNewton(Module):
     def update(self, var):
         params = TensorList(var.params)
         closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if closure is None: raise RuntimeError('NewtonNewton requires closure')
 
         settings = self.settings[params[0]]
         reg = settings['reg']
@@ -99,7 +99,7 @@ class NewtonNewton(Module):
         var.update = vec_to_tensors(xp, params)
         return var
 
-    def get_B(self, var):
+    def get_H(self, var):
         Hs = self.global_state["Hs"]
         if len(Hs) == 1: return Dense(Hs[0])
         return Dense(torch.linalg.multi_dot(self.global_state["Hs"])) # pylint:disable=not-callable

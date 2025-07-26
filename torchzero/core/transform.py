@@ -111,14 +111,6 @@ class Transform(Module, ABC):
         states = states[:num]
         settings = settings[:num]
 
-        scale_factor = 1
-
-        # scaling factor for 1st step
-        if self._scale_first and step == 0:
-            # initial step size guess from pytorch LBFGS
-            scale_factor = 1 / TensorList(tensors).abs().global_sum().clip(min=1)
-            scale_factor = scale_factor.clip(min=torch.finfo(tensors[0].dtype).eps)
-
         # update transform
         if step % self._update_freq == 0:
             self.update_tensors(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
@@ -127,7 +119,6 @@ class Transform(Module, ABC):
         self.global_state["__tensors"] = tensors
         self.global_state["__params"] = params
         self.global_state["__grads"] = grads
-        self.global_state["__scale_factor"] = scale_factor
 
 
     @final
@@ -158,7 +149,6 @@ class Transform(Module, ABC):
         tensors = self.global_state.pop("__tensors")
         params  = self.global_state.pop("__params")
         grads   = self.global_state.pop("__grads")
-        scale_factor = self.global_state.pop("__scale_factor")
 
         # step with inner
         if self._inner is not None:
@@ -166,15 +156,21 @@ class Transform(Module, ABC):
             if self._concat_params:
                 tensors = [torch.cat([t.ravel() for t in tensors])]
 
+        step = self.global_state["__step"] # extract before apply which can reset state
+        assert step > 0
+
         # apply transform
         tensors = list(self.apply_tensors(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings))
 
         # scale initial step, when preconditioner might not have been applied
-        if self._scale_first and self.global_state['__step'] == 1:
+        if self._scale_first and step == 1:
+            scale_factor = 1 / TensorList(tensors).abs().global_sum().clip(min=1)
+            scale_factor = scale_factor.clip(min=torch.finfo(tensors[0].dtype).eps)
             torch._foreach_mul_(tensors, scale_factor)
 
         if self._concat_params:
             tensors = vec_to_tensors(vec=tensors[0], reference=un_tensors)
+
         return tensors
 
     def _get_keyed_states_settings(self, params: list[torch.Tensor]):

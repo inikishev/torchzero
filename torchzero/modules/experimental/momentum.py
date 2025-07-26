@@ -6,10 +6,10 @@ from typing import Literal
 import torch
 
 from ...core import Target, Transform
-from ...utils import NumberList, TensorList, unpack_states, unpack_dicts
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import ema_, ema_sq_, sqrt_ema_sq_
-from ..momentum.ema import EMASquared, SqrtEMASquared
 from ..momentum.momentum import nag_
+from ..ops.higher_level import EMASquared, SqrtEMASquared
 
 
 def precentered_ema_sq_(

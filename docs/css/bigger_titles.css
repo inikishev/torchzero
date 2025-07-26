@@ -1,0 +1,11 @@
+.doc-class > .doc-heading {
+    /* make heading bigger */
+    font-size: 1.6em;
+    font-weight: 600;
+}
+
+.doc-class:not(:first-of-type) {
+    /* separator between classes */
+    border-top: 2px solid var(--md-default-fg-color--lightest);
+    margin-top: 2rem;
+}

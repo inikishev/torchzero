@@ -99,7 +99,6 @@ class Shampoo(Transform):
         decay (float | None, optional): slowly decays preconditioners. Defaults to None.
         beta (float | None, optional):
             if None calculates sum as in standard shampoo, otherwise uses EMA of preconditioners. Defaults to None.
-        matrix_eps (float, optional): epsilon for matrix operations. Defaults to 1e-10.
         update_freq (int, optional): preconditioner update frequency. Defaults to 10.
         exp_override (int | None, optional): matrix exponent override, if not set, uses 2*ndim. Defaults to 2.
         merge_small (bool, optional): whether to merge small dims on tensors. Defaults to True.

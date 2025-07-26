@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
-from ...utils.linalg.linear_operator import LinearOperator
+from ...utils.linalg import linear_operator
 
 from .trust_region import TrustRegionBase, _update_tr_radius
 
@@ -38,9 +38,6 @@ class LevenbergMarquardt(TrustRegionBase):
         max_attempts (max_attempts, optional):
             maximum number of trust region size size reductions per step. A zero update vector is returned when
             this limit is exceeded. Defaults to 10.
-        boundary_tol (float | None, optional):
-            The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
-            This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
         fallback (bool, optional):
             if ``True``, when ``hess_module`` maintains hessian inverse which can't be inverted efficiently, it will
             be inverted anyway. When ``False`` (default), a ``RuntimeError`` will be raised instead.
@@ -90,15 +87,27 @@ class LevenbergMarquardt(TrustRegionBase):
         fallback: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(y=y, init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts, rho_bad=rho_bad, rho_good=rho_good)
-        super().__init__(hess_module=hess_module, requires="B", defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
+        defaults = dict(y=y, init=init, nplus=nplus, nminus=nminus, eta=eta, max_attempts=max_attempts, rho_bad=rho_bad, rho_good=rho_good, fallback=fallback)
+        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def trust_region_apply(self, var, tensors, B, H):
-        assert B is not None
-
+    def trust_region_apply(self, var, tensors, H):
         params = TensorList(var.params)
         settings = self.settings[params[0]]
+
+        assert H is not None
+        if isinstance(H, linear_operator.DenseInverse):
+            if settings['fallback']:
+                H = H.to_dense()
+            else:
+                raise RuntimeError(
+                    f"{self.children['hess_module']} maintains a hessian inverse. "
+                    "LevenbergMarquardt requires the hessian, not the inverse. "
+                    "If that module is a quasi-newton module, pass `inverse=False` on initialization. "
+                    "Or pass `fallback=True` to LevenbergMarquardt to allow inverting the hessian inverse, "
+                    "however that can be inefficient and unstable."
+                )
+
         g = _flatten_tensors(tensors)
 
         max_attempts = settings['max_attempts']
@@ -122,15 +131,15 @@ class LevenbergMarquardt(TrustRegionBase):
 
             reg = 1/trust_region
             if y == 0:
-                d = B.add_diagonal(reg).solve(g)
+                d = H.add_diagonal(reg).solve(g)
             else:
-                diag = B.diagonal()
+                diag = H.diagonal()
                 diag = torch.where(diag < 1e-10, 1, diag)
                 if y != 1: diag = (diag*y) + (1-y)
-                d = B.add_diagonal(diag*reg).solve(g)
+                d = H.add_diagonal(diag*reg).solve(g)
 
             self.global_state['trust_region'], success = _update_tr_radius(
-                params=params, closure=closure, d=d, f=loss, g=g, B=B, H=None,
+                params=params, closure=closure, d=d, f=loss, g=g, H=H,
                 trust_region=trust_region, settings = settings, boundary_fn=None,
             )
 

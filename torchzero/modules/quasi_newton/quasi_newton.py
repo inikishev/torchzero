@@ -272,7 +272,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if info == 0: return x.view_as(tensor)
         return safe_scaling_(tensor)
 
-    def get_B(self, var):
+    def get_H(self, var):
         param = var.params[0]
         state = self.state[param]
         settings = self.settings[param]
@@ -284,25 +284,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         if "H" in state:
             H = self.modify_H(state["H"], state, settings)
-            if H.ndim != 1: return None
+            if H.ndim != 1: return linear_operator.DenseInverse(H)
             return linear_operator.Diagonal(1/H)
-
-        return None
-
-    def get_H(self, var):
-        param = var.params[0]
-        state = self.state[param]
-        settings = self.settings[param]
-        if "H" in state:
-            H = self.modify_H(state["H"], state, settings)
-            if H.ndim == 2: return linear_operator.Dense(H)
-            assert H.ndim == 1, H.shape
-            return linear_operator.Diagonal(H)
-
-        if "B" in state:
-            B = self.modify_B(state["B"], state, settings)
-            if B.ndim != 1: return None
-            return linear_operator.Diagonal(1/B)
 
         return None
 

@@ -1,10 +1,44 @@
+from collections import deque
+from operator import itemgetter
 from typing import Literal
 
 import torch
 
 from ...core import Target, Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from .ema import EMA
+from ..functional import debias, ema_
+
+
+class EMA(Transform):
+    """Maintains an exponential moving average of update.
+
+    Args:
+        momentum (float, optional): momentum (beta). Defaults to 0.9.
+        dampening (float, optional): momentum dampening. Defaults to 0.
+        debiased (bool, optional): whether to debias the EMA like in Adam. Defaults to False.
+        lerp (bool, optional): whether to use linear interpolation. Defaults to True.
+        ema_init (str, optional): initial values for the EMA, "zeros" or "update".
+        target (Target, optional): target to apply EMA to. Defaults to 'update'.
+    """
+    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros', target: Target = 'update'):
+        defaults = dict(momentum=momentum,dampening=dampening,debiased=debiased,lerp=lerp,ema_init=ema_init)
+        super().__init__(defaults, uses_grad=False, target=target)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+
+        debiased, lerp, ema_init = itemgetter('debiased','lerp','ema_init')(settings[0])
+
+        exp_avg = unpack_states(states, tensors, 'exp_avg',
+                                init=torch.zeros_like if ema_init=='zeros' else tensors, cls=TensorList)
+        momentum, dampening = unpack_dicts(settings, 'momentum','dampening', cls=NumberList)
+
+        exp_avg = ema_(TensorList(tensors), exp_avg_=exp_avg,beta=momentum,dampening=dampening,lerp=lerp)
+
+        if debiased: return debias(exp_avg, step=step, beta1=momentum, alpha=1, inplace=False)
+        else: return exp_avg.clone() # this has exp_avg storage so needs to be cloned
+
 
 
 class HeavyBall(EMA):

@@ -153,6 +153,6 @@ class GaussNewton(Module):
         var.update = vec_to_tensors(v, var.params)
         return var
 
-    def get_B(self, var):
+    def get_H(self, var):
         G = self.global_state['G']
         return linear_operator.AtA(G)

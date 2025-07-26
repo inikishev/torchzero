@@ -3,10 +3,18 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, TensorwiseTransform, Transform, apply_transform, Module, Var, Modular
+from ...core import (
+    Chainable,
+    Modular,
+    Module,
+    Transform,
+    Var,
+    apply_transform,
+)
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
-from .quasi_newton import _safe_clip, HessianUpdateStrategy
 from ..line_search import LineSearchBase
+from ..quasi_newton.quasi_newton import HessianUpdateStrategy, _safe_clip
+
 
 class ConguateGradientBase(Transform, ABC):
     """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.

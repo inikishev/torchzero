@@ -450,12 +450,8 @@ class Module(ABC):
         """
         raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
 
-    def get_B(self, var: Var) -> LinearOperator | None:
+    def get_H(self, var: Var) -> LinearOperator | None:
         """returns a LinearOperator corresponding to hessian or hessian approximation"""
-        return None
-
-    def get_H(self, var:Var) -> LinearOperator | None:
-        """returns a LinearOperator corresponding to hessian inverse or hessian inverse approximation"""
         return None
 
     def reset(self):
