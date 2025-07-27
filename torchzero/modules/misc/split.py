@@ -22,7 +22,7 @@ def _split(
     if var.update is not None:
         split_update = [u for i,u in enumerate(var.update) if i in idxs]
 
-    split_var = var.clone(clone_update=False)
+    split_var = var.clone(clone_update=False, parent=var)
     split_var.params = split_params
     split_var.grad = split_grad
     split_var.update = split_update
@@ -41,7 +41,9 @@ def _split(
         for idx, u in zip(idxs, split_var.update):
             var.update[idx] = u
 
-    var.update_attrs_from_clone_(split_var)
+    # var.update_attrs_from_clone_(split_var) # this will make grad have wrong number of tensors
+    if var.loss is None: var.loss = split_var.loss
+    if var.loss_approx is None: var.loss_approx = split_var.loss_approx
     return var
 
 class Split(Module):

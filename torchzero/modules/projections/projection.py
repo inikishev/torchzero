@@ -1,7 +1,7 @@
 import math
 import warnings
 from abc import ABC, abstractmethod
-from collections import defaultdict, ChainMap
+from collections import ChainMap, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from functools import partial
 from typing import Any, Literal
@@ -9,7 +9,7 @@ from typing import Any, Literal
 import torch
 
 from ...core import Chainable, Module, Var
-from ...utils import vec_to_tensors, set_storage_
+from ...utils import set_storage_, vec_to_tensors
 
 
 def _make_projected_closure(closure, project_fn, unproject_fn,
@@ -166,7 +166,7 @@ class ProjectionBase(Module, ABC):
                 current=current,
             ))
 
-        projected_var = var.clone(clone_update=False)
+        projected_var = var.clone(clone_update=False, parent=var)
 
         closure = var.closure
 
@@ -278,7 +278,7 @@ class ProjectionBase(Module, ABC):
         unprojected_var = projected_var.clone(clone_update=False)
         unprojected_var.closure = var.closure
         unprojected_var.params = var.params
-        unprojected_var.grad = var.grad
+        unprojected_var.grad = var.grad # this may also be set by projected_var since it has var as parent
 
         if self._project_update:
             assert projected_var.update is not None

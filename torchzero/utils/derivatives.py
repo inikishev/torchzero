@@ -131,19 +131,18 @@ def hessian(
     `vectorize` and `outer_jacobian_strategy` are only for `method = "torch.autograd"`, refer to its documentation.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2) # (2, 4) weight and (2, ) bias
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2) # (2, 4) weight and (2, ) bias
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    def fn():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        return loss
 
-        def fn():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            return loss
-
-        hessian_mat(fn, model.parameters()) # list of two lists of two lists of 3D and 4D tensors
-
+    hessian_mat(fn, model.parameters()) # list of two lists of two lists of 3D and 4D tensors
+    ```
 
     """
     params = list(params)
@@ -181,19 +180,18 @@ def hessian_mat(
     `vectorize` and `outer_jacobian_strategy` are only for `method = "torch.autograd"`, refer to its documentation.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2) # 10 parameters in total
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2) # 10 parameters in total
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    def fn():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        return loss
 
-        def fn():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            return loss
-
-        hessian_mat(fn, model.parameters()) # 10x10 tensor
-
+    hessian_mat(fn, model.parameters()) # 10x10 tensor
+    ```
 
     """
     params = list(params)
@@ -222,21 +220,20 @@ def jvp(fn, params: Iterable[torch.Tensor], tangent: Iterable[torch.Tensor]) -> 
     """Jacobian vector product.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    tangent = [torch.randn_like(p) for p in model.parameters()]
 
-        tangent = [torch.randn_like(p) for p in model.parameters()]
+    def fn():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        return loss
 
-        def fn():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            return loss
-
-        jvp(fn, model.parameters(), tangent) # scalar
-
+    jvp(fn, model.parameters(), tangent) # scalar
+    ```
     """
     params = list(params)
     tangent = list(tangent)
@@ -269,21 +266,20 @@ def jvp_fd_central(
     """Jacobian vector product using central finite difference formula.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    tangent = [torch.randn_like(p) for p in model.parameters()]
 
-        tangent = [torch.randn_like(p) for p in model.parameters()]
+    def fn():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        return loss
 
-        def fn():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            return loss
-
-        jvp_fd_central(fn, model.parameters(), tangent) # scalar
-
+    jvp_fd_central(fn, model.parameters(), tangent) # scalar
+    ```
     """
     params = list(params)
     tangent = list(tangent)
@@ -320,24 +316,24 @@ def jvp_fd_forward(
     Loss at initial point can be specified in the `v_0` argument.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    tangent1 = [torch.randn_like(p) for p in model.parameters()]
+    tangent2 = [torch.randn_like(p) for p in model.parameters()]
 
-        tangent1 = [torch.randn_like(p) for p in model.parameters()]
-        tangent2 = [torch.randn_like(p) for p in model.parameters()]
+    def fn():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        return loss
 
-        def fn():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            return loss
+    v_0 = fn() # pre-calculate loss at initial point
 
-        v_0 = fn() # pre-calculate loss at initial point
-
-        jvp1 = jvp_fd_forward(fn, model.parameters(), tangent1, v_0=v_0) # scalar
-        jvp2 = jvp_fd_forward(fn, model.parameters(), tangent2, v_0=v_0) # scalar
+    jvp1 = jvp_fd_forward(fn, model.parameters(), tangent1, v_0=v_0) # scalar
+    jvp2 = jvp_fd_forward(fn, model.parameters(), tangent2, v_0=v_0) # scalar
+    ```
 
     """
     params = list(params)
@@ -372,21 +368,21 @@ def hvp(
     """Hessian-vector product
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    y_hat = model(X)
+    loss = F.mse_loss(y_hat, y)
+    loss.backward(create_graph=True)
 
-        y_hat = model(X)
-        loss = F.mse_loss(y_hat, y)
-        loss.backward(create_graph=True)
+    grads = [p.grad for p in model.parameters()]
+    vec = [torch.randn_like(p) for p in model.parameters()]
 
-        grads = [p.grad for p in model.parameters()]
-        vec = [torch.randn_like(p) for p in model.parameters()]
-
-        # list of tensors, same layout as model.parameters()
-        hvp(model.parameters(), grads, vec=vec)
+    # list of tensors, same layout as model.parameters()
+    hvp(model.parameters(), grads, vec=vec)
+    ```
     """
     params = list(params)
     g = list(grads)
@@ -409,23 +405,23 @@ def hvp_fd_central(
     Please note that this will clear :code:`grad` attributes in params.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    def closure():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        model.zero_grad()
+        loss.backward()
+        return loss
 
-        def closure():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            model.zero_grad()
-            loss.backward()
-            return loss
+    vec = [torch.randn_like(p) for p in model.parameters()]
 
-        vec = [torch.randn_like(p) for p in model.parameters()]
-
-        # list of tensors, same layout as model.parameters()
-        hvp_fd_central(closure, model.parameters(), vec=vec)
+    # list of tensors, same layout as model.parameters()
+    hvp_fd_central(closure, model.parameters(), vec=vec)
+    ```
     """
     params = list(params)
     vec = list(vec)
@@ -472,27 +468,27 @@ def hvp_fd_forward(
     Please note that this will clear :code:`grad` attributes in params.
 
     Example:
-    .. code:: py
+    ```python
+    model = nn.Linear(4, 2)
+    X = torch.randn(10, 4)
+    y = torch.randn(10, 2)
 
-        model = nn.Linear(4, 2)
-        X = torch.randn(10, 4)
-        y = torch.randn(10, 2)
+    def closure():
+        y_hat = model(X)
+        loss = F.mse_loss(y_hat, y)
+        model.zero_grad()
+        loss.backward()
+        return loss
 
-        def closure():
-            y_hat = model(X)
-            loss = F.mse_loss(y_hat, y)
-            model.zero_grad()
-            loss.backward()
-            return loss
+    vec = [torch.randn_like(p) for p in model.parameters()]
 
-        vec = [torch.randn_like(p) for p in model.parameters()]
+    # pre-compute gradient at initial point
+    closure()
+    g_0 = [p.grad for p in model.parameters()]
 
-        # pre-compute gradient at initial point
-        closure()
-        g_0 = [p.grad for p in model.parameters()]
-
-        # list of tensors, same layout as model.parameters()
-        hvp_fd_forward(closure, model.parameters(), vec=vec, g_0=g_0)
+    # list of tensors, same layout as model.parameters()
+    hvp_fd_forward(closure, model.parameters(), vec=vec, g_0=g_0)
+    ```
     """
 
     params = list(params)

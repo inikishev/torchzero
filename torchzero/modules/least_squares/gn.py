@@ -64,32 +64,33 @@ class GaussNewton(Module):
 
         minimizing the rosenbrock function:
 
-        .. code:: py
+        ```python
 
-            def rosenbrock(X):
-                x1, x2 = X
-                return torch.stack([(1 - x1)**2, 100 * (x2 - x1**2)**2])
+        def rosenbrock(X):
+            x1, x2 = X
+            return torch.stack([(1 - x1)**2, 100 * (x2 - x1**2)**2])
 
-            X = torch.tensor([-1.1, 2.5], requires_grad=True)
-            opt = tz.Modular([X], tz.m.GaussNewton(), tz.m.Backtracking())
+        X = torch.tensor([-1.1, 2.5], requires_grad=True)
+        opt = tz.Modular([X], tz.m.GaussNewton(), tz.m.Backtracking())
 
-            # define the closure
-            def closure(backward=True):
-                return rosenbrock(X)
+        # define the closure
+        def closure(backward=True):
+            return rosenbrock(X)
 
-            # minimize
-            for iter in range(10):
-                loss = opt.step(closure)
-                print(f'{loss = }')
+        # minimize
+        for iter in range(10):
+            loss = opt.step(closure)
+            print(f'{loss = }')
+        ```
 
         Memory-efficient (if n << ndim) GN with trust region:
 
-        .. code:: py
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.TrustCG(tz.m.GaussNewton())
-            )
+        ```python
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.TrustCG(tz.m.GaussNewton())
+        )
+        ```
 
     """
     def __init__(self, reg:float = 1e-8, batched:bool=True, ):

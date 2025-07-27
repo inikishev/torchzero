@@ -11,12 +11,12 @@ class Split(torch.optim.Optimizer):
 
     Example:
 
-    .. code:: py
-
-        opt = Split(
-            torch.optim.Adam(model.encoder.parameters(), lr=0.001),
-            torch.optim.SGD(model.decoder.parameters(), lr=0.1)
-        )
+    ```python
+    opt = Split(
+        torch.optim.Adam(model.encoder.parameters(), lr=0.001),
+        torch.optim.SGD(model.decoder.parameters(), lr=0.1)
+    )
+    ```
     """
     def __init__(self, *optimizers: torch.optim.Optimizer | Iterable[torch.optim.Optimizer]):
         all_params = []
@@ -32,7 +32,7 @@ class Split(torch.optim.Optimizer):
 
         super().__init__(all_params, {})
 
-    def step(self, closure: Callable | None = None):
+    def step(self, closure: Callable | None = None): # pyright:ignore[reportIncompatibleMethodOverride]
         loss = None
 
         # if closure provided, populate grad, otherwise each optimizer will call closure separately
