@@ -36,12 +36,16 @@ def lbfgs(
     z_beta: float | None,
     z_ema: TensorList | None,
     step: int,
+    scale_first:bool,
 ):
     if len(s_history) == 0 or y is None or sy is None:
 
-        # initial step size guess modified from pytorch L-BFGS
-        tensors_ = TensorList(tensors_)
-        return tensors_.mul_(initial_step_size(tensors_))
+        if scale_first:
+            # initial step size guess modified from pytorch L-BFGS
+            tensors_ = TensorList(tensors_)
+            return tensors_.mul_(initial_step_size(tensors_))
+
+        return tensors_
 
     # 1st loop
     alpha_list = []
@@ -162,16 +166,17 @@ class LBFGS(Transform):
         damping: bool = False,
         init_damping=0.9,
         eigval_bounds=(0.5, 50),
-        tol: float | None = 1e-10,
-        tol_reset: bool = False,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
         gtol: float | None = 1e-10,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq = 1,
         z_beta: float | None = None,
+        scale_first:bool=True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size, tol=tol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, tol_reset=tol_reset)
+        defaults = dict(history_size=history_size,scale_first=scale_first, ptol=ptol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, ptol_reset=ptol_reset)
         super().__init__(defaults, uses_grad=False, inner=inner)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -236,10 +241,7 @@ class LBFGS(Transform):
         self.global_state['y'] = y
         self.global_state['sy'] = sy
 
-    def make_Hv(self):
-        ...
-
-    def make_Bv(self):
+    def get_H(self, var):
         ...
 
     @torch.no_grad
@@ -251,20 +253,21 @@ class LBFGS(Transform):
         sy = self.global_state.pop('sy')
 
         setting = settings[0]
-        tol = setting['tol']
+        ptol = setting['ptol']
         gtol = setting['gtol']
-        tol_reset = setting['tol_reset']
+        ptol_reset = setting['ptol_reset']
         z_beta = setting['z_beta']
+        scale_first = setting['scale_first']
 
         # tolerance on parameter difference to avoid exploding after converging
-        if tol is not None:
-            if s is not None and s.abs().global_max() <= tol:
-                if tol_reset: self.reset()
+        if ptol is not None:
+            if s is not None and s.abs().global_max() <= ptol:
+                if ptol_reset: self.reset()
                 tensors = TensorList(tensors)
                 return tensors.mul_(initial_step_size(tensors))
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
-        if tol is not None:
+        if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
                 tensors = TensorList(tensors)
                 return tensors.mul_(initial_step_size(tensors))
@@ -284,7 +287,8 @@ class LBFGS(Transform):
             sy=sy,
             z_beta = z_beta,
             z_ema = z_ema,
-            step=self.global_state.get('step', 1)
+            step=self.global_state.get('step', 1),
+            scale_first=scale_first,
         )
 
         return dir

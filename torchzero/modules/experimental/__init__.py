@@ -29,7 +29,6 @@ from .etf import (
 from .expanded_lbfgs import ExpandedLBFGS
 from .fft import FFTProjection
 from .gradmin import GradMin
-from .hnewton import HNewton
 from .modular_lbfgs import ModularLBFGS
 from .momentum import (
     CoordinateMomentum,
