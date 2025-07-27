@@ -123,7 +123,7 @@ class LSR1(Transform):
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = False,
+        scale_first: bool = True,
         inner: Chainable | None = None,
     ):
         defaults = dict(
