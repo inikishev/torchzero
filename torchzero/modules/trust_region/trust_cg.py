@@ -59,7 +59,7 @@ class TrustCG(TrustRegionBase):
     def __init__(
         self,
         hess_module: Module,
-        eta: float= 0.15,
+        eta: float= 0.0,
         # Gould, Nicholas IM, et al. "Sensitivity of trust-region algorithms to their parameters." 4OR 3.3 (2005): 227-241.
         # which I found from https://github.com/patrick-kidger/optimistix/blob/c1dad7e75fc35bd5a4977ac3a872991e51e83d2c/optimistix/_solver/trust_region.py#L113-200
         nplus: float = 3.5,

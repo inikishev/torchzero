@@ -102,7 +102,10 @@ class LinearOperator(ABC):
     def is_dense(self) -> bool:
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement is_dense")
 
-
+def _solve(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor: # should I keep this or separate solve and lstsq?
+    sol, info = torch.linalg.solve_ex(A, b) # pylint:disable=not-callable
+    if info == 0: return sol
+    return torch.linalg.lstsq(A, b).solution # pylint:disable=not-callable
 
 class Dense(LinearOperator):
     def __init__(self, A: torch.Tensor | LinearOperator):
@@ -117,7 +120,8 @@ class Dense(LinearOperator):
     def matmat(self, x): return Dense(self.A.mm(x))
     def rmatmat(self, x): return Dense(self.A.mH.mm(x))
 
-    def solve(self, b): return torch.linalg.solve(self.A, b) # pylint:disable=not-callable
+    def solve(self, b): return _solve(self.A, b)
+
     def add(self, x): return Dense(self.A + x)
     def add_diagonal(self, x):
         if isinstance(x, torch.Tensor) and x.numel() <= 1: x = x.item()
@@ -136,11 +140,11 @@ class DenseInverse(LinearOperator):
         self.device = self.A_inv.device
         self.dtype = self.A_inv.dtype
 
-    def matvec(self, x): return torch.linalg.solve(self.A_inv, x) # pylint:disable=not-callable
-    def rmatvec(self, x): return torch.linalg.solve(self.A_inv.mH, x) # pylint:disable=not-callable
+    def matvec(self, x): return _solve(self.A_inv, x) # pylint:disable=not-callable
+    def rmatvec(self, x): return _solve(self.A_inv.mH, x) # pylint:disable=not-callable
 
-    def matmat(self, x): return Dense(torch.linalg.solve(self.A_inv, x)) # pylint:disable=not-callable
-    def rmatmat(self, x): return Dense(torch.linalg.solve(self.A_inv.mH, x)) # pylint:disable=not-callable
+    def matmat(self, x): return Dense(_solve(self.A_inv, x)) # pylint:disable=not-callable
+    def rmatmat(self, x): return Dense(_solve(self.A_inv.mH, x)) # pylint:disable=not-callable
 
     def solve(self, b): return self.A_inv.mv(b)
 

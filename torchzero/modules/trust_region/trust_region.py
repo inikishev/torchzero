@@ -6,7 +6,7 @@ from typing import Any, Literal, cast, final
 import torch
 
 from ...core import Chainable, Module, Var, apply_transform
-from ...utils import TensorList, vec_to_tensors
+from ...utils import TensorList, vec_to_tensors, tofloat
 from ...utils.linalg.linear_operator import LinearOperator
 
 
@@ -126,4 +126,4 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
             trust_region = max(trust_region, d_region*settings["nplus"])
 
     # return new trust region and success boolean
-    return trust_region, rho > settings["eta"] and is_finite
+    return tofloat(trust_region), rho > settings["eta"] and is_finite

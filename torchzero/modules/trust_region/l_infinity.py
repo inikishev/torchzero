@@ -56,7 +56,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
     def __init__(
         self,
         hess_module: Module,
-        eta: float= 0.15,
+        eta: float= 0.0,
         nplus: float = 3.5,
         nminus: float = 0.25,
         rho_good: float = 0.99,
@@ -65,12 +65,12 @@ class InfinityNormTrustRegion(TrustRegionBase):
         update_freq: int = 1,
         max_attempts: int = 10,
         boundary_tol: float | None = None,
+        prefer_dense:bool=True,
         tol: float = 1e-10,
-        fallback: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, tol=tol, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good)
-        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
+        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, tol=tol, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, prefer_dense=prefer_dense, rho_good=rho_good)
+        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
     def trust_region_apply(self, var, tensors, H):
@@ -82,6 +82,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
 
         tol = settings['tol']
         max_attempts = settings['max_attempts']
+        prefer_dense = settings['prefer_dense']
 
         loss = var.loss
         closure = var.closure
@@ -99,13 +100,13 @@ class InfinityNormTrustRegion(TrustRegionBase):
             if trust_region < 1e-10 or trust_region > 1e16:
                 trust_region = self.global_state['trust_region'] = settings['init']
 
-            if H.is_dense():
+            if prefer_dense and H.is_dense():
                 # convert to array if possible to avoid many conversions
                 # between torch and numpy, plus it seems that it uses
                 # a better solver
                 A = H.to_tensor().numpy(force=True).astype(np.float64)
             else:
-                # memory efficient linear operator
+                # memory efficient linear operator (is this still faster on CUDA?)
                 A = H.scipy_linop()
 
             d_np = lsq_linear(

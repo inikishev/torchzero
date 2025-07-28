@@ -10,7 +10,6 @@ from .ops import *
 from .optimizers import *
 from .projections import *
 from .quasi_newton import *
-from .root import *
 from .second_order import *
 from .smoothing import *
 from .step_size import *

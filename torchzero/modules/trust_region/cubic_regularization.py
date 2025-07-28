@@ -134,11 +134,10 @@ class CubicRegularization(TrustRegionBase):
         eps: float = 1e-8,
         update_freq: int = 1,
         max_attempts: int = 10,
-        fallback: bool = True,
         inner: Chainable | None = None,
     ):
         defaults = dict(init=init, nplus=nplus, nminus=nminus, rho_good=rho_good, rho_bad=rho_bad, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
-        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner, fallback=fallback)
+        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
     def trust_region_apply(self, var, tensors, H):

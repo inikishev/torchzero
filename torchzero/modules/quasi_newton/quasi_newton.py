@@ -1261,8 +1261,10 @@ def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
 class ShorR(HessianUpdateStrategy):
     """Shor’s r-algorithm.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
+    Note:
+        A line search such as ``tz.m.StrongWolfe(a_init="quadratic", fallback=True)`` is required.
+        Similarly to conjugate gradient, ShorR doesn't have an automatic step size scaling,
+        so setting ``a_init`` in the line search is recommended.
 
     Reference:
         Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.

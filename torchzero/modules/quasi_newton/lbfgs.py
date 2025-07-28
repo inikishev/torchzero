@@ -15,6 +15,7 @@ def _adaptive_damping(
     init_damping = 0.99,
     eigval_bounds = (0.01, 1.5)
 ):
+    # I should change this and add damping strategies to all modules that use s and y.
     # adaptive damping Al-Baali, M.: Quasi-Wolfe conditions for quasi-Newton methods for large-scale optimization. In: 40th Workshop on Large Scale Nonlinear Optimization, Erice, Italy, June 22–July 1 (2004)
     sigma_l, sigma_h = eigval_bounds
     u = sy / s.dot(s)
@@ -169,6 +170,7 @@ class LBFGS(Transform):
         ptol: float | None = 1e-10,
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
+        gtol_reset: bool = False,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq = 1,
@@ -176,7 +178,7 @@ class LBFGS(Transform):
         scale_first:bool=True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size,scale_first=scale_first, ptol=ptol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, ptol_reset=ptol_reset)
+        defaults = dict(history_size=history_size,scale_first=scale_first, ptol=ptol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, ptol_reset=ptol_reset, gtol_reset=gtol_reset)
         super().__init__(defaults, uses_grad=False, inner=inner)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
@@ -256,6 +258,7 @@ class LBFGS(Transform):
         ptol = setting['ptol']
         gtol = setting['gtol']
         ptol_reset = setting['ptol_reset']
+        gtol_reset = setting['gtol_reset']
         z_beta = setting['z_beta']
         scale_first = setting['scale_first']
 
@@ -269,6 +272,7 @@ class LBFGS(Transform):
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
+                if gtol_reset: self.reset()
                 tensors = TensorList(tensors)
                 return tensors.mul_(initial_step_size(tensors))
 

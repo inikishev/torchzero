@@ -120,6 +120,7 @@ class LSR1(Transform):
         ptol: float | None = 1e-10,
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
+        gtol_reset: bool = False,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq: int = 1,
@@ -130,7 +131,7 @@ class LSR1(Transform):
             history_size=history_size, ptol=ptol, gtol=gtol,
             params_beta=params_beta, grads_beta=grads_beta,
             update_freq=update_freq, scale_first=scale_first,
-            ptol_reset=ptol_reset,
+            ptol_reset=ptol_reset,gtol_reset=gtol_reset,
         )
         super().__init__(defaults, uses_grad=False, inner=inner)
 
@@ -193,6 +194,7 @@ class LSR1(Transform):
         ptol = setting['ptol']
         gtol = setting['gtol']
         ptol_reset = setting['ptol_reset']
+        gtol_reset = setting['ptol_reset']
 
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None:
@@ -204,6 +206,7 @@ class LSR1(Transform):
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if ptol is not None:
             if y is not None and y.abs().global_max() <= gtol:
+                if gtol_reset: self.reset()
                 tensors = TensorList(tensors)
                 return tensors.mul_(initial_step_size(tensors))
 

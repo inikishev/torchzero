@@ -17,7 +17,7 @@ from ...utils.derivatives import (
 )
 from ...utils.linalg.linear_operator import DenseWithInverse, Dense
 
-def lu_solve(H: torch.Tensor, g: torch.Tensor):
+def _lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
         x, info = torch.linalg.solve_ex(H, g) # pylint:disable=not-callable
         if info == 0: return x
@@ -25,17 +25,17 @@ def lu_solve(H: torch.Tensor, g: torch.Tensor):
     except RuntimeError:
         return None
 
-def cholesky_solve(H: torch.Tensor, g: torch.Tensor):
+def _cholesky_solve(H: torch.Tensor, g: torch.Tensor):
     x, info = torch.linalg.cholesky_ex(H) # pylint:disable=not-callable
     if info == 0:
         g.unsqueeze_(1)
         return torch.cholesky_solve(g, x)
     return None
 
-def least_squares_solve(H: torch.Tensor, g: torch.Tensor):
+def _least_squares_solve(H: torch.Tensor, g: torch.Tensor):
     return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
 
-def eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_negative: bool):
+def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_negative: bool):
     try:
         L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
         if tfm is not None: L = tfm(L)
@@ -253,12 +253,12 @@ class Newton(Module):
                 if is_inv: update = H @ g
 
         if search_negative or (eigval_tfm is not None):
-            update = eigh_solve(H, g, eigval_tfm, search_negative=search_negative)
+            update = _eigh_solve(H, g, eigval_tfm, search_negative=search_negative)
 
-        if update is None and use_lstsq: update = least_squares_solve(H, g)
-        if update is None: update = cholesky_solve(H, g)
-        if update is None: update = lu_solve(H, g)
-        if update is None: update = least_squares_solve(H, g)
+        if update is None and use_lstsq: update = _least_squares_solve(H, g)
+        if update is None: update = _cholesky_solve(H, g)
+        if update is None: update = _lu_solve(H, g)
+        if update is None: update = _least_squares_solve(H, g)
 
         var.update = vec_to_tensors(update, params)
 
