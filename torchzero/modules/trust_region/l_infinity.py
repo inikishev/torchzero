@@ -109,13 +109,17 @@ class InfinityNormTrustRegion(TrustRegionBase):
                 # memory efficient linear operator (is this still faster on CUDA?)
                 A = H.scipy_linop()
 
-            d_np = lsq_linear(
-                A,
-                g.numpy(force=True).astype(np.float64),
-                tol=tol,
-                bounds=(-trust_region, trust_region),
-            ).x
-            d = torch.as_tensor(d_np, device=g.device, dtype=g.dtype)
+            try:
+                d_np = lsq_linear(
+                    A,
+                    g.numpy(force=True).astype(np.float64),
+                    tol=tol,
+                    bounds=(-trust_region, trust_region),
+                ).x
+                d = torch.as_tensor(d_np, device=g.device, dtype=g.dtype)
+            except np.linalg.LinAlgError:
+                self.children['hess_module'].reset()
+                d = g
 
             self.global_state['trust_region'], success = _update_tr_radius(
                 params=params, closure=closure, d=d, f=loss, g=g, H=H,
