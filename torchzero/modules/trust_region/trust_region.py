@@ -1,4 +1,5 @@
 import math
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, cast, final
@@ -6,7 +7,7 @@ from typing import Any, Literal, cast, final
 import torch
 
 from ...core import Chainable, Module, Var, apply_transform
-from ...utils import TensorList, vec_to_tensors, tofloat
+from ...utils import TensorList, tofloat, vec_to_tensors
 from ...utils.linalg.linear_operator import LinearOperator
 
 
@@ -89,13 +90,21 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
             function that accepts ``(d: torch.Tensor)`` and returns the actual region of ``d``
             (e.g. L2) norm for L2 trust region.
     """
+    # when rho_bad < rho < eta, no update is made but trust region is not updated.
+    if settings['eta'] > settings['rho_bad']:
+        warnings.warn(f"trust region eta={settings['eta']} is larger than rho_bad={settings['rho_bad']}, "
+                      "this can lead to trust region getting stuck.")
+
     # evaluate actual loss reduction
     update_unflattned = vec_to_tensors(d, params)
     params = TensorList(params)
+    x0 = params.clone() # same situation as in line searches, large directions are undone very imprecisely
+
     params -= update_unflattned
-    loss_star = closure(False)
-    params += update_unflattned
-    reduction = f - loss_star
+    f_star = closure(False)
+    params.set_(x0)
+
+    reduction = f - f_star
 
     if H is not None:
         # expected reduction is g.T @ p + 0.5 * p.T @ B @ p
@@ -106,10 +115,11 @@ def _update_tr_radius(params: Sequence[torch.Tensor], closure,
         # this may be less accurate? because it depends on how accurate `d` is
         # the formula (if d was not negative) is -0.5 * g^T d + 0.5 * λ * ||d||²
         # I will keep H in args in case there is a better method but I haven't found anything
-        pred_reduction = 0.5 * trust_region * d.dot(d) + 0.5 * g.dot(d)
+        # pred_reduction = 0.5 * trust_region * d.dot(d) + 0.5 * g.dot(d)
+        raise NotImplementedError
 
-    rho = reduction / (pred_reduction.clip(min=1e-8))
-    is_finite = math.isfinite(loss_star)
+    rho = reduction / (pred_reduction.clip(min=1e-12))
+    is_finite = math.isfinite(f_star)
 
     # find boundary of current step
     if boundary_fn is None: d_region = trust_region
