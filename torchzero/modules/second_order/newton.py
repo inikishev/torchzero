@@ -42,7 +42,7 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
         if search_negative and L[0] < 0:
             neg_mask = L < 0
             Q_neg = Q[:, neg_mask] * L[neg_mask]
-            return (Q_neg * (g @ Q_neg).sign()).sum(1)
+            return (Q_neg * (g @ Q_neg).sign()).mean(1)
 
         return Q @ ((Q.mH @ g) / L)
 

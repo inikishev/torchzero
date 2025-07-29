@@ -99,3 +99,6 @@ class ResetOnStuck(Module):
             self.global_state['n_bad'] = 0
 
         return var
+
+    def get_H(self, var):
+        return self.children['modules'].get_H(var)
