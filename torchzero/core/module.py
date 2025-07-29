@@ -479,7 +479,17 @@ class Module(ABC):
 
     def get_H(self, var: Var) -> LinearOperator | None:
         """returns a LinearOperator corresponding to hessian or hessian approximation"""
-        return None
+        # if this method is not defined it searches in children
+        H = None
+        for k,v in self.children.items():
+            H_v = v.get_H(var)
+
+            if (H is not None) and (H_v is not None):
+                raise RuntimeError(f"Two children of {self} have a hessian, second one is {k}={v}")
+
+            if H_v is not None: H = H_v
+
+        return H
 
     def reset(self):
         """Resets the internal state of the module (e.g. momentum) and all children. By default clears state and global state."""
@@ -808,18 +818,6 @@ class Chain(Module):
             var = self.children[f'module_{i}'].step(var)
             if var.stop: break
         return var
-
-    def get_H(self, var):
-        H = None
-        for i in range(len(self.children)):
-            H_i = self.children[f'module_{i}'].get_H(var)
-
-            if (H is not None) and (H_i is not None):
-                raise RuntimeError(f"Two modules in the chain have a hessian, second one is {self.children[f'module_{i}']}")
-
-            if H_i is not None: H = H_i
-
-        return H
 
     def __repr__(self):
         s = self.__class__.__name__
