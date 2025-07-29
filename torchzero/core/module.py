@@ -809,6 +809,18 @@ class Chain(Module):
             if var.stop: break
         return var
 
+    def get_H(self, var):
+        H = None
+        for i in range(len(self.children)):
+            H_i = self.children[f'module_{i}'].get_H(var)
+
+            if (H is not None) and (H_i is not None):
+                raise RuntimeError(f"Two modules in the chain have a hessian, second one is {self.children[f'module_{i}']}")
+
+            if H_i is not None: H = H_i
+
+        return H
+
     def __repr__(self):
         s = self.__class__.__name__
         if self.children:
