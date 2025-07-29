@@ -62,7 +62,7 @@ class EscapeAnnealing(Module):
         return var
 
 class ResetOnStuck(Module):
-    """Resets optimizer state when update is close to zero for multiple steps in a row. This should be the last module."""
+    """Resets optimizer state when update (difference in parameters) is close to zero for multiple steps in a row."""
     def __init__(self, modules: Chainable, tol=1e-10, n_tol: int = 4):
         defaults = dict(tol=tol, n_tol=n_tol)
         super().__init__(defaults)
@@ -70,34 +70,39 @@ class ResetOnStuck(Module):
 
     @torch.no_grad
     def step(self, var):
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
         params = TensorList(var.params)
         settings = self.settings[params[0]]
         tol = settings['tol']
         n_tol = settings['n_tol']
         n_bad = self.global_state.get('n_bad', 0)
-        is_bad = False
-
         modules = self.children['modules']
-        var = modules.step(var.clone(clone_update=False))
 
-        if var.skip_update:
-            is_bad = True
+        # calculate difference in parameters
+        prev_params = self.get_state(params, 'prev_params', cls=TensorList)
+        update = params - prev_params
+        prev_params.copy_(params)
 
-        else:
-            update = TensorList(var.get_update())
+        # if update is too small, it is considered bad, otherwise n_bad is reset to 0
+        if step > 0:
             if update.abs().global_max() <= tol:
-                is_bad = True
+                n_bad += 1
 
-        if is_bad: n_bad += 1
-        else: n_bad = 0
+            else:
+                n_bad = 0
 
         self.global_state['n_bad'] = n_bad
 
-        # no progress
+        # no progress, reset
         if n_bad >= n_tol:
             modules.reset()
             self.global_state['n_bad'] = 0
+            self.global_state['step'] = 0
 
+        # step with child (after resetting if reset)
+        var = modules.step(var.clone(clone_update=False))
         return var
 
     def get_H(self, var):

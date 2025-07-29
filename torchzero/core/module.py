@@ -480,6 +480,7 @@ class Module(ABC):
     def get_H(self, var: Var) -> LinearOperator | None:
         """returns a LinearOperator corresponding to hessian or hessian approximation"""
         # if this method is not defined it searches in children
+        # this should be overwritten to return None if child params are different from this modules params
         H = None
         for k,v in self.children.items():
             H_v = v.get_H(var)
