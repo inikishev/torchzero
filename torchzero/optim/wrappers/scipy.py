@@ -8,8 +8,7 @@ import scipy.optimize
 import torch
 
 from ...utils import Optimizer, TensorList
-from ...utils.derivatives import jacobian_and_hessian_mat_wrt, jacobian_wrt
-from ...modules.second_order.newton import tikhonov_
+from ...utils.derivatives import jacobian_and_hessian_mat_wrt, jacobian_wrt, flatten_jacobian
 
 def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
@@ -76,7 +75,6 @@ class ScipyMinimize(Optimizer):
         options = None,
         jac: Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
-        tikhonov: float | None = 0,
         min_eigval: float | None = None,
     ):
         defaults = dict(lb=lb, ub=ub)
@@ -90,7 +88,6 @@ class ScipyMinimize(Optimizer):
 
         self.jac = jac
         self.hess = hess
-        self.tikhonov: float | None = tikhonov
 
         self.use_jac_autograd = jac.lower() == 'autograd' and (method is None or method.lower() in [
             'cg', 'bfgs', 'newton-cg', 'l-bfgs-b', 'tnc', 'slsqp', 'dogleg',
@@ -111,7 +108,6 @@ class ScipyMinimize(Optimizer):
         with torch.enable_grad():
             value = closure(False)
             _, H = jacobian_and_hessian_mat_wrt([value], wrt = params)
-        if self.tikhonov is not None: H = tikhonov_(H, self.tikhonov)
         if self.min_eigval is not None: H = matrix_clamp(H, self.min_eigval)
         return H.detach().cpu().numpy()
 
@@ -167,7 +163,7 @@ class ScipyMinimize(Optimizer):
 
 
 class ScipyRootOptimization(Optimizer):
-    """Optimization via using scipy.root on gradients, mainly for experimenting!
+    """Optimization via using scipy.optimize.root on gradients, mainly for experimenting!
 
     Args:
         params: iterable of parameters to optimize or dicts defining parameter groups.
@@ -246,6 +242,72 @@ class ScipyRootOptimization(Optimizer):
 
         params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
         return res.fun
+
+
+class ScipyLeastSquaresOptimization(Optimizer):
+    """Optimization via using scipy.optimize.least_squares on gradients, mainly for experimenting!
+
+    Args:
+        params: iterable of parameters to optimize or dicts defining parameter groups.
+        method (str | None, optional): _description_. Defaults to None.
+        tol (float | None, optional): _description_. Defaults to None.
+        callback (_type_, optional): _description_. Defaults to None.
+        options (_type_, optional): _description_. Defaults to None.
+        jac (T.Literal[&#39;2, optional): _description_. Defaults to 'autograd'.
+    """
+    def __init__(
+        self,
+        params,
+        method='trf',
+        jac='autograd',
+        bounds=(-np.inf, np.inf),
+        ftol=1e-8, xtol=1e-8, gtol=1e-8, x_scale=1.0, loss='linear',
+        f_scale=1.0, diff_step=None, tr_solver=None, tr_options=None,
+        jac_sparsity=None, max_nfev=None, verbose=0
+    ):
+        super().__init__(params, {})
+        kwargs = locals().copy()
+        del kwargs['self'], kwargs['params'], kwargs['__class__'], kwargs['jac']
+        self._kwargs = kwargs
+
+        self.jac = jac
+
+
+    def _objective(self, x: np.ndarray, params: TensorList, closure):
+        # set params to x
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+
+        # return the gradients
+        with torch.enable_grad(): self.value = closure()
+        jac = params.ensure_grad_().grad.to_vec()
+        return jac.numpy(force=True)
+
+    def _hess(self, x: np.ndarray, params: TensorList, closure):
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        with torch.enable_grad():
+            value = closure(False)
+            _, H = jacobian_and_hessian_mat_wrt([value], wrt = params)
+        return H.numpy(force=True)
+
+    @torch.no_grad
+    def step(self, closure: Closure): # pylint:disable = signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
+        params = self.get_params()
+
+        x0 = params.to_vec().detach().cpu().numpy()
+
+        if self.jac == 'autograd': jac = partial(self._hess, params = params, closure = closure)
+        else: jac = self.jac
+
+        res = scipy.optimize.least_squares(
+            partial(self._objective, params = params, closure = closure),
+            x0 = x0,
+            jac=jac, # type:ignore
+            **self._kwargs
+        )
+
+        params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return res.fun
+
 
 
 

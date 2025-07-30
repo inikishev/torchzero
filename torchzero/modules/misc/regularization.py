@@ -121,8 +121,8 @@ class PerturbWeights(Module):
     Args:
         alpha (float, optional): multiplier for perturbation magnitude. Defaults to 0.1.
         relative (bool, optional): whether to multiply perturbation by mean absolute value of the parameter. Defaults to True.
-        graft (bool, optional):
-            if True, parameters after dropout are rescaled to have the same norm as before dropout. Defaults to False.
+        distribution (bool, optional):
+            distribution of the random perturbation. Defaults to False.
     """
     def __init__(self, alpha: float = 0.1, relative:bool=True, distribution:Distributions = 'normal'):
         defaults = dict(alpha=alpha, relative=relative, distribution=distribution, perturb=True)

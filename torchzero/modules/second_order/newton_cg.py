@@ -1,11 +1,13 @@
+import math
 from typing import Literal, overload
+
 import torch
 
-from ...utils import TensorList, as_tensorlist, NumberList, generic_vector_norm
+from ...core import Chainable, Module, apply_transform
+from ...utils import NumberList, TensorList, as_tensorlist, generic_vector_norm
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
-
-from ...core import Chainable, apply_transform, Module
 from ...utils.linalg.solve import cg, minres
+
 
 class NewtonCG(Module):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
@@ -264,7 +266,7 @@ class NewtonCGSteihaug(Module):
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3,
         max_attempts: int = 10,
-        boundary_tol: float = 1e-2,
+        boundary_tol: float = 1e-1,
         inner: Chainable | None = None,
     ):
         defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol)
@@ -366,19 +368,20 @@ class NewtonCGSteihaug(Module):
             reduction = var.get_loss(False) - loss_star
 
             rho = reduction / (pred_reduction.clip(min=1e-8))
+            is_finite = math.isfinite(loss_star)
 
             # failed step
-            if rho < 0.25:
+            if rho < 0.25 or not is_finite:
                 self.global_state['trust_region'] = trust_region * nminus
 
             # very good step
-            elif rho > 0.75:
+            elif rho > 0.75 and is_finite:
                 magn = generic_vector_norm(x)
                 if (magn - trust_region) / trust_region > -boundary_tol: # close to boundary
                     self.global_state['trust_region'] = trust_region * nplus
 
             # if the ratio is high enough then accept the proposed step
-            if rho > eta:
+            if rho > eta and is_finite:
                 success = True
 
         assert x is not None

@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from directsearch.ds import DEFAULT_PARAMS
 
-from ...modules.second_order.newton import tikhonov_
 from ...utils import Optimizer, TensorList
 
 

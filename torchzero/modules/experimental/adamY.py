@@ -1,5 +1,4 @@
 from operator import itemgetter
-from functools import partial
 
 import torch
 
@@ -10,9 +9,6 @@ from ..functional import (
     ema_,
     sqrt_ema_sq_,
 )
-from ..step_size.lr import lazy_lr
-from ..momentum.experimental import sqrt_nag_ema_sq_
-from ..momentum.momentum import nag_
 
 
 def adamy_(

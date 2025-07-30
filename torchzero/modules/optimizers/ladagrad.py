@@ -58,9 +58,8 @@ class LMAdagrad(TensorwiseTransform):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
         true_damping (bool, optional):
             If True, damping is added to squared singular values to mimic Adagrad. Defaults to True.
-        eigh (bool, optional): uses a more efficient way to calculate U and S. Defaults to True.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
-        S_beta (float | None, optional): momentum for S (too unstable, don't use). Defaults to None.
+        L_beta (float | None, optional): momentum for L (too unstable, don't use). Defaults to None.
         interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
         concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.

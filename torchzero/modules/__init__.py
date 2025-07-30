@@ -1,4 +1,5 @@
 from .clipping import *
+from .conjugate_gradient import *
 from .grad_approximation import *
 from .higher_order import *
 from .least_squares import *

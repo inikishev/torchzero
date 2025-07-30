@@ -1,6 +1,4 @@
 from operator import itemgetter
-from functools import partial
-import math
 import torch
 
 from ...core import Module, Target, Transform, apply_transform, Chainable
@@ -8,7 +6,6 @@ from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     debias, debiased_step_size,
     ema_,
-    sqrt_ema_sq_,
 )
 
 
@@ -46,7 +43,7 @@ def adam_expclogmul_(
     exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, alpha=alpha)
 
-    exp_avg_xpx_ = exp_avg_xpx_.log().sqrt_().exp()
+    exp_avg_xpx_ = exp_avg_xpx_.log().clip(min=0).sqrt_().exp()
 
     return (exp_avg_.lazy_mul(alpha) / exp_avg_xpx_.add_(eps))
 

@@ -1,53 +1,18 @@
 """A bunch of useless modules that I hate and that didn't work"""
+import math
+
 import torch
 
 from ...core import Chainable, Transform, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
-
-
-class CosineStepSize(Transform):
-    """Adaptive step size based on cosine similarity
-
-    VERDICT: Useless. This is too unstable.
-
-    Args:
-        scale (float, optional): cosine similarity multiplier. Defaults to 0.95.
-        init (float, optional): initial step size. Defaults to 1.
-        eps (float, optional): epsilon for division stability. Defaults to 1e-12.
-        target_cossim (float, optional): cosine similarity needs to be above this to increase step size. Defaults to 1e-8.
-        inner (Chainable | None, optional):
-            inner modules applied after calculating cosine similarity and before step size correction. Defaults to None.
-    """
-    def __init__(self, scale:float = 0.95, init:float=1, eps:float=1e-12, inner:Chainable | None = None):
-        defaults = dict(scale=scale, init=init, eps=eps)
-        super().__init__(defaults, uses_grad=False)
-        if inner is not None: self.set_child('inner', inner)
-
-    @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        scale, init = unpack_dicts(settings, 'scale', 'init', cls=NumberList)
-        unpack_states(states, tensors, 'alpha', init=init, cls=NumberList) # initializes alpha to init
-        eps = settings[0]['eps']
-
-        tensors = as_tensorlist(tensors)
-        prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
-
-        tensors_norm = tensors.global_vector_norm()
-        cos_sim = (tensors.dot(prev) / (tensors_norm * prev.global_vector_norm()).clip(min=eps)).item()
-
-        if 'inner' in self.children:
-            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads, loss))
-
-        new_alpha = []
-        for s, sc in zip(states, scale):
-            s['alpha'] *= 1 + cos_sim * sc
-            new_alpha.append(s['alpha'])
-
-        tensors.mul_(new_alpha)
-        prev.copy_(tensors)
-
-        return tensors
-
+from ...utils import (
+    NumberList,
+    TensorList,
+    as_tensorlist,
+    tofloat,
+    unpack_dicts,
+    unpack_states,
+)
+from ..functional import epsilon_step_size
 
 
 class CosineDebounce(Transform):
@@ -127,9 +92,9 @@ class CosineMomentum(Transform):
         if nesterov:
             exp_avg.add_(tensors.mul(beta))
             return tensors.add_(exp_avg)
-        else:
-            exp_avg.add_(tensors.mul_(beta))
-            return exp_avg.clone()
+
+        exp_avg.add_(tensors.mul_(beta))
+        return exp_avg.clone()
 
 
 class AdaptiveDifference(Transform):

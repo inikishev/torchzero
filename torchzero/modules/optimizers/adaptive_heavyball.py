@@ -27,8 +27,6 @@ class AdaptiveHeavyBall(Transform):
     Args:
         f_star (int, optional):
             (estimated) minimal possible value of the objective function (lowest possible loss). Defaults to 0.
-        tol (float, optional):
-            tolerance on objective value change.
     """
     def __init__(self, f_star: float = 0):
         defaults = dict(f_star=f_star)

@@ -14,10 +14,10 @@ from ...utils.derivatives import (
     jacobian_wrt,
 )
 from ..second_order.newton import (
-    cholesky_solve,
-    eigh_solve,
-    least_squares_solve,
-    lu_solve,
+    _cholesky_solve,
+    _eigh_solve,
+    _least_squares_solve,
+    _lu_solve,
 )
 from ...utils.linalg.linear_operator import Dense
 
@@ -54,7 +54,7 @@ class NewtonNewton(Module):
     def update(self, var):
         params = TensorList(var.params)
         closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if closure is None: raise RuntimeError('NewtonNewton requires closure')
 
         settings = self.settings[params[0]]
         reg = settings['reg']
@@ -83,10 +83,10 @@ class NewtonNewton(Module):
 
                     x = None
                     if search_negative or (is_last and eigval_tfm is not None):
-                        x = eigh_solve(H, xp, eigval_tfm, search_negative=search_negative)
-                    if x is None: x = cholesky_solve(H, xp)
-                    if x is None: x = lu_solve(H, xp)
-                    if x is None: x = least_squares_solve(H, xp)
+                        x = _eigh_solve(H, xp, eigval_tfm, search_negative=search_negative)
+                    if x is None: x = _cholesky_solve(H, xp)
+                    if x is None: x = _lu_solve(H, xp)
+                    if x is None: x = _least_squares_solve(H, xp)
                     xp = x.squeeze()
 
         self.global_state["Hs"] = Hs
@@ -99,7 +99,7 @@ class NewtonNewton(Module):
         var.update = vec_to_tensors(xp, params)
         return var
 
-    def get_B(self, var):
+    def get_H(self, var):
         Hs = self.global_state["Hs"]
         if len(Hs) == 1: return Dense(Hs[0])
         return Dense(torch.linalg.multi_dot(self.global_state["Hs"])) # pylint:disable=not-callable

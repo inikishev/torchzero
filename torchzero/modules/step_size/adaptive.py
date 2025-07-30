@@ -1,10 +1,14 @@
 """Various step size strategies"""
-from typing import Any, Literal
+import math
 from operator import itemgetter
+from typing import Any, Literal
+
 import torch
 
-from ...core import Transform, Chainable
-from ...utils import TensorList, unpack_dicts, unpack_states, NumberList, tofloat
+from ...core import Chainable, Transform
+from ...utils import NumberList, TensorList, tofloat, unpack_dicts, unpack_states
+from ...utils.linalg.linear_operator import ScaledIdentity
+from ..functional import epsilon_step_size
 
 
 class PolyakStepSize(Transform):
@@ -48,43 +52,54 @@ class PolyakStepSize(Transform):
         if f_star is None: f_star = f_best - y_val
 
         # calculate the step size
-        if gg <= torch.finfo(gg.dtype).eps: step_size = 0 # converged
-        else: step_size = (loss - f_star) / gg
+        if gg <= torch.finfo(gg.dtype).eps: alpha = 0 # converged
+        else: alpha = (loss - f_star) / gg
 
         # clip
         if max is not None:
-            if step_size > max: step_size = max
+            if alpha > max: alpha = max
 
         # store state
         self.global_state['f_best'] = f_best
         self.global_state['y_val'] = y_val * (1 - y_decay)
-        self.global_state['step_size'] = step_size
+        self.global_state['alpha'] = alpha
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        step_size = self.global_state.get('step_size', 1)
-        torch._foreach_mul_(tensors, step_size * unpack_dicts(settings, 'alpha', cls=NumberList))
+        alpha = self.global_state.get('alpha', 1)
+        torch._foreach_mul_(tensors, alpha * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
-def _bb_short(s: TensorList, y: TensorList, sy, eps, fallback):
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+
+
+def _bb_short(s: TensorList, y: TensorList, sy, eps):
     yy = y.dot(y)
     if yy < eps:
-        if sy < eps: return fallback # try to fallback on long
+        if sy < eps: return None # try to fallback on long
         ss = s.dot(s)
         return ss/sy
     return sy/yy
 
-def _bb_long(s: TensorList, y: TensorList, sy, eps, fallback):
+def _bb_long(s: TensorList, y: TensorList, sy, eps):
     ss = s.dot(s)
     if sy < eps:
         yy = y.dot(y) # try to fallback on short
-        if yy < eps: return fallback
+        if yy < eps: return None
         return sy/yy
     return ss/sy
 
-def _bb_geom(s: TensorList, y: TensorList, sy, eps, fallback):
-    short = _bb_short(s, y, sy, eps, fallback)
-    long = _bb_long(s, y, sy, eps, fallback)
+def _bb_geom(s: TensorList, y: TensorList, sy, eps, fallback:bool):
+    short = _bb_short(s, y, sy, eps)
+    long = _bb_long(s, y, sy, eps)
+    if long is None or short is None:
+        if fallback:
+            if short is not None: return short
+            if long is not None: return long
+        return None
     return (short * long) ** 0.5
 
 class BarzilaiBorwein(Transform):
@@ -93,22 +108,26 @@ class BarzilaiBorwein(Transform):
     Args:
         type (str, optional):
             one of "short" with formula sᵀy/yᵀy, "long" with formula sᵀs/sᵀy, or "geom" to use geometric mean of short and long.
-            Defaults to 'geom'.
-        scale_first (bool, optional):
-            whether to make first step very small when previous gradient is not available. Defaults to True.
+            Defaults to "geom".
         fallback (float, optional): step size when denominator is less than 0 (will happen on negative curvature). Defaults to 1e-3.
         inner (Chainable | None, optional):
             step size will be applied to outputs of this module. Defaults to None.
-
     """
-    def __init__(self, type: Literal['long', 'short', 'geom'] = 'geom', use_grad=True, scale_first:bool=True, fallback:float=1e-3, inner:Chainable|None = None):
-        defaults = dict(type=type, fallback=fallback)
-        super().__init__(defaults, uses_grad=use_grad, scale_first=scale_first, inner=inner)
+
+    def __init__(
+        self,
+        type: Literal["long", "short", "geom", "geom-fallback"] = "geom",
+        alpha_0: float = 1e-7,
+        use_grad=True,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(type=type, alpha_0=alpha_0)
+        super().__init__(defaults, uses_grad=use_grad, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
         self.clear_state_keys('prev_g')
-        self.global_state.pop('step', None)
+        self.global_state['reset'] = True
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
@@ -116,31 +135,237 @@ class BarzilaiBorwein(Transform):
         self.global_state['step'] = step + 1
 
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
-        fallback = unpack_dicts(settings, 'fallback', cls=NumberList)
         setting = settings[0]
         type = setting['type']
 
         g = grads if self._uses_grad else tensors
         assert g is not None
 
-        if step != 0:
+        reset = self.global_state.get('reset', False)
+        self.global_state.pop('reset', None)
+
+        if step != 0 and not reset:
             s = params-prev_p
             y = g-prev_g
             sy = s.dot(y)
-            eps = torch.finfo(sy.dtype).eps
+            eps = torch.finfo(sy.dtype).min
 
-            if type == 'short': step_size = _bb_short(s, y, sy, eps, fallback)
-            elif type == 'long': step_size = _bb_long(s, y, sy, eps, fallback)
-            elif type == 'geom': step_size = _bb_geom(s, y, sy, eps, fallback)
+            if type == 'short': alpha = _bb_short(s, y, sy, eps)
+            elif type == 'long': alpha = _bb_long(s, y, sy, eps)
+            elif type == 'geom': alpha = _bb_geom(s, y, sy, eps, fallback=False)
+            elif type == 'geom-fallback': alpha = _bb_geom(s, y, sy, eps, fallback=True)
             else: raise ValueError(type)
 
-            self.global_state['step_size'] = step_size
+            # if alpha is not None:
+            self.global_state['alpha'] = alpha
 
         prev_p.copy_(params)
         prev_g.copy_(g)
 
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+
+    @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        step_size = self.global_state.get('step_size', 1)
-        torch._foreach_mul_(tensors, step_size)
+        alpha = self.global_state.get('alpha', None)
+        if alpha is None or alpha < 0 or not math.isfinite(alpha):
+            alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
+
+        torch._foreach_mul_(tensors, alpha)
+        return tensors
+
+
+class BBStab(Transform):
+    """Stabilized Barzilai-Borwein method (https://arxiv.org/abs/1907.06409).
+
+    This clips the norm of the Barzilai-Borwein update by ``delta`, where ``delta`` can be adaptive if ``c`` is specified.
+
+    Args:
+        c (float, optional):
+            adaptive delta parameter. If ``delta`` is set to None, first ``inf_iters`` updates are performed
+            with non-stabilized Barzilai-Borwein step size. Then delta is set to norm of
+            the update that had the smallest norm, and multiplied by ``c``. Defaults to 0.2.
+        delta (float | None, optional):
+            Barzilai-Borwein update is clipped to this value. Set to ``None`` to use an adaptive choice. Defaults to None.
+        type (str, optional):
+            one of "short" with formula sᵀy/yᵀy, "long" with formula sᵀs/sᵀy, or "geom" to use geometric mean of short and long.
+            Defaults to "geom". Note that "long" corresponds to BB1stab and "short" to BB2stab,
+            however I found that "geom" works really well.
+        inner (Chainable | None, optional):
+            step size will be applied to outputs of this module. Defaults to None.
+
+    """
+    def __init__(
+        self,
+        c=0.2,
+        delta:float | None = None,
+        type: Literal["long", "short", "geom", "geom-fallback"] = "geom",
+        alpha_0: float = 1e-7,
+        use_grad=True,
+        inf_iters: int = 3,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(type=type,alpha_0=alpha_0, c=c, delta=delta, inf_iters=inf_iters)
+        super().__init__(defaults, uses_grad=use_grad, inner=inner)
+
+    def reset_for_online(self):
+        super().reset_for_online()
+        self.clear_state_keys('prev_g')
+        self.global_state['reset'] = True
+
+    @torch.no_grad
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
+        setting = settings[0]
+        type = setting['type']
+        c = setting['c']
+        delta = setting['delta']
+        inf_iters = setting['inf_iters']
+
+        g = grads if self._uses_grad else tensors
+        assert g is not None
+        g = TensorList(g)
+
+        reset = self.global_state.get('reset', False)
+        self.global_state.pop('reset', None)
+
+        if step != 0 and not reset:
+            s = params-prev_p
+            y = g-prev_g
+            sy = s.dot(y)
+            eps = torch.finfo(sy.dtype).min
+
+            if type == 'short': alpha = _bb_short(s, y, sy, eps)
+            elif type == 'long': alpha = _bb_long(s, y, sy, eps)
+            elif type == 'geom': alpha = _bb_geom(s, y, sy, eps, fallback=False)
+            elif type == 'geom-fallback': alpha = _bb_geom(s, y, sy, eps, fallback=True)
+            else: raise ValueError(type)
+
+            if alpha is not None:
+
+                # adaptive delta
+                if delta is None:
+                    niters = self.global_state.get('niters', 0) # this accounts for skipped negative curvature steps
+                    self.global_state['niters'] = niters + 1
+
+
+                    if niters == 0: pass # 1st iteration is scaled GD step, shouldn't be used to find s_norm_min
+                    elif niters <= inf_iters:
+                        s_norm_min = self.global_state.get('s_norm_min', None)
+                        if s_norm_min is None: s_norm_min = s.global_vector_norm()
+                        else: s_norm_min = min(s_norm_min, s.global_vector_norm())
+                        self.global_state['s_norm_min'] = s_norm_min
+                        # first few steps use delta=inf, so delta remains None
+
+                    else:
+                        delta = c * self.global_state['s_norm_min']
+
+                if delta is None: # delta is inf for first few steps
+                    self.global_state['alpha'] = alpha
+
+                # BBStab step size
+                else:
+                    a_stab = delta / g.global_vector_norm()
+                    self.global_state['alpha'] = min(alpha, a_stab)
+
+        prev_p.copy_(params)
+        prev_g.copy_(g)
+
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        alpha = self.global_state.get('alpha', None)
+
+        if alpha is None or alpha < 0 or not math.isfinite(alpha):
+            alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
+
+        torch._foreach_mul_(tensors, alpha)
+        return tensors
+
+
+class AdGD(Transform):
+    """AdGD and AdGD-2 (https://arxiv.org/abs/2308.02261)"""
+    def __init__(self, variant:Literal[1,2]=2, alpha_0:float = 1e-7, sqrt:bool=True, use_grad=True, inner: Chainable | None = None,):
+        defaults = dict(variant=variant, alpha_0=alpha_0, sqrt=sqrt)
+        super().__init__(defaults, uses_grad=use_grad, inner=inner,)
+
+    def reset_for_online(self):
+        super().reset_for_online()
+        self.clear_state_keys('prev_g')
+        self.global_state['reset'] = True
+
+    @torch.no_grad
+    def update_tensors(self, tensors, params, grads, loss, states, settings):
+        variant = settings[0]['variant']
+        theta_0 = 0 if variant == 1 else 1/3
+        theta = self.global_state.get('theta', theta_0)
+
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
+
+        p = TensorList(params)
+        g = grads if self._uses_grad else tensors
+        assert g is not None
+        g = TensorList(g)
+
+        prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
+
+        # online
+        if self.global_state.get('reset', False):
+            del self.global_state['reset']
+            prev_p.copy_(p)
+            prev_g.copy_(g)
+            return
+
+        if step == 0:
+            alpha_0 = settings[0]['alpha_0']
+            if alpha_0 is None: alpha_0 = epsilon_step_size(g)
+            self.global_state['alpha']  = alpha_0
+            prev_p.copy_(p)
+            prev_g.copy_(g)
+            return
+
+        sqrt = settings[0]['sqrt']
+        alpha = self.global_state.get('alpha', math.inf)
+        L = (g - prev_g).global_vector_norm() / (p - prev_p).global_vector_norm()
+
+        if variant == 1:
+            a1 = math.sqrt(1 + theta)*alpha
+            val = math.sqrt(2) if sqrt else 2
+            if L > 1e-12: a2 = 1 / (val*L)
+            else: a2 = math.inf
+
+        elif variant == 2:
+            a1 = math.sqrt(2/3 + theta)*alpha
+            a2 = alpha / math.sqrt(max(1e-10, 2 * alpha**2 * L**2 - 1))
+
+        else:
+            raise ValueError(variant)
+
+        alpha_new = min(a1, a2)
+        self.global_state['theta'] = alpha_new/alpha
+        self.global_state['alpha'] = alpha_new
+
+        prev_p.copy_(p)
+        prev_g.copy_(g)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        alpha = self.global_state.get('alpha', None)
+
+        if alpha is None or alpha < 0 or not math.isfinite(alpha):
+            self.reset() # alpha isn't None on 1st step
+            alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
+
+        torch._foreach_mul_(tensors, alpha)
         return tensors
 

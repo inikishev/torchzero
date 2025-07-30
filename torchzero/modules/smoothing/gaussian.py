@@ -1,3 +1,4 @@
+import math
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
@@ -171,28 +172,38 @@ class GaussianHomotopy(Reformulation):
 
         loss = None
         grad = None
+        n_finite = 0
         for i in range(n_samples):
             prt = perturbations[i]
 
             params.add_(prt)
             if backward:
                 with torch.enable_grad(): l = closure()
-                if grad is None: grad = params.grad
-                else: grad += params.grad
+                if math.isfinite(l):
+                    if grad is None: grad = params.grad
+                    else: grad += params.grad
 
             else:
                 l = closure(False)
 
-            if loss is None: loss = l
-            else: loss = loss+l
+            if math.isfinite(l):
+                if loss is None: loss = l
+                else: loss = loss+l
+                n_finite += 1
 
             params.sub_(prt)
 
-        assert loss is not None
-        if n_samples > 1:
-            loss = loss / n_samples
+        if n_finite == 0:
+            loss = torch.tensor(torch.inf, dtype=params[0].dtype, device=params[0].device)
+            grad = TensorList(torch.zeros_like(p) for p in params)
+
+        if n_finite > 1:
+            assert loss is not None
+            loss = loss / n_finite
             if backward:
                 assert grad is not None
-                grad.div_(n_samples)
+                grad.div_(n_finite)
 
+        assert loss is not None
+        if backward: assert grad is not None
         return loss, grad

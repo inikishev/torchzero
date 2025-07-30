@@ -1,7 +1,9 @@
+import math
+
 import torch
 
-from ...core import Module, Modular, Var
-from ...utils import TensorList, NumberList
+from ...core import Modular, Module, Var, Chainable
+from ...utils import NumberList, TensorList
 
 
 class EscapeAnnealing(Module):
@@ -47,7 +49,7 @@ class EscapeAnnealing(Module):
                 params.add_(pert)
                 f_star = closure(False)
 
-                if f_star < f_0-1e-10:
+                if math.isfinite(f_star) and f_star < f_0-1e-10:
                     var.update = None
                     var.stop = True
                     var.skip_update = True
@@ -59,48 +61,50 @@ class EscapeAnnealing(Module):
             self.global_state['n_bad'] = 0
         return var
 
-def _reset_hook(optimizer: Modular, var: Var):
-    for module in optimizer.unrolled_modules:
-        module.reset()
-
 class ResetOnStuck(Module):
-    """Resets optimizer state when update is close to zero for multiple steps in a row. This should be the last module."""
-    def __init__(self, tol=1e-10, n_tol: int = 4):
+    """Resets optimizer state when update (difference in parameters) is close to zero for multiple steps in a row."""
+    def __init__(self, modules: Chainable, tol=1e-10, n_tol: int = 4):
         defaults = dict(tol=tol, n_tol=n_tol)
         super().__init__(defaults)
-
+        self.set_child('modules', modules)
 
     @torch.no_grad
     def step(self, var):
-        if not var.is_last: raise RuntimeError("ResetOnStuck must be the last module!")
-
-        closure = var.closure
-        if closure is None: raise RuntimeError("Escape requries closure")
+        step = self.global_state.get('step', 0)
+        self.global_state['step'] = step + 1
 
         params = TensorList(var.params)
         settings = self.settings[params[0]]
         tol = settings['tol']
         n_tol = settings['n_tol']
-
         n_bad = self.global_state.get('n_bad', 0)
-        is_bad = False
+        modules = self.children['modules']
 
-        if var.skip_update:
-            is_bad = True
+        # calculate difference in parameters
+        prev_params = self.get_state(params, 'prev_params', cls=TensorList)
+        update = params - prev_params
+        prev_params.copy_(params)
 
-        else:
-            update = TensorList(var.get_update())
+        # if update is too small, it is considered bad, otherwise n_bad is reset to 0
+        if step > 0:
             if update.abs().global_max() <= tol:
-                is_bad = True
+                n_bad += 1
 
-        if is_bad: n_bad += 1
-        else: n_bad = 0
+            else:
+                n_bad = 0
 
         self.global_state['n_bad'] = n_bad
 
-        # no progress
+        # no progress, reset
         if n_bad >= n_tol:
+            print("RESETTING")
+            modules.reset()
             self.global_state['n_bad'] = 0
-            var.post_step_hooks.append(_reset_hook)
+            self.global_state['step'] = 0
 
+        # step with child (after resetting if reset)
+        var = modules.step(var.clone(clone_update=False))
         return var
+
+    def get_H(self, var):
+        return self.children['modules'].get_H(var)

@@ -1,18 +1,7 @@
-from operator import itemgetter
-from functools import partial
-
 import torch
 
-from ...core import Module, Target, Transform, apply_transform, Chainable
+from ...core import Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..functional import (
-    debias, debiased_step_size,
-    ema_,
-    sqrt_ema_sq_,
-)
-from ..step_size.lr import lazy_lr
-from ..momentum.experimental import sqrt_nag_ema_sq_
-from ..momentum.momentum import nag_
 
 
 def mars_correction_(

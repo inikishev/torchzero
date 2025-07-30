@@ -1096,3 +1096,11 @@ def generic_randn_like(x: torch.Tensor | TensorList):
     if isinstance(x, torch.Tensor): return torch.randn_like(x)
     return x.randn_like()
 
+
+def generic_sum(x: torch.Tensor | TensorList) -> torch.Tensor:
+    if isinstance(x, torch.Tensor): return x.sum()
+    return x.global_sum()
+
+def generic_max(x: torch.Tensor | TensorList) -> torch.Tensor:
+    if isinstance(x, torch.Tensor): return x.max()
+    return x.global_max()

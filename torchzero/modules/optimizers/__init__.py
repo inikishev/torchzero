@@ -10,6 +10,7 @@ from .esgd import ESGD
 from .ladagrad import LMAdagrad
 from .lion import Lion
 from .mars import MARSCorrection
+from .matrix_momentum import AdaptiveMatrixMomentum, MatrixMomentum
 from .msam import MSAM, MSAMObjective
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .orthograd import OrthoGrad, orthograd_

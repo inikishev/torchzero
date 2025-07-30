@@ -1,0 +1,152 @@
+# DOCS TUTORIAL FOR MYSELF
+# STEP ONE - MAKE SURE CORRECT PYTHON ENV IS SELECTED
+# STEP TWO - TYPE IN mkdocs serve
+# STEP THREE - ...
+
+# --------------------------------- METADATA --------------------------------- #
+site_name: torchzero
+site_description: docs for torchzero.
+site_author: Ivan Nikishev
+site_url: https://PUT_YOUR_LINK_HERE.COM
+repo_url: https://github.com/inikishev/torchzero
+repo_name: inikishev/torchzero
+
+theme:
+  name: material
+
+  palette:
+
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+      primary: black
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+      primary: black
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+      primary: black
+
+  features:
+    # - navigation.expand # make navigation expanded by default
+    # - navigation.footer
+    # - navigation.instant
+    # - navigation.instant.progress
+    # - navigation.instant.prefetch
+    - navigation.sections # makes top level groups into sections
+    - navigation.path # adds path to current page
+    - navigation.indexes # a section with children can be a page
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - navigation.footer
+
+# -------------------------------- EXTENSIONS -------------------------------- #
+markdown_extensions:
+  - admonition # to add !! notes also converts Note: and Warning: from google style
+  - toc: # adds table of contents to individual markdown files
+      # toc_depth: 3 # levels above will be collapsed except it doesn't work
+      permalink: true # adds links
+      slugify: !!python/object/apply:pymdownx.slugs.slugify # copied from docs, apparently whatever this does is good for python
+        kwds:
+          case: lower
+  - tables # read the name of this extension
+
+  # https://squidfunk.github.io/mkdocs-material/reference/content-tabs/
+  - pymdownx.superfences
+  - pymdownx.tabbed: # tabs
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+  # extensions of unknown purpose copied from https://www.youtube.com/watch?v=xlABhbnNrfI
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+
+
+plugins:
+- search
+- autorefs
+# - optimize
+- mkdocstrings:
+    handlers:
+      python:
+        options:
+          # https://mkdocstrings.github.io/python/usage/configuration/signatures/#with-signature-annotations
+          show_source: true
+          backlinks: flat
+          show_bases: true
+          group_by_category: true # group methods attributes etc
+          docstring_section_style: list # args style
+          show_signature: true
+          separate_signature: true # looks beter with the ginormous list of modules
+          show_signature_annotations: true # type hints in signatures
+
+          show_root_full_path: true
+          signature_crossrefs: true # adds links to types in signatures
+          force_inspection: true
+          # show_submodules: true
+          summary: true
+          show_symbol_type_heading: false
+          show_symbol_type_toc: true
+          filters:
+          - "!^_"
+
+
+          # preload_modules:
+          # why would I put that there...
+          # - torch
+          # - numpy
+          # - scipy
+          # - scipy.sparse
+          # - scipy.optimize
+
+nav:
+  - Home: index.md
+  - About: about.md
+  - API reference:
+    - Modules:
+      - API/index.md
+      - All modules: API/all.md
+      # - Categories:
+      #   - Algorithms:
+      #     - Optimizers: API/modules/optimizers.md
+      #     - Momentum: API/modules/momentum.md
+      #     - Momentum: API/modules/quasi_newton.md
+      #   - Step size:
+      #     - Step size: API/modules/step_size.md
+      #     - Line search: API/modules/line_search.md
+      #     - Trust region: API/modules/trust_region.md
+
+    - Core: API/core.md
+
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/inikishev/torchzero
+      name: torchzero on GitHub
+
+
+extra_css:
+  - css/bigger_titles.css

@@ -57,7 +57,7 @@ def cubic_adam_(
 class CubicAdam(Transform):
     """Adam which has 3rd momentum and minimizes a cubic polynomial.
 
-    VERDICT: can outperform Adam very slightly. Usually very similar performance.
+    VERDICT: WAIT I COOKED ON THIS ONE ITS ACTUALLY GOOD.
 
     .. warning::
         Experimental.

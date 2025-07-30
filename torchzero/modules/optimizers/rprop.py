@@ -258,8 +258,6 @@ class BacktrackOnSignChange(Transform):
     This is part of RProp update rule.
 
     Args:
-        normalize (bool, optional): renormalize update after masking. Defaults to False.
-        eps (_type_, optional): epsilon for normalization. Defaults to 1e-6.
         use_grad (bool, optional):
             if True, tracks sign change of the gradient,
             otherwise track sign change of the update. Defaults to True.

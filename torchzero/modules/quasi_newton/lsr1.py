@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
-from ..functional import safe_scaling_
+from ..functional import initial_step_size
 from .lbfgs import _lerp_params_update_
 
 
@@ -13,12 +13,16 @@ def lsr1_(
     tensors_: TensorList,
     s_history: deque[TensorList],
     y_history: deque[TensorList],
-    step: int,
-    scale_second: bool,
+    scale_first: bool,
 ):
     if len(s_history) == 0:
-        # initial step size guess from pytorch
-        return safe_scaling_(TensorList(tensors_))
+
+        if scale_first:
+            # initial step size guess from pytorch
+            tensors_ = TensorList(tensors_)
+            return tensors_.mul_(initial_step_size(tensors_))
+
+        return tensors_
 
     m = len(s_history)
 
@@ -63,11 +67,6 @@ def lsr1_(
 
         Hx.add_(w_k, alpha=w_k.dot(tensors_) / wy) # pyright:ignore[reportArgumentType]
 
-    if scale_second and step == 2:
-        scale_factor = 1 / TensorList(tensors_).abs().global_sum().clip(min=1)
-        scale_factor = scale_factor.clip(min=torch.finfo(tensors_[0].dtype).eps)
-        Hx.mul_(scale_factor)
-
     return Hx
 
 
@@ -100,7 +99,6 @@ class LSR1(Transform):
             if not None, EMA of gradients is used for
             preconditioner update (y_k vector). Defaults to None.
         update_freq (int, optional): How often to update L-SR1 history. Defaults to 1.
-        scale_second (bool, optional): downscales second update which tends to be large. Defaults to False.
         inner (Chainable | None, optional):
             Optional inner modules applied after updating
             L-SR1 history and before preconditioning. Defaults to None.
@@ -119,20 +117,21 @@ class LSR1(Transform):
     def __init__(
         self,
         history_size: int = 10,
-        tol: float | None = 1e-10,
-        tol_reset: bool = False,
+        ptol: float | None = 1e-10,
+        ptol_reset: bool = False,
         gtol: float | None = 1e-10,
+        gtol_reset: bool = False,
         params_beta: float | None = None,
         grads_beta: float | None = None,
         update_freq: int = 1,
-        scale_second: bool = False,
+        scale_first: bool = True,
         inner: Chainable | None = None,
     ):
         defaults = dict(
-            history_size=history_size, tol=tol, gtol=gtol,
+            history_size=history_size, ptol=ptol, gtol=gtol,
             params_beta=params_beta, grads_beta=grads_beta,
-            update_freq=update_freq, scale_second=scale_second,
-            tol_reset=tol_reset,
+            update_freq=update_freq, scale_first=scale_first,
+            ptol_reset=ptol_reset,gtol_reset=gtol_reset,
         )
         super().__init__(defaults, uses_grad=False, inner=inner)
 
@@ -144,6 +143,7 @@ class LSR1(Transform):
         self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
+        for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
         super().reset_for_online()
@@ -191,28 +191,31 @@ class LSR1(Transform):
         y = self.global_state.pop('y')
 
         setting = settings[0]
-        tol = setting['tol']
+        ptol = setting['ptol']
         gtol = setting['gtol']
-        tol_reset = setting['tol_reset']
+        ptol_reset = setting['ptol_reset']
+        gtol_reset = setting['ptol_reset']
 
         # tolerance on parameter difference to avoid exploding after converging
-        if tol is not None:
-            if s is not None and s.abs().global_max() <= tol:
-                if tol_reset: self.reset()
-                return safe_scaling_(TensorList(tensors))
+        if ptol is not None:
+            if s is not None and s.abs().global_max() <= ptol:
+                if ptol_reset: self.reset()
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
-        if tol is not None:
+        if ptol is not None:
             if y is not None and y.abs().global_max() <= gtol:
-                return safe_scaling_(TensorList(tensors))
+                if gtol_reset: self.reset()
+                tensors = TensorList(tensors)
+                return tensors.mul_(initial_step_size(tensors))
 
         # precondition
         dir = lsr1_(
             tensors_=tensors,
             s_history=self.global_state['s_history'],
             y_history=self.global_state['y_history'],
-            step=self.global_state.get('step', 1),
-            scale_second=setting['scale_second'],
+            scale_first = setting['scale_first'],
         )
 
         return dir

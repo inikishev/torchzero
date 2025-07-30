@@ -34,11 +34,8 @@ def _closure_backward(closure, params, retain_graph, create_graph):
 # ----------------------------------- var ----------------------------------- #
 class Var:
     """
-    Holds the state and context passed between optimizer modules during a step.
-
-    This class acts as a mutable container for information relevant to the current
-    optimization step, such as parameters, gradients, loss, and the computed update.
-    Modules read from and write to this object to coordinate their actions.
+    Holds parameters, gradient, update, objective function (closure) if supplied, loss, and some other info.
+    Modules take in a ``Var`` object, modify and it is passed to the next module.
     """
     def __init__(
         self,
@@ -46,6 +43,7 @@ class Var:
         closure: Callable | None,
         model: torch.nn.Module | None,
         current_step: int,
+        parent: "Var | None" = None
     ):
         self.params: list[torch.Tensor] = params
         """List of all parameters with requires_grad = True."""
@@ -57,17 +55,26 @@ class Var:
         """torch.nn.Module object of the model, None if it wasn't specified."""
 
         self.current_step: int = current_step
-        """global current step, starts at 0"""
+        """global current step, starts at 0. This may not correspond to module current step,
+        for example a module may step every 10 global steps."""
+
+        self.parent: "Var | None" = parent
+        """parent ``Var`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
+        Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
+        e.g. when projecting."""
 
         self.update: list[torch.Tensor] | None = None
         """
-        current update, at the end this is subtracted from model parameters unless it is None.
+        current update. Update is assumed to be a transformed gradient, therefore it is subtracted.
 
         If closure is None, this is initially set to cloned gradient. Otherwise this is set to None.
+
+        At the end ``var.get_update()`` is subtracted from parameters. Therefore if ``var.update`` is ``None``,
+        gradient will be used and calculated if needed.
         """
 
         self.grad: list[torch.Tensor] | None = None
-        """gradient with current parameters. If closure is not None, this is set to None and can be calculated if needed."""
+        """gradient with current parameters. If closure is not ``None``, this is set to ``None`` and can be calculated if needed."""
 
         self.loss: torch.Tensor | Any | None = None
         """loss with current parameters."""
@@ -80,22 +87,23 @@ class Var:
         """list of functions to be called after optimizer step.
         The signature is:
 
-        .. code:: py
-
-            def hook(optimizer: Modular, var: Vars): ...
-
+        ```python
+        def hook(optimizer: Modular, var: Vars): ...
+        ```
         """
 
         self.is_last: bool = False
         """
         Indicates that current module is either last or next-to-last before a learning rate module.
         This is always False if current module has children or is a child.
+        This is because otherwise the ``is_last`` would be passed to child modules, even though they aren't last.
         """
 
         self.nested_is_last: bool = False
         """
         Indicates that current module is either last or next-to-last before a learning rate module, for modules
-        that have children.
+        that have children. This will be passed to the children unless ``var.clone()`` is used, therefore
+        a child of a last module may also receive ``var.nested_is_last=True``.
         """
 
         self.last_module_lrs: list[float] | None = None
@@ -106,10 +114,11 @@ class Var:
         """
 
         self.stop: bool = False
-        """if True, all following modules will be skipped."""
+        """if True, all following modules will be skipped.
+        If this module is a child, """
 
         self.skip_update: bool = False
-        """if True, the parameters will not be updated"""
+        """if True, the parameters will not be updated."""
 
         self.storage: dict = {}
         """Storage for any other data, such as hessian estimates, etc"""
@@ -117,8 +126,8 @@ class Var:
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`var.loss`.
         Do not call this at perturbed parameters. Backward always zeroes grads before recomputing."""
-
         if self.loss is None:
+
             if self.closure is None: raise RuntimeError("closure is None")
             if backward:
                 with torch.enable_grad():
@@ -144,11 +153,24 @@ class Var:
                     closure=self.closure, params=self.params, retain_graph=retain_graph, create_graph=create_graph
                 )
             self.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
+
+        # set parent grad
+        if self.parent is not None:
+            # the way projections/split work, they make a new closure which evaluates original
+            # closure and projects the gradient, and set it as their var.closure.
+            # then on `get_loss(backward=True)` it is called, so it also sets original parameters gradient.
+            # and we set it to parent var here.
+            if self.parent.loss is None: self.parent.loss = self.loss
+            if self.parent.grad is None and backward:
+                if all(p.grad is None for p in self.parent.params):
+                    warnings.warn("Parent grad is None after backward.")
+                self.parent.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.parent.params]
+
         return self.loss # type:ignore
 
     def get_grad(self, retain_graph: bool | None = None, create_graph: bool = False) -> list[torch.Tensor]:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
-        :code:`var.grad` and potentially :code:`var.loss`. Do not call this at perturbed parameters."""
+        ``var.grad`` and potentially ``var.loss``. Do not call this at perturbed parameters."""
         if self.grad is None:
             if self.closure is None: raise RuntimeError("closure is None")
             self.get_loss(backward=True, retain_graph=retain_graph, create_graph=create_graph) # evaluate and set self.loss and self.grad
@@ -157,15 +179,20 @@ class Var:
         return self.grad
 
     def get_update(self) -> list[torch.Tensor]:
-        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to :code:`var.update`.
-        Computing the gradients may assign :code:`var.grad` and :code:`var.loss` if they haven't been computed.
+        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to ``var.update``.
+        Computing the gradients may assign ``var.grad`` and ``var.loss`` if they haven't been computed.
         Do not call this at perturbed parameters."""
         if self.update is None: self.update = [g.clone() for g in self.get_grad()]
         return self.update
 
-    def clone(self, clone_update: bool):
-        """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via :code:`torch.clone`)."""
-        copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step)
+    def clone(self, clone_update: bool, parent: "Var | None" = None):
+        """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via ``torch.clone``).
+
+        Doesn't copy ``is_last``, ``nested_is_last`` and ``last_module_lrs``. They will always be ``False``/``None``.
+
+        Setting ``parent`` is usually not necessary, only do it if you set clone's parameters to something different.
+        """
+        copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step, parent=parent)
 
         if clone_update and self.update is not None:
             copy.update = [u.clone() for u in self.update]
@@ -314,7 +341,7 @@ class Module(ABC):
 
         If you want to force it to return a tuple even with a single key, pass a list/tuple of 1 or more keys.
 
-        .. code:: py
+        ```python
 
             exp_avg = self.state_vals("exp_avg")
             # returns cls (by default TensorList)
@@ -450,20 +477,26 @@ class Module(ABC):
         """
         raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
 
-    def get_B(self, var: Var) -> LinearOperator | None:
+    def get_H(self, var: Var) -> LinearOperator | None:
         """returns a LinearOperator corresponding to hessian or hessian approximation"""
-        return None
+        # if this method is not defined it searches in children
+        # this should be overwritten to return None if child params are different from this modules params
+        H = None
+        for k,v in self.children.items():
+            H_v = v.get_H(var)
 
-    def get_H(self, var:Var) -> LinearOperator | None:
-        """returns a LinearOperator corresponding to hessian inverse or hessian inverse approximation"""
-        return None
+            if (H is not None) and (H_v is not None):
+                raise RuntimeError(f"Two children of {self} have a hessian, second one is {k}={v}")
+
+            if H_v is not None: H = H_v
+
+        return H
 
     def reset(self):
-        """Resets the internal state of the module (e.g. momentum). By default clears state and global state."""
-        # no complex logic is allowed there because this is overridden by many modules
-        # where super().reset() shouldn't be called
+        """Resets the internal state of the module (e.g. momentum) and all children. By default clears state and global state."""
         self.state.clear()
         self.global_state.clear()
+        for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
         """Resets buffers that depend on previous evaluation, such as previous gradient,
@@ -505,24 +538,25 @@ class Module(ABC):
 
         Single sample example:
 
-        .. code:: py
-
-            Hvp, _ = self.hvp(v, at_x0=True, rgrad=None, ..., retain_graph=False)
+        ```python
+        Hvp, _ = self.hvp(v, at_x0=True, rgrad=None, ..., retain_graph=False)
+        ```
 
         Multiple samples example:
 
-        .. code:: py
+        ```python
+        D = None
+        rgrad = None
+        for i in range(n_samples):
+            v = [torch.randn_like(p) for p in params]
+            Hvp, rgrad = self.hvp(v, at_x0=True, rgrad=rgrad, ..., retain_graph=i < n_samples-1)
 
-            D = None
-            rgrad = None
-            for i in range(n_samples):
-                v = [torch.randn_like(p) for p in params]
-                Hvp, rgrad = self.hvp(v, at_x0=True, rgrad=rgrad, ..., retain_graph=i < n_samples-1)
+            if D is None: D = Hvp
+            else: torch._foreach_add_(D, Hvp)
 
-                if D is None: D = Hvp
-                else: torch._foreach_add_(D, Hvp)
+        if n_samples > 1: torch._foreach_div_(D, n_samples)
+        ```
 
-            if n_samples > 1: torch._foreach_div_(D, n_samples)
         Args:
             v (Sequence[torch.Tensor]): vector in hessian-vector product
             at_x0 (bool): whether this is being called at original or perturbed parameters.

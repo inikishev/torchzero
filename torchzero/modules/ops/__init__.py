@@ -27,6 +27,14 @@ from .binary import (
     Sub,
     Threshold,
 )
+from .higher_level import (
+    CenteredEMASquared,
+    CenteredSqrtEMASquared,
+    Debias,
+    Debias2,
+    EMASquared,
+    SqrtEMASquared,
+)
 from .multi import (
     ClipModules,
     DivModules,

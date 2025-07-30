@@ -9,9 +9,17 @@ Additional functional variants are present in most module files, e.g. `adam_`, `
 """
 from collections.abc import Callable
 from typing import overload
+
 import torch
 
-from ..utils import NumberList, TensorList
+from ..utils import (
+    NumberList,
+    TensorList,
+    generic_finfo_eps,
+    generic_max,
+    generic_sum,
+    tofloat,
+)
 
 inf = float('inf')
 
@@ -87,10 +95,10 @@ def root(tensors_:TensorList, p:float, inplace: bool):
         if p == 1: return tensors_.abs_()
         if p == 2: return tensors_.sqrt_()
         return tensors_.pow_(1/p)
-    else:
-        if p == 1: return tensors_.abs()
-        if p == 2: return tensors_.sqrt()
-        return tensors_.pow(1/p)
+
+    if p == 1: return tensors_.abs()
+    if p == 2: return tensors_.sqrt()
+    return tensors_.pow(1/p)
 
 
 def ema_(
@@ -207,13 +215,30 @@ def sqrt_centered_ema_sq_(
         ema_sq_fn=lambda *a, **kw: centered_ema_sq_(*a, **kw, exp_avg_=exp_avg_)
     )
 
-@overload
-def safe_scaling_(tensors_: torch.Tensor) -> torch.Tensor: ...
-@overload
-def safe_scaling_(tensors_: TensorList) -> TensorList: ...
-def safe_scaling_(tensors_: torch.Tensor | TensorList):
-    if isinstance(tensors_, torch.Tensor): scale = 1 / tensors_.abs().sum()
-    else: scale = 1 / tensors_.abs().global_sum()
-    scale = scale.clip(min=torch.finfo(tensors_[0].dtype).eps, max=1)
-    return tensors_.mul_(scale)
+def initial_step_size(tensors: torch.Tensor | TensorList) -> float:
+    """initial scaling taken from pytorch L-BFGS to avoid requiring a lot of line search iterations,
+    this version is safer and makes sure largest value isn't smaller than epsilon."""
+    tensors_abs = tensors.abs()
+    tensors_sum = generic_sum(tensors_abs)
+    tensors_max = generic_max(tensors_abs)
+    eps = generic_finfo_eps(tensors)
+
+    # scale should not make largest value smaller than epsilon
+    min = eps / tensors_max
+    if min >= 1: return 1.0
+
+    scale = 1 / tensors_sum
+    scale = scale.clip(min=min.item(), max=1)
+    return scale.item()
+
+
+def epsilon_step_size(tensors: torch.Tensor | TensorList, alpha=1e-7) -> float:
+    """makes sure largest value isn't smaller than epsilon."""
+    tensors_abs = tensors.abs()
+    tensors_max = generic_max(tensors_abs)
+    if tensors_max < alpha: return 1.0
+
+    if tensors_max < 1: alpha = alpha / tensors_max
+    return tofloat(alpha)
+
 

@@ -1,15 +1,15 @@
-"""Use BFGS or maybe SR1."""
-from abc import ABC, abstractmethod
-from collections.abc import Mapping, Callable
-from typing import Any, Literal
 import warnings
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping
+from typing import Any, Literal
 
 import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
-from ..functional import safe_scaling_
 from ...utils.linalg import linear_operator
+from ..functional import initial_step_size
+
 
 def _safe_dict_update_(d1_:dict, d2:dict):
     inter = set(d1_.keys()).intersection(d2.keys())
@@ -130,14 +130,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, scale_second=scale_second, inverse=inverse, beta=beta, reset_interval=reset_interval))
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, scale_first=scale_first, inner=inner)
+        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, inverse=inverse, beta=beta, reset_interval=reset_interval, scale_first=scale_first))
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
@@ -250,10 +249,10 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, setting):
-        step = state.get('step', 0)
+        step = state['step']
 
-        if setting['scale_second'] and step == 2:
-            tensor = safe_scaling_(tensor)
+        if setting['scale_first'] and step == 1:
+            tensor *= initial_step_size(tensor)
 
         inverse = setting['inverse']
         g = tensor.view(-1)
@@ -270,9 +269,11 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         if B.ndim == 1: return g.div_(B).view_as(tensor)
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
-        return safe_scaling_(tensor)
 
-    def get_B(self, var):
+        self.reset() # failed to solve linear system, so reset state
+        return tensor.mul_(initial_step_size(tensor))
+
+    def get_H(self, var):
         param = var.params[0]
         state = self.state[param]
         settings = self.settings[param]
@@ -284,25 +285,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
         if "H" in state:
             H = self.modify_H(state["H"], state, settings)
-            if H.ndim != 1: return None
+            if H.ndim != 1: return linear_operator.DenseInverse(H)
             return linear_operator.Diagonal(1/H)
-
-        return None
-
-    def get_H(self, var):
-        param = var.params[0]
-        state = self.state[param]
-        settings = self.settings[param]
-        if "H" in state:
-            H = self.modify_H(state["H"], state, settings)
-            if H.ndim == 2: return linear_operator.Dense(H)
-            assert H.ndim == 1, H.shape
-            return linear_operator.Diagonal(H)
-
-        if "B" in state:
-            B = self.modify_B(state["B"], state, settings)
-            if B.ndim != 1: return None
-            return linear_operator.Diagonal(1/B)
 
         return None
 
@@ -341,7 +325,6 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
         inner: Chainable | None = None,
@@ -357,7 +340,6 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=inverse,
             inner=inner,
@@ -375,7 +357,6 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inverse: bool = False,
         inner: Chainable | None = None,
@@ -391,7 +372,6 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=inverse,
             inner=inner,
@@ -933,7 +913,6 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -947,7 +926,6 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1056,7 +1034,6 @@ class SSVM(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -1072,7 +1049,6 @@ class SSVM(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1243,7 +1219,6 @@ class NewSSM(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
-        scale_second: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
@@ -1258,7 +1233,6 @@ class NewSSM(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,
@@ -1287,8 +1261,10 @@ def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
 class ShorR(HessianUpdateStrategy):
     """Shor’s r-algorithm.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
+    Note:
+        A line search such as ``tz.m.StrongWolfe(a_init="quadratic", fallback=True)`` is required.
+        Similarly to conjugate gradient, ShorR doesn't have an automatic step size scaling,
+        so setting ``a_init`` in the line search is recommended.
 
     Reference:
         Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.
@@ -1308,7 +1284,6 @@ class ShorR(HessianUpdateStrategy):
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
-        scale_second: bool = False,
         concat_params: bool = True,
         # inverse: bool = True,
         inner: Chainable | None = None,
@@ -1325,7 +1300,6 @@ class ShorR(HessianUpdateStrategy):
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
-            scale_second=scale_second,
             concat_params=concat_params,
             inverse=True,
             inner=inner,

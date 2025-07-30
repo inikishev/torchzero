@@ -105,7 +105,7 @@ def clip_grad_norm_(
 
     Args:
         params (Iterable[torch.Tensor]): parameters with gradients to clip.
-        value (float): value to clip norm to.
+        max_norm (float): value to clip norm to.
         ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
@@ -193,7 +193,7 @@ class ClipNorm(Transform):
     """Clips update norm to be no larger than `value`.
 
     Args:
-        value (float): value to clip norm to.
+        max_norm (float): value to clip norm to.
         ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
@@ -263,7 +263,7 @@ class Normalize(Transform):
     """Normalizes the update.
 
     Args:
-        value (float): desired norm value.
+        norm_value (float): desired norm value.
         ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
@@ -370,8 +370,6 @@ class Centralize(Transform):
     """Centralizes the update.
 
     Args:
-        value (float): desired norm value.
-        ord (float, optional): norm order. Defaults to 2.
         dim (int | Sequence[int] | str | None, optional):
             calculates norm along those dimensions.
             If list/tuple, tensors are centralized along all dimensios in `dim` that they have.
