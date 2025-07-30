@@ -23,7 +23,6 @@ Construct a modular optimizer and use like any other pytorch optimizer, although
 ```py
 optimizer = tz.Modular(
     model.parameters(),
-    tz.m.GradientAccumulation(4),
     tz.m.ClipValue(10),
     tz.m.Adam(),
     tz.m.NormalizeByEMA(max_ema_growth=1.1),
