@@ -60,19 +60,19 @@ Non-batched example (rosenbrock):
 import torch
 import torchzero as tz
 
-def rosen(x):
-    return (1 - x[0]) ** 2 + 100 * (x[1] - x[0] ** 2) ** 2
+def rosen(x, y):
+    return (1 - x) ** 2 + 100 * (y - x ** 2) ** 2
 
-x = torch.tensor([-1.1, 2.5], requires_grad=True)
+X = torch.tensor([-1.1, 2.5], requires_grad=True)
 
 def closure(backward=True):
-    loss = rosen(x)
+    loss = rosen(*X)
     if backward:
-        x.grad = None # same as opt.zero_grad()
+        X.grad = None # same as opt.zero_grad()
         loss.backward()
     return loss
 
-opt = tz.Modular([x], tz.m.NewtonCGSteihaug(hvp_method='forward'))
+opt = tz.Modular([X], tz.m.NewtonCGSteihaug(hvp_method='forward'))
 for step in range(24):
     loss = opt.step(closure)
     print(f'{step} - {loss}')
