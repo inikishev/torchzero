@@ -57,22 +57,23 @@ The code above will also work with any other optimizer because all PyTorch optim
 Non-batched example (rosenbrock):
 
 ```py
+import torch
 import torchzero as tz
 
-def rosen(x, y):
-    return (1 - x) ** 2 + 100 * (y - x ** 2) ** 2
+def rosen(x):
+    return (1 - x[0]) ** 2 + 100 * (x[1] - x[0] ** 2) ** 2
 
-W = torch.tensor([-1.1, 2.5], requires_grad=True)
+x = torch.tensor([-1.1, 2.5], requires_grad=True)
 
 def closure(backward=True):
-    loss = rosen(*W)
+    loss = rosen(x)
     if backward:
-        W.grad = None # same as opt.zero_grad()
+        x.grad = None # same as opt.zero_grad()
         loss.backward()
     return loss
 
-opt = tz.Modular([W], tz.m.NewtonCGSteihaug())
-for step in range(20):
+opt = tz.Modular([x], tz.m.NewtonCGSteihaug(hvp_method='forward'))
+for step in range(24):
     loss = opt.step(closure)
     print(f'{step} - {loss}')
 ```
