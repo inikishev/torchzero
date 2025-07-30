@@ -744,8 +744,8 @@ LBFGS = Run(
 
 # ----------------------------- quasi_newton/lsr1 ---------------------------- #
 LSR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe(c2=0.5)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LSR1(scale_second=True), tz.m.StrongWolfe(c2=0.5)),
+    func_opt=lambda p: tz.Modular(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.05)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.05)),
     needs_closure=True,
     func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
