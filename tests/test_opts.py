@@ -873,7 +873,7 @@ for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.Da
             func_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
             sphere_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
             needs_closure=True,
-            func='lstsq', steps=func_steps, loss=1e-10, merge_invariant=False, # strong wolfe adds float imprecision
+            func='lstsq', steps=func_steps, loss=1e-10, merge_invariant=True,
             sphere_steps=sphere_steps_, sphere_loss=0,
         )
 
