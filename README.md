@@ -12,11 +12,11 @@ There are A LOT of modules, including first order, quasi-newton, second order, c
 
 The list of modules is available here https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html, although it is slightly outdated since I decided to rewrite the wiki.
 
-The modules represent gradient transformations and are freely combineable (see examples below). You can take newton, gauss-newton, any quasi-newton method, choose any line-search or trust region, add something else like restarts, even put a momentum somewhere in the mix.
+The modules represent gradient transformations and are freely combineable (see examples below). You can take newton, gauss-newton, any quasi-newton method, choose any line-search or trust region, add something else like restarts, even put a momentum or sharpness-aware minimization somewhere in the mix.
 
 ## How to use
 
-Construct a modular optimizer and use like any other pytorch optimizer, altough some modules require a closure as detailed in the next section.
+Construct a modular optimizer and use like any other pytorch optimizer, although some modules require a closure as detailed in the next section.
 
 ```py
 optimizer = tz.Modular(
@@ -35,7 +35,7 @@ optimizer = tz.Modular(
 Certain modules, particularly line searches and gradient approximations require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
 
 ```python
-# basic training loop
+# training loop
 for inputs, targets in dataloader:
 
     def closure(backward=True): # make sure it is True by default
