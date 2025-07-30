@@ -907,7 +907,7 @@ for QN in (
         func_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_reset=True), tz.m.StrongWolfe()),
         sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_reset=True), tz.m.StrongWolfe()),
         needs_closure=True,
-        func='lstsq', steps=50, loss=1e-10, merge_invariant=False,
+        func='lstsq', steps=50, loss=1e-10, merge_invariant=True,
         sphere_steps=10, sphere_loss=1e-20,
     )
 
