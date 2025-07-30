@@ -52,36 +52,23 @@ def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
     """
     Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
     """
-    matrix = []
-    float_data = False
-    original_type = original_device = None
-    for m in mat:
-        if m is None or len(m) == 0:
-            matrix.append([])
-            continue
-        if m.dtype != torch.float:
-            original_type = m.dtype
-            original_device = m.device
-            matrix.append(m.float())
-        else:
-            float_data = True
-            matrix.append(m)
 
     final = []
-    for m in matrix:
-        if len(m) == 0:
+    for m in mat:
+
+        if m is None or len(m) == 0:
             final.append([])
             continue
+
         try:
             _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
         except Exception:
             _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
             Q = Q.to(m.dtype)
-        Q = torch.flip(Q, [1])
 
-        if not float_data:
-            Q = Q.to(original_device).type(original_type)
+        Q = torch.flip(Q, [1])
         final.append(Q)
+
     return final
 
 # function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py#L240
@@ -91,40 +78,24 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     Computes the eigenbases of the preconditioner using one round of power iteration
     followed by torch.linalg.qr decomposition.
     """
-    matrix = []
-    orth_matrix = []
-    float_data = False
-    original_type = original_device = None
-    for m,o in zip(GG, Q_list):
-        if m is None or len(m) == 0:
-            matrix.append([])
-            orth_matrix.append([])
-            continue
-        assert o is not None
-        if m.data.dtype != torch.float:
-            original_type = m.data.dtype
-            original_device = m.data.device
-            matrix.append(m.data.float())
-            orth_matrix.append(o.data.float())
-        else:
-            float_data = True
-            matrix.append(m.data.float())
-            orth_matrix.append(o.data.float())
-
     final = []
-    for ind, (m,o) in enumerate(zip(matrix, orth_matrix)):
-        if len(m)==0:
+
+    for ind, (m,o) in enumerate(zip(GG, Q_list)):
+
+        # skip 1d or large dims
+        if m is None or len(m) == 0:
             final.append([])
             continue
+        assert o is not None
+
         est_eig = torch.diag(o.T @ m @ o)
         sort_idx = torch.argsort(est_eig, descending=True)
         exp_avg_sq = exp_avg_sq.index_select(ind, sort_idx)
-        o = o[:,sort_idx]
-        power_iter = m @ o
-        Q, _ = torch.linalg.qr(power_iter) # pylint:disable=not-callable
 
-        if not float_data:
-            Q = Q.to(original_device).type(original_type)
+        power_iter = m @ o[:, sort_idx]
+        Q, _ = torch.linalg.qr(power_iter.to(torch.float32)) # pylint:disable=not-callable
+        Q = Q.to(power_iter.dtype)
+
         final.append(Q)
 
     return final, exp_avg_sq

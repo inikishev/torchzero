@@ -97,6 +97,7 @@ class ResetOnStuck(Module):
 
         # no progress, reset
         if n_bad >= n_tol:
+            print("RESETTING")
             modules.reset()
             self.global_state['n_bad'] = 0
             self.global_state['step'] = 0
