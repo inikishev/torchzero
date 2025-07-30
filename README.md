@@ -14,6 +14,8 @@ The list of modules is available here https://torchzero.readthedocs.io/en/latest
 
 The modules represent gradient transformations and are freely combineable (see examples below). You can take newton, gauss-newton, any quasi-newton method, choose any line-search or trust region, add something else like restarts, even put a momentum or sharpness-aware minimization somewhere in the mix.
 
+A lot of work still needs to be done, some internal things that are too long to describe here, but also more tests, proper readme and documentation.
+
 ## How to use
 
 Construct a modular optimizer and use like any other pytorch optimizer, although some modules require a closure as detailed in the next section.
