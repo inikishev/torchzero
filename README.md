@@ -10,7 +10,7 @@ torchzero is a general purpose optimization library with a highly modular design
 
 There are A LOT of modules, including first order, quasi-newton, second order, conjugate gradient methods, line searches and trust regions, gradient approximations, gauss newton for least squares.
 
-The list of modules is available here https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html, although it is slightly outdated since I decided to rewrite the wiki.
+The list of modules is available here <https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html>, although it is slightly outdated since I decided to rewrite the wiki.
 
 The modules represent gradient transformations and are freely combineable (see examples below). You can take newton, gauss-newton, any quasi-newton method, choose any line-search or trust region, add something else like restarts, even put a momentum or sharpness-aware minimization somewhere in the mix.
 
@@ -79,8 +79,16 @@ for step in range(20):
 
 ## Wiki
 
-The wiki is quite outdated https://torchzero.readthedocs.io/en/latest/index.html
+The wiki is quite outdated <https://torchzero.readthedocs.io/en/latest/index.html>
 
 ## Installation
 
-This will be available on pip once it is more refined. The latest version is available on the dev branch https://github.com/inikishev/torchzero/tree/dev.
+to try this:
+
+```bash
+pip install git+https://github.com/inikishev/torchzero
+```
+
+requires `torch`, `numpy` and `typing_extensions`.
+
+Yes there is a deployment on Pypi, but I haven't ran it for a while, as I decided to wait until this is more refined, so it is outdated.
