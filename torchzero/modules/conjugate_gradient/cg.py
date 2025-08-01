@@ -13,7 +13,8 @@ from ...core import (
 )
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 from ..line_search import LineSearchBase
-from ..quasi_newton.quasi_newton import HessianUpdateStrategy, _safe_clip
+from ..quasi_newton.quasi_newton import HessianUpdateStrategy
+from ...functional import safe_clip
 
 
 class ConguateGradientBase(Transform, ABC):
@@ -298,7 +299,7 @@ class DYHS(ConguateGradientBase):
 
 def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
     Hy = H @ y
-    yHy = _safe_clip(y.dot(Hy))
+    yHy = safe_clip(y.dot(Hy))
     H -= (Hy.outer(y) @ H) / yHy
     return H
 
