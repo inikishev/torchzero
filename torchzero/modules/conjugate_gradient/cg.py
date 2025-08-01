@@ -14,7 +14,7 @@ from ...core import (
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 from ..line_search import LineSearchBase
 from ..quasi_newton.quasi_newton import HessianUpdateStrategy
-from ...functional import safe_clip
+from ..functional import safe_clip
 
 
 class ConguateGradientBase(Transform, ABC):
