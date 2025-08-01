@@ -7,15 +7,16 @@ from .quasi_newton import (
     HessianUpdateStrategy,
     _HessianUpdateStrategyDefaults,
     _InverseHessianUpdateStrategyDefaults,
-    _safe_clip,
 )
+
+from ..functional import safe_clip
 
 
 def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
     if sy < tol: return H
 
-    sy_sq = _safe_clip(sy**2)
+    sy_sq = safe_clip(sy**2)
 
     num1 = (sy + (y * H * y)) * s*s
     term1 = num1.div_(sy_sq)
@@ -42,7 +43,7 @@ def diagonal_sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
 
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
-    H += (z*z).div_(_safe_clip(denom))
+    H += (z*z).div_(safe_clip(denom))
     return H
 class DiagonalSR1(_InverseHessianUpdateStrategyDefaults):
     """Diagonal SR1. This is simply SR1 with only the diagonal being updated and used. It doesn't satisfy the secant equation but may still be useful."""
@@ -57,7 +58,7 @@ class DiagonalSR1(_InverseHessianUpdateStrategyDefaults):
 
 # Zhu M., Nazareth J. L., Wolkowicz H. The quasi-Cauchy relation and diagonal updating //SIAM Journal on Optimization. – 1999. – Т. 9. – №. 4. – С. 1192-1204.
 def diagonal_qc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
+    denom = safe_clip((s**4).sum())
     num = s.dot(y) - (s*B).dot(s)
     B += s**2 * (num/denom)
     return B
@@ -76,7 +77,7 @@ class DiagonalQuasiCauchi(_HessianUpdateStrategyDefaults):
 # Leong, Wah June, Sharareh Enshaei, and Sie Long Kek. "Diagonal quasi-Newton methods via least change updating principle with weighted Frobenius norm." Numerical Algorithms 86 (2021): 1225-1241.
 def diagonal_wqc_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     E_sq = s**2 * B**2
-    denom = _safe_clip((s*E_sq).dot(s))
+    denom = safe_clip((s*E_sq).dot(s))
     num = s.dot(y) - (s*B).dot(s)
     B += E_sq * (num/denom)
     return B
@@ -97,7 +98,7 @@ def _truncate(B: torch.Tensor, lb, ub):
 
 # Andrei, Neculai. "A diagonal quasi-Newton updating method for unconstrained optimization." Numerical Algorithms 81.2 (2019): 575-590.
 def dnrtr_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
+    denom = safe_clip((s**4).sum())
     num = s.dot(y) + s.dot(s) - (s*B).dot(s)
     B += s**2 * (num/denom) - 1
     return B
@@ -151,7 +152,7 @@ class DNRTR(HessianUpdateStrategy):
 
 # Nosrati, Mahsa, and Keyvan Amini. "A new diagonal quasi-Newton algorithm for unconstrained optimization problems." Applications of Mathematics 69.4 (2024): 501-512.
 def new_dqn_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    denom = _safe_clip((s**4).sum())
+    denom = safe_clip((s**4).sum())
     num = s.dot(y)
     B += s**2 * (num/denom)
     return B
