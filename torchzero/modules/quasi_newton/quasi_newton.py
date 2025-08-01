@@ -8,7 +8,7 @@ import torch
 from ...core import Chainable, Module, TensorwiseTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states
 from ...utils.linalg import linear_operator
-from ..functional import initial_step_size
+from ..functional import initial_step_size, safe_clip
 
 
 def _safe_dict_update_(d1_:dict, d2:dict):
@@ -21,17 +21,11 @@ def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     elif state[key].shape != value.shape: state[key] = value
     else: state[key].lerp_(value, 1-beta)
 
-def _safe_clip(x: torch.Tensor):
-    """makes sure scalar tensor x is not smaller than epsilon"""
-    assert x.numel() == 1, x.shape
-    eps = torch.finfo(x.dtype).eps ** 2
-    if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
-    return x
-
 class HessianUpdateStrategy(TensorwiseTransform, ABC):
     """Base class for quasi-newton methods that store and update hessian approximation H or inverse B.
 
-    This is an abstract class, to use it, subclass it and override `update_H` and/or `update_B`.
+    This is an abstract class, to use it, subclass it and override ``update_H`` and/or ``update_B``,
+    and if necessary, ``initialize_P``, ``modify_H`` and ``modify_B``.
 
     Args:
         defaults (dict | None, optional): defaults. Defaults to None.
@@ -70,53 +64,35 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
-    Example:
-        Implementing BFGS method that maintains an estimate of the hessian inverse (H):
+    ### update
 
-        .. code-block:: python
+    On 1st ``update_tensor`` H or B is initialized using ``initialize_P``, which returns identity matrix by default.
 
-            class BFGS(HessianUpdateStrategy):
-                def __init__(
-                    self,
-                    init_scale: float | Literal["auto"] = "auto",
-                    tol: float = 1e-8,
-                    ptol: float = 1e-10,
-                    ptol_reset: bool = False,
-                    reset_interval: int | None = None,
-                    beta: float | None = None,
-                    update_freq: int = 1,
-                    scale_first: bool = True,
-                    scale_second: bool = False,
-                    concat_params: bool = True,
-                    inner: Chainable | None = None,
-                ):
-                    super().__init__(
-                        defaults=None,
-                        init_scale=init_scale,
-                        tol=tol,
-                        ptol=ptol,
-                        ptol_reset=ptol_reset,
-                        reset_interval=reset_interval,
-                        beta=beta,
-                        update_freq=update_freq,
-                        scale_first=scale_first,
-                        scale_second=scale_second,
-                        concat_params=concat_params,
-                        inverse=True,
-                        inner=inner,
-                    )
+    2nd and subsequent ``update_tensor`` calls ``update_H`` or ``update_B``.
 
-                def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-                    tol = settings["tol"]
-                    sy = torch.dot(s, y)
-                    if sy <= tol: return H
-                    num1 = (sy + (y @ H @ y)) * s.outer(s)
-                    term1 = num1.div_(sy**2)
-                    num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
-                    term2 = num2.div_(sy)
-                    H += term1.sub_(term2)
-                    return H
+    Whether ``H`` or ``B`` is used depends on value of ``inverse`` setting.
 
+    ### apply
+
+    ``apply_tensor`` computes ``H = modify_H(H)`` or ``B = modify_B(B)``, those methods do nothing by default.
+
+    Then it computes and returns ``H @ input`` or ``solve(B, input)``.
+
+    Whether ``H`` or ``B`` is used depends on value of ``inverse`` setting.
+
+    ### initial scale
+
+    If ``init_scale`` is a scalar, the preconditioner is multiplied or divided (if inverse) by it on first ``update_tensor``.
+
+    If ``init_scale="auto"``, it is computed and applied on the second ``update_tensor``.
+
+    ### get_H
+
+    First it computes ``H = modify_H(H)`` or ``B = modify_B(B)``.
+
+    Returns a ``Dense`` linear operator with ``B``, or ``DenseInverse`` linear operator with ``H``.
+
+    But if H/B has 1 dimension, ``Diagonal`` linear operator is returned with ``B`` or ``1/H``.
     """
     def __init__(
         self,
@@ -383,7 +359,7 @@ def bfgs_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     if sy < tol: return B
 
     Bs = B@s
-    sBs = _safe_clip(s.dot(Bs))
+    sBs = safe_clip(s.dot(Bs))
 
     term1 = y.outer(y).div_(sy)
     term2 = (Bs.outer(s) @ B.T).div_(sBs)
@@ -394,7 +370,7 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     sy = s.dot(y)
     if sy <= tol: return H
 
-    sy_sq = _safe_clip(sy**2)
+    sy_sq = safe_clip(sy**2)
 
     Hy = H@y
     scale1 = (sy + y.dot(Hy)) / sy_sq
@@ -485,7 +461,7 @@ def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
 
     # check as in Nocedal, Wright. “Numerical optimization” 2nd p.146
     if denom.abs() <= tol * y_norm * z_norm: return H # pylint:disable=not-callable
-    H += z.outer(z).div_(_safe_clip(denom))
+    H += z.outer(z).div_(safe_clip(denom))
     return H
 
 class SR1(_InverseHessianUpdateStrategyDefaults):
@@ -568,7 +544,7 @@ def dfp_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     if sy.abs() <= tol: return H
     term1 = s.outer(s).div_(sy)
 
-    yHy = _safe_clip(y.dot(H @ y))
+    yHy = safe_clip(y.dot(H @ y))
 
     num = (H @ y).outer(y) @ H
     term2 = num.div_(yHy)
@@ -613,30 +589,30 @@ class DFP(_InverseHessianUpdateStrategyDefaults):
 
 def broyden_good_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     c = H.T @ s
-    cy = _safe_clip(c.dot(y))
+    cy = safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
 def broyden_good_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     r = y - B@s
-    ss = _safe_clip(s.dot(s))
+    ss = safe_clip(s.dot(s))
     B += r.outer(s).div_(ss)
     return B
 
 def broyden_bad_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    yy = _safe_clip(y.dot(y))
+    yy = safe_clip(y.dot(y))
     num = (s - (H @ y)).outer(y)
     H += num/yy
     return H
 def broyden_bad_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     r = y - B@s
-    ys = _safe_clip(y.dot(s))
+    ys = safe_clip(y.dot(s))
     B += r.outer(y).div_(ys)
     return B
 
 def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torch.Tensor):
     c = g_prev
-    cy = _safe_clip(c.dot(y))
+    cy = safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H
@@ -644,7 +620,7 @@ def greenstadt1_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g_prev: torc
 def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     Hy = H @ y
     c = H @ Hy # pylint:disable=not-callable
-    cy = _safe_clip(c.dot(y))
+    cy = safe_clip(c.dot(y))
     num = Hy.sub_(s).outer(c)
     H -= num/cy
     return H
@@ -730,7 +706,7 @@ class Greenstadt2(_InverseHessianUpdateStrategyDefaults):
 def icum_H_(H:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
     j = y.abs().argmax()
 
-    denom = _safe_clip(y[j])
+    denom = safe_clip(y[j])
 
     Hy = H @ y.unsqueeze(1)
     num = s.unsqueeze(1) - Hy
@@ -759,11 +735,11 @@ def thomas_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor)
     s_norm = torch.linalg.vector_norm(s) # pylint:disable=not-callable
     I = torch.eye(H.size(-1), device=H.device, dtype=H.dtype)
     d = (R + I * (s_norm/2)) @ s
-    ds = _safe_clip(d.dot(s))
+    ds = safe_clip(d.dot(s))
     R = (1 + s_norm) * ((I*s_norm).add_(R).sub_(d.outer(d).div_(ds)))
 
     c = H.T @ d
-    cy = _safe_clip(c.dot(y))
+    cy = safe_clip(c.dot(y))
     num = (H@y).sub_(s).outer(c)
     H -= num/cy
     return H, R
@@ -797,10 +773,10 @@ class ThomasOptimalMethod(_InverseHessianUpdateStrategyDefaults):
 # ------------------------ powell's symmetric broyden ------------------------ #
 def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
     y_Bs = y - B@s
-    ss = _safe_clip(s.dot(s))
+    ss = safe_clip(s.dot(s))
     num1 = y_Bs.outer(s).add_(s.outer(y_Bs))
     term1 = num1.div_(ss)
-    term2 = s.outer(s).mul_(y_Bs.dot(s)/(_safe_clip(ss**2)))
+    term2 = s.outer(s).mul_(y_Bs.dot(s)/(safe_clip(ss**2)))
     B += term1.sub_(term2)
     return B
 
@@ -827,7 +803,7 @@ class PSB(_HessianUpdateStrategyDefaults):
 # Algorithms from Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171
 def pearson_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
     Hy = H@y
-    yHy = _safe_clip(y.dot(Hy))
+    yHy = safe_clip(y.dot(Hy))
     num = (s - Hy).outer(Hy)
     H += num.div_(yHy)
     return H
@@ -852,7 +828,7 @@ class Pearson(_InverseHessianUpdateStrategyDefaults):
         return pearson_H_(H=H, s=s, y=y)
 
 def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
-    sy = _safe_clip(s.dot(y))
+    sy = safe_clip(s.dot(y))
     num = (s - H@y).outer(s)
     H += num.div_(sy)
     return H
@@ -879,7 +855,7 @@ class McCormick(_InverseHessianUpdateStrategyDefaults):
 
 def projected_newton_raphson_H_(H: torch.Tensor, R:torch.Tensor, s: torch.Tensor, y: torch.Tensor):
     Hy = H @ y
-    yHy = _safe_clip(y.dot(Hy))
+    yHy = safe_clip(y.dot(Hy))
     H -= Hy.outer(Hy) / yHy
     R += (s - R@y).outer(Hy) / yHy
     return H, R
@@ -951,8 +927,8 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
     # however p.12 says eps = gs / gHy
 
     Hy = H@y
-    gHy = _safe_clip(g.dot(Hy))
-    yHy = _safe_clip(y.dot(Hy))
+    gHy = safe_clip(g.dot(Hy))
+    yHy = safe_clip(y.dot(Hy))
     sy = s.dot(y)
     if sy < tol: return H # the proof is for sy>0. But not clear if it should be skipped
 
@@ -969,26 +945,26 @@ def ssvm_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, g:torch.Tensor, swi
         e = gs / gHy
         if switch in (1, 3):
             if e/o <= 1:
-                phi = e/_safe_clip(o)
+                phi = e/safe_clip(o)
                 theta = 0
             elif o/t >= 1:
-                phi = o/_safe_clip(t)
+                phi = o/safe_clip(t)
                 theta = 1
             else:
                 phi = 1
-                denom = _safe_clip(e*t - o**2)
+                denom = safe_clip(e*t - o**2)
                 if switch == 1: theta = o * (e - o) / denom
                 else: theta = o * (t - o) / denom
 
         elif switch == 2:
-            t = _safe_clip(t)
-            o = _safe_clip(o)
-            e = _safe_clip(e)
+            t = safe_clip(t)
+            o = safe_clip(o)
+            e = safe_clip(e)
             phi = (e / t) ** 0.5
             theta = 1 / (1 + (t*e / o**2)**0.5)
 
         elif switch == 4:
-            phi = e/_safe_clip(t)
+            phi = e/safe_clip(t)
             theta = 1/2
 
         else: raise ValueError(switch)
@@ -1063,7 +1039,7 @@ def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     ys = y.dot(s)
     if ys.abs() <= tol: return H # probably? because it is BFGS and DFP-like
     yHy = y.dot(Hy)
-    denom = _safe_clip(ys + yHy)
+    denom = safe_clip(ys + yHy)
 
     term1 = 1/denom
     term2 = s.outer(s).mul_(1 + ((2 * yHy) / ys))
@@ -1076,7 +1052,7 @@ def hoshino_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     return H
 
 def gradient_correction(g: TensorList, s: TensorList, y: TensorList):
-    sy = _safe_clip(s.dot(y))
+    sy = safe_clip(s.dot(y))
     return g - (y * (s.dot(g) / sy))
 
 
@@ -1250,7 +1226,7 @@ class NewSSM(HessianUpdateStrategy):
 #     I = torch.eye(B.size(1), device=B.device, dtype=B.dtype)
 #     return B @ (I - gamma*r.outer(r))
 
-# this is supposed to be equivalent
+# this is supposed to be equivalent (and it is)
 def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
     p = H@y
     #(1-y)^2 (ppT)/(pTq)

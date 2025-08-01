@@ -55,8 +55,7 @@ class EscapeAnnealing(Module):
                     var.skip_update = True
                     return var
 
-                else:
-                    params.sub_(pert)
+                params.sub_(pert)
 
             self.global_state['n_bad'] = 0
         return var
@@ -69,7 +68,7 @@ class ResetOnStuck(Module):
         self.set_child('modules', modules)
 
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -97,14 +96,17 @@ class ResetOnStuck(Module):
 
         # no progress, reset
         if n_bad >= n_tol:
-            print("RESETTING")
             modules.reset()
             self.global_state['n_bad'] = 0
             self.global_state['step'] = 0
 
         # step with child (after resetting if reset)
-        var = modules.step(var.clone(clone_update=False))
-        return var
+        modules.update(var)
+
+    @torch.no_grad
+    def apply(self, var):
+        modules = self.children['modules']
+        return modules.apply(var.clone(clone_update=False))
 
     def get_H(self, var):
         return self.children['modules'].get_H(var)

@@ -74,11 +74,11 @@ class MSAM(Transform):
     replacement for momentum strategies in other optimizers.
 
     To combine MSAM with other optimizers in the way done in the official implementation,
-    e.g. to make Adam_MSAM, use :code:`tz.m.MSAMObjective` module.
+    e.g. to make Adam_MSAM, use ``tz.m.MSAMObjective`` module.
 
-    .. note::
+    Note
         MSAM has a learning rate hyperparameter that can't really be removed from the update rule.
-        To avoid compounding learning rate mofications, remove the :code:`tz.m.LR` module if you had it.
+        To avoid compounding learning rate mofications, remove the ``tz.m.LR`` module if you had it.
 
     Args:
         lr (float): learning rate. Adding this module adds support for learning rate schedulers.
@@ -152,9 +152,9 @@ class MSAM(Transform):
 class MSAMObjective(MSAM):
     """Momentum-SAM from https://arxiv.org/pdf/2401.12033.
 
-    .. note::
-        Please make sure to place :code:`tz.m.LR` inside the :code:`modules` argument. For example,
-        :code:`tz.m.MSAMObjective([tz.m.Adam(), tz.m.LR(1e-3)])`. Putting LR after MSAM will lead
+    Note:
+        Please make sure to place ``tz.m.LR`` inside the ``modules`` argument. For example,
+        ``tz.m.MSAMObjective([tz.m.Adam(), tz.m.LR(1e-3)])``. Putting LR after MSAM will lead
         to an incorrect update rule.
 
     Args:

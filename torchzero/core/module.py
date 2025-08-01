@@ -475,7 +475,7 @@ class Module(ABC):
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
         such as ::code::`tz.m.Online`. Alternatively, simply override the ``step`` method.
         """
-        raise NotImplementedError(f"{self} doesn't implement the `apply` method.")
+        return self.step(var)
 
     def get_H(self, var: Var) -> LinearOperator | None:
         """returns a LinearOperator corresponding to hessian or hessian approximation"""

@@ -53,6 +53,12 @@ class LinearOperator(ABC):
     def inv(self) -> "LinearOperator":
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement inverse")
 
+    def transpose(self) -> "LinearOperator":
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement transpose")
+
+    @property
+    def T(self): return self.transpose()
+
     def to_tensor(self) -> torch.Tensor:
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement to_tensor")
 
@@ -107,6 +113,12 @@ def _solve(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor: # should I keep th
     if info == 0: return sol
     return torch.linalg.lstsq(A, b).solution # pylint:disable=not-callable
 
+def _inv(A: torch.Tensor) -> torch.Tensor:
+    sol, info = torch.linalg.inv_ex(A) # pylint:disable=not-callable
+    if info == 0: return sol
+    return torch.linalg.pinv(A) # pylint:disable=not-callable
+
+
 class Dense(LinearOperator):
     def __init__(self, A: torch.Tensor | LinearOperator):
         if isinstance(A, LinearOperator): A = A.to_tensor()
@@ -128,10 +140,11 @@ class Dense(LinearOperator):
         if isinstance(x, (int,float)): x = torch.full((self.shape[0],), fill_value=x, device=self.A.device, dtype=self.A.dtype)
         return Dense(self.A + torch.diag_embed(x))
     def diagonal(self): return self.A.diagonal()
-    def inv(self): return Dense(torch.linalg.inv(self.A)) # pylint:disable=not-callable
+    def inv(self): return Dense(_inv(self.A)) # pylint:disable=not-callable
     def to_tensor(self): return self.A
     def size(self): return self.A.size()
     def is_dense(self): return True
+    def transpose(self): return Dense(self.A.mH)
 
 class DenseInverse(LinearOperator):
     """Represents inverse of a dense matrix A."""
@@ -149,9 +162,10 @@ class DenseInverse(LinearOperator):
     def solve(self, b): return self.A_inv.mv(b)
 
     def inv(self): return Dense(self.A_inv) # pylint:disable=not-callable
-    def to_tensor(self): return torch.linalg.inv(self.A_inv) # pylint:disable=not-callable
+    def to_tensor(self): return _inv(self.A_inv) # pylint:disable=not-callable
     def size(self): return self.A_inv.size()
     def is_dense(self): return True
+    def transpose(self): return DenseInverse(self.A_inv.mH)
 
 class DenseWithInverse(Dense):
     """Represents a matrix where both the matrix and the inverse are known.
@@ -164,7 +178,7 @@ class DenseWithInverse(Dense):
 
     def solve(self, b): return self.A_inv.mv(b)
     def inv(self): return DenseWithInverse(self.A_inv, self.A) # pylint:disable=not-callable
-
+    def transpose(self): return DenseWithInverse(self.A.mH, self.A_inv.mH)
 
 class Diagonal(LinearOperator):
     def __init__(self, x: torch.Tensor):
@@ -188,6 +202,7 @@ class Diagonal(LinearOperator):
     def to_tensor(self): return self.A.diag_embed()
     def size(self): return (self.A.numel(), self.A.numel())
     def is_dense(self): return False
+    def transpose(self): return Diagonal(self.A)
 
 class ScaledIdentity(LinearOperator):
     def __init__(self, s: float | torch.Tensor = 1., shape=None, device=None, dtype=None):
@@ -246,6 +261,7 @@ class ScaledIdentity(LinearOperator):
         return f"ScaledIdentity(s={self.s}, shape={self._shape}, dtype={self.dtype}, device={self.device})"
 
     def is_dense(self): return False
+    def transpose(self): return ScaledIdentity(self.s, shape=self.shape, device=self.device, dtype=self.dtype)
 
 class AtA(LinearOperator):
     def __init__(self, A: torch.Tensor):
@@ -259,3 +275,4 @@ class AtA(LinearOperator):
 
     def is_dense(self): return False
     def to_tensor(self): return self.A.T @ self.A
+    def transpose(self): return AtA(self.A)
