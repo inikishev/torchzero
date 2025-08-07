@@ -46,3 +46,4 @@ from .subspace_preconditioners import (
     HistorySubspacePreconditioning,
     RandomSubspacePreconditioning,
 )
+from .l_infinity import InfinityNormTrustRegion

@@ -11,7 +11,7 @@ class AdaptiveStepSize(LineSearchBase):
 
     .. note::
         This works well in some cases, but it is often prone to collapsing.
-        For a more robust alternative use :code:`tz.m.AdaptiveBacktracking`.
+        For a more robust alternative use :code:`tz.m.AdaptiveTracking`.
 
     Args:
         nplus (float, optional): multiplier to step size on successful steps. Defaults to 1.5.
