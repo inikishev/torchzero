@@ -1,13 +1,9 @@
 import torch
 
 from ...core import Chainable, Module
-from ...utils import TensorList, vec_to_tensors
 from ...utils.linalg import cg, linear_operator
-from .trust_region import TrustRegionBase, _update_tr_radius
+from .trust_region import _RADIUS_KEYS, TrustRegionBase, _RadiusStrategy
 
-
-def _flatten_tensors(tensors: list[torch.Tensor]):
-    return torch.cat([t.ravel() for t in tensors])
 
 class TrustCG(TrustRegionBase):
     """Trust region via Steihaug-Toint Conjugate Gradient method.
@@ -42,7 +38,7 @@ class TrustCG(TrustRegionBase):
             The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
             This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
         prefer_exact (bool, optional):
-            when exact solution can be easily calculated without CG (e.g. hessian is stored as diagonal or scaled identity),
+            when exact solution can be easily calculated without CG (e.g. hessian is stored as scaled identity),
             uses the exact solution. If False, always uses CG. Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to output of thise module. Defaults to None.
 
@@ -60,64 +56,40 @@ class TrustCG(TrustRegionBase):
         self,
         hess_module: Module,
         eta: float= 0.0,
-        # Gould, Nicholas IM, et al. "Sensitivity of trust-region algorithms to their parameters." 4OR 3.3 (2005): 227-241.
-        # which I found from https://github.com/patrick-kidger/optimistix/blob/c1dad7e75fc35bd5a4977ac3a872991e51e83d2c/optimistix/_solver/trust_region.py#L113-200
         nplus: float = 3.5,
         nminus: float = 0.25,
         rho_good: float = 0.99,
         rho_bad: float = 1e-4,
-        init: float = 1,
-        update_freq: int = 1,
-        reg: float = 0,
-        max_attempts: int = 10,
-        prefer_exact: bool = True,
         boundary_tol: float | None = 1e-1,
+        init: float = 1,
+        max_attempts: int = 10,
+        radius_strategy: _RadiusStrategy | _RADIUS_KEYS = 'default',
+        reg: float = 0,
+        prefer_exact: bool = True,
+        update_freq: int = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, eta=eta, reg=reg, max_attempts=max_attempts,boundary_tol=boundary_tol, rho_bad=rho_bad, rho_good=rho_good,prefer_exact=prefer_exact)
-        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner)
+        defaults = dict(reg=reg, prefer_exact=prefer_exact)
+        super().__init__(
+            defaults=defaults,
+            hess_module=hess_module,
+            eta=eta,
+            nplus=nplus,
+            nminus=nminus,
+            rho_good=rho_good,
+            rho_bad=rho_bad,
+            boundary_tol=boundary_tol,
+            init=init,
+            max_attempts=max_attempts,
+            radius_strategy=radius_strategy,
+            update_freq=update_freq,
+            inner=inner,
 
-    @torch.no_grad
-    def trust_region_apply(self, var, tensors, H):
-        assert H is not None
+            radius_fn=torch.linalg.vector_norm,
+        )
 
-        params = TensorList(var.params)
-        settings = self.settings[params[0]]
-        g = _flatten_tensors(tensors)
+    def trust_solve(self, f, g, H, radius, params, closure, settings):
+        if settings['prefer_exact'] and isinstance(H, linear_operator.ScaledIdentity):
+            return H.solve_bounded(g, radius)
 
-        reg = settings['reg']
-        max_attempts = settings['max_attempts']
-        prefer_exact = settings['prefer_exact']
-
-        loss = var.loss
-        closure = var.closure
-        if closure is None: raise RuntimeError("Trust region requires closure")
-        if loss is None: loss = var.get_loss(False)
-
-        success = False
-        d = None
-        while not success:
-            max_attempts -= 1
-            if max_attempts < 0: break
-
-            trust_region = self.global_state.get('trust_region', settings['init'])
-
-            if trust_region < 1e-8 or trust_region > 1e8:
-                trust_region = self.global_state['trust_region'] = settings['init']
-
-            if prefer_exact and isinstance(H, linear_operator.ScaledIdentity):
-                d = H.solve_bounded(g, trust_region)
-            else:
-                d = cg(H.matvec, g, trust_region=trust_region, reg=reg)
-
-            self.global_state['trust_region'], success = _update_tr_radius(
-                params=params, closure=closure, d=d, f=loss, g=g, H=H,
-                trust_region=trust_region, settings = settings,
-            )
-
-        assert d is not None
-        if success: var.update = vec_to_tensors(d, params)
-        else: var.update = params.zeros_like()
-
-        return var
-
+        return cg(H.matvec, g, trust_region=radius, reg=settings['reg'])

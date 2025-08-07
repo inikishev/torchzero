@@ -6,15 +6,12 @@ import torch
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import LinearOperator
+from .trust_region import _RADIUS_KEYS, TrustRegionBase, _RadiusStrategy
 
-from .trust_region import TrustRegionBase, _update_tr_radius
-
-def _flatten_tensors(tensors: list[torch.Tensor]):
-    return torch.cat([t.ravel() for t in tensors])
 
 # code from https://github.com/konstmish/opt_methods/blob/master/optmethods/second_order/cubic.py
-# ported to pytorch
-def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_plus: Callable, it_max=100, epsilon=1e-8, ):
+# ported to pytorch and linear operator
+def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_at_params_plus_x_fn: Callable | None, it_max=100, epsilon=1e-8, ):
     """
     Solve min_z <g, z-x> + 1/2<z-x, H(z-x)> + M/3 ||z-x||^3
 
@@ -49,12 +46,13 @@ def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_plus: Ca
     # Solution s satisfies ||s|| >= Cauchy_radius
     r_min = torch.linalg.vector_norm(cauchy_point(g, H, M))
 
-    if f > loss_plus(newton_step):
+    if (loss_at_params_plus_x_fn is not None) and (f > loss_at_params_plus_x_fn(newton_step)):
         return newton_step, solver_it
 
     r_max = torch.linalg.vector_norm(newton_step)
     if r_max - r_min < epsilon:
         return newton_step, solver_it
+
     # id_matrix = torch.eye(g.size(0), device=g.device, dtype=g.dtype)
     s_lam = None
     for _ in range(it_max):
@@ -78,10 +76,6 @@ def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_plus: Ca
 
 class CubicRegularization(TrustRegionBase):
     """Cubic regularization.
-
-    .. note::
-        by default this functions like a trust region, set nplus and nminus = 1 to make regularization parameter fixed.
-        :code:`init` sets 1/regularization.
 
     Args:
         hess_module (Module | None, optional):
@@ -130,58 +124,47 @@ class CubicRegularization(TrustRegionBase):
         rho_good: float = 0.99,
         rho_bad: float = 1e-4,
         init: float = 1,
+        max_attempts: int = 10,
+        radius_strategy: _RadiusStrategy | _RADIUS_KEYS = 'default',
         maxiter: int = 100,
         eps: float = 1e-8,
+        check_decrease:bool=False,
         update_freq: int = 1,
-        max_attempts: int = 10,
         inner: Chainable | None = None,
     ):
-        defaults = dict(init=init, nplus=nplus, nminus=nminus, rho_good=rho_good, rho_bad=rho_bad, eta=eta, maxiter=maxiter, eps=eps, max_attempts=max_attempts)
-        super().__init__(hess_module=hess_module, defaults=defaults, update_freq=update_freq, inner=inner)
+        defaults = dict(maxiter=maxiter, eps=eps, check_decrease=check_decrease)
+        super().__init__(
+            defaults=defaults,
+            hess_module=hess_module,
+            eta=eta,
+            nplus=nplus,
+            nminus=nminus,
+            rho_good=rho_good,
+            rho_bad=rho_bad,
+            init=init,
+            max_attempts=max_attempts,
+            radius_strategy=radius_strategy,
+            update_freq=update_freq,
+            inner=inner,
 
-    @torch.no_grad
-    def trust_region_apply(self, var, tensors, H):
-        assert H is not None
+            boundary_tol=None,
+            radius_fn=None,
+        )
 
-        params = TensorList(var.params)
-        settings = self.settings[params[0]]
-        g = _flatten_tensors(tensors)
+    def trust_solve(self, f, g, H, radius, params, closure, settings):
+        params = TensorList(params)
 
-        maxiter = settings['maxiter']
-        max_attempts = settings['max_attempts']
-        eps = settings['eps']
+        loss_at_params_plus_x_fn = None
+        if settings['check_decrease']:
+            def closure_plus_x(x):
+                x_unflat = vec_to_tensors(x, params)
+                params.add_(x_unflat)
+                loss_x = closure(False)
+                params.sub_(x_unflat)
+                return loss_x
+            loss_at_params_plus_x_fn = closure_plus_x
 
-        loss = var.loss
-        closure = var.closure
-        if closure is None: raise RuntimeError("Trust region requires closure")
-        if loss is None: loss = var.get_loss(False)
 
-        def loss_plus(x):
-            x_unflat = vec_to_tensors(x, params)
-            params.add_(x_unflat)
-            loss_x = closure(False)
-            params.sub_(x_unflat)
-            return loss_x
-
-        success = False
-        d = None
-        while not success:
-            max_attempts -= 1
-            if max_attempts < 0: break
-
-            trust_region = self.global_state.get('trust_region', settings['init'])
-            if trust_region < 1e-8 or trust_region > 1e16: trust_region = self.global_state['trust_region'] = settings['init']
-
-            d, _ = ls_cubic_solver(f=loss, g=g, H=H, M=1/trust_region, loss_plus=loss_plus, it_max=maxiter, epsilon=eps)
-            d.neg_()
-
-            self.global_state['trust_region'], success = _update_tr_radius(
-                params=params, closure=closure, d=d, f=loss, g=g, H=H,
-                trust_region=trust_region, settings = settings, boundary_fn=None,
-            )
-
-        assert d is not None
-        if success: var.update = vec_to_tensors(d, params)
-        else: var.update = params.zeros_like()
-
-        return var
+        d, _ = ls_cubic_solver(f=f, g=g, H=H, M=1/radius, loss_at_params_plus_x_fn=loss_at_params_plus_x_fn,
+                               it_max=settings['maxiter'], epsilon=settings['eps'])
+        return d.neg_()

@@ -61,3 +61,9 @@ def unpack_dicts(dicts: Iterable[Mapping[str, Any]], key:str, key2: str | None =
     values = [cls(s[k] for s in dicts) for k in keys] # pyright:ignore[reportCallIssue]
     if len(values) == 1: return values[0]
     return values
+
+
+def safe_dict_update_(d1_:dict, d2:dict):
+    inter = set(d1_.keys()).intersection(d2.keys())
+    if len(inter) > 0: raise RuntimeError(f"Duplicate keys {inter}")
+    d1_.update(d2)

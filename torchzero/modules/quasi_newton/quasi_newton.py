@@ -6,15 +6,11 @@ from typing import Any, Literal
 import torch
 
 from ...core import Chainable, Module, TensorwiseTransform, Transform
-from ...utils import TensorList, set_storage_, unpack_states
+from ...utils import TensorList, set_storage_, unpack_states, safe_dict_update_
 from ...utils.linalg import linear_operator
 from ..functional import initial_step_size, safe_clip
 
 
-def _safe_dict_update_(d1_:dict, d2:dict):
-    inter = set(d1_.keys()).intersection(d2.keys())
-    if len(inter) > 0: raise RuntimeError(f"Duplicate keys {inter}")
-    d1_.update(d2)
 
 def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     if (beta is None) or (beta == 0) or (key not in state): state[key] = value
@@ -111,7 +107,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        _safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, inverse=inverse, beta=beta, reset_interval=reset_interval, scale_first=scale_first))
+        safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, inverse=inverse, beta=beta, reset_interval=reset_interval, scale_first=scale_first))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_for_online(self):

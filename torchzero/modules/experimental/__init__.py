@@ -6,7 +6,7 @@ from .adam_exp import AdamExp
 from .adam_expclogmul import AdamExpclogmul
 from .adam_lambertw import AdamLambertW
 from .adam_sqrt import AdamSqrt
-from .adamY import AdamY
+from .adamy import AdamY
 from .adaptive_step_size import AdaptiveStepSize
 from .adasoap import AdaSOAP
 from .cosine import (
