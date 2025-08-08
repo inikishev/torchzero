@@ -6,7 +6,6 @@ import torch
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
 from ..functional import initial_step_size
-from .lbfgs import _lerp_params_update_
 
 
 def lsr1_(
@@ -121,15 +120,12 @@ class LSR1(Transform):
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
         gtol_reset: bool = False,
-        params_beta: float | None = None,
-        grads_beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = True,
         inner: Chainable | None = None,
     ):
         defaults = dict(
             history_size=history_size, ptol=ptol, gtol=gtol,
-            params_beta=params_beta, grads_beta=grads_beta,
             update_freq=update_freq, scale_first=scale_first,
             ptol_reset=ptol_reset,gtol_reset=gtol_reset,
         )
@@ -163,8 +159,7 @@ class LSR1(Transform):
         setting = settings[0]
         update_freq = itemgetter('update_freq')(setting)
 
-        params_beta, grads_beta = unpack_dicts(settings, 'params_beta', 'grads_beta')
-        l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
+        l_params, l_update = params, update
         prev_l_params, prev_l_grad = unpack_states(states, tensors, 'prev_l_params', 'prev_l_grad', cls=TensorList)
 
         s = None

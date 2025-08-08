@@ -26,7 +26,7 @@ from .etf import (
     ExponentialTrajectoryFitV2,
     PointwiseExponential,
 )
-from .expanded_lbfgs import ExpandedLBFGS
+# from .expanded_lbfgs import ExpandedLBFGS
 from .fft import FFTProjection
 from .gradmin import GradMin
 from .modular_lbfgs import ModularLBFGS

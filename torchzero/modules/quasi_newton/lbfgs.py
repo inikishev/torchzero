@@ -1,74 +1,106 @@
 from collections import deque
+from collections.abc import Sequence
 from operator import itemgetter
+from typing import overload
 
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 
+@torch.no_grad
+def _make_M(S:torch.Tensor, Y:torch.Tensor, B_0:torch.Tensor):
+    m,n = S.size()
 
-def _adaptive_damping(
-    s: TensorList,
-    y: TensorList,
-    sy: torch.Tensor,
-    init_damping = 0.99,
-    eigval_bounds = (0.01, 1.5)
+    M = torch.zeros((2 * m, 2 * m), device=S.device, dtype=S.dtype)
+
+    # top-left S^T * B^0 * S = B * S^T * S
+    M[:m, :m] = B_0 * S @ S.mT
+
+    # anti-diagonal is L
+    L = (S @ Y.mT).tril_(-1)
+
+    M[m:, :m] = L.mT
+    M[:m, m:] = L
+
+    # bottom-right block: -D (diagonal matrix)
+    D_diag = (S * Y).sum(1).neg()
+    M[m:, m:] = D_diag.diag_embed()
+
+    return M
+
+
+@torch.no_grad
+def lbfgs_Bx(x: torch.Tensor, S: torch.Tensor, Y: torch.Tensor, sy_history, M=None):
+    """L-BFGS hessian-vector product based on compact representation,
+    returns (Bx, M), where M is an internal matrix that depends on S and Y so it can be reused."""
+    m = len(S)
+    if m == 0: return x.clone()
+
+    # initial scaling
+    y = Y[-1]
+    sy = sy_history[-1]
+    yy = y @ y
+    B_0 = yy / sy
+    Bx = x * B_0
+
+    Psi = torch.zeros(2 * m, device=x.device, dtype=x.dtype)
+    Psi[:m] = B_0 * S@x
+    Psi[m:] = Y@x
+
+    if M is None: M = _make_M(S, Y, B_0)
+
+    # solve Mu = p
+    u, info = torch.linalg.solve_ex(M, Psi) # pylint:disable=not-callable
+    if info != 0:
+        return Bx
+
+    # Bx
+    u_S = u[:m]
+    u_Y = u[m:]
+    SuS = (S * u_S.unsqueeze(-1)).sum(0)
+    YuY = (Y * u_Y.unsqueeze(-1)).sum(0)
+    return Bx - (B_0 * SuS + YuY), M
+
+
+@overload
+def lbfgs_Hx(
+    tensors: torch.Tensor,
+    s_history: Sequence[torch.Tensor] | torch.Tensor,
+    y_history: Sequence[torch.Tensor] | torch.Tensor,
+    sy_history: Sequence[torch.Tensor],
+) -> torch.Tensor: ...
+@overload
+def lbfgs_Hx(
+    tensors: TensorList,
+    s_history: Sequence[TensorList],
+    y_history: Sequence[TensorList],
+    sy_history: Sequence[torch.Tensor],
+) -> TensorList: ...
+def lbfgs_Hx(
+    tensors,
+    s_history: Sequence | torch.Tensor,
+    y_history: Sequence | torch.Tensor,
+    sy_history: Sequence[torch.Tensor],
 ):
-    # I should change this and add damping strategies to all modules that use s and y.
-    # adaptive damping Al-Baali, M.: Quasi-Wolfe conditions for quasi-Newton methods for large-scale optimization. In: 40th Workshop on Large Scale Nonlinear Optimization, Erice, Italy, June 22–July 1 (2004)
-    sigma_l, sigma_h = eigval_bounds
-    u = sy / s.dot(s)
-    if u <= sigma_l < 1: tau = min((1-sigma_l)/(1-u), init_damping)
-    elif u >= sigma_h > 1: tau = min((sigma_h-1)/(u-1), init_damping)
-    else: tau = init_damping
-    y = tau * y + (1-tau) * s
-    sy = s.dot(y)
+    """works with tensors and TensorLists"""
+    q = tensors.clone()
+    if len(s_history) == 0: return q
 
-    return s, y, sy
-
-def lbfgs(
-    tensors_: TensorList,
-    s_history: deque[TensorList],
-    y_history: deque[TensorList],
-    sy_history: deque[torch.Tensor],
-    y: TensorList | None,
-    sy: torch.Tensor | None,
-    z_beta: float | None,
-    z_ema: TensorList | None,
-    step: int,
-    scale_first:bool,
-):
-    if len(s_history) == 0 or y is None or sy is None:
-
-        if scale_first:
-            # initial step size guess modified from pytorch L-BFGS
-            tensors_ = TensorList(tensors_)
-            return tensors_.mul_(initial_step_size(tensors_))
-
-        return tensors_
-
-    # 1st loop
     alpha_list = []
-    q = tensors_.clone()
     for s_i, y_i, sy_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
-        p_i = 1 / sy_i # this is also denoted as ρ (rho)
+        p_i = 1 / sy_i
         alpha = p_i * s_i.dot(q)
         alpha_list.append(alpha)
-        q.sub_(y_i, alpha=alpha) # pyright: ignore[reportArgumentType]
+        q.sub_(y_i, alpha=alpha)
 
-    # calculate z
-    # s.y/y.y is also this weird y-looking symbol I couldn't find
-    # z is it times q
-    # actually H0 = (s.y/y.y) * I, and z = H0 @ q
-    z = q * (sy / (y.dot(y)))
-
-    # an attempt into adding momentum, lerping initial z seems stable compared to other variables
-    if z_beta is not None:
-        assert z_ema is not None
-        if step == 1: z_ema.copy_(z)
-        else: z_ema.lerp(z, 1-z_beta)
-        z = z_ema
+    # scaled initial hessian inverse
+    # H_0 = (s.y/y.y) * I, and z = H_0 @ q
+    sy = sy_history[-1]
+    y = y_history[-1]
+    z = q * (sy / y.dot(y))
 
     # 2nd loop
     for s_i, y_i, sy_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
@@ -78,28 +110,33 @@ def lbfgs(
 
     return z
 
-def _lerp_params_update_(
-    self_: Module,
-    params: list[torch.Tensor],
-    update: list[torch.Tensor],
-    params_beta: list[float | None],
-    grads_beta: list[float | None],
-):
-    for i, (p, u, p_beta, u_beta) in enumerate(zip(params.copy(), update.copy(), params_beta, grads_beta)):
-        if p_beta is not None or u_beta is not None:
-            state = self_.state[p]
 
-            if p_beta is not None:
-                if 'param_ema' not in state: state['param_ema'] = p.clone()
-                else: state['param_ema'].lerp_(p, 1-p_beta)
-                params[i] = state['param_ema']
+class LBFGSLinearOperator(LinearOperator):
+    def __init__(self, s_history: Sequence[torch.Tensor], y_history: Sequence[torch.Tensor], sy_history: Sequence[torch.Tensor]):
+        super().__init__()
+        if len(s_history) == 0:
+            self.S = self.Y = self.yy = None
+        else:
+            self.S = torch.stack(tuple(s_history))
+            self.Y = torch.stack(tuple(y_history))
+            self.yy = self.Y[-1].dot(self.Y[-1])
 
-            if u_beta is not None:
-                if 'grad_ema' not in state: state['grad_ema'] = u.clone()
-                else: state['grad_ema'].lerp_(u, 1-u_beta)
-                update[i] = state['grad_ema']
+        self.sy_history = sy_history
 
-    return TensorList(params), TensorList(update)
+        self.M = None
+
+    def solve(self, b):
+        if self.S is None: return b.clone()
+        assert self.Y is not None
+        return lbfgs_Hx(b, self.S, self.Y, self.sy_history)
+
+    def matvec(self, x):
+        if self.S is None: return x.clone()
+        assert self.Y is not None
+        Bx, self.M = lbfgs_Bx(x, self.S, self.Y, self.sy_history, M=self.M)
+        return Bx
+
+
 
 class LBFGS(Transform):
     """Limited-memory BFGS algorithm. A line search is recommended, although L-BFGS may be reasonably stable without it.
@@ -107,26 +144,14 @@ class LBFGS(Transform):
     Args:
         history_size (int, optional):
             number of past parameter differences and gradient differences to store. Defaults to 10.
-        damping (bool, optional):
-            whether to use adaptive damping. Learning rate might need to be lowered with this enabled. Defaults to False.
-        init_damping (float, optional):
-            initial damping for adaptive dampening. Defaults to 0.9.
-        eigval_bounds (tuple, optional):
-            eigenvalue bounds for adaptive dampening. Defaults to (0.5, 50).
         tol (float | None, optional):
             tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
         tol_reset (bool, optional):
             If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
         gtol (float | None, optional):
             tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
-        params_beta (float | None, optional):
-            if not None, EMA of parameters is used for preconditioner update. Defaults to None.
-        grads_beta (float | None, optional):
-            if not None, EMA of gradients is used for preconditioner update. Defaults to None.
         update_freq (int, optional):
             how often to update L-BFGS history. Defaults to 1.
-        z_beta (float | None, optional):
-            optional EMA for initial H^-1 @ q. Acts as a kind of momentum but is prone to get stuck. Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
@@ -138,16 +163,6 @@ class LBFGS(Transform):
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.LBFGS(100),
-                tz.m.StrongWolfe()
-            )
-
-        Dampened L-BFGS
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(damping=True),
                 tz.m.StrongWolfe()
             )
 
@@ -164,22 +179,25 @@ class LBFGS(Transform):
     def __init__(
         self,
         history_size=10,
-        damping: bool = False,
-        init_damping=0.9,
-        eigval_bounds=(0.5, 50),
         ptol: float | None = 1e-10,
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
         gtol_reset: bool = False,
-        params_beta: float | None = None,
-        grads_beta: float | None = None,
-        update_freq = 1,
-        z_beta: float | None = None,
+        sy_tol: float = 1e-10,
         scale_first:bool=True,
+        update_freq = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(history_size=history_size,scale_first=scale_first, ptol=ptol, gtol=gtol, damping=damping, init_damping=init_damping, eigval_bounds=eigval_bounds, params_beta=params_beta, grads_beta=grads_beta, update_freq=update_freq, z_beta=z_beta, ptol_reset=ptol_reset, gtol_reset=gtol_reset)
-        super().__init__(defaults, uses_grad=False, inner=inner)
+        defaults = dict(
+            history_size=history_size,
+            scale_first=scale_first,
+            ptol=ptol,
+            gtol=gtol,
+            ptol_reset=ptol_reset,
+            gtol_reset=gtol_reset,
+            sy_tol=sy_tol,
+        )
+        super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
@@ -195,13 +213,13 @@ class LBFGS(Transform):
 
     def reset_for_online(self):
         super().reset_for_online()
-        self.clear_state_keys('prev_l_params', 'prev_l_grad')
+        self.clear_state_keys('p_prev', 'g_prev')
         self.global_state.pop('step', None)
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
-        params = as_tensorlist(params)
-        update = as_tensorlist(tensors)
+        p = as_tensorlist(params)
+        g = as_tensorlist(tensors)
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -210,89 +228,79 @@ class LBFGS(Transform):
         y_history: deque[TensorList] = self.global_state['y_history']
         sy_history: deque[torch.Tensor] = self.global_state['sy_history']
 
-        damping,init_damping,eigval_bounds,update_freq = itemgetter('damping','init_damping','eigval_bounds','update_freq')(settings[0])
-        params_beta, grads_beta = unpack_dicts(settings, 'params_beta', 'grads_beta')
-
-        l_params, l_update = _lerp_params_update_(self, params, update, params_beta, grads_beta)
-        prev_l_params, prev_l_grad = unpack_states(states, tensors, 'prev_l_params', 'prev_l_grad', cls=TensorList)
-
-        # 1st step - there are no previous params and grads, lbfgs will do normalized SGD step
-        if step == 0:
-            s = None; y = None; sy = None
-        else:
-            s = l_params - prev_l_params
-            y = l_update - prev_l_grad
-            sy = s.dot(y)
-
-            if damping:
-                s, y, sy = _adaptive_damping(s, y, sy, init_damping=init_damping, eigval_bounds=eigval_bounds)
-
-        prev_l_params.copy_(l_params)
-        prev_l_grad.copy_(l_update)
-
-        # update effective preconditioning state
-        if step % update_freq == 0:
-            if sy is not None and sy > 1e-10:
-                assert s is not None and y is not None
-                s_history.append(s)
-                y_history.append(y)
-                sy_history.append(sy)
-
-        # store for apply
-        self.global_state['s'] = s
-        self.global_state['y'] = y
-        self.global_state['sy'] = sy
-
-    def get_H(self, var):
-        ...
-
-    @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        tensors = as_tensorlist(tensors)
-
-        s = self.global_state.pop('s')
-        y = self.global_state.pop('y')
-        sy = self.global_state.pop('sy')
-
         setting = settings[0]
         ptol = setting['ptol']
         gtol = setting['gtol']
         ptol_reset = setting['ptol_reset']
         gtol_reset = setting['gtol_reset']
-        z_beta = setting['z_beta']
-        scale_first = setting['scale_first']
+        sy_tol = setting['sy_tol']
 
+        p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
+
+        # 1st step - there are no previous params and grads, lbfgs will do normalized SGD step
+        if step == 0:
+            s = None; y = None; sy = None
+        else:
+            s = p - p_prev
+            y = g - g_prev
+            sy = s.dot(y)
+            # damping to be added here
+
+        below_tol = False
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None:
             if s is not None and s.abs().global_max() <= ptol:
                 if ptol_reset: self.reset()
-                tensors = TensorList(tensors)
-                return tensors.mul_(initial_step_size(tensors))
+                sy = None
+                below_tol = True
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
                 if gtol_reset: self.reset()
-                tensors = TensorList(tensors)
-                return tensors.mul_(initial_step_size(tensors))
+                sy = None
+                below_tol = True
 
-        # lerp initial H^-1 @ q guess
-        z_ema = None
-        if z_beta is not None:
-            z_ema = unpack_states(states, tensors, 'z_ema', cls=TensorList)
+        # store previous params and grads
+        if not below_tol:
+            p_prev.copy_(p)
+            g_prev.copy_(g)
+
+        # update effective preconditioning state
+        if sy is not None and sy > sy_tol:
+            assert s is not None and y is not None and sy is not None
+
+            s_history.append(s)
+            y_history.append(y)
+            sy_history.append(sy)
+
+    def get_H(self, var):
+        s_history = [tl.to_vec() for tl in self.global_state['s_history']]
+        y_history = [tl.to_vec() for tl in self.global_state['y_history']]
+        sy_history = self.global_state['sy_history']
+        return LBFGSLinearOperator(s_history, y_history, sy_history)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        setting = settings[0]
+        scale_first = setting['scale_first']
+
+        tensors = as_tensorlist(tensors)
+
+        s_history = self.global_state['s_history']
+        y_history = self.global_state['y_history']
+        sy_history = self.global_state['sy_history']
 
         # precondition
-        dir = lbfgs(
-            tensors_=tensors,
-            s_history=self.global_state['s_history'],
-            y_history=self.global_state['y_history'],
-            sy_history=self.global_state['sy_history'],
-            y=y,
-            sy=sy,
-            z_beta = z_beta,
-            z_ema = z_ema,
-            step=self.global_state.get('step', 1),
-            scale_first=scale_first,
+        dir = lbfgs_Hx(
+            tensors=tensors,
+            s_history=s_history,
+            y_history=y_history,
+            sy_history=sy_history,
         )
+
+        # scale 1st step
+        if scale_first and self.global_state.get('step', 1) == 1:
+            dir *= initial_step_size(dir, eps=1e-7)
 
         return dir

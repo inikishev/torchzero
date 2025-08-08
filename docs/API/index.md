@@ -12,6 +12,7 @@ There are a lot of modules, so they are vaguely split into sub-packages, althoug
 * [Second order](modules/second_order.md) - "True" second order methods that use exact second order information.
 * [Higher order](modules/higher_order.md) - third and higher order methods (currently just higher order newton).
 * [Gradient approximation](modules/grad_approximation.md) - modules that estimate the gradient using function values.
+* [Least-squares](modules/least_squares.md) - least-squares methods (Gauss-newton)
 
 ## Step size selection
 
@@ -29,13 +30,6 @@ There are a lot of modules, so they are vaguely split into sub-packages, althoug
 * [Miscellaneous](modules/misc.md) - a lot of uncategorized modules, notably gradient accumulation, switching, automatic resetting, random restarts.
 * [Wrappers](modules/wrappers.md) - this implements Wrap, which can turn most custom pytorch optimizers into chainable modules.
 
-## Types of problems
-
-By default the problem is assumed to be an unconstrained single objective minimization problem.
-If your problem is a least squares or a root finding one, use one of the modules below:
-
-* [Least-squares](modules/least_squares.md) - least-squares methods (currently just gauss-newton).
-* [Root](modules/root.md) - sets the problem to be a root-finding one. Now any other method can be used to solve it (NOT YET IMPLEMENTED)
 
 <!-- === "Gradient approximation"
     ::: torchzero.modules.grad_approximation

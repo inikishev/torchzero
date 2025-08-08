@@ -215,13 +215,16 @@ def sqrt_centered_ema_sq_(
         ema_sq_fn=lambda *a, **kw: centered_ema_sq_(*a, **kw, exp_avg_=exp_avg_)
     )
 
-def initial_step_size(tensors: torch.Tensor | TensorList) -> float:
+def initial_step_size(tensors: torch.Tensor | TensorList, eps=None) -> float:
     """initial scaling taken from pytorch L-BFGS to avoid requiring a lot of line search iterations,
     this version is safer and makes sure largest value isn't smaller than epsilon."""
     tensors_abs = tensors.abs()
     tensors_sum = generic_sum(tensors_abs)
     tensors_max = generic_max(tensors_abs)
-    eps = generic_finfo_eps(tensors)
+
+    feps = generic_finfo_eps(tensors)
+    if eps is None: eps = feps
+    else: eps = max(eps, feps)
 
     # scale should not make largest value smaller than epsilon
     min = eps / tensors_max
