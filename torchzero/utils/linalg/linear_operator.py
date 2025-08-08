@@ -276,3 +276,7 @@ class AtA(LinearOperator):
     def is_dense(self): return False
     def to_tensor(self): return self.A.T @ self.A
     def transpose(self): return AtA(self.A)
+
+    def size(self):
+        n = self.A.size(1)
+        return (n,n)

@@ -6,9 +6,10 @@ from typing import overload
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
-from ...utils.linalg.linear_operator import LinearOperator
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, tofloat
+from ...utils.linalg.linear_operator import LinearOperator, ScaledIdentity
 from ..functional import initial_step_size
+from .damping import DampingStrategyType, apply_damping
 
 @torch.no_grad
 def _make_M(S:torch.Tensor, Y:torch.Tensor, B_0:torch.Tensor):
@@ -70,20 +71,20 @@ def lbfgs_Hx(
     tensors: torch.Tensor,
     s_history: Sequence[torch.Tensor] | torch.Tensor,
     y_history: Sequence[torch.Tensor] | torch.Tensor,
-    sy_history: Sequence[torch.Tensor],
+    sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ) -> torch.Tensor: ...
 @overload
 def lbfgs_Hx(
     tensors: TensorList,
     s_history: Sequence[TensorList],
     y_history: Sequence[TensorList],
-    sy_history: Sequence[torch.Tensor],
+    sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ) -> TensorList: ...
 def lbfgs_Hx(
     tensors,
     s_history: Sequence | torch.Tensor,
     y_history: Sequence | torch.Tensor,
-    sy_history: Sequence[torch.Tensor],
+    sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ):
     """works with tensors and TensorLists"""
     q = tensors.clone()
@@ -113,30 +114,44 @@ def lbfgs_Hx(
 
 
 class LBFGSLinearOperator(LinearOperator):
-    def __init__(self, s_history: Sequence[torch.Tensor], y_history: Sequence[torch.Tensor], sy_history: Sequence[torch.Tensor]):
+    def __init__(self, s_history: Sequence[torch.Tensor] | torch.Tensor, y_history: Sequence[torch.Tensor] | torch.Tensor, sy_history: Sequence[torch.Tensor] | torch.Tensor):
         super().__init__()
         if len(s_history) == 0:
             self.S = self.Y = self.yy = None
         else:
-            self.S = torch.stack(tuple(s_history))
-            self.Y = torch.stack(tuple(y_history))
-            self.yy = self.Y[-1].dot(self.Y[-1])
+            self.S = s_history
+            self.Y = y_history
 
         self.sy_history = sy_history
-
         self.M = None
 
+    def _get_S(self):
+        if self.S is None: return None
+        if not isinstance(self.S, torch.Tensor):
+            self.S = torch.stack(tuple(self.S))
+        return self.S
+
+    def _get_Y(self):
+        if self.Y is None: return None
+        if not isinstance(self.Y, torch.Tensor):
+            self.Y = torch.stack(tuple(self.Y))
+        return self.Y
+
     def solve(self, b):
-        if self.S is None: return b.clone()
-        assert self.Y is not None
-        return lbfgs_Hx(b, self.S, self.Y, self.sy_history)
+        S = self._get_S(); Y = self._get_Y()
+        if S is None or Y is None: return b.clone()
+        return lbfgs_Hx(b, S, Y, self.sy_history)
 
     def matvec(self, x):
-        if self.S is None: return x.clone()
-        assert self.Y is not None
-        Bx, self.M = lbfgs_Bx(x, self.S, self.Y, self.sy_history, M=self.M)
+        S = self._get_S(); Y = self._get_Y()
+        if S is None or Y is None: return x.clone()
+        Bx, self.M = lbfgs_Bx(x, S, Y, self.sy_history, M=self.M)
         return Bx
 
+    def size(self):
+        if self.S is None: raise RuntimeError()
+        n = len(self.S[0])
+        return (n, n)
 
 
 class LBFGS(Transform):
@@ -195,6 +210,7 @@ class LBFGS(Transform):
         sy_tol: float = 1e-10,
         scale_first:bool=True,
         update_freq = 1,
+        damping: DampingStrategyType = None,
         inner: Chainable | None = None,
     ):
         defaults = dict(
@@ -205,6 +221,7 @@ class LBFGS(Transform):
             ptol_reset=ptol_reset,
             gtol_reset=gtol_reset,
             sy_tol=sy_tol,
+            damping = damping,
         )
         super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
 
@@ -243,6 +260,7 @@ class LBFGS(Transform):
         ptol_reset = setting['ptol_reset']
         gtol_reset = setting['gtol_reset']
         sy_tol = setting['sy_tol']
+        damping = setting['damping']
 
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
 
@@ -252,6 +270,10 @@ class LBFGS(Transform):
         else:
             s = p - p_prev
             y = g - g_prev
+
+            if damping is not None:
+                s, y = apply_damping(damping, s=s, y=y, g=g, H=self.get_H())
+
             sy = s.dot(y)
             # damping to be added here
 
@@ -283,7 +305,7 @@ class LBFGS(Transform):
             y_history.append(y)
             sy_history.append(sy)
 
-    def get_H(self, var):
+    def get_H(self, var=...):
         s_history = [tl.to_vec() for tl in self.global_state['s_history']]
         y_history = [tl.to_vec() for tl in self.global_state['y_history']]
         sy_history = self.global_state['sy_history']
