@@ -89,6 +89,7 @@ def lbfgs_Hx(
     q = tensors.clone()
     if len(s_history) == 0: return q
 
+    # 1st loop
     alpha_list = []
     for s_i, y_i, sy_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
         p_i = 1 / sy_i
@@ -139,42 +140,50 @@ class LBFGSLinearOperator(LinearOperator):
 
 
 class LBFGS(Transform):
-    """Limited-memory BFGS algorithm. A line search is recommended, although L-BFGS may be reasonably stable without it.
+    """Limited-memory BFGS algorithm. A line search or trust region is recommended.
 
     Args:
         history_size (int, optional):
             number of past parameter differences and gradient differences to store. Defaults to 10.
-        tol (float | None, optional):
-            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional):
-            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
+        ptol (float | None, optional):
+            skips updating the history if maximum absolute value of
+            parameter difference is less than this value. Defaults to 1e-10.
+        ptol_reset (bool, optional):
+            If true, whenever parameter difference is less then ``ptol``,
+            L-BFGS state will be reset. Defaults to None.
         gtol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
+            skips updating the history if if maximum absolute value of
+            gradient difference is less than this value. Defaults to 1e-10.
+        ptol_reset (bool, optional):
+            If true, whenever gradient difference is less then ``gtol``,
+            L-BFGS state will be reset. Defaults to None.
+        sy_tol (float | None, optional):
+            history will not be updated whenever s⋅y is less than this value (negative s⋅y means negative curvature)
+        scale_first (bool, optional):
+            makes first step, when hessian approximation is not available, small to reduce number of line search iterations. Defaults to 1.
         update_freq (int, optional):
-            how often to update L-BFGS history. Defaults to 1.
+            how often to update L-BFGS history. Larger values may be better for stochastic optimization. Defaults to 1.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
-    Examples:
-        L-BFGS with strong-wolfe line search
+    ## Examples:
 
-        .. code-block:: python
+    L-BFGS with line search
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(100),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(100),
-                tz.m.StrongWolfe()
-            )
-
-        L-BFGS preconditioning applied to momentum (may be unstable!)
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(inner=tz.m.EMA(0.9)),
-                tz.m.LR(1e-2)
-            )
+    L-BFGS with trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.TrustCG(tz.m.LBFGS())
+    )
+    ```
     """
     def __init__(
         self,
