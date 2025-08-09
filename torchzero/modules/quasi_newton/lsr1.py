@@ -88,7 +88,7 @@ class LSR1LinearOperator(LinearOperator):
 
 
 class LSR1(Transform):
-    """Limited-memory BFGS algorithm. A line search or trust region is recommended.
+    """Limited-memory SR1 algorithm. A line search or trust region is recommended.
 
     Args:
         history_size (int, optional):
@@ -98,38 +98,36 @@ class LSR1(Transform):
             parameter difference is less than this value. Defaults to 1e-10.
         ptol_reset (bool, optional):
             If true, whenever parameter difference is less then ``ptol``,
-            L-BFGS state will be reset. Defaults to None.
+            L-SR1 state will be reset. Defaults to None.
         gtol (float | None, optional):
             skips updating the history if if maximum absolute value of
             gradient difference is less than this value. Defaults to 1e-10.
         ptol_reset (bool, optional):
             If true, whenever gradient difference is less then ``gtol``,
-            L-BFGS state will be reset. Defaults to None.
-        sy_tol (float | None, optional):
-            history will not be updated whenever s⋅y is less than this value (negative s⋅y means negative curvature)
+            L-SR1 state will be reset. Defaults to None.
         scale_first (bool, optional):
             makes first step, when hessian approximation is not available, small to reduce number of line search iterations. Defaults to 1.
         update_freq (int, optional):
-            how often to update L-BFGS history. Larger values may be better for stochastic optimization. Defaults to 1.
+            how often to update L-SR1 history. Larger values may be better for stochastic optimization. Defaults to 1.
         inner (Chainable | None, optional):
-            optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
+            optional inner modules applied after updating L-SR1 history and before preconditioning. Defaults to None.
 
     ## Examples:
 
-    L-BFGS with line search
+    L-SR1 with line search
     ```python
     opt = tz.Modular(
         model.parameters(),
-        tz.m.LBFGS(100),
-        tz.m.Backtracking()
+        tz.m.SR1(),
+        tz.m.StrongWolfe(c2=0.1)
     )
     ```
 
-    L-BFGS with trust region
+    L-SR1 with trust region
     ```python
     opt = tz.Modular(
         model.parameters(),
-        tz.m.TrustCG(tz.m.LBFGS())
+        tz.m.TrustCG(tz.m.LSR1())
     )
     ```
     """
@@ -140,7 +138,6 @@ class LSR1(Transform):
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
         gtol_reset: bool = False,
-        sy_tol: float = 1e-10,
         scale_first:bool=True,
         update_freq = 1,
         damping: DampingStrategyType = None,
@@ -153,7 +150,6 @@ class LSR1(Transform):
             gtol=gtol,
             ptol_reset=ptol_reset,
             gtol_reset=gtol_reset,
-            sy_tol=sy_tol,
             damping = damping,
         )
         super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
@@ -193,7 +189,7 @@ class LSR1(Transform):
 
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
 
-        # 1st step - there are no previous params and grads, lbfgs will do normalized SGD step
+        # 1st step - there are no previous params and grads, lsr1 will do normalized SGD step
         if step == 0:
             s = None; y = None; sy = None
         else:
