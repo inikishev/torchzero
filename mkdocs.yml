@@ -1,7 +1,8 @@
 # DOCS TUTORIAL FOR MYSELF
 # STEP ONE - MAKE SURE CORRECT PYTHON ENV IS SELECTED
-# STEP TWO - TYPE IN mkdocs serve
-# STEP THREE - ...
+# STEP TWO - MAKE SURE PROJECTS ROOT DIRECTORY IS SELECTED
+# STEP THREE - TYPE IN mkdocs serve
+# STEP FOUR - ...
 
 # --------------------------------- METADATA --------------------------------- #
 site_name: torchzero
@@ -29,7 +30,7 @@ theme:
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-      primary: black
+      primary: white
 
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
@@ -59,7 +60,7 @@ markdown_extensions:
   - toc: # adds table of contents to individual markdown files
       # toc_depth: 3 # levels above will be collapsed except it doesn't work
       permalink: true # adds links
-      slugify: !!python/object/apply:pymdownx.slugs.slugify # copied from docs, apparently whatever this does is good for python
+      slugify: !!python/object/apply:pymdownx.slugs.slugify # copied from docs, good for python
         kwds:
           case: lower
   - tables # read the name of this extension
@@ -88,6 +89,7 @@ plugins:
 - search
 - autorefs
 # - optimize
+- mkdocs-jupyter
 - mkdocstrings:
     handlers:
       python:

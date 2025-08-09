@@ -1,135 +1,162 @@
 from collections import deque
+from collections.abc import Sequence
 from operator import itemgetter
 
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
+from .damping import DampingStrategyType, apply_damping
 
 
-def lsr1_(
-    tensors_: TensorList,
-    s_history: deque[TensorList],
-    y_history: deque[TensorList],
-    scale_first: bool,
-):
-    if len(s_history) == 0:
 
-        if scale_first:
-            # initial step size guess from pytorch
-            tensors_ = TensorList(tensors_)
-            return tensors_.mul_(initial_step_size(tensors_))
-
-        return tensors_
-
+def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
     m = len(s_history)
+    if m == 0: return x.clone()
 
-    w_list: list[TensorList] = []
-    ww_list: list = [None for _ in range(m)]
+    # initial scaling doesn't work well for L-SR1
+    # s = s_history[-1]
+    # y = y_history[-1]
+    # sy = s.dot(y)
+
+    # P_0 = sy / y.dot(y) if inverse else y.dot(y) / sy
+    # if P_0 < 1e-12: P_0 = 1
+    # Px = P_0 * x
+
+    if not inverse:
+        s_history, y_history = y_history, s_history
+
+    w_list = []
     wy_list: list = [None for _ in range(m)]
 
-    # 1st loop - all w_k = s_k - H_k_prev y_k
+    # # 1st loop - all w_k = s_k - H_k_prev y_k
     for k in range(m):
         s_k = s_history[k]
         y_k = y_history[k]
 
-        H_k = y_k.clone()
+        Py = y_k.clone()
         for j in range(k):
             w_j = w_list[j]
             y_j = y_history[j]
 
             wy = wy_list[j]
             if wy is None: wy = wy_list[j] = w_j.dot(y_j)
+            if wy.abs() < 1e-12: continue
 
-            ww = ww_list[j]
-            if ww is None: ww = ww_list[j] = w_j.dot(w_j)
+            alpha = w_j.dot(y_k) / wy
+            Py.add_(w_j, alpha=alpha)
 
-            if wy == 0: continue
-
-            H_k.add_(w_j, alpha=w_j.dot(y_k) / wy) # pyright:ignore[reportArgumentType]
-
-        w_k = s_k - H_k
+        w_k = s_k - Py
         w_list.append(w_k)
 
-    Hx = tensors_.clone()
+    Px = x.clone()
+
+    # second loop
     for k in range(m):
         w_k = w_list[k]
         y_k = y_history[k]
         wy = wy_list[k]
-        ww = ww_list[k]
 
         if wy is None: wy = w_k.dot(y_k) # this happens when m = 1 so inner loop doesn't run
-        if ww is None: ww = w_k.dot(w_k)
+        if wy.abs() < 1e-12: continue
 
-        if wy == 0: continue
+        alpha = w_k.dot(x) / wy
+        Px.add_(w_k, alpha=alpha)
 
-        Hx.add_(w_k, alpha=w_k.dot(tensors_) / wy) # pyright:ignore[reportArgumentType]
+    return Px
 
-    return Hx
+
+
+class LSR1LinearOperator(LinearOperator):
+    def __init__(self, s_history: Sequence[torch.Tensor], y_history: Sequence[torch.Tensor]):
+        super().__init__()
+        self.s_history = s_history
+        self.y_history = y_history
+
+    def solve(self, b):
+        return lsr1_Px(x=b, s_history=self.s_history, y_history=self.y_history, inverse=True)
+
+    def matvec(self, x):
+        return lsr1_Px(x=x, s_history=self.s_history, y_history=self.y_history, inverse=False)
+
+    def size(self):
+        if len(self.s_history) == 0: raise RuntimeError()
+        n = len(self.s_history[0])
+        return (n, n)
 
 
 class LSR1(Transform):
-    """Limited Memory SR1 algorithm. A line search is recommended.
-
-    .. note::
-        L-SR1 provides a better estimate of true hessian, however it is more unstable compared to L-BFGS.
-
-    .. note::
-        L-SR1 update rule uses a nested loop, computationally with history size `n` it is similar to L-BFGS with history size `(n^2)/2`. On small problems (ndim <= 2000) BFGS and SR1 may be faster than limited-memory versions.
-
-    .. note::
-        directions L-SR1 generates are not guaranteed to be descent directions. This can be alleviated in multiple ways,
-        for example using :code:`tz.m.StrongWolfe(plus_minus=True)` line search, or modifying the direction with :code:`tz.m.Cautious` or :code:`tz.m.ScaleByGradCosineSimilarity`.
+    """Limited-memory BFGS algorithm. A line search or trust region is recommended.
 
     Args:
         history_size (int, optional):
             number of past parameter differences and gradient differences to store. Defaults to 10.
-        tol (float | None, optional):
-            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
-        tol_reset (bool, optional):
-            If true, whenever gradient difference is less then `tol`, the history will be reset. Defaults to None.
+        ptol (float | None, optional):
+            skips updating the history if maximum absolute value of
+            parameter difference is less than this value. Defaults to 1e-10.
+        ptol_reset (bool, optional):
+            If true, whenever parameter difference is less then ``ptol``,
+            L-BFGS state will be reset. Defaults to None.
         gtol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
-        params_beta (float | None, optional):
-            if not None, EMA of parameters is used for
-            preconditioner update (s_k vector). Defaults to None.
-        grads_beta (float | None, optional):
-            if not None, EMA of gradients is used for
-            preconditioner update (y_k vector). Defaults to None.
-        update_freq (int, optional): How often to update L-SR1 history. Defaults to 1.
+            skips updating the history if if maximum absolute value of
+            gradient difference is less than this value. Defaults to 1e-10.
+        ptol_reset (bool, optional):
+            If true, whenever gradient difference is less then ``gtol``,
+            L-BFGS state will be reset. Defaults to None.
+        sy_tol (float | None, optional):
+            history will not be updated whenever s⋅y is less than this value (negative s⋅y means negative curvature)
+        scale_first (bool, optional):
+            makes first step, when hessian approximation is not available, small to reduce number of line search iterations. Defaults to 1.
+        update_freq (int, optional):
+            how often to update L-BFGS history. Larger values may be better for stochastic optimization. Defaults to 1.
         inner (Chainable | None, optional):
-            Optional inner modules applied after updating
-            L-SR1 history and before preconditioning. Defaults to None.
+            optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 
-    Examples:
-        L-SR1 with Strong-Wolfe+- line search
+    ## Examples:
 
-        .. code-block:: python
+    L-BFGS with line search
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(100),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LSR1(100),
-                tz.m.StrongWolfe(plus_minus=True)
-            )
+    L-BFGS with trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.TrustCG(tz.m.LBFGS())
+    )
+    ```
     """
     def __init__(
         self,
-        history_size: int = 10,
+        history_size=10,
         ptol: float | None = 1e-10,
         ptol_reset: bool = False,
         gtol: float | None = 1e-10,
         gtol_reset: bool = False,
-        update_freq: int = 1,
-        scale_first: bool = True,
+        sy_tol: float = 1e-10,
+        scale_first:bool=True,
+        update_freq = 1,
+        damping: DampingStrategyType = None,
         inner: Chainable | None = None,
     ):
         defaults = dict(
-            history_size=history_size, ptol=ptol, gtol=gtol,
-            update_freq=update_freq, scale_first=scale_first,
-            ptol_reset=ptol_reset,gtol_reset=gtol_reset,
+            history_size=history_size,
+            scale_first=scale_first,
+            ptol=ptol,
+            gtol=gtol,
+            ptol_reset=ptol_reset,
+            gtol_reset=gtol_reset,
+            sy_tol=sy_tol,
+            damping = damping,
         )
-        super().__init__(defaults, uses_grad=False, inner=inner)
+        super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
@@ -143,74 +170,94 @@ class LSR1(Transform):
 
     def reset_for_online(self):
         super().reset_for_online()
-        self.clear_state_keys('prev_l_params', 'prev_l_grad')
+        self.clear_state_keys('p_prev', 'g_prev')
         self.global_state.pop('step', None)
 
     @torch.no_grad
     def update_tensors(self, tensors, params, grads, loss, states, settings):
-        params = as_tensorlist(params)
-        update = as_tensorlist(tensors)
+        p = as_tensorlist(params)
+        g = as_tensorlist(tensors)
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
+        # history of s and k
         s_history: deque[TensorList] = self.global_state['s_history']
         y_history: deque[TensorList] = self.global_state['y_history']
-
-        setting = settings[0]
-        update_freq = itemgetter('update_freq')(setting)
-
-        l_params, l_update = params, update
-        prev_l_params, prev_l_grad = unpack_states(states, tensors, 'prev_l_params', 'prev_l_grad', cls=TensorList)
-
-        s = None
-        y = None
-        if step != 0:
-            if step % update_freq == 0:
-                s = l_params - prev_l_params
-                y = l_update - prev_l_grad
-
-                s_history.append(s)
-                y_history.append(y)
-
-        prev_l_params.copy_(l_params)
-        prev_l_grad.copy_(l_update)
-
-        # store for apply
-        self.global_state['s'] = s
-        self.global_state['y'] = y
-
-    @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        tensors = as_tensorlist(tensors)
-        s = self.global_state.pop('s')
-        y = self.global_state.pop('y')
 
         setting = settings[0]
         ptol = setting['ptol']
         gtol = setting['gtol']
         ptol_reset = setting['ptol_reset']
-        gtol_reset = setting['ptol_reset']
+        gtol_reset = setting['gtol_reset']
+        damping = setting['damping']
 
+        p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
+
+        # 1st step - there are no previous params and grads, lbfgs will do normalized SGD step
+        if step == 0:
+            s = None; y = None; sy = None
+        else:
+            s = p - p_prev
+            y = g - g_prev
+
+            if damping is not None:
+                s, y = apply_damping(damping, s=s, y=y, g=g, H=self.get_H())
+
+            sy = s.dot(y)
+            # damping to be added here
+
+        below_tol = False
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None:
             if s is not None and s.abs().global_max() <= ptol:
                 if ptol_reset: self.reset()
-                tensors = TensorList(tensors)
-                return tensors.mul_(initial_step_size(tensors))
+                sy = None
+                below_tol = True
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
-        if ptol is not None:
+        if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
                 if gtol_reset: self.reset()
-                tensors = TensorList(tensors)
-                return tensors.mul_(initial_step_size(tensors))
+                sy = None
+                below_tol = True
+
+        # store previous params and grads
+        if not below_tol:
+            p_prev.copy_(p)
+            g_prev.copy_(g)
+
+        # update effective preconditioning state
+        if sy is not None:
+            assert s is not None and y is not None and sy is not None
+
+            s_history.append(s)
+            y_history.append(y)
+
+    def get_H(self, var=...):
+        s_history = [tl.to_vec() for tl in self.global_state['s_history']]
+        y_history = [tl.to_vec() for tl in self.global_state['y_history']]
+        return LSR1LinearOperator(s_history, y_history)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        setting = settings[0]
+        scale_first = setting['scale_first']
+
+        tensors = as_tensorlist(tensors)
+
+        s_history = self.global_state['s_history']
+        y_history = self.global_state['y_history']
 
         # precondition
-        dir = lsr1_(
-            tensors_=tensors,
-            s_history=self.global_state['s_history'],
-            y_history=self.global_state['y_history'],
-            scale_first = setting['scale_first'],
+        dir = lsr1_Px(
+            x=tensors,
+            s_history=s_history,
+            y_history=y_history,
+            inverse=True,
         )
+
+        # scale 1st step
+        if scale_first and self.global_state.get('step', 1) == 1:
+            dir *= initial_step_size(dir, eps=1e-7)
 
         return dir

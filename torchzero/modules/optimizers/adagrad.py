@@ -117,8 +117,8 @@ class Adagrad(Transform):
 
 
 class FullMatrixAdagrad(TensorwiseTransform):
-    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=True, update_freq=1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', divide: bool=False, inner: Chainable | None = None):
-        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, init=init, divide=divide)
+    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=True, update_freq=1, precond_freq: int = 1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', divide: bool=False, inner: Chainable | None = None):
+        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, precond_freq=precond_freq, init=init, divide=divide)
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner,)
 
     @torch.no_grad
@@ -143,9 +143,14 @@ class FullMatrixAdagrad(TensorwiseTransform):
 
     @torch.no_grad
     def apply_tensor(self, tensor, param, grad, loss, state, setting):
+        step = state.get('step', 0)
+        state['step'] = step + 1
+
         GG = state['GG']
         sqrt = setting['sqrt']
         divide = setting['divide']
+        precond_freq = setting['precond_freq']
+
         if divide: GG = GG/state.get('i', 1)
 
         if tensor.numel() == 1:
@@ -154,7 +159,12 @@ class FullMatrixAdagrad(TensorwiseTransform):
             return tensor / GG
 
         try:
-            if sqrt: B = matrix_power_eigh(GG, -1/2)
+            if sqrt:
+                if "B" not in state or step % precond_freq == 0:
+                    B = state["B"] = matrix_power_eigh(GG, -1/2)
+                else:
+                    B = state["B"]
+
             else: return torch.linalg.solve(GG, tensor.ravel()).view_as(tensor) # pylint:disable = not-callable
 
         except torch.linalg.LinAlgError:

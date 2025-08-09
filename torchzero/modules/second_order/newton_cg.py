@@ -256,9 +256,11 @@ class NewtonCGSteihaug(Module):
     def __init__(
         self,
         maxiter: int | None = None,
-        eta: float= 1e-6,
-        nplus: float = 2,
+        eta: float= 0.0,
+        nplus: float = 3.5,
         nminus: float = 0.25,
+        rho_good: float = 0.99,
+        rho_bad: float = 1e-4,
         init: float = 1,
         tol: float = 1e-4,
         reg: float = 1e-8,
@@ -269,7 +271,7 @@ class NewtonCGSteihaug(Module):
         boundary_tol: float = 1e-1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol)
+        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -297,6 +299,8 @@ class NewtonCGSteihaug(Module):
         eta = settings['eta']
         nplus = settings['nplus']
         nminus = settings['nminus']
+        rho_good = settings['rho_good']
+        rho_bad = settings['rho_bad']
         init = settings['init']
 
         self._num_hvps_last_step = 0
@@ -342,18 +346,19 @@ class NewtonCGSteihaug(Module):
             max_attempts -= 1
             if max_attempts < 0: break
 
-            trust_region = self.global_state.get('trust_region', init)
-            if trust_region < 1e-8 or trust_region > 1e8:
-                trust_region = self.global_state['trust_region'] = init
+            trust_radius = self.global_state.get('trust_radius', init)
+
+            if trust_radius < 1e-12 or trust_radius > 1e24:
+                trust_radius = self.global_state['trust_radius'] = init
 
             if solver == 'cg':
-                x = cg(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg)
+                x = cg(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg)
 
             elif solver == 'minres':
-                x = minres(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
+                x = minres(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
 
             elif solver == 'minres_npc':
-                x = minres(A_mm=H_mm, b=b, trust_region=trust_region, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+                x = minres(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
 
             else:
                 raise ValueError(f"unknown solver {solver}")
@@ -370,15 +375,17 @@ class NewtonCGSteihaug(Module):
             rho = reduction / (pred_reduction.clip(min=1e-8))
             is_finite = math.isfinite(loss_star)
 
+            # find boundary of current step
+            d_radius = x.global_vector_norm()
+
             # failed step
-            if rho < 0.25 or not is_finite:
-                self.global_state['trust_region'] = trust_region * nminus
+            if rho < rho_bad or not is_finite:
+                self.global_state['trust_radius'] = d_radius * nminus
 
             # very good step
-            elif rho > 0.75 and is_finite:
-                magn = generic_vector_norm(x)
-                if (magn - trust_region) / trust_region > -boundary_tol: # close to boundary
-                    self.global_state['trust_region'] = trust_region * nplus
+            elif rho > rho_good and is_finite:
+                if (boundary_tol is None) or (trust_radius-d_radius)/trust_radius < boundary_tol:
+                    self.global_state['trust_radius'] = max(trust_radius, d_radius*nplus)
 
             # if the ratio is high enough then accept the proposed step
             if rho > eta and is_finite:

@@ -1,15 +1,15 @@
 from collections import deque
 from collections.abc import Sequence
-from operator import itemgetter
 from typing import overload
 
 import torch
 
-from ...core import Chainable, Module, Transform, Var, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, tofloat
-from ...utils.linalg.linear_operator import LinearOperator, ScaledIdentity
+from ...core import Chainable, Transform
+from ...utils import TensorList, as_tensorlist, unpack_states
+from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
+
 
 @torch.no_grad
 def _make_M(S:torch.Tensor, Y:torch.Tensor, B_0:torch.Tensor):
@@ -17,16 +17,16 @@ def _make_M(S:torch.Tensor, Y:torch.Tensor, B_0:torch.Tensor):
 
     M = torch.zeros((2 * m, 2 * m), device=S.device, dtype=S.dtype)
 
-    # top-left S^T * B^0 * S = B * S^T * S
+    # top-left is B S^T S
     M[:m, :m] = B_0 * S @ S.mT
 
-    # anti-diagonal is L
+    # anti-diagonal is L^T and L
     L = (S @ Y.mT).tril_(-1)
 
     M[m:, :m] = L.mT
     M[:m, m:] = L
 
-    # bottom-right block: -D (diagonal matrix)
+    # bottom-right
     D_diag = (S * Y).sum(1).neg()
     M[m:, m:] = D_diag.diag_embed()
 
@@ -43,7 +43,7 @@ def lbfgs_Bx(x: torch.Tensor, S: torch.Tensor, Y: torch.Tensor, sy_history, M=No
     # initial scaling
     y = Y[-1]
     sy = sy_history[-1]
-    yy = y @ y
+    yy = y.dot(y)
     B_0 = yy / sy
     Bx = x * B_0
 
@@ -68,49 +68,49 @@ def lbfgs_Bx(x: torch.Tensor, S: torch.Tensor, Y: torch.Tensor, sy_history, M=No
 
 @overload
 def lbfgs_Hx(
-    tensors: torch.Tensor,
+    x: torch.Tensor,
     s_history: Sequence[torch.Tensor] | torch.Tensor,
     y_history: Sequence[torch.Tensor] | torch.Tensor,
     sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ) -> torch.Tensor: ...
 @overload
 def lbfgs_Hx(
-    tensors: TensorList,
+    x: TensorList,
     s_history: Sequence[TensorList],
     y_history: Sequence[TensorList],
     sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ) -> TensorList: ...
 def lbfgs_Hx(
-    tensors,
+    x,
     s_history: Sequence | torch.Tensor,
     y_history: Sequence | torch.Tensor,
     sy_history: Sequence[torch.Tensor] | torch.Tensor,
 ):
-    """works with tensors and TensorLists"""
-    q = tensors.clone()
-    if len(s_history) == 0: return q
+    """L-BFGS inverse-hessian-vector product, works with tensors and TensorLists"""
+    x = x.clone()
+    if len(s_history) == 0: return x
 
     # 1st loop
     alpha_list = []
     for s_i, y_i, sy_i in zip(reversed(s_history), reversed(y_history), reversed(sy_history)):
         p_i = 1 / sy_i
-        alpha = p_i * s_i.dot(q)
+        alpha = p_i * s_i.dot(x)
         alpha_list.append(alpha)
-        q.sub_(y_i, alpha=alpha)
+        x.sub_(y_i, alpha=alpha)
 
     # scaled initial hessian inverse
     # H_0 = (s.y/y.y) * I, and z = H_0 @ q
     sy = sy_history[-1]
     y = y_history[-1]
-    z = q * (sy / y.dot(y))
+    Hx = x * (sy / y.dot(y))
 
     # 2nd loop
     for s_i, y_i, sy_i, alpha_i in zip(s_history, y_history, sy_history, reversed(alpha_list)):
         p_i = 1 / sy_i
-        beta_i = p_i * y_i.dot(z)
-        z.add_(s_i, alpha = alpha_i - beta_i)
+        beta_i = p_i * y_i.dot(Hx)
+        Hx.add_(s_i, alpha = alpha_i - beta_i)
 
-    return z
+    return Hx
 
 
 class LBFGSLinearOperator(LinearOperator):
@@ -324,7 +324,7 @@ class LBFGS(Transform):
 
         # precondition
         dir = lbfgs_Hx(
-            tensors=tensors,
+            x=tensors,
             s_history=s_history,
             y_history=y_history,
             sy_history=sy_history,
