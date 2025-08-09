@@ -119,7 +119,7 @@ class LSR1(Transform):
     opt = tz.Modular(
         model.parameters(),
         tz.m.SR1(),
-        tz.m.StrongWolfe(c2=0.1)
+        tz.m.StrongWolfe(c2=0.1, fallback=True)
     )
     ```
 
@@ -134,9 +134,9 @@ class LSR1(Transform):
     def __init__(
         self,
         history_size=10,
-        ptol: float | None = 1e-10,
+        ptol: float | None = None,
         ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
+        gtol: float | None = None,
         gtol_reset: bool = False,
         scale_first:bool=True,
         update_freq = 1,
