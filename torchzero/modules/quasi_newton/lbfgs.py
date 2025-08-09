@@ -175,7 +175,8 @@ class LBFGS(Transform):
         sy_tol (float | None, optional):
             history will not be updated whenever s⋅y is less than this value (negative s⋅y means negative curvature)
         scale_first (bool, optional):
-            makes first step, when hessian approximation is not available, small to reduce number of line search iterations. Defaults to 1.
+            makes first step, when hessian approximation is not available,
+            small to reduce number of line search iterations. Defaults to True.
         update_freq (int, optional):
             how often to update L-BFGS history. Larger values may be better for stochastic optimization. Defaults to 1.
         inner (Chainable | None, optional):

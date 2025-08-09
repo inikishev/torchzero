@@ -11,7 +11,6 @@ from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
 
 
-
 def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
     m = len(s_history)
     if m == 0: return x.clone()
@@ -95,18 +94,19 @@ class LSR1(Transform):
             number of past parameter differences and gradient differences to store. Defaults to 10.
         ptol (float | None, optional):
             skips updating the history if maximum absolute value of
-            parameter difference is less than this value. Defaults to 1e-10.
+            parameter difference is less than this value. Defaults to None.
         ptol_reset (bool, optional):
             If true, whenever parameter difference is less then ``ptol``,
             L-SR1 state will be reset. Defaults to None.
         gtol (float | None, optional):
             skips updating the history if if maximum absolute value of
-            gradient difference is less than this value. Defaults to 1e-10.
+            gradient difference is less than this value. Defaults to None.
         ptol_reset (bool, optional):
             If true, whenever gradient difference is less then ``gtol``,
             L-SR1 state will be reset. Defaults to None.
         scale_first (bool, optional):
-            makes first step, when hessian approximation is not available, small to reduce number of line search iterations. Defaults to 1.
+            makes first step, when hessian approximation is not available,
+            small to reduce number of line search iterations. Defaults to False.
         update_freq (int, optional):
             how often to update L-SR1 history. Larger values may be better for stochastic optimization. Defaults to 1.
         inner (Chainable | None, optional):
