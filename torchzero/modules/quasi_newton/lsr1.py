@@ -138,7 +138,7 @@ class LSR1(Transform):
         ptol_reset: bool = False,
         gtol: float | None = None,
         gtol_reset: bool = False,
-        scale_first:bool=True,
+        scale_first:bool=False,
         update_freq = 1,
         damping: DampingStrategyType = None,
         inner: Chainable | None = None,
