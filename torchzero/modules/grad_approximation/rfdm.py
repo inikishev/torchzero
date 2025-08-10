@@ -115,26 +115,26 @@ def _rforward5(closure: Callable[..., float], params:TensorList, p_fn:Callable[[
     h = h**2 # because perturbation already multiplied by h
     return f_0, f_0, (-3*f_4 + 16*f_3 - 36*f_2 + 48*f_1 - 25*f_0) / (12 * h)
 
-# another central4
-def _bgspsa4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
-    params += p_fn()
-    f_1 = closure(False)
+# # another central4
+# def _bgspsa4(closure: Callable[..., float], params:TensorList, p_fn:Callable[[], TensorList], h, f_0: float | None):
+#     params += p_fn()
+#     f_1 = closure(False)
 
-    params += p_fn() * 2
-    f_3 = closure(False)
+#     params += p_fn() * 2
+#     f_3 = closure(False)
 
-    params -= p_fn() * 4
-    f_m1 = closure(False)
+#     params -= p_fn() * 4
+#     f_m1 = closure(False)
 
-    params -= p_fn() * 2
-    f_m3 = closure(False)
+#     params -= p_fn() * 2
+#     f_m3 = closure(False)
 
-    params += p_fn() * 3
-    h = h**2 # because perturbation already multiplied by h
-    return f_0, f_1, (27*f_1 - f_m1 - f_3 + f_m3) / (48 * h)
+#     params += p_fn() * 3
+#     h = h**2 # because perturbation already multiplied by h
+#     return f_0, f_1, (27*f_1 - f_m1 - f_3 + f_m3) / (48 * h)
 
 
-_RFD_FUNCS = {
+_RFD_FUNCS: dict[_FD_Formula, Callable] = {
     "forward": _rforward2,
     "forward2": _rforward2,
     "backward": _rbackward2,
@@ -147,7 +147,7 @@ _RFD_FUNCS = {
     "central4": _rcentral4,
     "forward4": _rforward4,
     "forward5": _rforward5,
-    "bspsa4": _bgspsa4,
+    # "bspsa4": _bgspsa4,
 }
 
 
@@ -299,7 +299,7 @@ class RandomizedFDM(GradApproximator):
         if pre_generate:
             params = TensorList(var.params)
             generator = self._get_generator(settings['seed'], var.params)
-            perturbations = [params.sample_like(distribution=distribution, generator=generator) for _ in range(n_samples)]
+            perturbations = [params.sample_like(distribution=distribution, variance=1, generator=generator) for _ in range(n_samples)]
 
             if self.PRE_MULTIPLY_BY_H:
                 torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])
@@ -340,7 +340,10 @@ class RandomizedFDM(GradApproximator):
         grad = None
         for i in range(n_samples):
             prt = perturbations[i]
-            if prt[0] is None: prt = params.sample_like(distribution=distribution, generator=generator).mul_(h)
+
+            if prt[0] is None:
+                prt = params.sample_like(distribution=distribution, generator=generator, variance=1).mul_(h)
+
             else: prt = TensorList(prt)
 
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, f_0=loss)
@@ -477,9 +480,12 @@ class MeZO(GradApproximator):
         super().__init__(defaults, target=target)
 
     def _seeded_perturbation(self, params: list[torch.Tensor], distribution, seed, h):
-        return TensorList(params).sample_like(
-            distribution=distribution, generator=torch.Generator(params[0].device).manual_seed(seed)
-        ).mul_(h)
+        prt = TensorList(params).sample_like(
+            distribution=distribution,
+            variance=h,
+            generator=torch.Generator(params[0].device).manual_seed(seed)
+        )
+        return prt
 
     def pre_step(self, var):
         h = NumberList(self.settings[p]['h'] for p in var.params)

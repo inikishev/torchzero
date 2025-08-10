@@ -375,6 +375,21 @@ RandomizedFDM_central4 = Run(
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=100, sphere_loss=450,
 )
+RandomizedFDM_forward4 = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.001)),
+    needs_closure=True,
+    func='booth', steps=50, loss=10, merge_invariant=True,
+    sphere_steps=100, sphere_loss=450,
+)
+RandomizedFDM_forward5 = Run(
+    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.001)),
+    needs_closure=True,
+    func='booth', steps=50, loss=10, merge_invariant=True,
+    sphere_steps=100, sphere_loss=450,
+)
+
 
 RandomizedFDM_4samples = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, seed=0), tz.m.LR(0.1)),

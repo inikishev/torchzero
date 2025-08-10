@@ -36,6 +36,7 @@ class Var:
     """
     Holds parameters, gradient, update, objective function (closure) if supplied, loss, and some other info.
     Modules take in a ``Var`` object, modify and it is passed to the next module.
+
     """
     def __init__(
         self,
@@ -85,6 +86,9 @@ class Var:
 
         self.post_step_hooks: list[Callable[[Modular, Var]]] = []
         """list of functions to be called after optimizer step.
+
+        This attribute should always be modified in-place (using ``append`` or ``extend``).
+
         The signature is:
 
         ```python
@@ -190,7 +194,7 @@ class Var:
 
         Doesn't copy ``is_last``, ``nested_is_last`` and ``last_module_lrs``. They will always be ``False``/``None``.
 
-        Setting ``parent`` is usually not necessary, only do it if you set clone's parameters to something different.
+        Setting ``parent`` is only if clone's parameters are something different, while clone's closure referes to the same objective but with "view" on parameters.
         """
         copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step, parent=parent)
 
@@ -214,6 +218,9 @@ class Var:
         object. This propagates any newly computed loss or gradient values
         from the child's context back to the parent `Vars` if the parent
         didn't have them computed already.
+
+        Also, as long as `post_step_hooks` is modified in-place, if the child updates it,
+        the update will affect the parent too.
         """
         if self.loss is None: self.loss = var.loss
         if self.loss_approx is None: self.loss_approx = var.loss_approx

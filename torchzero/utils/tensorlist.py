@@ -33,6 +33,8 @@ _STOrSTSeq = _Scalar | torch.Tensor | _ScalarSeq | _TensorSeq
 _Dim = int | list[int] | tuple[int,...] | Literal['global'] | None
 
 Distributions = Literal['normal', 'gaussian', 'uniform', 'sphere', 'rademacher']
+Ords = _Scalar | Literal['mean-magnitude', 'var', 'std']
+
 class _NewTensorKwargs(TypedDict, total = False):
     memory_format: Any
     dtype: Any
@@ -325,9 +327,14 @@ class TensorList(list[torch.Tensor | Any]):
     def global_sum(self) -> torch.Tensor: return builtins.sum(self.sum()) # pyright:ignore[reportArgumentType,reportReturnType]
     def global_std(self) -> torch.Tensor: return torch.std(self.to_vec())
     def global_var(self) -> torch.Tensor: return torch.var(self.to_vec())
-    def global_vector_norm(self, ord:float | Literal['mean_abs'] = 2) -> torch.Tensor:
-        if ord == 'mean_abs': return self.abs().global_mean()
+
+    def global_vector_norm(self, ord:Ords = 2) -> torch.Tensor:
+        if isinstance(ord, str):
+            if ord == 'mean-magnitude': return self.abs().global_mean()
+            if ord == 'std': return self.global_std()
+            if ord == 'var': return self.global_var()
         return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
+
     def global_any(self): return builtins.any(self.any())
     def global_all(self): return builtins.all(self.all())
     def global_numel(self) -> int: return builtins.sum(self.numel())
@@ -358,31 +365,54 @@ class TensorList(list[torch.Tensor | Any]):
 
     def randint_like(self, low: "_Scalar | _ScalarSeq", high: "_Scalar | _ScalarSeq", **kwargs: Unpack[_NewTensorKwargs]):
         return self.zipmap_args(torch.randint_like, low, high, **kwargs)
+
     def uniform_like(self, low: "_Scalar | _ScalarSeq" = 0, high: "_Scalar | _ScalarSeq" = 1, generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         res = self.empty_like(**kwargs)
         res.uniform_(low, high, generator=generator)
         return res
+
     def sphere_like(self, radius: "_Scalar | _ScalarSeq", generator=None, **kwargs: Unpack[_NewTensorKwargs]) -> Self:
         r = self.randn_like(generator=generator, **kwargs)
-        return (r * radius) / r.global_vector_norm()
+        return r.mul_(maybe_numberlist(radius) / r.global_vector_norm())
+
     def bernoulli(self, generator = None):
         return self.__class__(torch.bernoulli(i, generator=generator) for i in self)
+
     def bernoulli_like(self, p: "_Scalar | _ScalarSeq" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be 0."""
         return self.__class__(torch.bernoulli(i, generator = generator) for i in self.full_like(p, **kwargs))
+
     def rademacher_like(self, p: "_Scalar | _ScalarSeq" = 0.5, generator = None, **kwargs: Unpack[_NewTensorKwargs]):
         """p is probability of a 1, other values will be -1."""
         return self.bernoulli_like(p, generator=generator, **kwargs).mul_(2).sub_(1)
 
-    def sample_like(self, eps: "_Scalar | _ScalarSeq" = 1, distribution: Distributions = 'normal', generator=None, **kwargs: Unpack[_NewTensorKwargs]):
+    def sample_like(self, distribution: Distributions = 'normal', variance: "_Scalar | _ScalarSeq | Sequence | None" = None, generator=None, **kwargs: Unpack[_NewTensorKwargs]):
         """Sample around 0."""
-        if distribution in ('normal', 'gaussian'): return self.randn_like(generator=generator, **kwargs) * eps
+        if isinstance(variance, Sequence):
+            if all(v is None for v in variance): variance = None
+            else: variance = [v if v is not None else 1 for v in variance]
+
+        if distribution in ('normal', 'gaussian'):
+            ret = self.randn_like(generator=generator, **kwargs)
+            if variance is not None: ret *= variance
+            return ret
+
         if distribution == 'uniform':
-            if isinstance(eps, (list,tuple)):
-                return self.uniform_like([-i/2 for i in eps], [i/2 for i in eps], generator=generator, **kwargs)
-            return self.uniform_like(-eps/2, eps/2, generator=generator, **kwargs)
-        if distribution == 'sphere': return self.sphere_like(eps, generator=generator, **kwargs)
-        if distribution == 'rademacher': return self.rademacher_like(generator=generator, **kwargs) * eps
+            b = 1
+            if variance is not None:
+                b = ((12 * maybe_numberlist(variance)) ** 0.5) / 2
+            return self.uniform_like(-b, b, generator=generator, **kwargs)
+
+        if distribution == 'sphere':
+            if variance is None: radius = 1
+            else: radius = maybe_numberlist(variance) * math.sqrt(self.global_numel())
+            return self.sphere_like(radius, generator=generator, **kwargs)
+
+        if distribution == 'rademacher':
+            ret = self.rademacher_like(generator=generator, **kwargs)
+            if variance is not None: ret *= variance
+            return ret
+
         raise ValueError(f'Unknow distribution {distribution}')
 
     def eq(self, other: _STOrSTSeq): return self.zipmap(torch.eq, other)
@@ -639,8 +669,11 @@ class TensorList(list[torch.Tensor | Any]):
         if dim is None: dim = ()
         return self.__class__(i.amin(dim=dim, keepdim=keepdim) for i in self)
 
-    def norm(self, ord: _Scalar|Literal["mean_abs"], dtype=None):
-        if isinstance(ord, str): return self.abs().mean()
+    def norm(self, ord: Ords, dtype=None):
+        if isinstance(ord, str):
+            if ord == 'mean-magnitude': return self.abs().mean()
+            if ord == 'std': return self.std()
+            if ord == 'var': return self.var()
         return self.__class__(torch._foreach_norm(self, ord, dtype))
 
     def mean(self, dim: _Dim = None, keepdim = False) -> Self | Any:
@@ -795,7 +828,7 @@ class TensorList(list[torch.Tensor | Any]):
         for t, o in zip(self, other): t.copysign_(o)
         return self
 
-    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: float | Literal['mean_abs'] = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: Ords = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -808,7 +841,7 @@ class TensorList(list[torch.Tensor | Any]):
 
         return self * (norm_other / norm_self.clip_(min=eps))
 
-    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: float | Literal['mean_abs'] = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: Ords = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
             norm_self = self.norm(ord)
@@ -910,7 +943,7 @@ class TensorList(list[torch.Tensor | Any]):
         if eps!=0: std.add_(eps)
         return self.sub_(self.mean(dim = dim, keepdim=True)).div_(std)
 
-    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
+    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
         """calculate multipler to clip self norm to min and max"""
         if tensorwise:
             self_norm = self.norm(ord)
@@ -931,12 +964,12 @@ class TensorList(list[torch.Tensor | Any]):
 
         return mul
 
-    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
+    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self * self._clip_multiplier(min, max, tensorwise, ord)
 
-    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:float|Literal["mean_abs"] = 2):
+    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self.mul_(self._clip_multiplier(min, max, tensorwise, ord))

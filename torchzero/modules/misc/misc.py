@@ -229,15 +229,14 @@ class DivByLoss(Module):
 
 class NoiseSign(Transform):
     """Outputs random tensors with sign copied from the update."""
-    def __init__(self, distribution:Distributions = 'normal', alpha = 1):
-        defaults = dict(distribution=distribution, alpha=alpha)
+    def __init__(self, distribution:Distributions = 'normal', variance:float | None = None):
+        defaults = dict(distribution=distribution, variance=variance)
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        alpha = [s['alpha'] for s in settings]
-        distribution = self.settings[params[0]]['distribution']
-        return TensorList(tensors).sample_like(alpha, distribution).copysign_(tensors)
+        variance = unpack_dicts(settings, 'variance')
+        return TensorList(tensors).sample_like(settings[0]['distribution'], variance=variance).copysign_(tensors)
 
 class HpuEstimate(Transform):
     """returns ``y/||s||``, where ``y`` is difference between current and previous update (gradient), ``s`` is difference between current and previous parameters. The returned tensors are a finite difference approximation to hessian times previous update."""
@@ -295,7 +294,7 @@ class RandomHvp(Module):
 
             rgrad = None
             for i in range(n_samples):
-                u = params.sample_like(distribution=distribution)
+                u = params.sample_like(distribution=distribution, variance=1)
 
                 Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
                                     h=h, normalize=True, retain_grad=i < n_samples-1)

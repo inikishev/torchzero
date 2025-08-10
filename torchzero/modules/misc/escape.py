@@ -44,7 +44,7 @@ class EscapeAnnealing(Module):
         if n_bad >= n_tol:
             for i in range(1, max_iter+1):
                 alpha = max_region * (i / max_iter)
-                pert = params.sample_like(distribution='sphere').mul_(alpha)
+                pert = params.sphere_like(radius=alpha)
 
                 params.add_(pert)
                 f_star = closure(False)

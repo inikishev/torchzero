@@ -67,7 +67,9 @@ class ForwardGradient(RandomizedFDM):
         grad = None
         for i in range(n_samples):
             prt = perturbations[i]
-            if prt[0] is None: prt = params.sample_like(distribution=distribution, generator=generator)
+            if prt[0] is None:
+                prt = params.sample_like(distribution=distribution, variance=1, generator=generator)
+
             else: prt = TensorList(prt)
 
             if jvp_method == 'autograd':

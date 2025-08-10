@@ -64,15 +64,15 @@ class Fill(Module):
 
 class RandomSample(Module):
     """Outputs tensors filled with random numbers from distribution depending on value of :code:`distribution`."""
-    def __init__(self, eps: float = 1, distribution: Distributions = 'normal'):
-        defaults = dict(eps=eps, distribution=distribution)
+    def __init__(self, distribution: Distributions = 'normal', variance:float | None = None):
+        defaults = dict(distribution=distribution, variance=variance)
         super().__init__(defaults)
 
     @torch.no_grad
     def step(self, var):
-        var.update = TensorList(var.params).sample_like(
-            eps=[self.settings[p]['eps'] for p in var.params], distribution=self.settings[var.params[0]]['distribution']
-        )
+        distribution = self.settings[var.params[0]]['distribution']
+        variance = self.get_settings(var.params, 'variance')
+        var.update = TensorList(var.params).sample_like(distribution=distribution, variance=variance)
         return var
 
 class Randn(Module):
