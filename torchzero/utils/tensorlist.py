@@ -33,7 +33,7 @@ _STOrSTSeq = _Scalar | torch.Tensor | _ScalarSeq | _TensorSeq
 _Dim = int | list[int] | tuple[int,...] | Literal['global'] | None
 
 Distributions = Literal['normal', 'gaussian', 'uniform', 'sphere', 'rademacher']
-Ords = _Scalar | Literal['mean-magnitude', 'var', 'std']
+Ords = _Scalar | Literal['mad', 'var', 'std']
 
 class _NewTensorKwargs(TypedDict, total = False):
     memory_format: Any
@@ -330,7 +330,7 @@ class TensorList(list[torch.Tensor | Any]):
 
     def global_vector_norm(self, ord:Ords = 2) -> torch.Tensor:
         if isinstance(ord, str):
-            if ord == 'mean-magnitude': return self.abs().global_mean()
+            if ord == 'mad': return self.abs().global_mean()
             if ord == 'std': return self.global_std()
             if ord == 'var': return self.global_var()
         return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
@@ -671,7 +671,7 @@ class TensorList(list[torch.Tensor | Any]):
 
     def norm(self, ord: Ords, dtype=None):
         if isinstance(ord, str):
-            if ord == 'mean-magnitude': return self.abs().mean()
+            if ord == 'mad': return self.abs().mean()
             if ord == 'std': return self.std()
             if ord == 'var': return self.var()
         return self.__class__(torch._foreach_norm(self, ord, dtype))
