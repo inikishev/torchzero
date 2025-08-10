@@ -94,7 +94,7 @@ class RelativeWeightDecay(Transform):
 
             opt = tz.Modular(
                 model.parameters(),
-                tz.m.RelativeWeightDecay(1e-3),
+                tz.m.RelativeWeightDecay(1e-1),
                 tz.m.Adam(),
                 tz.m.LR(1e-3)
             )
@@ -106,7 +106,7 @@ class RelativeWeightDecay(Transform):
             opt = tz.Modular(
                 model.parameters(),
                 tz.m.Adam(),
-                tz.m.RelativeWeightDecay(1e-3),
+                tz.m.RelativeWeightDecay(1e-1),
                 tz.m.LR(1e-3)
             )
 

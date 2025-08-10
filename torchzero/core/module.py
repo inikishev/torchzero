@@ -821,6 +821,21 @@ class Chain(Module):
         for i, module in enumerate(flat_modules):
             self.set_child(f'module_{i}', module)
 
+    def update(self, var):
+        # note here that `update` and `apply` shouldn't be used directly
+        # as it will update all modules, and then apply all modules
+        # it is used in specific cases like Chain as trust region hessian module
+        for i in range(len(self.children)):
+            self.children[f'module_{i}'].update(var)
+            if var.stop: break
+        return var
+
+    def apply(self, var):
+        for i in range(len(self.children)):
+            var = self.children[f'module_{i}'].apply(var)
+            if var.stop: break
+        return var
+
     def step(self, var):
         for i in range(len(self.children)):
             var = self.children[f'module_{i}'].step(var)

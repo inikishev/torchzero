@@ -123,36 +123,72 @@ class NegateOnLossIncrease(Module):
 
 
 class Online(Module):
-    """Allows certain modules to be used for mini-batch optimization."""
-    def __init__(self, module: Chainable,):
+    """Allows certain modules to be used for mini-batch optimization.
+
+    Examples:
+
+    Online L-BFGS with Backtracking line search
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Online(tz.m.LBFGS()),
+        tz.m.Backtracking()
+    )
+    ```
+
+    Online L-BFGS trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.TrustCG(tz.m.Online(tz.m.LBFGS()))
+    )
+    ```
+
+    """
+    def __init__(self, *modules: Module,):
         super().__init__()
 
-        self.set_child('module', module)
+        self.set_child('module', modules)
 
     @torch.no_grad
-    def step(self, var):
+    def update(self, var):
         closure = var.closure
         if closure is None: raise ValueError("Closure must be passed for Online")
+
         step = self.global_state.get('step', 0) + 1
         self.global_state['step'] = step
+
         params = TensorList(var.params)
         p_cur = params.clone()
         p_prev = self.get_state(params, 'p_prev', cls=TensorList)
+
         module = self.children['module']
+        var_c = var.clone(clone_update=False)
 
+        # on 1st step just step and store previous params
         if step == 1:
-            var = module.step(var.clone(clone_update=False))
-
             p_prev.copy_(params)
-            return var
 
-        # restore previous params
+            module.update(var_c)
+            var.update_attrs_from_clone_(var_c)
+            return
+
+        # restore previous params and update
         var_prev = Var(params=params, closure=closure, model=var.model, current_step=var.current_step)
         params.set_(p_prev)
         module.reset_for_online()
         module.update(var_prev)
 
-        # restore current params
+        # restore current params and update
         params.set_(p_cur)
         p_prev.copy_(params)
-        return module.step(var.clone(clone_update=False))
+        module.update(var_c)
+        var.update_attrs_from_clone_(var_c)
+
+    @torch.no_grad
+    def apply(self, var):
+        module = self.children['module']
+        return module.apply(var.clone(clone_update=False))
+
+    def get_H(self, var):
+        return self.children['module'].get_H(var)
