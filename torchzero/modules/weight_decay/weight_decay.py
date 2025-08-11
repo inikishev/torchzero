@@ -128,9 +128,9 @@ class RelativeWeightDecay(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         weight_decay = NumberList(s['weight_decay'] for s in settings)
 
-        ord = settings[0]['metric']
+        ord = settings[0]['ord']
         norm_input = settings[0]['norm_input']
-        metric = settings[0]['norm_ord']
+        metric = settings[0]['metric']
 
         if norm_input == 'update': src = TensorList(tensors)
         elif norm_input == 'grad':
