@@ -11,17 +11,19 @@ in an optimizer when you have to create one from parameters on each step. The so
 it once beforehand, but then you won't be able to easily support parameter groups and per-parameter states.
 """
 import builtins
-from collections.abc import Callable, Sequence, Iterable, Generator, Iterator
 import math
 import operator
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from typing import Any, Literal, TypedDict, overload
-from typing_extensions import Self, TypeAlias, Unpack
 
 import torch
-from .ops import where_
-from .python_tools import zipmap, generic_ne
-from .numberlist import NumberList, as_numberlist, maybe_numberlist
+from typing_extensions import Self, TypeAlias, Unpack
 
+from .metrics import Metrics, evaluate_metric, calculate_metric_list
+from .numberlist import NumberList, as_numberlist, maybe_numberlist
+from .ops import where_
+from .python_tools import generic_ne, zipmap
 
 _Scalar = int | float | bool | complex
 _TensorSeq = list[torch.Tensor] | tuple[torch.Tensor, ...]
@@ -33,7 +35,6 @@ _STOrSTSeq = _Scalar | torch.Tensor | _ScalarSeq | _TensorSeq
 _Dim = int | list[int] | tuple[int,...] | Literal['global'] | None
 
 Distributions = Literal['normal', 'gaussian', 'uniform', 'sphere', 'rademacher']
-Ords = _Scalar | Literal['mad', 'var', 'std']
 
 class _NewTensorKwargs(TypedDict, total = False):
     memory_format: Any
@@ -328,12 +329,18 @@ class TensorList(list[torch.Tensor | Any]):
     def global_std(self) -> torch.Tensor: return torch.std(self.to_vec())
     def global_var(self) -> torch.Tensor: return torch.var(self.to_vec())
 
-    def global_vector_norm(self, ord:Ords = 2) -> torch.Tensor:
-        if isinstance(ord, str):
-            if ord == 'mad': return self.abs().global_mean()
-            if ord == 'std': return self.global_std()
-            if ord == 'var': return self.global_var()
-        return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
+    def global_vector_norm(self, ord:float = 2) -> torch.Tensor:
+        # return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
+        if ord == 1: return self.global_sum()
+        if ord % 2 == 0: return self.pow(ord).global_sum().pow(1/ord)
+        if ord == torch.inf: return self.abs().global_max()
+        if ord == -torch.inf: return self.abs().global_min()
+        if ord == 0: return (self != 0).global_sum().to(self[0].dtype)
+
+        return self.abs().pow_(ord).global_sum().pow(1/ord)
+
+    def global_metric(self, metric: Metrics) -> torch.Tensor:
+        return evaluate_metric(self, metric)
 
     def global_any(self): return builtins.any(self.any())
     def global_all(self): return builtins.all(self.all())
@@ -669,12 +676,11 @@ class TensorList(list[torch.Tensor | Any]):
         if dim is None: dim = ()
         return self.__class__(i.amin(dim=dim, keepdim=keepdim) for i in self)
 
-    def norm(self, ord: Ords, dtype=None):
-        if isinstance(ord, str):
-            if ord == 'mad': return self.abs().mean()
-            if ord == 'std': return self.std()
-            if ord == 'var': return self.var()
+    def norm(self, ord: float, dtype=None):
         return self.__class__(torch._foreach_norm(self, ord, dtype))
+
+    def metric(self, metric: Metrics) -> "TensorList":
+        return calculate_metric_list(self, metric)
 
     def mean(self, dim: _Dim = None, keepdim = False) -> Self | Any:
         if dim == 'global': return self._global_fn(keepdim, self.global_mean)
@@ -828,27 +834,27 @@ class TensorList(list[torch.Tensor | Any]):
         for t, o in zip(self, other): t.copysign_(o)
         return self
 
-    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: Ords = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft(self, magnitude: "_TensorSeq", tensorwise=False, ord: Metrics = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
-            norm_self = self.norm(ord)
-            norm_other = magnitude.norm(ord)
+            norm_self = self.metric(ord)
+            norm_other = magnitude.metric(ord)
         else:
-            norm_self = self.global_vector_norm(ord)
-            norm_other = magnitude.global_vector_norm(ord)
+            norm_self = self.global_metric(ord)
+            norm_other = magnitude.global_metric(ord)
 
         if generic_ne(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
         return self * (norm_other / norm_self.clip_(min=eps))
 
-    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: Ords = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
+    def graft_(self, magnitude: "_TensorSeq", tensorwise=False, ord: Metrics = 2, eps = 1e-6, strength: float | _ScalarSeq = 1):
         if not isinstance(magnitude, TensorList): magnitude = TensorList(magnitude)
         if tensorwise:
-            norm_self = self.norm(ord)
-            norm_other = magnitude.norm(ord)
+            norm_self = self.metric(ord)
+            norm_other = magnitude.metric(ord)
         else:
-            norm_self = self.global_vector_norm(ord)
-            norm_other = magnitude.global_vector_norm(ord)
+            norm_self = self.global_metric(ord)
+            norm_other = magnitude.global_metric(ord)
 
         if generic_ne(strength, 1): norm_other.lerp_(norm_self, 1-maybe_numberlist(strength)) # pyright:ignore[reportCallIssue,reportArgumentType]
 
@@ -943,14 +949,14 @@ class TensorList(list[torch.Tensor | Any]):
         if eps!=0: std.add_(eps)
         return self.sub_(self.mean(dim = dim, keepdim=True)).div_(std)
 
-    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
+    def _clip_multiplier(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Metrics = 2):
         """calculate multipler to clip self norm to min and max"""
         if tensorwise:
-            self_norm = self.norm(ord)
+            self_norm = self.metric(ord)
             self_norm.masked_fill_(self_norm == 0, 1)
 
         else:
-            self_norm = self.global_vector_norm(ord)
+            self_norm = self.global_metric(ord)
             if self_norm == 0: return 1
 
         mul = 1
@@ -964,12 +970,12 @@ class TensorList(list[torch.Tensor | Any]):
 
         return mul
 
-    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
+    def clip_norm(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Metrics = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self * self._clip_multiplier(min, max, tensorwise, ord)
 
-    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Ords = 2):
+    def clip_norm_(self, min: "_Scalar | _ScalarSeq | None"= None, max: "_Scalar | _ScalarSeq | None" = None, tensorwise: bool = True, ord:Metrics = 2):
         """clips norm of each tensor to (min, max) range"""
         if min is None and max is None: return self
         return self.mul_(self._clip_multiplier(min, max, tensorwise, ord))
@@ -1119,7 +1125,8 @@ def generic_vector_norm(x: torch.Tensor | TensorList, ord=2) -> torch.Tensor:
     if isinstance(x, torch.Tensor): return torch.linalg.vector_norm(x, ord=ord) # pylint:disable=not-callable
     return x.global_vector_norm(ord)
 
-
+def generic_metric(x: torch.Tensor | TensorList, metric: Metrics) -> torch.Tensor:
+    return evaluate_metric(x, metric)
 
 @overload
 def generic_randn_like(x: torch.Tensor) -> torch.Tensor: ...

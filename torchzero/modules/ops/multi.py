@@ -8,7 +8,7 @@ from typing import Any, Literal
 import torch
 
 from ...core import Chainable, Module, Target, Var, maybe_chain
-from ...utils import TensorList, tensorlist
+from ...utils import TensorList, tensorlist, Metrics
 
 
 class MultiOperationBase(Module, ABC):
@@ -154,7 +154,7 @@ class GraftModules(MultiOperationBase):
     Reference:
         Agarwal, N., Anil, R., Hazan, E., Koren, T., & Zhang, C. (2020). Disentangling adaptive gradient methods from learning rates. arXiv preprint arXiv:2002.11803. https://arxiv.org/pdf/2002.11803
     """
-    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6, strength:float=1):
+    def __init__(self, direction: Chainable, magnitude: Chainable, tensorwise:bool=True, ord:Metrics=2, eps:float = 1e-6, strength:float=1):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
         super().__init__(defaults, direction=direction, magnitude=magnitude)
 
@@ -165,7 +165,7 @@ class GraftModules(MultiOperationBase):
 
 class MultiplyByModuleNorm(MultiOperationBase):
     """Outputs :code:`input` multiplied by norm of the :code:`norm` output."""
-    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
+    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:Metrics=2):
         defaults = dict(tensorwise=tensorwise, ord=ord)
         super().__init__(defaults, input=input, norm=norm)
 
@@ -173,16 +173,16 @@ class MultiplyByModuleNorm(MultiOperationBase):
     def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
         tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
         if tensorwise:
-            if ord == 'mean_abs': n = [t.mean() for t in torch._foreach_abs(norm)]
-            else: n = torch._foreach_norm(norm, ord)
-        else: n = TensorList(norm).global_vector_norm(ord)
+            n = TensorList(norm).metric(ord)
+        else:
+            n = TensorList(norm).global_metric(ord)
 
         torch._foreach_mul_(input, n)
         return input
 
 class DivideByModuleNorm(MultiOperationBase):
     """Outputs :code:`input` divided by norm of the :code:`norm` output."""
-    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:float|Literal['mean_abs']=2):
+    def __init__(self, input: Chainable, norm: Chainable, tensorwise:bool=True, ord:Metrics=2):
         defaults = dict(tensorwise=tensorwise, ord=ord)
         super().__init__(defaults, input=input, norm=norm)
 
@@ -190,9 +190,9 @@ class DivideByModuleNorm(MultiOperationBase):
     def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
         tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
         if tensorwise:
-            if ord == 'mean_abs': n = [t.mean().clip(min=1e-8) for t in torch._foreach_abs(norm)]
-            else: n = torch._foreach_clamp_min(torch._foreach_norm(norm, ord), 1e-8)
-        else: n = TensorList(norm).global_vector_norm(ord).clip(min=1e-8)
+            n = TensorList(norm).metric(ord)
+        else:
+            n = TensorList(norm).global_metric(ord)
 
         torch._foreach_div_(input, n)
         return input

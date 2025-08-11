@@ -1,5 +1,6 @@
 import math
 
+from typing import Literal
 import torch
 
 from ...core import Modular, Module, Var, Chainable
@@ -110,3 +111,30 @@ class ResetOnStuck(Module):
 
     def get_H(self, var):
         return self.children['modules'].get_H(var)
+
+
+class ResetEvery(Module):
+    def __init__(self, modules, steps: int | Literal['ndim']):
+        defaults = dict(steps=steps)
+        super().__init__(defaults)
+
+        self.set_child("modules", modules)
+
+    def update(self, var):
+        step = self.global_state.get('step', 0) + 1
+        self.global_state['step'] = step
+
+        n = self.settings[var.params[0]]['steps']
+        if isinstance(n, str): n = sum(p.numel() for p in var.params if p.requires_grad)
+
+        # reset every n steps
+        modules = self.children['modules']
+        if step % n == 0:
+            modules.reset()
+
+        # update child
+        modules.update(var)
+
+    def apply(self, var):
+        modules = self.children['modules']
+        return modules.apply(var.clone(clone_update=False))

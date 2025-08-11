@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 import torch
 
 from ...core import Module, Target, Transform, apply_transform, Chainable
-from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, Metrics
 
 class ClipNormByEMA(Transform):
     """Clips norm to be no larger than the norm of an exponential moving average of past updates.
@@ -25,7 +25,7 @@ class ClipNormByEMA(Transform):
     def __init__(
         self,
         beta=0.99,
-        ord: float = 2,
+        ord: Metrics = 2,
         eps=1e-6,
         tensorwise:bool=True,
         max_ema_growth: float | None = 1.5,
@@ -47,7 +47,7 @@ class ClipNormByEMA(Transform):
         ema.lerp_(tensors, 1-beta)
 
         if tensorwise:
-            ema_norm = ema.norm(ord)
+            ema_norm = ema.metric(ord)
 
             # clip ema norm growth
             if max_ema_growth is not None:
@@ -64,7 +64,7 @@ class ClipNormByEMA(Transform):
             else: denom.clip_(min=1)
 
         else:
-            ema_norm = ema.global_vector_norm(ord)
+            ema_norm = ema.global_metric(ord)
 
             # clip ema norm growth
             if max_ema_growth is not None:
@@ -75,7 +75,7 @@ class ClipNormByEMA(Transform):
                     ema_norm = allowed_norm
                 prev_ema_norm.set_(ema_norm)
 
-            tensors_norm = tensors.global_vector_norm(ord)
+            tensors_norm = tensors.global_metric(ord)
             denom = tensors_norm / ema_norm.clip(min=eps[0])
             if self.NORMALIZE: denom.clip_(min=eps[0])
             else: denom.clip_(min=1)

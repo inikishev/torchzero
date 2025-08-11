@@ -4,7 +4,7 @@ from typing import Literal
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, Metrics
 
 
 @torch.no_grad
@@ -81,10 +81,12 @@ class RelativeWeightDecay(Transform):
 
     Args:
         weight_decay (float): relative weight decay scale.
-        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+        wd_ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
         norm_input (str, optional):
             determines what should weight decay be relative to. "update", "grad" or "params".
             Defaults to "update".
+        norm_ord (Ords, optional):
+            type of norm that weight decay should be relative to. = 'mad',
         target (Target, optional): what to set on var. Defaults to 'update'.
 
     Examples:
@@ -116,17 +118,19 @@ class RelativeWeightDecay(Transform):
         weight_decay: float = 0.1,
         ord: int  = 2,
         norm_input: Literal["update", "grad", "params"] = "update",
+        metric: Metrics = 'mad',
         target: Target = "update",
     ):
-        defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input)
+        defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input, metric=metric)
         super().__init__(defaults, uses_grad=norm_input == 'grad', target=target)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         weight_decay = NumberList(s['weight_decay'] for s in settings)
 
-        ord = settings[0]['ord']
+        ord = settings[0]['wd_ord']
         norm_input = settings[0]['norm_input']
+        metric = settings[0]['norm_ord']
 
         if norm_input == 'update': src = TensorList(tensors)
         elif norm_input == 'grad':
@@ -137,9 +141,8 @@ class RelativeWeightDecay(Transform):
         else:
             raise ValueError(norm_input)
 
-        mean_abs = src.abs().global_mean()
-
-        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * mean_abs, ord)
+        norm = src.global_metric(metric)
+        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * norm, ord)
 
 
 @torch.no_grad

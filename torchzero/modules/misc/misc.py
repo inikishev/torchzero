@@ -6,7 +6,7 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Var
-from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states
+from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states, Metrics
 
 
 class Previous(TensorwiseTransform):
@@ -139,7 +139,7 @@ class UpdateSign(Transform):
 
 class GraftToGrad(Transform):
     """Grafts update to the gradient, that is update is rescaled to have the same norm as the gradient."""
-    def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
 
@@ -151,7 +151,7 @@ class GraftToGrad(Transform):
 
 class GraftGradToUpdate(Transform):
     """Outputs gradient grafted to update, that is gradient rescaled to have the same norm as the update."""
-    def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-6, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
 
@@ -164,7 +164,7 @@ class GraftGradToUpdate(Transform):
 
 class GraftToParams(Transform):
     """Grafts update to the parameters, that is update is rescaled to have the same norm as the parameters, but no smaller than :code:`eps`."""
-    def __init__(self, tensorwise:bool=False, ord:float=2, eps:float = 1e-4, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-4, target: Target = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
 

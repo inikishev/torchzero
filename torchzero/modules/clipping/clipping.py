@@ -1,11 +1,13 @@
+import math
+from collections.abc import Iterable, Sequence
 from operator import itemgetter
 from typing import Literal
-from collections.abc import Iterable, Sequence
-import math
+
 import torch
 
 from ...core import Module, Target, Transform
-from ...utils import NumberList, TensorList, Ords
+from ...utils import Metrics, NumberList, TensorList
+from ...utils.metrics import _METRICS
 
 
 def clip_grad_value_(params: Iterable[torch.Tensor], value: float):
@@ -24,7 +26,7 @@ def _clip_norm_(
     min: float | NumberList | None,
     max: float | NumberList | None,
     norm_value: float | NumberList | None,
-    ord: Ords,
+    ord: Metrics,
     dim: int | Sequence[int] | Literal["global"] | None,
     inverse_dims: bool,
     min_size: int,
@@ -35,7 +37,7 @@ def _clip_norm_(
             raise ValueError(f'if norm_value is given then min and max must be None got {min = }; {max = }')
 
         # if dim is None: return tensors_.mul_(norm_value / tensors_.norm(ord=ord))
-        if dim == 'global': return tensors_.mul_(norm_value / tensors_.global_vector_norm(ord=ord))
+        if dim == 'global': return tensors_.mul_(norm_value / tensors_.global_metric(ord))
 
     # if dim is None: return tensors_.clip_norm_(min,max,tensorwise=True,ord=ord)
     if dim == 'global': return tensors_.clip_norm_(min,max,tensorwise=False,ord=ord)
@@ -55,10 +57,7 @@ def _clip_norm_(
         if size < min_size: continue
 
         if isinstance(ord, str):
-            if ord == 'mad': norm = tensor.abs().mean(dim=real_dim, keepdim=True)
-            elif ord == 'std': norm = tensor.std()
-            elif ord == 'var': norm = tensor.var()
-            else: raise ValueError(f"unknown order {ord}")
+            norm = _METRICS[ord].evaluate_tensor(tensor, dim=real_dim, keepdim=True)
         else:
             norm: torch.Tensor = torch.linalg.vector_norm(tensor, ord=ord, dim=real_dim, keepdim=True) # pylint:disable=not-callable
 
@@ -97,7 +96,7 @@ def _clip_norm_(
 def clip_grad_norm_(
     params: Iterable[torch.Tensor],
     max_norm: float | None,
-    ord: Ords = 2,
+    ord: Metrics = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
     inverse_dims: bool = False,
     min_size: int = 2,
@@ -125,7 +124,7 @@ def clip_grad_norm_(
 def normalize_grads_(
     params: Iterable[torch.Tensor],
     norm_value: float,
-    ord: Ords = 2,
+    ord: Metrics = 2,
     dim: int | Sequence[int] | Literal["global"] | None = None,
     inverse_dims: bool = False,
     min_size: int = 1,
@@ -237,7 +236,7 @@ class ClipNorm(Transform):
     def __init__(
         self,
         max_norm: float,
-        ord: Ords = 2,
+        ord: Metrics = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
@@ -307,7 +306,7 @@ class Normalize(Transform):
     def __init__(
         self,
         norm_value: float = 1,
-        ord: Ords = 2,
+        ord: Metrics = 2,
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,

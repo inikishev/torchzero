@@ -74,5 +74,15 @@ class GradientSampling(Reformulation):
     def pre_step(self, var):
         # pre-generate perturnations
         params = TensorList(var.params)
+        settings = [self.settings[p] for p in params]
+        sigma_inits = [s['sigma'] for s in settings]
+
+        states = [self.state[p] for p in params]
+        sigmas = [s.setdefault('sigma', si) for s, si in zip(states, sigma_inits)]
+
         setting = self.settings[params[0]]
+        n = setting['n']
+        distribution = setting['distribution']
+
+
         params.sample_like()

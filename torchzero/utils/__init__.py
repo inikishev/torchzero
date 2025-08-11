@@ -26,7 +26,7 @@ from .params import (
 )
 from .python_tools import flatten, generic_eq, generic_ne, reduce_dim, unpack_dicts, safe_dict_update_
 from .tensorlist import (
-    Distributions, Ords,
+    Distributions, Metrics,
     TensorList,
     as_tensorlist,
     generic_clamp,
