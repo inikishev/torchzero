@@ -81,12 +81,13 @@ class RelativeWeightDecay(Transform):
 
     Args:
         weight_decay (float): relative weight decay scale.
-        wd_ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
         norm_input (str, optional):
             determines what should weight decay be relative to. "update", "grad" or "params".
             Defaults to "update".
-        norm_ord (Ords, optional):
-            type of norm that weight decay should be relative to. = 'mad',
+         metric (Ords, optional):
+            metric (norm, etc) that weight decay should be relative to.
+            defaults to 'mad' (mean absolute deviation).
         target (Target, optional): what to set on var. Defaults to 'update'.
 
     Examples:

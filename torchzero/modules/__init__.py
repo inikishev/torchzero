@@ -1,3 +1,4 @@
+from . import experimental
 from .clipping import *
 from .conjugate_gradient import *
 from .grad_approximation import *
@@ -13,8 +14,7 @@ from .quasi_newton import *
 from .second_order import *
 from .smoothing import *
 from .step_size import *
+from .termination import *
 from .trust_region import *
 from .weight_decay import *
 from .wrappers import *
-
-from . import experimental

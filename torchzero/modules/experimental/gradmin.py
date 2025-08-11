@@ -5,11 +5,11 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Var
+from ...core import Module, Var, Chainable
 from ...utils import NumberList, TensorList
 from ...utils.derivatives import jacobian_wrt
 from ..grad_approximation import GradApproximator, GradTarget
-from ..smoothing.gaussian import Reformulation
+from ..smoothing.sampling import Reformulation
 
 
 
@@ -28,6 +28,7 @@ class GradMin(Reformulation):
     """
     def __init__(
         self,
+        modules: Chainable,
         loss_term: float | None = 0,
         relative: Literal['loss_to_grad', 'grad_to_loss'] | None = None,
         graft: Literal['loss_to_grad', 'grad_to_loss'] | None = None,
@@ -39,7 +40,7 @@ class GradMin(Reformulation):
     ):
         if (relative is not None) and (graft is not None): warnings.warn('both relative and graft loss are True, they will clash with each other')
         defaults = dict(loss_term=loss_term, relative=relative, graft=graft, square=square, mean=mean, maximize_grad=maximize_grad, create_graph=create_graph, modify_loss=modify_loss)
-        super().__init__(defaults)
+        super().__init__(defaults, modules=modules)
 
     @torch.no_grad
     def closure(self, backward, closure, params, var):

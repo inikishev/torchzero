@@ -1,2 +1,2 @@
 from .laplacian import LaplacianSmoothing
-from .gaussian import GaussianHomotopy
+from .sampling import GradientSampling

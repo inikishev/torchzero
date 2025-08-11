@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, MutableMapping, Sequence
 from operator import itemgetter
-from typing import Any, final, overload, Literal
+from typing import Any, final, overload, Literal, cast
 
 import torch
 
@@ -44,7 +44,8 @@ class Var:
         closure: Callable | None,
         model: torch.nn.Module | None,
         current_step: int,
-        parent: "Var | None" = None
+        parent: "Var | None" = None,
+        modular: "Modular | None" = None,
     ):
         self.params: list[torch.Tensor] = params
         """List of all parameters with requires_grad = True."""
@@ -63,6 +64,9 @@ class Var:
         """parent ``Var`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
         Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
         e.g. when projecting."""
+
+        self.modular: "Modular" = cast(Modular, modular)
+        """Modular optimizer object that created this ``Var``."""
 
         self.update: list[torch.Tensor] | None = None
         """
@@ -124,8 +128,14 @@ class Var:
         self.skip_update: bool = False
         """if True, the parameters will not be updated."""
 
-        self.storage: dict = {}
-        """Storage for any other data, such as hessian estimates, etc"""
+        # self.storage: dict = {}
+        # """Storage for any other data, such as hessian estimates, etc."""
+
+        self.attrs: dict = {}
+        """attributes, Modular.attrs is updated with this after each step. This attribute should always be modified in-place"""
+
+        self.should_terminate: bool | None = None
+        """termination criteria, Modular.should_terminate is set to this after each step if not None"""
 
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
         """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`var.loss`.
@@ -194,7 +204,8 @@ class Var:
 
         Doesn't copy ``is_last``, ``nested_is_last`` and ``last_module_lrs``. They will always be ``False``/``None``.
 
-        Setting ``parent`` is only if clone's parameters are something different, while clone's closure referes to the same objective but with "view" on parameters.
+        Setting ``parent`` is only if clone's parameters are something different,
+        while clone's closure referes to the same objective but with a "view" on parameters.
         """
         copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step, parent=parent)
 
@@ -210,6 +221,10 @@ class Var:
         copy.stop = self.stop
         copy.skip_update = self.skip_update
 
+        copy.modular = self.modular
+        copy.attrs = self.attrs
+        copy.should_terminate = self.should_terminate
+
         return copy
 
     def update_attrs_from_clone_(self, var: "Var"):
@@ -219,13 +234,14 @@ class Var:
         from the child's context back to the parent `Vars` if the parent
         didn't have them computed already.
 
-        Also, as long as `post_step_hooks` is modified in-place, if the child updates it,
-        the update will affect the parent too.
+        Also, as long as ``post_step_hooks`` and ``attrs`` are modified in-place,
+        if the child updates them, the update will affect the parent too.
         """
         if self.loss is None: self.loss = var.loss
         if self.loss_approx is None: self.loss_approx = var.loss_approx
         if self.grad is None: self.grad = var.grad
-        self.storage.update(var.storage)
+
+        if var.should_terminate is not None: self.should_terminate = var.should_terminate
 
     def zero_grad(self, set_to_none=True):
         if set_to_none:
@@ -599,6 +615,14 @@ class Module(ABC):
 
         return Hvp, rgrad
 
+    def get_generator(self, device: torch.types.Device, seed: int | None):
+        if seed is None: return None
+
+        if 'generator' not in self.global_state:
+            self.global_state['generator'] = torch.Generator(device).manual_seed(seed)
+
+        return self.global_state['generator']
+
 # endregion
 
 Chainable = Module | Sequence[Module]
@@ -707,6 +731,12 @@ class Modular(torch.optim.Optimizer):
         self._closure_return = None
         """on each step, first time a closure is evaluated, this attribute is set to the returned value. `step` method returns this."""
 
+        self.attrs = {}
+        """custom attributes that can be set by modules, for example EMA of weights or best so far"""
+
+        self.should_terminate = False
+        """is set to True by termination criteria modules."""
+
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]
         self.param_groups.append(ChainMap(proc_param_group, self.defaults))
@@ -770,7 +800,7 @@ class Modular(torch.optim.Optimizer):
 
         # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step)
+        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step, modular=self)
 
         # if closure is None, assume backward has been called and gather grads
         if closure is None:
@@ -800,6 +830,11 @@ class Modular(torch.optim.Optimizer):
             with torch.no_grad():
                 torch._foreach_sub_(params, var.get_update())
 
+        # update attributes
+        self.attrs.update(var.attrs)
+        if var.should_terminate is not None: self.should_terminate = var.should_terminate
+
+        # hooks
         for hook in var.post_step_hooks:
             hook(self, var)
 
