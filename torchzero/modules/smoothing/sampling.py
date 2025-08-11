@@ -84,5 +84,5 @@ class GradientSampling(Reformulation):
         n = setting['n']
         distribution = setting['distribution']
 
-
-        params.sample_like()
+        perts = [params.sample_like(distribution)]
+        
