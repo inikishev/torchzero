@@ -122,12 +122,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
     def update_H(self, H:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
                  p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]) -> torch.Tensor:
         """update hessian inverse"""
-        raise NotImplementedError
+        raise NotImplementedError(f"hessian inverse approximation is not implemented for {self.__class__.__name__}.")
 
     def update_B(self, B:torch.Tensor, s:torch.Tensor, y:torch.Tensor, p:torch.Tensor, g:torch.Tensor,
                  p_prev:torch.Tensor, g_prev:torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]) -> torch.Tensor:
         """update hessian"""
-        raise NotImplementedError
+        raise NotImplementedError(f"{self.__class__.__name__} only supports hessian inverse approximation. "
+                                  "Remove the `inverse=False` argument when initializing this module.")
 
     def modify_B(self, B: torch.Tensor, state: dict[str, Any], setting: Mapping[str, Any]):
         """modifies B out of place before appling the update rule, doesn't affect the buffer B."""

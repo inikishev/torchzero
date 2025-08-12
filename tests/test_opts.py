@@ -670,8 +670,8 @@ UpdateSign = Run(
     sphere_steps=10, sphere_loss=0,
 )
 GradAccumulation = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.05), n=10), ),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(tz.m.LR(0.5), n=10), ),
+    func_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=25, merge_invariant=True,
     sphere_steps=20, sphere_loss=1e-11,
@@ -795,8 +795,8 @@ NewtonCG = Run(
 
 # ---------------------------- smoothing/gaussian ---------------------------- #
 GaussianHomotopy = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GaussianHomotopy(10, 1, tol=1e-1, seed=0), tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()], 1, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()], 1, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
     needs_closure=True,
     func='booth', steps=20, loss=0.1, merge_invariant=True,
     sphere_steps=10, sphere_loss=200,

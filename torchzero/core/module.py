@@ -123,7 +123,7 @@ class Var:
 
         self.stop: bool = False
         """if True, all following modules will be skipped.
-        If this module is a child, """
+        If this module is a child, it only affects modules at the same level (in the same Chain)."""
 
         self.skip_update: bool = False
         """if True, the parameters will not be updated."""
