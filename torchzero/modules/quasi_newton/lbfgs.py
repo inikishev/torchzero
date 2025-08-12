@@ -179,6 +179,8 @@ class LBFGS(Transform):
             small to reduce number of line search iterations. Defaults to True.
         update_freq (int, optional):
             how often to update L-BFGS history. Larger values may be better for stochastic optimization. Defaults to 1.
+        damping (DampingStrategyType, optional):
+            damping to use, can be "powell" or "double". Defaults to None.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-BFGS history and before preconditioning. Defaults to None.
 

@@ -5,27 +5,15 @@ from operator import itemgetter
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, vec_to_tensors_
 from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
 
 
-def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
+def lsr1_Hx(x, s_history: Sequence, y_history: Sequence,):
     m = len(s_history)
     if m == 0: return x.clone()
-
-    # initial scaling doesn't work well for L-SR1
-    # s = s_history[-1]
-    # y = y_history[-1]
-    # sy = s.dot(y)
-
-    # P_0 = sy / y.dot(y) if inverse else y.dot(y) / sy
-    # if P_0 < 1e-12: P_0 = 1
-    # Px = P_0 * x
-
-    if not inverse:
-        s_history, y_history = y_history, s_history
 
     w_list = []
     wy_list: list = [None for _ in range(m)]
@@ -35,7 +23,7 @@ def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
         s_k = s_history[k]
         y_k = y_history[k]
 
-        Py = y_k.clone()
+        Hx = y_k.clone()
         for j in range(k):
             w_j = w_list[j]
             y_j = y_history[j]
@@ -45,12 +33,12 @@ def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
             if wy.abs() < 1e-12: continue
 
             alpha = w_j.dot(y_k) / wy
-            Py.add_(w_j, alpha=alpha)
+            Hx.add_(w_j, alpha=alpha)
 
-        w_k = s_k - Py
+        w_k = s_k - Hx
         w_list.append(w_k)
 
-    Px = x.clone()
+    Hx = x.clone()
 
     # second loop
     for k in range(m):
@@ -62,10 +50,46 @@ def lsr1_Px(x, s_history: Sequence, y_history: Sequence, inverse:bool, ):
         if wy.abs() < 1e-12: continue
 
         alpha = w_k.dot(x) / wy
-        Px.add_(w_k, alpha=alpha)
+        Hx.add_(w_k, alpha=alpha)
 
-    return Px
+    return Hx
 
+def lsr1_Bx(x, s_history: Sequence, y_history: Sequence,):
+    return lsr1_Hx(x, s_history=y_history, y_history=s_history)
+
+def _make_M(S: torch.Tensor, Y: torch.Tensor, B_0):
+    return (S @ Y.mT) - (B_0 * (S @ S.mT))
+
+def lsr1_Bx_compact(x: torch.Tensor, S: torch.Tensor, Y: torch.Tensor, M=None):
+    m = len(S)
+    if m == 0:
+        return x.clone()
+
+    B_0 = 1
+    Bx = x
+
+    if M is None:
+        M = _make_M(S, Y, B_0)
+
+    Sx = S @ x
+    Yx = Y @ x
+    v = Yx - B_0 * Sx
+
+    # # solve Mu = v
+    # u, info = torch.linalg.solve_ex(M, v) # pylint:disable=not-callable
+    # if info != 0:
+    #     return Bx, None
+    u = torch.linalg.lstsq(M, v).solution # works better
+
+    # correction c = (Y - B_0 S)^T u = Y^T u - S^T (B_0 u)
+    YTu = (Y * u.unsqueeze(-1)).sum(0)
+    STBu = (S * (B_0 * u).unsqueeze(-1)).sum(0)
+    correction = YTu - STBu
+
+    return Bx + correction, M
+
+def lsr1_Hx_compact(x: torch.Tensor, S: torch.Tensor, Y: torch.Tensor, M=None):
+    return lsr1_Bx_compact(x, S=Y, Y=S, M=M)
 
 
 class LSR1LinearOperator(LinearOperator):
@@ -75,14 +99,38 @@ class LSR1LinearOperator(LinearOperator):
         self.y_history = y_history
 
     def solve(self, b):
-        return lsr1_Px(x=b, s_history=self.s_history, y_history=self.y_history, inverse=True)
+        return lsr1_Hx(x=b, s_history=self.s_history, y_history=self.y_history)
 
     def matvec(self, x):
-        return lsr1_Px(x=x, s_history=self.s_history, y_history=self.y_history, inverse=False)
+        return lsr1_Bx(x=x, s_history=self.s_history, y_history=self.y_history)
 
     def size(self):
         if len(self.s_history) == 0: raise RuntimeError()
         n = len(self.s_history[0])
+        return (n, n)
+
+class LSR1CompactLinearOperator(LinearOperator):
+    def __init__(self, s_history: Sequence[torch.Tensor], y_history: Sequence[torch.Tensor]):
+        super().__init__()
+        if len(s_history) == 0: self.S = self.Y = None
+        else:
+            self.S = torch.stack(tuple(s_history))
+            self.Y = torch.stack(tuple(y_history))
+        self.M = None
+
+    def solve(self, b):
+        if self.S is None or self.Y is None: return b.clone()
+        Hx, self.M = lsr1_Hx_compact(x=b, S=self.S, Y=self.Y, M=self.M)
+        return Hx
+
+    def matvec(self, x):
+        if self.S is None or self.Y is None: return x.clone()
+        Bx, self.M = lsr1_Bx_compact(x=x, S=self.S, Y=self.Y, M=self.M)
+        return Bx
+
+    def size(self):
+        if self.S is None or self.Y is None: raise RuntimeError()
+        n = len(self.S[0])
         return (n, n)
 
 
@@ -109,6 +157,10 @@ class LSR1(Transform):
             small to reduce number of line search iterations. Defaults to False.
         update_freq (int, optional):
             how often to update L-SR1 history. Larger values may be better for stochastic optimization. Defaults to 1.
+        damping (DampingStrategyType, optional):
+            damping to use, can be "powell" or "double". Defaults to None.
+        compact (bool, optional):
+            if True, uses a compact representation verstion of L-SR1. It is much faster computationally, but less stable.
         inner (Chainable | None, optional):
             optional inner modules applied after updating L-SR1 history and before preconditioning. Defaults to None.
 
@@ -141,6 +193,7 @@ class LSR1(Transform):
         scale_first:bool=False,
         update_freq = 1,
         damping: DampingStrategyType = None,
+        compact:bool=False,
         inner: Chainable | None = None,
     ):
         defaults = dict(
@@ -151,6 +204,7 @@ class LSR1(Transform):
             ptol_reset=ptol_reset,
             gtol_reset=gtol_reset,
             damping = damping,
+            compact=compact,
         )
         super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
 
@@ -177,8 +231,8 @@ class LSR1(Transform):
         self.global_state['step'] = step + 1
 
         # history of s and k
-        s_history: deque[TensorList] = self.global_state['s_history']
-        y_history: deque[TensorList] = self.global_state['y_history']
+        s_history: deque = self.global_state['s_history']
+        y_history: deque = self.global_state['y_history']
 
         setting = settings[0]
         ptol = setting['ptol']
@@ -186,6 +240,7 @@ class LSR1(Transform):
         ptol_reset = setting['ptol_reset']
         gtol_reset = setting['gtol_reset']
         damping = setting['damping']
+        compact = setting['compact']
 
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
 
@@ -226,10 +281,17 @@ class LSR1(Transform):
         if sy is not None:
             assert s is not None and y is not None and sy is not None
 
-            s_history.append(s)
-            y_history.append(y)
+            if compact:
+                s_history.append(s.to_vec())
+                y_history.append(y.to_vec())
+            else:
+                s_history.append(s)
+                y_history.append(y)
 
     def get_H(self, var=...):
+        if self.settings[var.params[0]]['compact']:
+            return LSR1CompactLinearOperator(self.global_state['s_history'], self.global_state['y_history'])
+
         s_history = [tl.to_vec() for tl in self.global_state['s_history']]
         y_history = [tl.to_vec() for tl in self.global_state['y_history']]
         return LSR1LinearOperator(s_history, y_history)
@@ -238,6 +300,7 @@ class LSR1(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         setting = settings[0]
         scale_first = setting['scale_first']
+        compact = setting['compact']
 
         tensors = as_tensorlist(tensors)
 
@@ -245,12 +308,25 @@ class LSR1(Transform):
         y_history = self.global_state['y_history']
 
         # precondition
-        dir = lsr1_Px(
-            x=tensors,
-            s_history=s_history,
-            y_history=y_history,
-            inverse=True,
-        )
+        if len(s_history) == 0:
+            dir = tensors
+
+        else:
+            if compact:
+                dir_vec, _ = lsr1_Hx_compact(
+                    x=tensors.to_vec(),
+                    S=torch.stack(tuple(s_history)),
+                    Y=torch.stack(tuple(y_history)),
+                )
+                vec_to_tensors_(dir_vec, tensors)
+                dir = tensors
+
+            else:
+                dir = lsr1_Hx(
+                    x=tensors,
+                    s_history=s_history,
+                    y_history=y_history,
+                )
 
         # scale 1st step
         if scale_first and self.global_state.get('step', 1) == 1:
