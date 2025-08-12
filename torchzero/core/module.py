@@ -714,11 +714,16 @@ class Modular(torch.optim.Optimizer):
         for m in self.unrolled_modules: defaults.update(m.defaults)
         super().__init__(param_groups, defaults=defaults)
 
-        # note - this is what super init does:
+        # note - this is what super().__init__(param_groups, defaults=defaults) does:
 
         # self.defaults = defaults
         # for param_group in param_groups:
         #     self.add_param_group(param_group)
+
+        # add_param_group adds a ChainMap where defaults are lowest priority,
+        # and entries specifed in param_groups or scheduler are higher priority.
+        # pytorch schedulers do group["lr"] = new_lr, which sets higher priority key.
+        # in each module, settings passed to that module by calling set_param_groups are highest priority
 
         self.current_step = 0
         """global step counter for the optimizer."""

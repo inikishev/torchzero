@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import Callable
 from typing import cast
 
@@ -29,52 +30,50 @@ def _split(
 
     split_var = module.step(split_var)
 
-    if (var.grad is None) and (split_var.grad is not None):
-        var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+    # those should be set due to var being parent
+    if split_var.grad is not None:
+        assert var.grad is not None
+
+    if split_var.loss is not None:
+        assert var.loss is not None
 
     if split_var.update is not None:
 
+        # make sure update is set, it will be filled with ``true`` and ``false`` tensors
         if var.update is None:
             if var.grad is None: var.update = [cast(torch.Tensor, None) for _ in var.params]
             else: var.update = [g.clone() for g in var.grad]
 
+        # set all tensors from this split
         for idx, u in zip(idxs, split_var.update):
             var.update[idx] = u
 
-    # var.update_attrs_from_clone_(split_var) # this will make grad have wrong number of tensors
-    if var.loss is None: var.loss = split_var.loss
-    if var.loss_approx is None: var.loss_approx = split_var.loss_approx
     return var
 
 class Split(Module):
-    """Apply `true` modules to all parameters filtered by `filter`, apply `false` modules to all other parameters.
+    """Apply ``true`` modules to all parameters filtered by ``filter``, apply ``false`` modules to all other parameters.
 
     Args:
         filter (Callable[[torch.Tensor], bool]): a function that takes in a parameter tensor and returns a boolean value.
-        true (Chainable | None): modules that are applied to tensors where :code:`filter` returned True.
-        false (Chainable | None): modules that are applied to tensors where :code:`filter` returned False.
+        true (Chainable | None): modules that are applied to tensors where ``filter`` returned True.
+        false (Chainable | None): modules that are applied to tensors where ``filter`` returned False.
 
-    Examples:
-        standard Muon with Adam fallback
+    ### Examples:
 
-        .. code-block:: python
+    Muon with Adam fallback using same hyperparams as https://github.com/KellerJordan/Muon
 
-            opt = tz.Modular(
-                model.head.parameters(),
-                tz.m.Split(
-                    # apply muon only to 2D+ parameters
-                    filter = lambda t: t.ndim >= 2,
-                    true = [
-                        tz.m.HeavyBall(),
-                        tz.m.Orthogonalize(),
-                        tz.m.LR(1e-2),
-                    ],
-                    false = tz.m.Adam()
-                ),
-                tz.m.LR(1e-2)
-            )
-
-
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NAG(0.95),
+        tz.m.Split(
+            lambda p: p.ndim >= 2,
+            true = tz.m.Orthogonalize(),
+            false = [tz.m.Adam(0.9, 0.95), tz.m.Mul(1/66)],
+        ),
+        tz.m.LR(1e-2),
+    )
+    ```
     """
     def __init__(self, filter: Callable[[torch.Tensor], bool], true: Chainable | None, false: Chainable | None):
         defaults = dict(filter=filter)

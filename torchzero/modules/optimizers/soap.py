@@ -62,7 +62,7 @@ def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
 
         try:
             _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-        except Exception:
+        except torch.linalg.LinAlgError:
             _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
             Q = Q.to(m.dtype)
 
