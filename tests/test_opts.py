@@ -56,15 +56,17 @@ def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, step
         if use_closure:
             def closure(backward=True):
                 loss = objective()
+                losses.append(loss.detach())
                 if backward:
                     opt.zero_grad()
                     loss.backward()
                 return loss
             ret = opt.step(closure)
             assert ret is not None # the return should be the loss
-            loss = objective() # in case f(x_0) is not evaluated
-            assert torch.isfinite(loss), f"{opt}: Inifinite loss - {[l.item() for l in losses]}"
-            losses.append(loss)
+            with torch.no_grad():
+                loss = objective() # in case f(x_0) is not evaluated
+                assert torch.isfinite(loss), f"{opt}: Inifinite loss - {[l.item() for l in losses]}"
+                losses.append(loss.detach())
 
         else:
             loss = objective()
@@ -72,7 +74,7 @@ def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, step
             loss.backward()
             opt.step()
             assert torch.isfinite(loss), f"{opt}: Inifinite loss - {[l.item() for l in losses]}"
-            losses.append(loss)
+            losses.append(loss.detach())
 
     losses.append(objective())
     return torch.stack(losses).nan_to_num(0,10000,10000).min()
@@ -795,11 +797,11 @@ NewtonCG = Run(
 
 # ---------------------------- smoothing/gaussian ---------------------------- #
 GaussianHomotopy = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()], 1, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()], 1, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
+    func_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1e-1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
     needs_closure=True,
-    func='booth', steps=20, loss=0.1, merge_invariant=True,
-    sphere_steps=10, sphere_loss=200,
+    func='booth', steps=20, loss=0.01, merge_invariant=True,
+    sphere_steps=10, sphere_loss=1,
 )
 
 # ---------------------------- smoothing/laplacian --------------------------- #

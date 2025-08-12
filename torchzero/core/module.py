@@ -881,7 +881,7 @@ class Chain(Module):
         s = self.__class__.__name__
         if self.children:
             if s == 'Chain': s = 'C' # to shorten it
-            s = f'{s}({", ".join(str(m) for m in self.children.values())}'
+            s = f'{s}({", ".join(str(m) for m in self.children.values())})'
         return s
 
 def maybe_chain(*modules: Chainable) -> Module:
