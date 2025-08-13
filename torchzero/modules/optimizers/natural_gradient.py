@@ -9,14 +9,14 @@ from ..optimizers.ladagrad import lm_adagrad_apply, lm_adagrad_update
 class NaturalGradient(Module):
     """Natural gradient approximated via empirical fisher information matrix.
 
-    To use this, the closure should return a vector of per-sample losses.
-    Please add the `backward` argument, it will always be False but it is required.
-    Gradients will be calculated via batched autograd within this module, you don't need to
-    implement the backward pass. Please see below for an example.
+    To use this, either pass vector of per-sample losses to the step method, or make sure
+    the closure returns it. Gradients will be calculated via batched autograd within this module,
+    you don't need to implement the backward pass. When using closure, please add the ``backward`` argument,
+    it will always be False but it is required. See below for an example.
 
     Note:
-        Empirical fisher information matrix may be a really bad approximation. If that is the case,
-        set ``sqrt`` to True to perform whitening instead, which is way more robust.
+        Empirical fisher information matrix may give a really bad approximation in some cases.
+        If that is the case, set ``sqrt`` to True to perform whitening instead, which is way more robust.
 
     Args:
         reg (float, optional): regularization parameter. Defaults to 1e-8.
@@ -26,8 +26,9 @@ class NaturalGradient(Module):
             whitens the gradient and often performs much better, especially when you try to use NGD
             with a vector that isn't strictly per-sample gradients, but rather for example different losses.
         gn_grad (bool, optional):
-            if True, uses G^T @ f as the gradient (effectively sum weighted by value),
-            as in Gauss-Newton. If False, uses sum of per-sample gradients.
+            if True, uses Gauss-Newton G^T @ f as the gradient, which is effectively sum weighted by value
+            and is equivalent to squaring the values. This way you can solve least-squares
+            objectives with a NGD-like algorithm. If False, uses sum of per-sample gradients.
             This has an effect when ``sqrt=True``, and affects the ``grad`` attribute.
             Defaults to False.
         batched (bool, optional): whether to use vmapping. Defaults to True.
@@ -120,6 +121,24 @@ class NaturalGradient(Module):
             g = self.global_state["g"] = G.sum(0)
 
         var.grad = vec_to_tensors(g, params)
+
+        # set closure to calculate scalar value for line searches etc
+        if var.closure is not None:
+            def ngd_closure(backward=True):
+                if backward:
+                    var.zero_grad()
+                    with torch.enable_grad():
+                        loss = closure(False)
+                        if gn_grad: loss = loss.pow(2)
+                        loss = loss.sum()
+                        loss.backward()
+                    return loss
+
+                loss = closure(False)
+                if gn_grad: loss = loss.pow(2)
+                return loss.sum()
+
+            var.closure = ngd_closure
 
     @torch.no_grad
     def apply(self, var):

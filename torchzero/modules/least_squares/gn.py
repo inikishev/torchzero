@@ -47,7 +47,7 @@ class GaussNewton(Module):
     """Gauss-newton method.
 
     To use this, the closure should return a vector of values to minimize sum of squares of.
-    Please add the `backward` argument, it will always be False but it is required.
+    Please add the ``backward`` argument, it will always be False but it is required.
     Gradients will be calculated via batched autograd within this module, you don't need to
     implement the backward pass. Please see below for an example.
 
@@ -128,18 +128,19 @@ class GaussNewton(Module):
         var.grad = vec_to_tensors(Gtf, var.params)
 
         # set closure to calculate sum of squares for line searches etc
-        def sos_closure(backward=True):
-            if backward:
-                var.zero_grad()
-                with torch.enable_grad():
-                    loss = closure(False).pow(2).sum()
-                    loss.backward()
+        if var.closure is not None:
+            def sos_closure(backward=True):
+                if backward:
+                    var.zero_grad()
+                    with torch.enable_grad():
+                        loss = closure(False).pow(2).sum()
+                        loss.backward()
+                    return loss
+
+                loss = closure(False).pow(2).sum()
                 return loss
 
-            loss = closure(False).pow(2).sum()
-            return loss
-
-        var.closure = sos_closure
+            var.closure = sos_closure
 
     @torch.no_grad
     def apply(self, var):

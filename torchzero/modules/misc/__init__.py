@@ -1,6 +1,13 @@
 from .debug import PrintLoss, PrintParams, PrintShape, PrintUpdate
-from .escape import EscapeAnnealing, ResetOnStuck, ResetEvery
+from .escape import EscapeAnnealing, ResetEvery, ResetOnStuck
 from .gradient_accumulation import GradientAccumulation
+from .homotopy import (
+    ExpHomotopy,
+    LambdaHomotopy,
+    LogHomotopy,
+    SqrtHomotopy,
+    SquareHomotopy,
+)
 from .misc import (
     DivByLoss,
     FillLoss,
