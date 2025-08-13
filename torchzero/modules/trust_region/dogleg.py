@@ -33,7 +33,7 @@ class Dogleg(TrustRegionBase):
     """
     def __init__(
         self,
-        hess_module: Module,
+        hess_module: Chainable,
         eta: float= 0.0,
         nplus: float = 2,
         nminus: float = 0.25,

@@ -267,16 +267,63 @@ class AtA(LinearOperator):
     def __init__(self, A: torch.Tensor):
         self.A = A
 
-    def matvec(self, x): return self.A.T.mv(self.A.mv(x))
-    def rmatvec(self, x): return self.A.T.mv(self.A.mv(x))
+    def matvec(self, x): return self.A.mH.mv(self.A.mv(x))
+    def rmatvec(self, x): return self.matvec(x)
 
-    def matmat(self, x): return torch.linalg.multi_dot([self.A.T, self.A, x]) # pylint:disable=not-callable
-    def rmatmat(self, x): return torch.linalg.multi_dot([self.A.T, self.A, x]) # pylint:disable=not-callable
+    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, x])) # pylint:disable=not-callable
+    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, x])) # pylint:disable=not-callable
 
     def is_dense(self): return False
-    def to_tensor(self): return self.A.T @ self.A
+    def to_tensor(self): return self.A.mH @ self.A
     def transpose(self): return AtA(self.A)
+
+    def add_diagonal(self, x):
+        if isinstance(x, torch.Tensor) and x.numel() <= 1: x = x.item()
+        if isinstance(x, (int,float)): x = torch.full((self.shape[0],), fill_value=x, device=self.A.device, dtype=self.A.dtype)
+        return Dense(self.to_tensor() + torch.diag_embed(x))
+
+    def solve(self, b):
+        return Dense(self.to_tensor()).solve(b)
+
+    def inv(self):
+        return Dense(self.to_tensor()).inv()
+
+    def diagonal(self):
+        return self.A.pow(2).sum(1)
 
     def size(self):
         n = self.A.size(1)
         return (n,n)
+
+class AAT(LinearOperator):
+    def __init__(self, A: torch.Tensor):
+        self.A = A
+
+    def matvec(self, x): return self.A.mv(self.A.mH.mv(x))
+    def rmatvec(self, x): return self.matvec(x)
+
+    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.A, self.A.mH, x])) # pylint:disable=not-callable
+    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.A, self.A.mH, x])) # pylint:disable=not-callable
+
+    def is_dense(self): return False
+    def to_tensor(self): return self.A @ self.A.mH
+    def transpose(self): return AAT(self.A)
+
+    def add_diagonal(self, x):
+        if isinstance(x, torch.Tensor) and x.numel() <= 1: x = x.item()
+        if isinstance(x, (int,float)): x = torch.full((self.shape[0],), fill_value=x, device=self.A.device, dtype=self.A.dtype)
+        return Dense(self.to_tensor() + torch.diag_embed(x))
+
+    def solve(self, b):
+        return Dense(self.to_tensor()).solve(b)
+
+    def inv(self):
+        return Dense(self.to_tensor()).inv()
+
+    def diagonal(self):
+        return self.A.pow(2).sum(0)
+
+    def size(self):
+        n = self.A.size(1)
+        return (n,n)
+

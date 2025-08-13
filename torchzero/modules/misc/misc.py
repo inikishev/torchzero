@@ -256,7 +256,7 @@ class HpuEstimate(Transform):
         for p, c in zip(prev_params, params): p.copy_(c)
         for p, c in zip(prev_update, tensors): p.copy_(c)
         torch._foreach_div_(y, torch.linalg.norm(torch.cat([t.ravel() for t in s])).clip(min=1e-8)) # pylint:disable=not-callable
-        self.store(params, ['s', 'y'], [s, y])
+        self.store(params, 'y', y)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):

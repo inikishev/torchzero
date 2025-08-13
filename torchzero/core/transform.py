@@ -58,6 +58,7 @@ class Transform(Module, ABC):
         self._concat_params = concat_params
         self._update_freq = update_freq
         self._inner = inner
+        self._var = None
 
     def update_tensors(
         self,
@@ -151,7 +152,7 @@ class Transform(Module, ABC):
 
         # step with inner
         if self._inner is not None:
-            tensors = apply_transform(self._inner, tensors=un_tensors, params=un_params, grads=un_grads)
+            tensors = apply_transform(self._inner, tensors=un_tensors, params=un_params, grads=un_grads, var=self._var)
             if self._concat_params:
                 tensors = [torch.cat([t.ravel() for t in tensors])]
 
@@ -224,7 +225,9 @@ class Transform(Module, ABC):
         self.pre_step(var)
 
         # update
+        self._var = var
         self.keyed_transform_update(update, params, var.grad, var.loss)
+        self._var = None
 
     def apply(self, var: Var):
         if self._target != 'update':
@@ -238,7 +241,10 @@ class Transform(Module, ABC):
         params=var.params
 
         # apply
+        self._var = var
         var.update = self.keyed_transform_apply(update, params, var.grad, var.loss)
+        self._var = None
+
         self.post_step(var)
         return var
 
@@ -250,12 +256,14 @@ class Transform(Module, ABC):
         if self._uses_loss: var.get_loss(False)
         params=var.params
         self.pre_step(var)
+        self._var = var
 
         # ---------------------------------- update ---------------------------------- #
         if self._target == 'update':
             update = var.get_update()
             self.keyed_transform_update(update, params, var.grad, var.loss)
             var.update = list(self.keyed_transform_apply(update, params, var.grad, var.loss))
+            self._var = None
             return var
 
         # ----------------------------------- grad ----------------------------------- #
@@ -263,6 +271,7 @@ class Transform(Module, ABC):
             grad = var.get_grad()
             self.keyed_transform_update(grad, params, grad, var.loss)
             var.grad = list(self.keyed_transform_apply(grad, params, grad, var.loss))
+            self._var = None
             return var
 
         # ------------------------------- params_direct ------------------------------ #
@@ -270,6 +279,7 @@ class Transform(Module, ABC):
             self.keyed_transform_update(var.params, params, var.grad, var.loss)
             new_params = self.keyed_transform_apply(var.params, params, var.grad, var.loss)
             for p, new_p in zip(var.params, new_params): set_storage_(p, new_p)
+            self._var = None
             return var
 
         # ----------------------------- params_differnce ----------------------------- #
@@ -278,6 +288,7 @@ class Transform(Module, ABC):
             self.keyed_transform_update(p_clone, params, var.grad, var.loss)
             new_params = tuple(self.keyed_transform_apply(p_clone, params, var.grad, var.loss))
             var.update = list(torch._foreach_sub(var.params, new_params))
+            self._var = None
             return var
 
         # ----------------------------- update_difference ---------------------------- #
@@ -287,6 +298,7 @@ class Transform(Module, ABC):
             self.keyed_transform_update(u_clone, params, var.grad, var.loss)
             new_update = tuple(self.keyed_transform_apply(u_clone, params, var.grad, var.loss))
             var.update = list(torch._foreach_sub(update, new_update))
+            self._var = None
             return var
 
         # ---------------------------------- closure --------------------------------- #
@@ -295,12 +307,17 @@ class Transform(Module, ABC):
             if original_closure is None: raise ValueError('Target = "closure", but closure is None')
 
             params = var.params
+            parent_var = self._var
             def transformed_closure(backward=True):
                 if backward:
                     loss = original_closure()
                     current_grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+
+                    self._var = parent_var
                     self.keyed_transform_update(current_grad, params, var.grad, var.loss)
                     transformed_grad = list(self.keyed_transform_apply(current_grad, params, var.grad, var.loss))
+                    self._var = None
+
                     for p, g in zip(params, transformed_grad):
                         p.grad = g
 
@@ -311,6 +328,7 @@ class Transform(Module, ABC):
 
             var.closure = transformed_closure
             self.post_step(var)
+            self._var = None
             return var
 
         # ---------------------------------- invalid --------------------------------- #

@@ -5,8 +5,12 @@ import warnings
 import torch
 from ...core import Chainable, TensorwiseTransform
 
-def lm_adagrad_update(history: deque[torch.Tensor], damping, rdamping):
-    M = torch.stack(tuple(history), dim=1)# / len(history)
+def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping):
+    if isinstance(history, torch.Tensor):
+        M = history
+    else:
+        M = torch.stack(tuple(history), dim=1)# / len(history)
+
     MTM = M.T @ M
     if damping != 0:
         MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype).mul_(damping))

@@ -14,7 +14,7 @@ from ...core import (
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ...utils.linalg import matrix_power_eigh
 from ..functional import add_power_, lerp_power_, root
-
+from ...utils.linalg.linear_operator import Dense
 
 def adagrad_(
     tensors_: TensorList,
@@ -172,4 +172,3 @@ class FullMatrixAdagrad(TensorwiseTransform):
             return tensor.mul_(scale.clip(min=torch.finfo(tensor.dtype).eps, max=1)) # conservative scaling
 
         return (B @ tensor.ravel()).view_as(tensor)
-

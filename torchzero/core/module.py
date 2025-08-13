@@ -46,6 +46,8 @@ class Var:
         current_step: int,
         parent: "Var | None" = None,
         modular: "Modular | None" = None,
+        loss: torch.Tensor | None = None,
+        storage: dict | None = None,
     ):
         self.params: list[torch.Tensor] = params
         """List of all parameters with requires_grad = True."""
@@ -81,7 +83,7 @@ class Var:
         self.grad: list[torch.Tensor] | None = None
         """gradient with current parameters. If closure is not ``None``, this is set to ``None`` and can be calculated if needed."""
 
-        self.loss: torch.Tensor | Any | None = None
+        self.loss: torch.Tensor | Any | None = loss
         """loss with current parameters."""
 
         self.loss_approx: torch.Tensor | Any | None = None
@@ -133,6 +135,10 @@ class Var:
 
         self.attrs: dict = {}
         """attributes, Modular.attrs is updated with this after each step. This attribute should always be modified in-place"""
+
+        if storage is None: storage = {}
+        self.storage: dict = storage
+        """additional kwargs passed to closure will end up in this dict. This attribute should always be modified in-place"""
 
         self.should_terminate: bool | None = None
         """termination criteria, Modular.should_terminate is set to this after each step if not None"""
@@ -223,6 +229,7 @@ class Var:
 
         copy.modular = self.modular
         copy.attrs = self.attrs
+        copy.storage = self.storage
         copy.should_terminate = self.should_terminate
 
         return copy
@@ -789,7 +796,7 @@ class Modular(torch.optim.Optimizer):
             m._load_state_dict(sd, id_to_tensor)
 
 
-    def step(self, closure=None): # pyright: ignore[reportIncompatibleMethodOverride]
+    def step(self, closure=None, loss=None, **kwargs): # pyright: ignore[reportIncompatibleMethodOverride]
         # clear closure return from previous step
         self._closure_return = None
 
@@ -805,7 +812,7 @@ class Modular(torch.optim.Optimizer):
 
         # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step, modular=self)
+        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step, modular=self, loss=loss, storage=kwargs)
 
         # if closure is None, assume backward has been called and gather grads
         if closure is None:

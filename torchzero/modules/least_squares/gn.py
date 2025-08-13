@@ -51,8 +51,7 @@ class GaussNewton(Module):
     Gradients will be calculated via batched autograd within this module, you don't need to
     implement the backward pass. Please see below for an example.
 
-    .. note::
-
+    Note:
         This method requires ``ndim^2`` memory, however, if it is used within ``tz.m.TrustCG`` trust region,
         the memory requirement is ``ndim*m``, where ``m`` is number of values in the output.
 
@@ -62,41 +61,48 @@ class GaussNewton(Module):
 
     Examples:
 
-        minimizing the rosenbrock function:
+    minimizing the rosenbrock function:
+    ```python
+    def rosenbrock(X):
+        x1, x2 = X
+        return torch.stack([(1 - x1), 100 * (x2 - x1**2)])
 
-        ```python
+    X = torch.tensor([-1.1, 2.5], requires_grad=True)
+    opt = tz.Modular([X], tz.m.GaussNewton(), tz.m.Backtracking())
 
-        def rosenbrock(X):
-            x1, x2 = X
-            return torch.stack([(1 - x1)**2, 100 * (x2 - x1**2)**2])
+    # define the closure for line search
+    def closure(backward=True):
+        return rosenbrock(X)
 
-        X = torch.tensor([-1.1, 2.5], requires_grad=True)
-        opt = tz.Modular([X], tz.m.GaussNewton(), tz.m.Backtracking())
+    # minimize
+    for iter in range(10):
+        loss = opt.step(closure)
+        print(f'{loss = }')
+    ```
 
-        # define the closure
-        def closure(backward=True):
-            return rosenbrock(X)
+    training a neural network with a matrix-free GN:
+    ```python
+    X = torch.randn(64, 20)
+    y = torch.randn(64, 10)
 
-        # minimize
-        for iter in range(10):
-            loss = opt.step(closure)
-            print(f'{loss = }')
-        ```
+    model = nn.Sequential(nn.Linear(20, 64), nn.ELU(), nn.Linear(64, 10))
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NaturalGradient(),
+        tz.m.LR(3e-2)
+    )
 
-        Memory-efficient (if n << ndim) GN with trust region:
+    def closure(backward=True):
+        y_hat = model(X) # (64, 10)
+        return (y_hat - y).pow(2).mean(0) # (10, )
 
-        ```python
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.TrustCG(tz.m.GaussNewton())
-        )
-        ```
-
+    for i in range(100):
+        losses = opt.step(closure)
+        if i % 10 == 0:
+            print(f'{losses.mean() = }')
+    ```
     """
     def __init__(self, reg:float = 1e-8, batched:bool=True, ):
-        """_summary_
-
-        """
         super().__init__(defaults=dict(batched=batched, reg=reg))
 
     @torch.no_grad
@@ -110,12 +116,11 @@ class GaussNewton(Module):
 
         # gauss newton direction
         with torch.enable_grad():
-            f = var.get_loss(backward=False)
+            f = var.get_loss(backward=False) # n_out
             assert isinstance(f, torch.Tensor)
-            var.loss = f.pow(2).sum()
-            assert isinstance(f, torch.Tensor)
-            G_list = jacobian_wrt([f], params, batched=batched)
+            G_list = jacobian_wrt([f.ravel()], params, batched=batched)
 
+        var.loss = f.pow(2).sum()
 
         G = self.global_state["G"] = flatten_jacobian(G_list) # (n_out, ndim)
         Gtf = G.T @ f.detach() # (ndim)
