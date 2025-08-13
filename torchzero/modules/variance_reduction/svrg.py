@@ -13,9 +13,56 @@ def _reset_except_self(optimizer, var, self: Module):
             m.reset()
 
 class SVRG(Module):
-    """either pass "full_closure" to step or set n_steps"""
-    def __init__(self, svrg_steps: int, accum_steps: int | None = None, reset_before_accum:bool=True):
-        defaults = dict(svrg_steps = svrg_steps, accum_steps=accum_steps, reset_before_accum=reset_before_accum)
+    """Stochastic variance reduced gradient method (SVRG).
+
+    To use, put SVRG as the first module, it can be used with any other modules.
+
+    First it uses first ``accum_steps`` batches to compute full gradient at initial
+    parameters using gradient accumulation, the model will not be updated during this.
+
+    Then it performs ``svrg_steps`` SVRG steps, each requires two forward and backward passes.
+
+    After ``svrg_steps``, it goes back to full gradient computation step step.
+
+    As an alternative to gradient accumulation you can pass "full_closure" argument to the ``step`` method,
+    which should compute full gradients, set them to ``.grad`` attributes of the parameters,
+    and return full loss.
+
+    Args:
+        svrg_steps (int): number of steps before calculating full gradient. This can be set to length of the dataloader.
+        accum_steps (int | None, optional):
+            number of steps to accumulate the gradient for. Not used if "full_closure" is passed to the ``step`` method. If None, uses value of ``svrg_steps``. Defaults to None.
+        reset_before_accum (bool, optional):
+            whether to reset all other modules when re-calculating full gradient. Defaults to True.
+        svrg_loss (bool, optional):
+            whether to replace loss with SVRG loss (calculated by same formula as SVRG gradient). Defaults to True.
+        alpha (float, optional):
+            multiplier to ``g_full(x_0) - g_batch(x_0)`` term, can be annealed linearly from 1 to 0 as suggested in https://arxiv.org/pdf/2311.05589#page=6
+
+    ## Examples:
+    SVRG-LBFGS
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SVRG(len(dataloader)),
+        tz.m.LBFGS(),
+        tz.m.Backtracking(),
+    )
+    ```
+
+    ## Notes
+
+    The SVRG gradient is computed as ``g_b(x) - alpha * g_b(x_0) - g_f(x0.)``, where:
+    - ``x`` is current parameters
+    - ``x_0`` is initial parameters, where full gradient was computed
+    - ``g_b`` refers to mini-batch gradient at ``x`` or ``x_0``
+    - ``g_f`` refers to full gradient at ``x_0``.
+
+    The SVRG loss is computed using the same formula.
+
+    """
+    def __init__(self, svrg_steps: int, accum_steps: int | None = None, reset_before_accum:bool=True, svrg_loss:bool=True, alpha:float=1):
+        defaults = dict(svrg_steps = svrg_steps, accum_steps=accum_steps, reset_before_accum=reset_before_accum, svrg_loss=svrg_loss, alpha=alpha)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -85,9 +132,13 @@ class SVRG(Module):
         x0 = self.global_state['x_0']
         gf_x0 = self.global_state["full_grad"]
         ff_x0 = self.global_state['full_loss']
+        use_svrg_loss = self.defaults['svrg_loss']
+        alpha = self.get_settings(params, 'alpha')
+        alpha_0 = alpha[0]
+        if all(a == 1 for a in alpha): alpha = None
 
         def svrg_closure(backward=True):
-            # g_b(x) + g_f(x_0) - g_b(x_0) and same for loss
+            # g_b(x) - α * (g_f(x_0) - g_b(x_0)) and same for loss
             with torch.no_grad():
                 x = [p.clone() for p in params]
 
@@ -102,23 +153,28 @@ class SVRG(Module):
                     gb_x0 = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
                     torch._foreach_copy_(params, x)
 
-                    # g_svrg = gb_x + gf_x0 - gb_x0
-                    g_svrg = torch._foreach_add(gb_x, gf_x0)
-                    torch._foreach_sub_(g_svrg, gb_x0)
+                    # g_svrg = gb_x - alpha * (gf_x0 - gb_x0)
+                    correction = torch._foreach_sub(gb_x0, gf_x0)
+                    if alpha is not None: torch._foreach_mul_(correction, alpha)
+                    g_svrg = torch._foreach_sub(gb_x, correction)
 
-                    f_svrg = fb_x + ff_x0 - fb_x0
+                    f_svrg = fb_x - alpha_0 * (fb_x0 - ff_x0)
                     for p, g in zip(params, g_svrg):
                         p.grad = g
 
-                    return f_svrg
+                    if use_svrg_loss: return f_svrg
+                    return fb_x
 
             # no backward
-            fb_x = closure(False)
-            torch._foreach_copy_(params, x0)
-            fb_x0 = closure(False)
-            torch._foreach_copy_(params, x)
-            f_svrg = fb_x + ff_x0 - fb_x0
-            return f_svrg
+            if use_svrg_loss:
+                fb_x = closure(False)
+                torch._foreach_copy_(params, x0)
+                fb_x0 = closure(False)
+                torch._foreach_copy_(params, x)
+                f_svrg = fb_x - alpha_0 * (fb_x0 - ff_x0)
+                return f_svrg
+
+            return closure(False)
 
         var.closure = svrg_closure
 
