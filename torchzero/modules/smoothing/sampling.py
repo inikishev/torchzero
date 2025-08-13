@@ -257,7 +257,7 @@ class GradientSampling(Reformulation):
                 assert grad is not None
                 if g_0 is None:
                     with torch.enable_grad() if backward else nullcontext():
-                        closure(True)
+                        closure()
                         g_0 = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
                 if TensorList(grad).global_vector_norm() < TensorList(g_0).global_vector_norm():

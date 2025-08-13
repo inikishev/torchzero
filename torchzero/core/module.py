@@ -144,8 +144,8 @@ class Var:
         """termination criteria, Modular.should_terminate is set to this after each step if not None"""
 
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False) -> torch.Tensor | float:
-        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning :code:`var.loss`.
-        Do not call this at perturbed parameters. Backward always zeroes grads before recomputing."""
+        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning ``var.loss``.
+        Do not call this at perturbed parameters. Backward always sets grads to None before recomputing."""
         if self.loss is None:
 
             if self.closure is None: raise RuntimeError("closure is None")
@@ -158,7 +158,10 @@ class Var:
                 # initializing to zeros_like is equivalent to using zero_grad with set_to_none = False.
                 # it is technically a more correct approach for when some parameters conditionally receive gradients
                 # and in this case it shouldn't be slower.
-                self.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
+
+                # next time closure() is called, it will set grad to None.
+                # zero_grad(set_to_none=False) shouldn't be used (I should add a warning)
+                self.grad = [p.grad if p.grad  is not None else torch.zeros_like(p) for p in self.params]
             else:
                 self.loss = self.loss_approx = self.closure(False)
 

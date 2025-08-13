@@ -1,12 +1,8 @@
-from collections import deque
-from collections.abc import Iterable
-from operator import itemgetter
-from typing import Literal
-
 import torch
 
-from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Var
-from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states
+from ...core import Chainable, Module, Target, Transform
+from ...core.reformulation import Reformulation
+from ...utils import Distributions, NumberList, TensorList
 
 
 class Dropout(Transform):
