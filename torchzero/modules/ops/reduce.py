@@ -81,7 +81,7 @@ class WeightedSum(ReduceOperationBase):
     @torch.no_grad
     def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
-        weights = self.settings[var.params[0]]['weights']
+        weights = self.defaults['weights']
         sum = cast(list, sorted_inputs[0])
         torch._foreach_mul_(sum, weights[0])
         if len(sorted_inputs) > 1:

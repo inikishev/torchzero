@@ -70,7 +70,7 @@ class RandomSample(Module):
 
     @torch.no_grad
     def step(self, var):
-        distribution = self.settings[var.params[0]]['distribution']
+        distribution = self.defaults['distribution']
         variance = self.get_settings(var.params, 'variance')
         var.update = TensorList(var.params).sample_like(distribution=distribution, variance=variance)
         return var

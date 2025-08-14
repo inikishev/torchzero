@@ -150,11 +150,14 @@ class LSR1(Transform):
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
 
-    def reset(self):
+    def _reset_self(self):
         self.state.clear()
         self.global_state['step'] = 0
         self.global_state['s_history'].clear()
         self.global_state['y_history'].clear()
+
+    def reset(self):
+        self._reset_self()
         for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
@@ -173,12 +176,11 @@ class LSR1(Transform):
         s_history: deque = self.global_state['s_history']
         y_history: deque = self.global_state['y_history']
 
-        setting = settings[0]
-        ptol = setting['ptol']
-        gtol = setting['gtol']
-        ptol_reset = setting['ptol_reset']
-        gtol_reset = setting['gtol_reset']
-        damping = setting['damping']
+        ptol = self.defaults['ptol']
+        gtol = self.defaults['gtol']
+        ptol_reset = self.defaults['ptol_reset']
+        gtol_reset = self.defaults['gtol_reset']
+        damping = self.defaults['damping']
 
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', cls=TensorList)
 
@@ -199,14 +201,14 @@ class LSR1(Transform):
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None:
             if s is not None and s.abs().global_max() <= ptol:
-                if ptol_reset: self.reset()
+                if ptol_reset: self._reset_self()
                 sy = None
                 below_tol = True
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
-                if gtol_reset: self.reset()
+                if gtol_reset: self._reset_self()
                 sy = None
                 below_tol = True
 
@@ -229,8 +231,7 @@ class LSR1(Transform):
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        setting = settings[0]
-        scale_first = setting['scale_first']
+        scale_first = self.defaults['scale_first']
 
         tensors = as_tensorlist(tensors)
 

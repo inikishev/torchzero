@@ -84,7 +84,7 @@ class AdamY(Module):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         beta1,beta2,eps,alpha=self.get_settings(var.params, 'beta1','beta2','eps','alpha', cls=NumberList)
-        amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
+        amsgrad,pow,debiased = self.getter(self.defaults)
 
         if amsgrad:
             exp_avg, exp_avg_sq, max_exp_avg_sq = self.get_state(var.params,'exp_avg','exp_avg_sq','max_exp_avg_sq', cls=TensorList)

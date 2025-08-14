@@ -111,7 +111,7 @@ class SixthOrder3P(HigherOrderMethodBase):
         super().__init__(defaults=defaults, vectorize=vectorize)
 
     def one_iteration(self, x, evaluate, var):
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         lstsq = settings['lstsq']
         def f(x): return evaluate(x, 1)[1]
         def f_j(x): return evaluate(x, 2)[1:]
@@ -146,7 +146,7 @@ class SixthOrder3P(HigherOrderMethodBase):
 #         super().__init__(defaults=defaults, vectorize=vectorize)
 
 #     def iteration(self, x, evaluate, var):
-#         settings = self.settings[var.params[0]]
+#         settings = self.defaults
 #         lstsq = settings['lstsq']
 #         def f(x): return evaluate(x, 1)[1]
 #         def f_j(x): return evaluate(x, 2)[1:]
@@ -178,7 +178,7 @@ class SixthOrder5P(HigherOrderMethodBase):
         super().__init__(defaults=defaults, vectorize=vectorize)
 
     def one_iteration(self, x, evaluate, var):
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         lstsq = settings['lstsq']
         def f_j(x): return evaluate(x, 2)[1:]
         x_star = sixth_order_5p(x, f_j, lstsq)
@@ -201,7 +201,7 @@ class TwoPointNewton(HigherOrderMethodBase):
         super().__init__(defaults=defaults, vectorize=vectorize)
 
     def one_iteration(self, x, evaluate, var):
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         lstsq = settings['lstsq']
         def f(x): return evaluate(x, 1)[1]
         def f_j(x): return evaluate(x, 2)[1:]
@@ -229,7 +229,7 @@ class SixthOrder3PM2(HigherOrderMethodBase):
         super().__init__(defaults=defaults, vectorize=vectorize)
 
     def one_iteration(self, x, evaluate, var):
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         lstsq = settings['lstsq']
         def f_j(x): return evaluate(x, 2)[1:]
         def f(x): return evaluate(x, 1)[1]

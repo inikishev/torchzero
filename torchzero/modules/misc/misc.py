@@ -194,7 +194,7 @@ class FillLoss(Module):
     @torch.no_grad
     def step(self, var):
         alpha = self.get_settings(var.params, 'alpha')
-        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
+        loss = var.get_loss(backward=self.defaults['backward'])
         var.update = [torch.full_like(p, loss*a) for p,a in zip(var.params, alpha)]
         return var
 
@@ -207,7 +207,7 @@ class MulByLoss(Module):
     @torch.no_grad
     def step(self, var):
         alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
-        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
+        loss = var.get_loss(backward=self.defaults['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_mul_(var.update, mul)
         return var
@@ -221,7 +221,7 @@ class DivByLoss(Module):
     @torch.no_grad
     def step(self, var):
         alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
-        loss = var.get_loss(backward=self.settings[var.params[0]]['backward'])
+        loss = var.get_loss(backward=self.defaults['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
         torch._foreach_div_(var.update, mul)
         return var

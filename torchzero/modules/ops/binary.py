@@ -57,8 +57,8 @@ class Add(BinaryOperationBase):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], other: float | list[torch.Tensor]):
-        if isinstance(other, (int,float)): torch._foreach_add_(update, other * self.settings[var.params[0]]['alpha'])
-        else: torch._foreach_add_(update, other, alpha=self.settings[var.params[0]]['alpha'])
+        if isinstance(other, (int,float)): torch._foreach_add_(update, other * self.defaults['alpha'])
+        else: torch._foreach_add_(update, other, alpha=self.defaults['alpha'])
         return update
 
 class Sub(BinaryOperationBase):
@@ -72,8 +72,8 @@ class Sub(BinaryOperationBase):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], other: float | list[torch.Tensor]):
-        if isinstance(other, (int,float)): torch._foreach_sub_(update, other * self.settings[var.params[0]]['alpha'])
-        else: torch._foreach_sub_(update, other, alpha=self.settings[var.params[0]]['alpha'])
+        if isinstance(other, (int,float)): torch._foreach_sub_(update, other * self.defaults['alpha'])
+        else: torch._foreach_sub_(update, other, alpha=self.defaults['alpha'])
         return update
 
 class RSub(BinaryOperationBase):
@@ -219,7 +219,7 @@ class Graft(BinaryOperationBase):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], magnitude: list[torch.Tensor]):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[var.params[0]])
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
         return TensorList(update).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class RGraft(BinaryOperationBase):
@@ -231,7 +231,7 @@ class RGraft(BinaryOperationBase):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], direction: list[torch.Tensor]):
-        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.settings[var.params[0]])
+        tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
         return TensorList(direction).graft_(update, tensorwise=tensorwise, ord=ord, eps=eps)
 
 GraftToUpdate = RGraft
@@ -276,7 +276,7 @@ class Threshold(BinaryOperationBase):
 
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], threshold: list[torch.Tensor] | float, value: list[torch.Tensor] | float):
-        update_above = self.settings[var.params[0]]['update_above']
+        update_above = self.defaults['update_above']
         update = TensorList(update)
         if update_above:
             if isinstance(value, list): return update.where_(update>threshold, value)

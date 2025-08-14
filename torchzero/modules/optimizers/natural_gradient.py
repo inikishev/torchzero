@@ -99,9 +99,8 @@ class NaturalGradient(Module):
     @torch.no_grad
     def update(self, var):
         params = var.params
-        setting = self.settings[params[0]]
-        batched = setting['batched']
-        gn_grad = setting['gn_grad']
+        batched = self.defaults['batched']
+        gn_grad = self.defaults['gn_grad']
 
         closure = var.closure
         assert closure is not None
@@ -143,9 +142,8 @@ class NaturalGradient(Module):
     @torch.no_grad
     def apply(self, var):
         params = var.params
-        setting = self.settings[params[0]]
-        reg = setting['reg']
-        sqrt = setting['sqrt']
+        reg = self.defaults['reg']
+        sqrt = self.defaults['sqrt']
 
         G: torch.Tensor = self.global_state['G'] # (n_samples, n_dim)
 

@@ -108,8 +108,7 @@ class GaussNewton(Module):
     @torch.no_grad
     def update(self, var):
         params = var.params
-        setting = self.settings[params[0]]
-        batched = setting['batched']
+        batched = self.defaults['batched']
 
         closure = var.closure
         assert closure is not None
@@ -144,9 +143,7 @@ class GaussNewton(Module):
 
     @torch.no_grad
     def apply(self, var):
-        params = var.params
-        setting = self.settings[params[0]]
-        reg = setting['reg']
+        reg = self.defaults['reg']
 
         G = self.global_state['G']
         Gtf = self.global_state['Gtf']

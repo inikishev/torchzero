@@ -59,7 +59,7 @@ class SubModules(MultiOperationBase):
 
     @torch.no_grad
     def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
-        alpha = self.settings[var.params[0]]['alpha']
+        alpha = self.defaults['alpha']
 
         if isinstance(input, (int,float)):
             assert isinstance(other, list)
@@ -112,7 +112,7 @@ class LerpModules(MultiOperationBase):
 
     @torch.no_grad
     def transform(self, var: Var, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
-        torch._foreach_lerp_(input, end, weight=self.settings[var.params[0]]['weight'])
+        torch._foreach_lerp_(input, end, weight=self.defaults['weight'])
         return input
 
 class ClipModules(MultiOperationBase):
@@ -160,7 +160,7 @@ class GraftModules(MultiOperationBase):
 
     @torch.no_grad
     def transform(self, var, magnitude: list[torch.Tensor], direction:list[torch.Tensor]):
-        tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.settings[var.params[0]])
+        tensorwise, ord, eps, strength = itemgetter('tensorwise','ord','eps', 'strength')(self.defaults)
         return TensorList(direction).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps, strength=strength)
 
 class MultiplyByModuleNorm(MultiOperationBase):
@@ -171,7 +171,7 @@ class MultiplyByModuleNorm(MultiOperationBase):
 
     @torch.no_grad
     def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
-        tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
+        tensorwise, ord = itemgetter('tensorwise','ord')(self.defaults)
         if tensorwise:
             n = TensorList(norm).metric(ord)
         else:
@@ -188,7 +188,7 @@ class DivideByModuleNorm(MultiOperationBase):
 
     @torch.no_grad
     def transform(self, var, input: list[torch.Tensor], norm:list[torch.Tensor]):
-        tensorwise, ord = itemgetter('tensorwise','ord')(self.settings[var.params[0]])
+        tensorwise, ord = itemgetter('tensorwise','ord')(self.defaults)
         if tensorwise:
             n = TensorList(norm).metric(ord)
         else:

@@ -75,7 +75,7 @@ class Adadam(Module):
         params = var.params
 
         beta1,beta2,precond_beta,eps,alpha=self.get_settings(params, 'beta1','beta2','precond_beta','eps','alpha', cls=NumberList)
-        amsgrad,pow,debiased = self.getter(self.settings[var.params[0]])
+        amsgrad,pow,debiased = self.getter(self.defaults)
 
         if amsgrad:
             exp_avg, exp_avg_sq, exp_avg_qu, max_exp_avg_sq, max_exp_avg_qu = self.get_state(params, 'exp_avg','exp_avg_sq', 'exp_avg_qu', 'max_exp_avg_sq', 'max_exp_avg_qu', cls=TensorList)

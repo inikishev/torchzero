@@ -48,10 +48,10 @@ class LineSearchBase(Module, ABC):
 
                 @torch.no_grad
                 def search(self, update, var):
-                    settings = self.settings[var.params[0]]
-                    start = settings["start"]
-                    end = settings["end"]
-                    num = settings["num"]
+
+                    start = self.defaults["start"]
+                    end = self.defaults["end"]
+                    num = self.defaults["num"]
 
                     lowest_loss = float("inf")
                     best_step_size = best_step_size
@@ -78,7 +78,7 @@ class LineSearchBase(Module, ABC):
                 @torch.no_grad
                 def search(self, update, var):
                     objective = self.make_objective(var=var)
-                    method = self.settings[var.params[0]]["method"]
+                    method = self.defaults["method"]
 
                     res = self.scopt.minimize_scalar(objective, method=method)
                     return res.x
@@ -278,7 +278,7 @@ class GridLineSearch(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        start,end,num=itemgetter('start','end','num')(self.settings[var.params[0]])
+        start,end,num=itemgetter('start','end','num')(self.defaults)
 
         for lr in torch.linspace(start,end,num):
             self.evaluate_f(lr.item(), var=var, backward=False)

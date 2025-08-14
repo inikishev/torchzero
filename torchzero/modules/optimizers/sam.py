@@ -63,7 +63,7 @@ class SAM(Module):
         zero_grad = var.zero_grad
         if closure is None: raise RuntimeError("SAM requires a closure passed to the optimizer step")
         p, rho = self.get_settings(var.params, 'p', 'rho', cls=NumberList)
-        s = self.settings[var.params[0]]
+        s = self.defaults
         eps = s['eps']
         asam = s['asam']
 

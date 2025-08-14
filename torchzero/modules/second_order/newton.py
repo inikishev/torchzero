@@ -266,7 +266,7 @@ class Newton(Module):
 
     def get_H(self,var):
         H = self.global_state["H"]
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         if settings['eigval_tfm'] is not None:
             try:
                 L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable

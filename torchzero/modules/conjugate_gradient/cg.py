@@ -123,7 +123,8 @@ class ConguateGradientBase(Transform, ABC):
         reset_interval = settings[0]['reset_interval']
         if reset_interval == 'auto': reset_interval = tensors.global_numel() + 1
         if reset_interval is not None and step % reset_interval == 0:
-            self.reset()
+            self.state.clear()
+            self.global_state.clear()
 
         return dir
 

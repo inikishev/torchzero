@@ -69,8 +69,8 @@ class MatrixMomentum(Module):
     def update(self, var):
         assert var.closure is not None
         prev_update = self.get_state(var.params, 'prev_update')
-        hvp_method = self.settings[var.params[0]]['hvp_method']
-        h = self.settings[var.params[0]]['h']
+        hvp_method = self.defaults['hvp_method']
+        h = self.defaults['h']
 
         Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
         Hvp = [t.detach() for t in Hvp]
@@ -152,7 +152,7 @@ class AdaptiveMatrixMomentum(Module):
         assert var.closure is not None
         prev_update, prev_params, prev_grad = self.get_state(var.params, 'prev_update', 'prev_params', 'prev_grad', cls=TensorList)
 
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         hvp_method = settings['hvp_method']
         h = settings['h']
         eps = settings['eps']

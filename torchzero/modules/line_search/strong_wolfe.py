@@ -281,7 +281,7 @@ class StrongWolfe(LineSearchBase):
 
         init_value, init, c1, c2, a_max, maxiter, maxzoom, maxeval, interpolation, adaptive, plus_minus, fallback, tol_change = itemgetter(
             'init_value', 'init', 'c1', 'c2', 'a_max', 'maxiter', 'maxzoom',
-            'maxeval', 'interpolation', 'adaptive', 'plus_minus', 'fallback', 'tol_change')(self.settings[var.params[0]])
+            'maxeval', 'interpolation', 'adaptive', 'plus_minus', 'fallback', 'tol_change')(self.defaults)
 
         dir = as_tensorlist(var.get_update())
         grad_list = var.get_grad()

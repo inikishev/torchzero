@@ -97,7 +97,7 @@ class NegateOnLossIncrease(Module):
     def step(self, var):
         closure = var.closure
         if closure is None: raise RuntimeError('NegateOnLossIncrease requires closure')
-        backtrack = self.settings[var.params[0]]['backtrack']
+        backtrack = self.defaults['backtrack']
 
         update = var.get_update()
         f_0 = var.get_loss(backward=False)

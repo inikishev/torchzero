@@ -42,7 +42,7 @@ from ...core import Chainable, Module
 #     @torch.no_grad
 #     def step(self, var):
 #         accumulator = self.get_state(var.params, 'accumulator')
-#         settings = self.settings[var.params[0]]
+#         settings = self.defaults
 #         n = settings['n']; mean = settings['mean']; stop = settings['stop']
 #         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
@@ -108,7 +108,7 @@ class GradientAccumulation(Module):
     @torch.no_grad
     def step(self, var):
         accumulator = self.get_state(var.params, 'accumulator')
-        settings = self.settings[var.params[0]]
+        settings = self.defaults
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 

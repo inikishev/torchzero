@@ -163,7 +163,7 @@ class DirectWeightDecay(Module):
     @torch.no_grad
     def step(self, var):
         weight_decay = self.get_settings(var.params, 'weight_decay', cls=NumberList)
-        ord = self.settings[var.params[0]]['ord']
+        ord = self.defaults['ord']
 
         decay_weights_(var.params, weight_decay, ord)
         return var

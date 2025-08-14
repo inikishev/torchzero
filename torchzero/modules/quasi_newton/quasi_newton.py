@@ -243,7 +243,9 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         x, info = torch.linalg.solve_ex(B, g) # pylint:disable=not-callable
         if info == 0: return x.view_as(tensor)
 
-        self.reset() # failed to solve linear system, so reset state
+        # failed to solve linear system, so reset state
+        self.state.clear()
+        self.global_state.clear()
         return tensor.mul_(initial_step_size(tensor))
 
     def get_H(self, var):

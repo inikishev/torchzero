@@ -12,7 +12,7 @@ class PrintUpdate(Module):
         super().__init__(defaults)
 
     def step(self, var):
-        self.settings[var.params[0]]["print_fn"](f'{self.settings[var.params[0]]["text"]}{var.update}')
+        self.defaults["print_fn"](f'{self.defaults["text"]}{var.update}')
         return var
 
 class PrintShape(Module):
@@ -23,7 +23,7 @@ class PrintShape(Module):
 
     def step(self, var):
         shapes = [u.shape for u in var.update] if var.update is not None else None
-        self.settings[var.params[0]]["print_fn"](f'{self.settings[var.params[0]]["text"]}{shapes}')
+        self.defaults["print_fn"](f'{self.defaults["text"]}{shapes}')
         return var
 
 class PrintParams(Module):
@@ -33,7 +33,7 @@ class PrintParams(Module):
         super().__init__(defaults)
 
     def step(self, var):
-        self.settings[var.params[0]]["print_fn"](f'{self.settings[var.params[0]]["text"]}{var.params}')
+        self.defaults["print_fn"](f'{self.defaults["text"]}{var.params}')
         return var
 
 
@@ -44,5 +44,5 @@ class PrintLoss(Module):
         super().__init__(defaults)
 
     def step(self, var):
-        self.settings[var.params[0]]["print_fn"](f'{self.settings[var.params[0]]["text"]}{var.get_loss(False)}')
+        self.defaults["print_fn"](f'{self.defaults["text"]}{var.get_loss(False)}')
         return var

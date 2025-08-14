@@ -42,7 +42,7 @@ class ScipyMinimizeScalar(LineSearchBase):
     def search(self, update, var):
         objective = self.make_objective(var=var)
         method, bracket, bounds, tol, options, maxiter = itemgetter(
-            'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.settings[var.params[0]])
+            'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.defaults)
 
         if maxiter is not None:
             options = dict(options) if isinstance(options, Mapping) else {}

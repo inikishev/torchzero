@@ -135,8 +135,7 @@ class BarzilaiBorwein(Transform):
         self.global_state['step'] = step + 1
 
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
-        setting = settings[0]
-        type = setting['type']
+        type = self.defaults['type']
 
         g = grads if self._uses_grad else tensors
         assert g is not None
@@ -221,11 +220,10 @@ class BBStab(Transform):
         self.global_state['step'] = step + 1
 
         prev_p, prev_g = unpack_states(states, tensors, 'prev_p', 'prev_g', cls=TensorList)
-        setting = settings[0]
-        type = setting['type']
-        c = setting['c']
-        delta = setting['delta']
-        inf_iters = setting['inf_iters']
+        type = self.defaults['type']
+        c = self.defaults['c']
+        delta = self.defaults['delta']
+        inf_iters = self.defaults['inf_iters']
 
         g = grads if self._uses_grad else tensors
         assert g is not None
@@ -362,8 +360,10 @@ class AdGD(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
-        if alpha is None or alpha < 0 or not math.isfinite(alpha):
-            self.reset() # alpha isn't None on 1st step
+        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)):
+            # alpha isn't None on 1st step
+            self.state.clear()
+            self.global_state.clear()
             alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
 
         torch._foreach_mul_(tensors, alpha)

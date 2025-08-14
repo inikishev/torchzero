@@ -249,7 +249,7 @@ class StrongWolfe2(LineSearchBase):
 
         init, c1, c2, maxiter, maxzoom, expand, adaptive, plus_minus, use_prev = itemgetter(
             'init', 'c1', 'c2', 'maxiter', 'maxzoom',
-            'expand', 'adaptive', 'plus_minus', 'use_prev')(self.settings[var.params[0]])
+            'expand', 'adaptive', 'plus_minus', 'use_prev')(self.defaults)
 
         f_0, g_0 = objective(0)
         if use_prev: init = self.global_state.get('prev_alpha', init)

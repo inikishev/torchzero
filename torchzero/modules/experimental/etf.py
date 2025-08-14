@@ -21,8 +21,8 @@ class ExponentialTrajectoryFit(Module):
     def step(self, var):
         closure = var.closure
         assert closure is not None
-        step_size = self.settings[var.params[0]]['step_size']
-        adaptive = self.settings[var.params[0]]['adaptive']
+        step_size = self.defaults['step_size']
+        adaptive = self.defaults['adaptive']
 
 
         # 1. perform 3 GD steps to obtain 4 points
@@ -91,9 +91,9 @@ class ExponentialTrajectoryFitV2(Module):
     def step(self, var):
         closure = var.closure
         assert closure is not None
-        step_size = self.settings[var.params[0]]['step_size']
-        num_steps = self.settings[var.params[0]]['num_steps']
-        adaptive = self.settings[var.params[0]]['adaptive']
+        step_size = self.defaults['step_size']
+        num_steps = self.defaults['num_steps']
+        adaptive = self.defaults['adaptive']
 
         # 1. perform 3 GD steps to obtain 4 points (or more)
         grad = var.get_grad()
@@ -164,10 +164,10 @@ class PointwiseExponential(Module):
     def step(self, var):
         closure = var.closure
         assert closure is not None
-        settings = self.settings[var.params[0]]
-        step_size = settings['step_size']
-        reg = settings['reg']
-        steps = settings['steps']
+
+        step_size = self.defaults['step_size']
+        reg = self.defaults['reg']
+        steps = self.defaults['steps']
 
         # 1. perform 2 GD steps to obtain 3 points
         points = [torch.cat([p.view(-1) for p in var.params])]

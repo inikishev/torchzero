@@ -100,8 +100,8 @@ class GradientSampling(Reformulation):
     @torch.no_grad
     def pre_step(self, var):
         params = TensorList(var.params)
-        setting = self.settings[params[0]]
-        fixed = setting['fixed']
+
+        fixed = self.defaults['fixed']
 
         # check termination criteria
         if 'termination' in self.children:
@@ -117,21 +117,21 @@ class GradientSampling(Reformulation):
                     state['sigma'] *= setting['decay']
 
                 # reset on sigmas decay
-                if setting['reset_on_termination']:
+                if self.defaults['reset_on_termination']:
                     var.post_step_hooks.append(partial(_reset_except_self, self=self))
 
                 # clear perturbations
                 self.global_state.pop('perts', None)
 
         # pre-generate perturbations if not already pre-generated or not fixed
-        if setting['pre_generate'] and (('perts' not in self.global_state) or (not fixed)):
+        if self.defaults['pre_generate'] and (('perts' not in self.global_state) or (not fixed)):
             states = [self.state[p] for p in params]
             settings = [self.settings[p] for p in params]
 
-            n = setting['n'] - setting['include_x0']
-            generator = self.get_generator(params[0].device, setting['seed'])
+            n = self.defaults['n'] - self.defaults['include_x0']
+            generator = self.get_generator(params[0].device, self.defaults['seed'])
 
-            perts = [params.sample_like(setting['distribution'], generator=generator) for _ in range(n)]
+            perts = [params.sample_like(self.defaults['distribution'], generator=generator) for _ in range(n)]
 
             self.global_state['perts'] = perts
 
@@ -146,13 +146,12 @@ class GradientSampling(Reformulation):
         sigma_inits = [s['sigma'] for s in settings]
         sigmas = [s.setdefault('sigma', si) for s, si in zip(states, sigma_inits)]
 
-        setting = settings[0]
-        include_x0 = setting['include_x0']
-        pre_generate = setting['pre_generate']
-        aggregate: Literal['mean', 'max', 'min', 'min-norm', 'min-value'] = setting['aggregate']
-        sigma_strategy: Literal['grad-norm', 'value'] | None = setting['sigma_strategy']
-        distribution = setting['distribution']
-        generator = self.get_generator(params[0].device, setting['seed'])
+        include_x0 = self.defaults['include_x0']
+        pre_generate = self.defaults['pre_generate']
+        aggregate: Literal['mean', 'max', 'min', 'min-norm', 'min-value'] = self.defaults['aggregate']
+        sigma_strategy: Literal['grad-norm', 'value'] | None = self.defaults['sigma_strategy']
+        distribution = self.defaults['distribution']
+        generator = self.get_generator(params[0].device, self.defaults['seed'])
 
 
         n_finite = 0
@@ -176,7 +175,7 @@ class GradientSampling(Reformulation):
         if pre_generate:
             perts = self.global_state['perts']
         else:
-            perts = [None] * (setting['n'] - include_x0)
+            perts = [None] * (self.defaults['n'] - include_x0)
 
         x_0 = [p.clone() for p in params]
 
@@ -266,7 +265,7 @@ class GradientSampling(Reformulation):
         # update sigma if strategy is enabled
         if sigma_strategy is not None:
 
-            sigma_target = setting['sigma_target']
+            sigma_target = self.defaults['sigma_target']
             if isinstance(sigma_target, float):
                 sigma_target = int(max(1, n_finite * sigma_target))
 

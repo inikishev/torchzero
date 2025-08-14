@@ -292,14 +292,14 @@ class RandomizedFDM(GradApproximator):
 
     def pre_step(self, var):
         h, beta = self.get_settings(var.params, 'h', 'beta')
-        settings = self.settings[var.params[0]]
-        n_samples = settings['n_samples']
-        distribution = settings['distribution']
-        pre_generate = settings['pre_generate']
+
+        n_samples = self.defaults['n_samples']
+        distribution = self.defaults['distribution']
+        pre_generate = self.defaults['pre_generate']
 
         if pre_generate:
             params = TensorList(var.params)
-            generator = self._get_generator(settings['seed'], var.params)
+            generator = self._get_generator(self.defaults['seed'], var.params)
             perturbations = [params.sample_like(distribution=distribution, variance=1, generator=generator) for _ in range(n_samples)]
 
             if self.PRE_MULTIPLY_BY_H:
@@ -505,9 +505,9 @@ class MeZO(GradApproximator):
 
     def pre_step(self, var):
         h = NumberList(self.settings[p]['h'] for p in var.params)
-        settings = self.settings[var.params[0]]
-        n_samples = settings['n_samples']
-        distribution = settings['distribution']
+
+        n_samples = self.defaults['n_samples']
+        distribution = self.defaults['distribution']
 
         step = var.current_step
 

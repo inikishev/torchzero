@@ -53,7 +53,7 @@ class Alternate(Module):
         var = module.step(var.clone(clone_update=False))
 
         # number of steps until next module
-        steps = self.settings[var.params[0]]['steps']
+        steps = self.defaults['steps']
         if isinstance(steps, int): steps = [steps]*len(self.children)
 
         if 'steps_to_next' not in self.global_state:

@@ -43,7 +43,7 @@ class AdaptiveStepSize(LineSearchBase):
     @torch.no_grad
     def search(self, update, var):
 
-        nplus, nminus, c, init, backtrack, adaptive = itemgetter('nplus','nminus','c','init','backtrack', 'adaptive')(self.settings[var.params[0]])
+        nplus, nminus, c, init, backtrack, adaptive = itemgetter('nplus','nminus','c','init','backtrack', 'adaptive')(self.defaults)
         step_size = self.global_state.setdefault('step_size', init)
         previous_success = self.global_state.setdefault('previous_success', False)
         nplus_mul =  self.global_state.setdefault('nplus_mul', 1)

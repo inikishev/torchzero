@@ -36,8 +36,7 @@ class AdaptiveHeavyBall(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         assert loss is not None
         tensors = TensorList(tensors)
-        setting = settings[0]
-        f_star = setting['f_star']
+        f_star = self.defaults['f_star']
 
         f_prev = self.global_state.get('f_prev', None)
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', init=[params,tensors], cls=TensorList)

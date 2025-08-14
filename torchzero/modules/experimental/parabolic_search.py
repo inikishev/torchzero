@@ -111,15 +111,6 @@ class ParabolaSearch(Module):
         t, f = adaptive_tracking(parabolic_objective, f_0=f_0, f_1=f_1, t_0=prev_t, maxiter=maxiter)
         self.global_state['prev_t'] = t
 
-        # method, bracket, bounds, tol, options, maxiter = itemgetter(
-        #     'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.settings[var.params[0]])
-
-        # if maxiter is not None:
-        #     options = dict(options) if isinstance(options, Mapping) else {}
-        #     options['maxiter'] = maxiter
-
-        # res = self.scopt.minimize_scalar(parabolic_objective, method=method, bracket=bracket, bounds=bounds, tol=tol, options=options)
-        # t = res.x
 
         var.update = v_0*t + 0.5*a*t**2
         return var
@@ -205,15 +196,6 @@ class CubicParabolaSearch(Module):
         t, f = adaptive_tracking(parabolic_objective, f_0=f_0, f_1=f_1, t_0=prev_t, maxiter=maxiter)
         self.global_state['prev_t'] = t
 
-        # method, bracket, bounds, tol, options, maxiter = itemgetter(
-        #     'method', 'bracket', 'bounds', 'tol', 'options', 'maxiter')(self.settings[var.params[0]])
-
-        # if maxiter is not None:
-        #     options = dict(options) if isinstance(options, Mapping) else {}
-        #     options['maxiter'] = maxiter
-
-        # res = self.scopt.minimize_scalar(parabolic_objective, method=method, bracket=bracket, bounds=bounds, tol=tol, options=options)
-        # t = res.x
 
         var.update = v_0*t + (1/2)*a_0*t**2 + (1/6)*j*t**3
         return var

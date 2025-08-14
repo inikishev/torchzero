@@ -112,7 +112,7 @@ class Backtracking(LineSearchBase):
     @torch.no_grad
     def search(self, update, var):
         init, beta, c, condition, maxiter, adaptive = itemgetter(
-            'init', 'beta', 'c', 'condition', 'maxiter', 'adaptive')(self.settings[var.params[0]])
+            'init', 'beta', 'c', 'condition', 'maxiter', 'adaptive')(self.defaults)
 
         objective = self.make_objective(var=var)
 
@@ -187,7 +187,7 @@ class AdaptiveBacktracking(LineSearchBase):
     @torch.no_grad
     def search(self, update, var):
         init, beta, c,condition, maxiter, target_iters, nplus, scale_beta=itemgetter(
-            'init','beta','c','condition', 'maxiter','target_iters','nplus','scale_beta')(self.settings[var.params[0]])
+            'init','beta','c','condition', 'maxiter','target_iters','nplus','scale_beta')(self.defaults)
 
         objective = self.make_objective(var=var)
 

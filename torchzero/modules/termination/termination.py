@@ -21,7 +21,7 @@ class TerminationCriteriaBase(Module):
 
     def should_terminate(self, var: Var) -> bool:
         n_bad = self.global_state.get('_n_bad', 0)
-        n = self.settings[var.params[0]]['_n']
+        n = self.defaults['_n']
 
         if self.termination_criteria(var):
             n_bad += 1
@@ -53,7 +53,7 @@ class TerminateAfterNSteps(TerminationCriteriaBase):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        max_steps = self.settings[var.params[0]]['steps']
+        max_steps = self.defaults['steps']
         return step >= max_steps
 
 class TerminateAfterNEvaluations(TerminationCriteriaBase):
@@ -62,7 +62,7 @@ class TerminateAfterNEvaluations(TerminationCriteriaBase):
         super().__init__(defaults)
 
     def termination_criteria(self, var):
-        maxevals = self.settings[var.params[0]]['maxevals']
+        maxevals = self.defaults['maxevals']
         return var.modular.num_evaluations >= maxevals
 
 class TerminateAfterNSeconds(TerminationCriteriaBase):
@@ -71,8 +71,8 @@ class TerminateAfterNSeconds(TerminationCriteriaBase):
         super().__init__(defaults)
 
     def termination_criteria(self, var):
-        max_seconds = self.settings[var.params[0]]['seconds']
-        sec_fn = self.settings[var.params[0]]['sec_fn']
+        max_seconds = self.defaults['seconds']
+        sec_fn = self.defaults['sec_fn']
 
         if 'start' not in self.global_state:
             self.global_state['start'] = sec_fn()
@@ -89,8 +89,8 @@ class TerminateByGradientNorm(TerminationCriteriaBase):
         super().__init__(defaults, n=n)
 
     def termination_criteria(self, var):
-        tol = self.settings[var.params[0]]['tol']
-        ord = self.settings[var.params[0]]['ord']
+        tol = self.defaults['tol']
+        ord = self.defaults['ord']
         return TensorList(var.get_grad()).global_metric(ord) <= tol
 
 
@@ -104,8 +104,8 @@ class TerminateByUpdateNorm(TerminationCriteriaBase):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        tol = self.settings[var.params[0]]['tol']
-        ord = self.settings[var.params[0]]['ord']
+        tol = self.defaults['tol']
+        ord = self.defaults['ord']
 
         p_prev = self.get_state(var.params, 'p_prev', cls=TensorList)
         if step == 0:
@@ -123,7 +123,7 @@ class TerminateOnNoImprovement(TerminationCriteriaBase):
         super().__init__(defaults, n=n)
 
     def termination_criteria(self, var):
-        tol = self.settings[var.params[0]]['tol']
+        tol = self.defaults['tol']
 
         f = tofloat(var.get_loss(False))
         if 'f_min' not in self.global_state:
@@ -142,7 +142,7 @@ class TerminateOnLossReached(TerminationCriteriaBase):
         super().__init__(defaults)
 
     def termination_criteria(self, var):
-        value = self.settings[var.params[0]]['value']
+        value = self.defaults['value']
         return var.get_loss(False) <= value
 
 class TerminateAny(TerminationCriteriaBase):

@@ -294,7 +294,7 @@ class TrustRegionBase(Module, ABC):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        if step % self.settings[var.params[0]]["update_freq"] == 0:
+        if step % self.defaults["update_freq"] == 0:
 
             hessian_module = self.children['hess_module']
             hessian_module.update(var)

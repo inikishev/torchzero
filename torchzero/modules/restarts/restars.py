@@ -246,7 +246,6 @@ class BirginMartinezRestart(Module):
         # d in our case is same direction as g so it has a minus sign
         if -d_g > -cond * d_norm * g_norm:
             module.reset()
-            self.reset()
             var.update = g.clone()
             return var
 
