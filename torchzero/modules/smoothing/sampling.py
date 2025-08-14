@@ -106,7 +106,7 @@ class GradientSampling(Reformulation):
         # check termination criteria
         if 'termination' in self.children:
             termination = cast(TerminationCriteriaBase, self.children['termination'])
-            if termination.n_should_terminate(var):
+            if termination.should_terminate(var):
 
                 # decay sigmas
                 states = [self.state[p] for p in params]

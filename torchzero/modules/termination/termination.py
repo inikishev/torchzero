@@ -16,14 +16,14 @@ class TerminationCriteriaBase(Module):
         super().__init__(defaults)
 
     @abstractmethod
-    def should_terminate(self, var: Var) -> bool:
+    def termination_criteria(self, var: Var) -> bool:
         ...
 
-    def n_should_terminate(self, var: Var) -> bool:
+    def should_terminate(self, var: Var) -> bool:
         n_bad = self.global_state.get('_n_bad', 0)
         n = self.settings[var.params[0]]['_n']
 
-        if self.should_terminate(var):
+        if self.termination_criteria(var):
             n_bad += 1
             if n_bad >= n:
                 self.global_state['_n_bad'] = 0
@@ -37,7 +37,7 @@ class TerminationCriteriaBase(Module):
 
 
     def update(self, var):
-        var.should_terminate = self.n_should_terminate(var)
+        var.should_terminate = self.should_terminate(var)
         if var.should_terminate: self.global_state['_n_bad'] = 0
 
     def apply(self, var):
@@ -49,7 +49,7 @@ class TerminateAfterNSteps(TerminationCriteriaBase):
         defaults = dict(steps=steps)
         super().__init__(defaults)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -61,7 +61,7 @@ class TerminateAfterNEvaluations(TerminationCriteriaBase):
         defaults = dict(maxevals=maxevals)
         super().__init__(defaults)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         maxevals = self.settings[var.params[0]]['maxevals']
         return var.modular.num_evaluations >= maxevals
 
@@ -70,7 +70,7 @@ class TerminateAfterNSeconds(TerminationCriteriaBase):
         defaults = dict(seconds=seconds, sec_fn=sec_fn)
         super().__init__(defaults)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         max_seconds = self.settings[var.params[0]]['seconds']
         sec_fn = self.settings[var.params[0]]['sec_fn']
 
@@ -88,7 +88,7 @@ class TerminateByGradientNorm(TerminationCriteriaBase):
         defaults = dict(tol=tol, ord=ord)
         super().__init__(defaults, n=n)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         tol = self.settings[var.params[0]]['tol']
         ord = self.settings[var.params[0]]['ord']
         return TensorList(var.get_grad()).global_metric(ord) <= tol
@@ -100,7 +100,7 @@ class TerminateByUpdateNorm(TerminationCriteriaBase):
         defaults = dict(tol=tol, ord=ord)
         super().__init__(defaults, n=n)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -122,7 +122,7 @@ class TerminateOnNoImprovement(TerminationCriteriaBase):
         defaults = dict(tol=tol)
         super().__init__(defaults, n=n)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         tol = self.settings[var.params[0]]['tol']
 
         f = tofloat(var.get_loss(False))
@@ -141,7 +141,7 @@ class TerminateOnLossReached(TerminationCriteriaBase):
         defaults = dict(value=value)
         super().__init__(defaults)
 
-    def should_terminate(self, var):
+    def termination_criteria(self, var):
         value = self.settings[var.params[0]]['value']
         return var.get_loss(False) <= value
 
@@ -151,9 +151,9 @@ class TerminateAny(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def should_terminate(self, var: Var) -> bool:
+    def termination_criteria(self, var: Var) -> bool:
         for c in self.get_children_sequence():
-            if cast(TerminationCriteriaBase, c).should_terminate(var): return True
+            if cast(TerminationCriteriaBase, c).termination_criteria(var): return True
 
         return False
 
@@ -163,9 +163,9 @@ class TerminateAll(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def should_terminate(self, var: Var) -> bool:
+    def termination_criteria(self, var: Var) -> bool:
         for c in self.get_children_sequence():
-            if not cast(TerminationCriteriaBase, c).should_terminate(var): return False
+            if not cast(TerminationCriteriaBase, c).termination_criteria(var): return False
 
         return True
 
@@ -173,7 +173,7 @@ class TerminateNever(TerminationCriteriaBase):
     def __init__(self):
         super().__init__()
 
-    def should_terminate(self, var): return False
+    def termination_criteria(self, var): return False
 
 def make_termination_criteria(
     ftol: float | None = None,

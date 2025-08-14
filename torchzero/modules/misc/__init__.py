@@ -1,5 +1,5 @@
 from .debug import PrintLoss, PrintParams, PrintShape, PrintUpdate
-from .escape import EscapeAnnealing, ResetEvery, ResetOnStuck
+from .escape import EscapeAnnealing
 from .gradient_accumulation import GradientAccumulation
 from .homotopy import (
     ExpHomotopy,

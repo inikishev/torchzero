@@ -19,3 +19,4 @@ from .trust_region import *
 from .variance_reduction import *
 from .weight_decay import *
 from .wrappers import *
+from .restarts import *

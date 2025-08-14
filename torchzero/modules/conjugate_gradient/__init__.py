@@ -1,6 +1,5 @@
 from .cg import (
     DYHS,
-    BirginMartinezRestart,
     ConjugateDescent,
     DaiYuan,
     FletcherReeves,
@@ -8,6 +7,5 @@ from .cg import (
     HestenesStiefel,
     LiuStorey,
     PolakRibiere,
-    PowellRestart,
     ProjectedGradientMethod,
 )

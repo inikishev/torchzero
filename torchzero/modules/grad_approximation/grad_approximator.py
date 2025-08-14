@@ -69,18 +69,16 @@ class GradApproximator(Module, ABC):
         self._target: GradTarget = target
 
     @abstractmethod
-    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: _Scalar | None) -> tuple[Iterable[torch.Tensor], _Scalar | None, _Scalar | None]:
-        """Returns a tuple: (grad, loss, loss_approx), make sure this resets parameters to their original values!"""
+    def approximate(self, closure: Callable, params: list[torch.Tensor], loss: torch.Tensor | None) -> tuple[Iterable[torch.Tensor], torch.Tensor | None, torch.Tensor | None]:
+        """Returns a tuple: ``(grad, loss, loss_approx)``, make sure this resets parameters to their original values!"""
 
-    def pre_step(self, var: Var) -> Var | None:
+    def pre_step(self, var: Var) -> None:
         """This runs once before each step, whereas `approximate` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
-        return var
 
     @torch.no_grad
     def step(self, var):
-        ret = self.pre_step(var)
-        if isinstance(ret, Var): var = ret
+        self.pre_step(var)
 
         if var.closure is None: raise RuntimeError("Gradient approximation requires closure")
         params, closure, loss = var.params, var.closure, var.loss

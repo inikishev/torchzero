@@ -154,7 +154,7 @@ _RFD_FUNCS: dict[_FD_Formula, Callable] = {
 class RandomizedFDM(GradApproximator):
     """Gradient approximation via a randomized finite-difference method.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
@@ -174,52 +174,51 @@ class RandomizedFDM(GradApproximator):
         #### Simultaneous perturbation stochastic approximation (SPSA) method
 
         SPSA is randomized finite differnce with rademacher distribution and central formula.
-
-        .. code-block:: python
-
-            spsa = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
-                tz.m.LR(1e-2)
-            )
+        ```py
+        spsa = tz.Modular(
+            model.parameters(),
+            tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
+            tz.m.LR(1e-2)
+        )
+        ```
 
         #### Random-direction stochastic approximation (RDSA) method
 
         RDSA is randomized finite differnce with usually gaussian distribution and central formula.
 
-        .. code-block:: python
-
-            rdsa = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
-                tz.m.LR(1e-2)
-            )
+        ```
+        rdsa = tz.Modular(
+            model.parameters(),
+            tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
+            tz.m.LR(1e-2)
+        )
+        ```
 
         #### RandomizedFDM with momentum
 
         Momentum might help by reducing the variance of the estimated gradients.
 
-        .. code-block:: python
-
-            momentum_spsa = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(),
-                tz.m.HeavyBall(0.9),
-                tz.m.LR(1e-3)
-            )
+        ```
+        momentum_spsa = tz.Modular(
+            model.parameters(),
+            tz.m.RandomizedFDM(),
+            tz.m.HeavyBall(0.9),
+            tz.m.LR(1e-3)
+        )
+        ```
 
         #### Gaussian smoothing method
 
         GS uses many gaussian samples with possibly a larger finite difference step size.
 
-        .. code-block:: python
-
-            gs = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
-                tz.m.NewtonCG(hvp_method="forward"),
-                tz.m.Backtracking()
-            )
+        ```
+        gs = tz.Modular(
+            model.parameters(),
+            tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
+            tz.m.NewtonCG(hvp_method="forward"),
+            tz.m.Backtracking()
+        )
+        ```
 
         #### SPSA-NewtonCG
 
@@ -231,34 +230,36 @@ class RandomizedFDM(GradApproximator):
         and each closure call estimates gradients using the same pre-generated perturbations.
         This way closure-based algorithms are able to use gradients estimated in a consistent way.
 
-        .. code-block:: python
+        ```
+        opt = tz.Modular(
+            model.parameters(),
+            tz.m.RandomizedFDM(n_samples=10),
+            tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
+            tz.m.Backtracking()
+        )
+        ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(n_samples=10),
-                tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
-                tz.m.Backtracking()
-            )
+        #### SPSA-LBFGS
 
-        #### SPSA-BFGS
-
-        L-BFGS uses a memory of past parameter and gradient differences. If past gradients
-        were estimated with different perturbations, L-BFGS directions will be useless.
+        LBFGS uses a memory of past parameter and gradient differences. If past gradients
+        were estimated with different perturbations, LBFGS directions will be useless.
 
         To alleviate this momentum can be added to random perturbations to make sure they only
         change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
         The disadvantage is that the subspace the algorithm is able to explore changes slowly.
 
-        Additionally we will reset BFGS memory every 100 steps to remove influence from old gradient estimates.
+        Additionally we will reset SPSA and LBFGS memory every 100 steps to remove influence from old gradient estimates.
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99),
-                tz.m.BFGS(reset_interval=100),
-                tz.m.Backtracking()
-            )
+        ```
+        opt = tz.Modular(
+            bench.parameters(),
+            tz.m.ResetEvery(
+                [tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99), tz.m.LBFGS()],
+                steps = 100,
+            ),
+            tz.m.Backtracking()
+        )
+        ```
     """
     PRE_MULTIPLY_BY_H = True
     def __init__(
@@ -347,12 +348,27 @@ class RandomizedFDM(GradApproximator):
             else: prt = TensorList(prt)
 
             loss, loss_approx, d = fd_fn(closure=closure, params=params, p_fn=lambda: prt, h=h, f_0=loss)
+            # here `d` is a numberlist of directional derivatives, due to per parameter `h` values.
+
+            # support for per-sample values which gives better estimate
+            if d[0].numel() > 1: d = d.map(torch.mean)
+
             if grad is None: grad = prt * d
             else: grad += prt * d
 
         params.set_(orig_params)
         assert grad is not None
         if n_samples > 1: grad.div_(n_samples)
+
+        # mean if got per-sample values
+        if loss is not None:
+            if loss.numel() > 1:
+                loss = loss.mean()
+
+        if loss_approx is not None:
+            if loss_approx.numel() > 1:
+                loss_approx = loss_approx.mean()
+
         return grad, loss, loss_approx
 
 class SPSA(RandomizedFDM):

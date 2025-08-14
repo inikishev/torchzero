@@ -16,6 +16,7 @@ class SVRG(Module):
     """Stochastic variance reduced gradient method (SVRG).
 
     To use, put SVRG as the first module, it can be used with any other modules.
+    To reduce variance of a gradient estimator, put the gradient estimator before SVRG.
 
     First it uses first ``accum_steps`` batches to compute full gradient at initial
     parameters using gradient accumulation, the model will not be updated during this.
@@ -50,6 +51,24 @@ class SVRG(Module):
     )
     ```
 
+    For extra variance reduction one can use Online versions of algorithms, although it won't always help.
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SVRG(len(dataloader)),
+        tz.m.Online(tz.m.LBFGS()),
+        tz.m.Backtracking(),
+    )
+
+    Variance reduction can also be applied to gradient estimators.
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SPSA(),
+        tz.m.SVRG(100),
+        tz.m.LR(1e-2),
+    )
+    ```
     ## Notes
 
     The SVRG gradient is computed as ``g_b(x) - alpha * g_b(x_0) - g_f(x0.)``, where:
@@ -59,7 +78,6 @@ class SVRG(Module):
     - ``g_f`` refers to full gradient at ``x_0``.
 
     The SVRG loss is computed using the same formula.
-
     """
     def __init__(self, svrg_steps: int, accum_steps: int | None = None, reset_before_accum:bool=True, svrg_loss:bool=True, alpha:float=1):
         defaults = dict(svrg_steps = svrg_steps, accum_steps=accum_steps, reset_before_accum=reset_before_accum, svrg_loss=svrg_loss, alpha=alpha)

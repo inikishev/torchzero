@@ -226,6 +226,7 @@ class Var:
         copy.grad = self.grad
         copy.loss = self.loss
         copy.loss_approx = self.loss_approx
+        copy.closure = self.closure
         copy.post_step_hooks = self.post_step_hooks
         copy.stop = self.stop
         copy.skip_update = self.skip_update
@@ -491,27 +492,29 @@ class Module(ABC):
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     def step(self, var: Var) -> Var:
-        """performs a step, returns new var but may update it in-place."""
+        """performs a step, returns new ``var`` but may update it in-place."""
         self.update(var)
         return self.apply(var)
 
     def update(self, var:Var) -> Any:
-        """Updates the internal state of this module. This should not modify `var.update`.
+        """Updates the internal state of this module. This should not modify ``var.update``.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ::code::`tz.m.Online`. Alternatively, simply override the ``step`` method.
+        such as ``tz.m.Online`` or trust regions. Alternatively, simply override the ``step`` method.
         """
 
     def apply(self, var: Var) -> Var:
-        """Applies this module to ``var.get_update()``. This should not modify the internal state of this module if possible.
+        """Applies this module to ``var.get_update()``.
+        This should not modify the internal state of this module if possible.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ::code::`tz.m.Online`. Alternatively, simply override the ``step`` method.
+        such as ``tz.m.Online`` or trust regions. Alternatively, simply override the ``step`` method.
         """
         return self.step(var)
 
     def get_H(self, var: Var) -> LinearOperator | None:
-        """returns a LinearOperator corresponding to hessian or hessian approximation"""
+        """returns a ``LinearOperator`` corresponding to hessian or hessian approximation.
+        The hessian approximation is assumed to be for all parameters concatenated to a vector."""
         # if this method is not defined it searches in children
         # this should be overwritten to return None if child params are different from this modules params
         H = None
@@ -532,13 +535,13 @@ class Module(ABC):
         for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
-        """Resets buffers that depend on previous evaluation, such as previous gradient,
+        """Resets buffers that depend on previous evaluation, such as previous gradient and loss,
         which may become inaccurate due to mini-batching.
 
-        ``Online`` module calls `reset_for_online`,
-        then it calls `update` with previous parameters,
-        then it calls `update` with current parameters,
-        and then `apply`.
+        ``Online`` module calls ``reset_for_online``,
+        then it calls ``update`` with previous parameters,
+        then it calls ``update`` with current parameters,
+        and then ``apply``.
         """
         for c in self.children.values(): c.reset_for_online()
 
@@ -567,7 +570,9 @@ class Module(ABC):
         retain_grad: bool,
     ):
         """
-        Returns ``(Hvp, rgrad)``. ``rgrad`` is gradient at current parameters, possibly with create_graph=True, or it may be None with ``hvp_method="central"``. Gradient is set to vars automatically if ``at_x0``, you can always access it with ``vars.get_grad()``
+        Returns ``(Hvp, rgrad)``, where ``rgrad`` is gradient at current parameters,
+        possibly with ``create_graph=True``, or it may be None with ``hvp_method="central"``.
+        Gradient is set to vars automatically if ``at_x0``, you can always access it with ``vars.get_grad()``
 
         Single sample example:
 
