@@ -27,6 +27,7 @@ from .misc import (
     RandomHvp,
     Relative,
     UpdateSign,
+    SaveBest,
 )
 from .multistep import Multistep, NegateOnLossIncrease, Online, Sequential
 from .regularization import Dropout, PerturbWeights, WeightDropout

@@ -80,7 +80,7 @@ class GaussNewton(Module):
         print(f'{loss = }')
     ```
 
-    training a neural network with a matrix-free GN:
+    training a neural network with a matrix-free GN trust region:
     ```python
     X = torch.randn(64, 20)
     y = torch.randn(64, 10)
@@ -88,8 +88,7 @@ class GaussNewton(Module):
     model = nn.Sequential(nn.Linear(20, 64), nn.ELU(), nn.Linear(64, 10))
     opt = tz.Modular(
         model.parameters(),
-        tz.m.NaturalGradient(),
-        tz.m.LR(3e-2)
+        tz.m.TrustCG(tz.m.GaussNewton()),
     )
 
     def closure(backward=True):

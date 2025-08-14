@@ -1,12 +1,22 @@
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from functools import partial
 from operator import itemgetter
 from typing import Literal
 
 import torch
 
 from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Var
-from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states, Metrics
+from ...utils import (
+    Distributions,
+    Metrics,
+    NumberList,
+    TensorList,
+    set_storage_,
+    tofloat,
+    unpack_dicts,
+    unpack_states,
+)
 
 
 class Previous(TensorwiseTransform):
@@ -312,4 +322,62 @@ class RandomHvp(Module):
             D = self.get_state(params, "D", cls=TensorList)
 
         var.update = list(D)
+        return var
+
+@torch.no_grad
+def _load_best_parameters(params: Sequence[torch.Tensor], best_params: Sequence[torch.Tensor]):
+    for p_cur, p_best in zip(params, best_params):
+        set_storage_(p_cur, p_best)
+
+class SaveBest(Module):
+    """Saves best parameters found so far, ones that have lowest loss. Put this as the last module.
+
+    Adds the following attrs:
+
+    - ``best_params`` - a list of tensors with best parameters.
+    - ``best_loss`` - loss value with ``best_params``.
+    - ``load_best_parameters`` - a function that sets parameters to the best parameters./
+
+    ## Examples
+    ```python
+    def rosenbrock(x, y):
+        return (1 - x)**2 + (100 * (y - x**2))**2
+
+    xy = torch.tensor((-1.1, 2.5), requires_grad=True)
+    opt = tz.Modular(
+        [xy],
+        tz.m.NAG(0.999),
+        tz.m.LR(1e-6),
+        tz.m.StoreBest()
+    )
+
+    # optimize for 1000 steps
+    for i in range(1000):
+        loss = rosenbrock(*xy)
+        opt.zero_grad()
+        loss.backward()
+        opt.step(loss=loss) # SaveBest needs closure or loss
+
+    # NAG overshot, but we saved the best params
+    print(f'{rosenbrock(*xy) = }') # >> 3.6583
+    print(f"{opt.attrs['best_loss'] = }") # >> 0.000627
+
+    # load best parameters
+    opt.attrs['load_best_params']()
+    print(f'{rosenbrock(*xy) = }') # >> 0.000627
+    """
+    def __init__(self):
+        super().__init__()
+
+    @torch.no_grad
+    def step(self, var):
+        loss = tofloat(var.get_loss(False))
+        lowest_loss = self.global_state.get('lowest_loss', float("inf"))
+
+        if loss < lowest_loss:
+            self.global_state['lowest_loss'] = loss
+            best_params = var.attrs['best_params'] = [p.clone() for p in var.params]
+            var.attrs['best_loss'] = loss
+            var.attrs['load_best_params'] = partial(_load_best_parameters, params=var.params, best_params=best_params)
+
         return var
