@@ -148,21 +148,16 @@ class HigherOrderNewton(Module):
     """A basic arbitrary order newton's method with optional trust region and proximal penalty.
 
     This constructs an nth order taylor approximation via autograd and minimizes it with
-    scipy.optimize.minimize trust region newton solvers with optional proximal penalty.
+    ``scipy.optimize.minimize`` trust region newton solvers with optional proximal penalty.
 
-    .. note::
-        In most cases HigherOrderNewton should be the first module in the chain because it relies on extra autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+    The hessian of taylor approximation is easier to evaluate, plus it can be evaluated in a batched mode,
+    so it can be more efficient in very specific instances.
 
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating higher order derivatives.
-        The closure must accept a ``backward`` argument (refer to documentation).
-
-    .. warning::
-        this uses roughly O(N^order) memory and solving the subproblem can be very expensive.
-
-    .. warning::
-        "none" and "proximal" trust methods may generate subproblems that have no minima, causing divergence.
+    Notes:
+        - In most cases HigherOrderNewton should be the first module in the chain because it relies on extra autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
+        - This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating higher order derivatives. The closure must accept a ``backward`` argument (refer to documentation).
+        - this uses roughly O(N^order) memory and solving the subproblem is very expensive.
+        - "none" and "proximal" trust methods may generate subproblems that have no minima, causing divergence.
 
     Args:
 
@@ -178,7 +173,7 @@ class HigherOrderNewton(Module):
         increase (float, optional): trust region multiplier on good steps. Defaults to 1.5.
         decrease (float, optional): trust region multiplier on bad steps. Defaults to 0.75.
         trust_init (float | None, optional):
-            initial trust region size. If none, defaults to 1 on :code:`trust_method="bounds"` and 0.1 on :code:`"proximal"`. Defaults to None.
+            initial trust region size. If none, defaults to 1 on :code:`trust_method="bounds"` and 0.1 on ``"proximal"``. Defaults to None.
         trust_tol (float, optional):
             Maximum ratio of expected loss reduction to actual reduction for trust region increase.
             Should 1 or higer. Defaults to 2.

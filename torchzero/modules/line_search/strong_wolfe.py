@@ -230,26 +230,26 @@ class StrongWolfe(LineSearchBase):
             in the opposite direction. Defaults to False.
 
 
-    Examples:
-        Conjugate gradient method with strong wolfe line search. Nocedal, Wright recommend setting c2 to 0.1 for CG.
+    ## Examples:
 
-        .. code-block:: python
+    Conjugate gradient method with strong wolfe line search. Nocedal, Wright recommend setting c2 to 0.1 for CG. Since CG doesn't produce well scaled directions, initial alpha can be determined from function values by ``a_init="first-order"``.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.PolakRibiere(),
-                tz.m.StrongWolfe(c2=0.1, a_init="first-order")
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.PolakRibiere(),
+        tz.m.StrongWolfe(c2=0.1, a_init="first-order")
+    )
+    ```
 
-        LBFGS strong wolfe line search:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(),
-                tz.m.StrongWolfe()
-            )
+    LBFGS strong wolfe line search:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(),
+        tz.m.StrongWolfe()
+    )
+    ```
 
     """
     def __init__(

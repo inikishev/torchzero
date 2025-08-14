@@ -11,20 +11,12 @@ class MatrixMomentum(Module):
 
     Matrix momentum is useful for convex objectives, also for some reason it has very really good generalization on elastic net logistic regression.
 
-    .. note::
-        :code:`mu` needs to be tuned very carefully. It is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable.
+    Notes:
+        - ``mu`` needs to be tuned very carefully. It is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable. I have devised an adaptive version of this - ``tz.m.AdaptiveMatrixMomentum``, and it works well without having to tune ``mu``.
 
-    .. note::
-        I have devised an adaptive version of this - :code:`tz.m.AdaptiveMatrixMomentum`, and it works well
-        without having to tune :code:`mu`.
+        - In most cases ``MatrixMomentum`` should be the first module in the chain because it relies on autograd.
 
-    .. note::
-        In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
-
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
+        - This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument.
 
     Args:
         mu (float, optional): this has a similar role to (1 - beta) in normal momentum. Defaults to 0.1.

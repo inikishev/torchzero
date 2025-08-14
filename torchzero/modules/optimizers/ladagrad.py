@@ -68,40 +68,39 @@ class LMAdagrad(TensorwiseTransform):
         concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
 
-    Examples:
-        Limited-memory Adagrad
+    ## Examples:
 
-        .. code-block:: python
+    Limited-memory Adagrad
 
-            optimizer = tz.Modular(
-                model.parameters(),
-                tz.m.LMAdagrad(),
-                tz.m.LR(0.1)
-            )
+    ```python
+    optimizer = tz.Modular(
+        model.parameters(),
+        tz.m.LMAdagrad(),
+        tz.m.LR(0.1)
+    )
+    ```
+    Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
 
-        Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
+    ```python
+    optimizer = tz.Modular(
+        model.parameters(),
+        tz.m.LMAdagrad(inner=tz.m.EMA()),
+        tz.m.Debias(0.9, 0.999),
+        tz.m.LR(0.01)
+    )
+    ```
 
-        .. code-block:: python
+    Stable Adam with L-Adagrad preconditioner (this is what I would recommend)
 
-            optimizer = tz.Modular(
-                model.parameters(),
-                tz.m.LMAdagrad(inner=tz.m.EMA()),
-                tz.m.Debias(0.9, 0.999),
-                tz.m.LR(0.01)
-            )
-
-        Stable Adam with L-Adagrad preconditioner (this is what I would recommend)
-
-        .. code-block:: python
-
-            optimizer = tz.Modular(
-                model.parameters(),
-                tz.m.LMAdagrad(inner=tz.m.EMA()),
-                tz.m.Debias(0.9, 0.999),
-                tz.m.ClipNormByEMA(max_ema_growth=1.2),
-                tz.m.LR(0.01)
-            )
-
+    ```python
+    optimizer = tz.Modular(
+        model.parameters(),
+        tz.m.LMAdagrad(inner=tz.m.EMA()),
+        tz.m.Debias(0.9, 0.999),
+        tz.m.ClipNormByEMA(max_ema_growth=1.2),
+        tz.m.LR(0.01)
+    )
+    ```
     Reference:
         Agarwal N. et al. Efficient full-matrix adaptive regularization //International Conference on Machine Learning. – PMLR, 2019. – С. 102-110.
     """

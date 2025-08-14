@@ -53,7 +53,7 @@ def adagrad_(
 class Adagrad(Transform):
     """Adagrad, divides by sum of past squares of gradients.
 
-    This implementation is identical to :code:`torch.optim.Adagrad`.
+    This implementation is identical to ``torch.optim.Adagrad``.
 
     Args:
         lr_decay (float, optional): learning rate decay. Defaults to 0.
@@ -117,9 +117,69 @@ class Adagrad(Transform):
 
 
 class FullMatrixAdagrad(TensorwiseTransform):
-    def __init__(self, beta: float | None = None, decay: float | None = None, sqrt:bool=True, concat_params=True, update_freq=1, precond_freq: int = 1, init: Literal['identity', 'zeros', 'ones', 'GGT'] = 'identity', divide: bool=False, inner: Chainable | None = None):
+    """Full-matrix version of Adagrad, can be customized to make RMSprop or Adam (see examples).
+
+    Note:
+        A more memory-efficient version equivalent to full matrix Adagrad on last n gradients is implemented in ``tz.m.LMAdagrad``.
+
+    Args:
+        beta (float | None, optional): momentum for gradient outer product accumulators. if None, uses sum. Defaults to None.
+        decay (float | None, optional): decay for gradient outer product accumulators. Defaults to None.
+        sqrt (bool, optional): whether to take the square root of the accumulator. Defaults to True.
+        concat_params (bool, optional): if False, each parameter will have it's own accumulator. Defaults to True.
+        precond_freq (int, optional): frequency of updating the inverse square root of the accumulator. Defaults to 1.
+        init (Literal[str], optional):
+            how to initialize the accumulator.
+            - "identity" - with identity matrix (default).
+            - "zeros" - with zero matrix.
+            - "ones" - with matrix of ones.
+             -"GGT" - with the first outer product
+        divide (bool, optional): whether to divide the accumulator by number of gradients in it. Defaults to False.
+        inner (Chainable | None, optional): inner modules to apply preconditioning to. Defaults to None.
+
+    ## Examples:
+
+    Plain full-matrix adagrad
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.FullMatrixAdagrd(),
+        tz.m.LR(1e-2),
+    )
+    ```
+
+    Full-matrix RMSprop
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.FullMatrixAdagrad(beta=0.99),
+        tz.m.LR(1e-2),
+    )
+    ```
+
+    Full-matrix Adam
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.FullMatrixAdagrad(beta=0.999, inner=tz.m.EMA(0.9)),
+        tz.m.Debias(0.9, 0.999),
+        tz.m.LR(1e-2),
+    )
+    ```
+    """
+    def __init__(
+        self,
+        beta: float | None = None,
+        decay: float | None = None,
+        sqrt: bool = True,
+        concat_params=True,
+        precond_freq: int = 1,
+        init: Literal["identity", "zeros", "ones", "GGT"] = "identity",
+        divide: bool = False,
+        inner: Chainable | None = None,
+    ):
         defaults = dict(beta=beta, decay=decay, sqrt=sqrt, precond_freq=precond_freq, init=init, divide=divide)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner,)
+        super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner,)
 
     @torch.no_grad
     def update_tensor(self, tensor, param, grad, loss, state, setting):

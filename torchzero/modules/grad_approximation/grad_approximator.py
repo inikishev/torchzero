@@ -24,46 +24,44 @@ class GradApproximator(Module, ABC):
 
     Example:
 
-        Basic SPSA method implementation.
+    Basic SPSA method implementation.
+    ```python
+    class SPSA(GradApproximator):
+        def __init__(self, h=1e-3):
+            defaults = dict(h=h)
+            super().__init__(defaults)
 
-        .. code-block:: python
+        @torch.no_grad
+        def approximate(self, closure, params, loss):
+            perturbation = [rademacher_like(p) * self.settings[p]['h'] for p in params]
 
-            class SPSA(GradApproximator):
-                def __init__(self, h=1e-3):
-                    defaults = dict(h=h)
-                    super().__init__(defaults)
+            # evaluate params + perturbation
+            torch._foreach_add_(params, perturbation)
+            loss_plus = closure(False)
 
-                @torch.no_grad
-                def approximate(self, closure, params, loss):
-                    perturbation = [rademacher_like(p) * self.settings[p]['h'] for p in params]
+            # evaluate params - perturbation
+            torch._foreach_sub_(params, perturbation)
+            torch._foreach_sub_(params, perturbation)
+            loss_minus = closure(False)
 
-                    # evaluate params + perturbation
-                    torch._foreach_add_(params, perturbation)
-                    loss_plus = closure(False)
+            # restore original params
+            torch._foreach_add_(params, perturbation)
 
-                    # evaluate params - perturbation
-                    torch._foreach_sub_(params, perturbation)
-                    torch._foreach_sub_(params, perturbation)
-                    loss_minus = closure(False)
+            # calculate SPSA gradients
+            spsa_grads = []
+            for p, pert in zip(params, perturbation):
+                settings = self.settings[p]
+                h = settings['h']
+                d = (loss_plus - loss_minus) / (2*(h**2))
+                spsa_grads.append(pert * d)
 
-                    # restore original params
-                    torch._foreach_add_(params, perturbation)
-
-                    # calculate SPSA gradients
-                    spsa_grads = []
-                    for p, pert in zip(params, perturbation):
-                        settings = self.settings[p]
-                        h = settings['h']
-                        d = (loss_plus - loss_minus) / (2*(h**2))
-                        spsa_grads.append(pert * d)
-
-                    # returns tuple: (grads, loss, loss_approx)
-                    # loss must be with initial parameters
-                    # since we only evaluated loss with perturbed parameters
-                    # we only have loss_approx
-                    return spsa_grads, None, loss_plus
-
-            """
+            # returns tuple: (grads, loss, loss_approx)
+            # loss must be with initial parameters
+            # since we only evaluated loss with perturbed parameters
+            # we only have loss_approx
+            return spsa_grads, None, loss_plus
+    ```
+    """
     def __init__(self, defaults: dict[str, Any] | None = None, target: GradTarget = 'closure'):
         super().__init__(defaults)
         self._target: GradTarget = target

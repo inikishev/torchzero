@@ -60,6 +60,8 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
             Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
+    ## Notes
+
     ### update
 
     On 1st ``update_tensor`` H or B is initialized using ``initialize_P``, which returns identity matrix by default.
@@ -266,26 +268,26 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         return None
 
 class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
-    '''This is :code:`HessianUpdateStrategy` subclass for algorithms with no extra defaults, to skip the lengthy __init__.
-    Refer to :code:`HessianUpdateStrategy` documentation.
+    '''This is ``HessianUpdateStrategy`` subclass for algorithms with no extra defaults, to skip the lengthy ``__init__``.
+    Refer to ``HessianUpdateStrategy`` documentation.
 
-    Example:
-        Implementing BFGS method that maintains an estimate of the hessian inverse (H):
+    ## Example:
 
-        .. code-block:: python
-
-            class BFGS(_HessianUpdateStrategyDefaults):
-                """Broyden–Fletcher–Goldfarb–Shanno algorithm"""
-                def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
-                    tol = settings["tol"]
-                    sy = torch.dot(s, y)
-                    if sy <= tol: return H
-                    num1 = (sy + (y @ H @ y)) * s.outer(s)
-                    term1 = num1.div_(sy**2)
-                    num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
-                    term2 = num2.div_(sy)
-                    H += term1.sub_(term2)
-                    return H
+    Implementing BFGS method that maintains an estimate of the hessian inverse (H):
+    ```python
+    class BFGS(_HessianUpdateStrategyDefaults):
+        """Broyden–Fletcher–Goldfarb–Shanno algorithm"""
+        def update_H(self, H, s, y, p, g, p_prev, g_prev, state, settings):
+            tol = settings["tol"]
+            sy = torch.dot(s, y)
+            if sy <= tol: return H
+            num1 = (sy + (y @ H @ y)) * s.outer(s)
+            term1 = num1.div_(sy**2)
+            num2 = (torch.outer(H @ y, s).add_(torch.outer(s, y) @ H))
+            term2 = num2.div_(sy)
+            H += term1.sub_(term2)
+            return H
+    ```
 
     Make sure to put at least a basic class level docstring to overwrite this.
     '''
@@ -384,11 +386,11 @@ def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
 class BFGS(_InverseHessianUpdateStrategyDefaults):
     """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe()` is recommended, although this can be stable without a line search. Alternatively warmup :code:`tz.m.Warmup` can stabilize quasi-newton methods without line search.
+    Note:
+        a line search or a trust region is recommended
 
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Args:
         init_scale (float | Literal["auto"], optional):
@@ -421,26 +423,25 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
             If False, the update rule is applied to each parameter separately. Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
-    Examples:
-        BFGS with strong-wolfe line search:
+    ## Examples:
 
-        .. code-block:: python
+    BFGS with backtracking line search:
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.BFGS(),
-                tz.m.StrongWolfe()
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.BFGS(),
+        tz.m.Backtracking()
+    )
+    ```
 
-        BFGS preconditioning applied to momentum:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.BFGS(inner=tz.m.EMA(0.9)),
-                tz.m.LR(1e-2)
-            )
+    BFGS with trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquardt(tz.m.BFGS(inverse=False)),
+    )
+    ```
     """
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
@@ -464,19 +465,13 @@ def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     return H
 
 class SR1(_InverseHessianUpdateStrategyDefaults):
-    """Symmetric Rank 1 Quasi-Newton method.
+    """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a trust region or an accurate line search is recommended.
 
-    .. note::
-        approximate Hessians generated by the SR1 method show faster progress towards the true Hessian than other methods, but it is more unstable. SR1 is best used within a trust region module.
-
-    .. note::
-        SR1 doesn't enforce the hessian estimate to be positive definite, therefore it can generate directions that are not descent directions.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Args:
         init_scale (float | Literal["auto"], optional):
@@ -509,26 +504,24 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
             If False, the update rule is applied to each parameter separately. Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
-    Examples:
-        SR1 with strong-wolfe line search
+    ## Examples:
 
-        .. code-block:: python
+    SR1 with trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False)),
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SR1(),
-                tz.m.StrongWolfe()
-            )
-
-        BFGS preconditioning applied to momentum
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SR1(inner=tz.m.EMA(0.9)),
-                tz.m.LR(1e-2)
-            )
+    SR1 with strong wolfe line search:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SR1(),
+        tz.m.Backtracking(c2=0.1)
+    )
+    ```
     """
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
@@ -566,15 +559,11 @@ def dfp_B(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
 class DFP(_InverseHessianUpdateStrategyDefaults):
     """Davidon–Fletcher–Powell Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a trust region or an accurate line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
-
+    Warning:
+        this uses at least O(N^2) memory.
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return dfp_H_(H=H, s=s, y=y, tol=setting['tol'])
@@ -627,14 +616,11 @@ def greenstadt2_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
 class BroydenGood(_InverseHessianUpdateStrategyDefaults):
     """Broyden's "good" Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a trust region or an accurate line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
@@ -647,14 +633,11 @@ class BroydenGood(_InverseHessianUpdateStrategyDefaults):
 class BroydenBad(_InverseHessianUpdateStrategyDefaults):
     """Broyden's "bad" Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a trust region or an accurate line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
@@ -667,14 +650,11 @@ class BroydenBad(_InverseHessianUpdateStrategyDefaults):
 class Greenstadt1(_InverseHessianUpdateStrategyDefaults):
     """Greenstadt's first Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a trust region or an accurate line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
@@ -685,18 +665,14 @@ class Greenstadt1(_InverseHessianUpdateStrategyDefaults):
 class Greenstadt2(_InverseHessianUpdateStrategyDefaults):
     """Greenstadt's second Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
-
     """
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return greenstadt2_H_(H=H, s=s, y=y)
@@ -718,11 +694,11 @@ class ICUM(_InverseHessianUpdateStrategyDefaults):
     Inverse Column-updating Quasi-Newton method. This is computationally cheaper than other Quasi-Newton methods
     due to only updating one column of the inverse hessian approximation per step.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Lopes, V. L., & Martínez, J. M. (1995). Convergence properties of the inverse column-updating method. Optimization Methods & Software, 6(2), 127–144. from https://www.ime.unicamp.br/sites/default/files/pesquisa/relatorios/rp-1993-76.pdf
@@ -747,14 +723,11 @@ class ThomasOptimalMethod(_InverseHessianUpdateStrategyDefaults):
     """
     Thomas's "optimal" Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Thomas, Stephen Walter. Sequential estimation techniques for quasi-Newton algorithms. Cornell University, 1975.
@@ -783,14 +756,11 @@ def psb_B_(B: torch.Tensor, s: torch.Tensor, y: torch.Tensor):
 class PSB(_HessianUpdateStrategyDefaults):
     """Powell's Symmetric Broyden Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search or a trust region is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Spedicato, E., & Huang, Z. (1997). Numerical experience with newton-like methods for nonlinear algebraic systems. Computing, 58(1), 69–89. doi:10.1007/bf02684472
@@ -811,14 +781,11 @@ class Pearson(_InverseHessianUpdateStrategyDefaults):
     """
     Pearson's Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
@@ -835,14 +802,11 @@ def mccormick_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor):
 class McCormick(_InverseHessianUpdateStrategyDefaults):
     """McCormicks's Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
@@ -863,14 +827,11 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
     """
     Projected Newton Raphson method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        this is an experimental method.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
@@ -985,14 +946,11 @@ class SSVM(HessianUpdateStrategy):
     """
     Self-scaling variable metric Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable Metric algorithms. Mathematical Programming, 10(1), 70–90. doi:10.1007/bf01580654
@@ -1061,16 +1019,16 @@ class GradientCorrection(Transform):
 
     This can useful as inner module for second order methods with inexact line search.
 
-    Example:
-        L-BFGS with gradient correction
+    ## Example:
+    L-BFGS with gradient correction
 
-        .. code-block :: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(inner=tz.m.GradientCorrection()),
-                tz.m.Backtracking()
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(inner=tz.m.GradientCorrection()),
+        tz.m.Backtracking()
+    )
+    ```
 
     Reference:
         HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
@@ -1096,14 +1054,11 @@ class Horisho(_InverseHessianUpdateStrategyDefaults):
     """
     Horisho's variable metric Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         HOSHINO, S. (1972). A Formulation of Variable Metric Methods. IMA Journal of Applied Mathematics, 10(3), 394–403. doi:10.1093/imamat/10.3.394
@@ -1130,14 +1085,11 @@ class FletcherVMM(_InverseHessianUpdateStrategyDefaults):
     """
     Fletcher's variable metric Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is highly recommended.
+    Note:
+        a line search is recommended.
 
-    .. note::
-        BFGS is the recommended QN method and will usually outperform this.
-
-    .. warning::
-        this uses roughly O(N^2) memory.
+    Warning:
+        this uses at least O(N^2) memory.
 
     Reference:
         Fletcher, R. (1970). A new approach to variable metric algorithms. The Computer Journal, 13(3), 317–322. doi:10.1093/comjnl/13.3.317
@@ -1173,10 +1125,10 @@ def new_ssm1(H: torch.Tensor, s: torch.Tensor, y: torch.Tensor, f, f_prev, tol: 
 class NewSSM(HessianUpdateStrategy):
     """Self-scaling Quasi-Newton method.
 
-    .. note::
-        a line search such as :code:`tz.m.StrongWolfe(plus_minus=True)` is required.
+    Note:
+        a line search such as ``tz.m.StrongWolfe()`` is required.
 
-    .. warning::
+    Warning:
         this uses roughly O(N^2) memory.
 
     Reference:

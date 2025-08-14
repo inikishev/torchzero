@@ -74,24 +74,23 @@ class Backtracking(LineSearchBase):
             Otherwise it will restart the line search from ``init`` step size. Defaults to True.
 
     Examples:
-        Gradient descent with backtracking line search:
+    Gradient descent with backtracking line search:
 
-        .. code-block:: python
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Backtracking()
-            )
-
-        L-BFGS with backtracking line search:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LBFGS(),
-                tz.m.Backtracking()
-            )
+    L-BFGS with backtracking line search:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LBFGS(),
+        tz.m.Backtracking()
+    )
+    ```
 
     """
     def __init__(

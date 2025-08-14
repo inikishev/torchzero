@@ -171,95 +171,95 @@ class RandomizedFDM(GradApproximator):
         target (GradTarget, optional): what to set on var. Defaults to "closure".
 
     Examples:
-        #### Simultaneous perturbation stochastic approximation (SPSA) method
+    #### Simultaneous perturbation stochastic approximation (SPSA) method
 
-        SPSA is randomized finite differnce with rademacher distribution and central formula.
-        ```py
-        spsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
-            tz.m.LR(1e-2)
-        )
-        ```
+    SPSA is randomized finite differnce with rademacher distribution and central formula.
+    ```py
+    spsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
+        tz.m.LR(1e-2)
+    )
+    ```
 
-        #### Random-direction stochastic approximation (RDSA) method
+    #### Random-direction stochastic approximation (RDSA) method
 
-        RDSA is randomized finite differnce with usually gaussian distribution and central formula.
+    RDSA is randomized finite differnce with usually gaussian distribution and central formula.
 
-        ```
-        rdsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
-            tz.m.LR(1e-2)
-        )
-        ```
+    ```
+    rdsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
+        tz.m.LR(1e-2)
+    )
+    ```
 
-        #### RandomizedFDM with momentum
+    #### RandomizedFDM with momentum
 
-        Momentum might help by reducing the variance of the estimated gradients.
+    Momentum might help by reducing the variance of the estimated gradients.
 
-        ```
-        momentum_spsa = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(),
-            tz.m.HeavyBall(0.9),
-            tz.m.LR(1e-3)
-        )
-        ```
+    ```
+    momentum_spsa = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(),
+        tz.m.HeavyBall(0.9),
+        tz.m.LR(1e-3)
+    )
+    ```
 
-        #### Gaussian smoothing method
+    #### Gaussian smoothing method
 
-        GS uses many gaussian samples with possibly a larger finite difference step size.
+    GS uses many gaussian samples with possibly a larger finite difference step size.
 
-        ```
-        gs = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
-            tz.m.NewtonCG(hvp_method="forward"),
-            tz.m.Backtracking()
-        )
-        ```
+    ```
+    gs = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
+        tz.m.NewtonCG(hvp_method="forward"),
+        tz.m.Backtracking()
+    )
+    ```
 
-        #### SPSA-NewtonCG
+    #### SPSA-NewtonCG
 
-        NewtonCG with hessian-vector product estimated via gradient difference
-        calls closure multiple times per step. If each closure call estimates gradients
-        with different perturbations, NewtonCG is unable to produce useful directions.
+    NewtonCG with hessian-vector product estimated via gradient difference
+    calls closure multiple times per step. If each closure call estimates gradients
+    with different perturbations, NewtonCG is unable to produce useful directions.
 
-        By setting pre_generate to True, perturbations are generated once before each step,
-        and each closure call estimates gradients using the same pre-generated perturbations.
-        This way closure-based algorithms are able to use gradients estimated in a consistent way.
+    By setting pre_generate to True, perturbations are generated once before each step,
+    and each closure call estimates gradients using the same pre-generated perturbations.
+    This way closure-based algorithms are able to use gradients estimated in a consistent way.
 
-        ```
-        opt = tz.Modular(
-            model.parameters(),
-            tz.m.RandomizedFDM(n_samples=10),
-            tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
-            tz.m.Backtracking()
-        )
-        ```
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.RandomizedFDM(n_samples=10),
+        tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
+        tz.m.Backtracking()
+    )
+    ```
 
-        #### SPSA-LBFGS
+    #### SPSA-LBFGS
 
-        LBFGS uses a memory of past parameter and gradient differences. If past gradients
-        were estimated with different perturbations, LBFGS directions will be useless.
+    LBFGS uses a memory of past parameter and gradient differences. If past gradients
+    were estimated with different perturbations, LBFGS directions will be useless.
 
-        To alleviate this momentum can be added to random perturbations to make sure they only
-        change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
-        The disadvantage is that the subspace the algorithm is able to explore changes slowly.
+    To alleviate this momentum can be added to random perturbations to make sure they only
+    change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
+    The disadvantage is that the subspace the algorithm is able to explore changes slowly.
 
-        Additionally we will reset SPSA and LBFGS memory every 100 steps to remove influence from old gradient estimates.
+    Additionally we will reset SPSA and LBFGS memory every 100 steps to remove influence from old gradient estimates.
 
-        ```
-        opt = tz.Modular(
-            bench.parameters(),
-            tz.m.ResetEvery(
-                [tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99), tz.m.LBFGS()],
-                steps = 100,
-            ),
-            tz.m.Backtracking()
-        )
-        ```
+    ```
+    opt = tz.Modular(
+        bench.parameters(),
+        tz.m.ResetEvery(
+            [tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99), tz.m.LBFGS()],
+            steps = 100,
+        ),
+        tz.m.Backtracking()
+    )
+    ```
     """
     PRE_MULTIPLY_BY_H = True
     def __init__(
@@ -375,10 +375,9 @@ class SPSA(RandomizedFDM):
     """
     Gradient approximation via Simultaneous perturbation stochastic approximation (SPSA) method.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
-
 
     Args:
         h (float, optional): finite difference step size of jvp_method is set to `forward` or `central`. Defaults to 1e-3.
@@ -400,7 +399,7 @@ class RDSA(RandomizedFDM):
     """
     Gradient approximation via Random-direction stochastic approximation (RDSA) method.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
@@ -437,7 +436,7 @@ class GaussianSmoothing(RandomizedFDM):
     """
     Gradient approximation via Gaussian smoothing method.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 
@@ -473,7 +472,7 @@ class GaussianSmoothing(RandomizedFDM):
 class MeZO(GradApproximator):
     """Gradient approximation via memory-efficient zeroth order optimizer (MeZO) - https://arxiv.org/abs/2305.17333.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 

@@ -15,7 +15,7 @@ class ForwardGradient(RandomizedFDM):
 
     This method samples one or more directional derivatives evaluated via autograd jacobian-vector products. This is very similar to randomized finite difference.
 
-    .. note::
+    Note:
         This module is a gradient approximator. It modifies the closure to evaluate the estimated gradients,
         and further closure-based modules will use the modified closure. All modules after this will use estimated gradients.
 

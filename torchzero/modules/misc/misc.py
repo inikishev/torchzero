@@ -348,7 +348,7 @@ class SaveBest(Module):
         [xy],
         tz.m.NAG(0.999),
         tz.m.LR(1e-6),
-        tz.m.StoreBest()
+        tz.m.SaveBest()
     )
 
     # optimize for 1000 steps

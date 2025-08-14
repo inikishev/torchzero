@@ -68,16 +68,12 @@ class AdaHessian(Module):
 
     This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of random hessian-vector products.
 
-    .. note::
-        In most cases AdaHessian should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply AdaHessian preconditioning to another module's output.
+    Notes:
+        - In most cases AdaHessian should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply AdaHessian preconditioning to another module's output.
 
-    .. note::
-        If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
+        - If you are using gradient estimators or reformulations, set ``hvp_method`` to "forward" or "central".
 
-    .. note::
-        This module requires a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
+        - This module requires a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.9.
@@ -103,7 +99,7 @@ class AdaHessian(Module):
               more accurate HVP approximation. This requires two extra
               gradient evaluations.
             Defaults to "autograd".
-        fd_h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+        fd_h (float, optional): finite difference step size if ``hvp_method`` is "forward" or "central". Defaults to 1e-3.
         n_samples (int, optional):
             number of hessian-vector products with random vectors to evaluate each time when updating
             the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.
@@ -111,31 +107,31 @@ class AdaHessian(Module):
         inner (Chainable | None, optional):
             Inner module. If this is specified, operations are performed in the following order.
             1. compute hessian diagonal estimate.
-            2. pass inputs to :code:`inner`.
-            3. momentum and preconditioning are applied to the ouputs of :code:`inner`.
+            2. pass inputs to ``inner``.
+            3. momentum and preconditioning are applied to the ouputs of ``inner``.
 
-    Examples:
-        Using AdaHessian:
+    ## Examples:
 
-        .. code-block:: python
+    Using AdaHessian:
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.AdaHessian(),
-                tz.m.LR(0.1)
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.AdaHessian(),
+        tz.m.LR(0.1)
+    )
+    ```
 
-        AdaHessian preconditioner can be applied to any other module by passing it to the :code:`inner` argument.
-        Turn off AdaHessian's first momentum to get just the preconditioning. Here is an example of applying
-        AdaHessian preconditioning to nesterov momentum (:code:`tz.m.NAG`):
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),
-                tz.m.LR(0.1)
-            )
+    AdaHessian preconditioner can be applied to any other module by passing it to the ``inner`` argument.
+    Turn off AdaHessian's first momentum to get just the preconditioning. Here is an example of applying
+    AdaHessian preconditioning to nesterov momentum (``tz.m.NAG``):
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),
+        tz.m.LR(0.1)
+    )
+    ```
 
     """
     def __init__(

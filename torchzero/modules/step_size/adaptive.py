@@ -73,7 +73,7 @@ class PolyakStepSize(Transform):
     def get_H(self, var):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
-        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
 
 def _bb_short(s: TensorList, y: TensorList, sy, eps):
@@ -164,7 +164,7 @@ class BarzilaiBorwein(Transform):
     def get_H(self, var):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
-        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
@@ -179,7 +179,7 @@ class BarzilaiBorwein(Transform):
 class BBStab(Transform):
     """Stabilized Barzilai-Borwein method (https://arxiv.org/abs/1907.06409).
 
-    This clips the norm of the Barzilai-Borwein update by ``delta`, where ``delta`` can be adaptive if ``c`` is specified.
+    This clips the norm of the Barzilai-Borwein update by ``delta``, where ``delta`` can be adaptive if ``c`` is specified.
 
     Args:
         c (float, optional):
@@ -277,7 +277,7 @@ class BBStab(Transform):
     def get_H(self, var):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
-        return ScaledIdentity(self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
@@ -369,3 +369,7 @@ class AdGD(Transform):
         torch._foreach_mul_(tensors, alpha)
         return tensors
 
+    def get_H(self, var):
+        n = sum(p.numel() for p in var.params)
+        p = var.params[0]
+        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)

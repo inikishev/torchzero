@@ -10,7 +10,7 @@ from ...utils import tolist
 
 
 class Averaging(TensorwiseTransform):
-    """Average of past :code:`history_size` updates.
+    """Average of past ``history_size`` updates.
 
     Args:
         history_size (int): Number of past updates to average
@@ -35,7 +35,7 @@ class Averaging(TensorwiseTransform):
         return average / len(history)
 
 class WeightedAveraging(TensorwiseTransform):
-    """Weighted average of past :code:`len(weights)` updates.
+    """Weighted average of past ``len(weights)`` updates.
 
     Args:
         weights (Sequence[float]): a sequence of weights from oldest to newest.
@@ -69,7 +69,7 @@ class WeightedAveraging(TensorwiseTransform):
 
 
 class MedianAveraging(TensorwiseTransform):
-    """Median of past :code:`history_size` updates.
+    """Median of past ``history_size`` updates.
 
     Args:
         history_size (int): Number of past updates to average

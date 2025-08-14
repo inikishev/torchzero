@@ -48,24 +48,22 @@ class Cautious(Transform):
         eps (float, optional): epsilon for normalization. Defaults to 1e-6.
         mode (str, optional):
             what to do with updates with inconsistent signs.
+            - "zero" - set them to zero (as in paper)
+            - "grad" - set them to the gradient (same as using update magnitude and gradient sign)
+            - "backtrack" - negate them
 
-            "zero" - set them to zero (as in paper)
+    ## Examples:
 
-            "grad" - set them to the gradient
+    Cautious Adam
 
-            "backtrack" - negate them (same as using update magnitude and gradient sign)
-
-    Examples:
-        Cautious Adam
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                bench.parameters(),
-                tz.m.Adam(),
-                tz.m.Cautious(),
-                tz.m.LR(1e-2)
-            )
+    ```python
+    opt = tz.Modular(
+        bench.parameters(),
+        tz.m.Adam(),
+        tz.m.Cautious(),
+        tz.m.LR(1e-2)
+    )
+    ```
 
     References:
         Cautious Optimizers: Improving Training with One Line of Code. Kaizhao Liang, Lizhang Chen, Bo Liu, Qiang Liu
@@ -120,12 +118,9 @@ class IntermoduleCautious(Module):
         eps (float, optional): epsilon for normalization. Defaults to 1e-6.
         mode (str, optional):
             what to do with updates with inconsistent signs.
-
-            "zero" - set them to zero (as in paper)
-
-            "grad" - set them to the gradient
-
-            "backtrack" - negate them (same as using update magnitude and gradient sign)
+            - "zero" - set them to zero (as in paper)
+            - "grad" - set them to the gradient (same as using update magnitude and gradient sign)
+            - "backtrack" - negate them
     """
     def __init__(
         self,
@@ -171,17 +166,17 @@ class ScaleByGradCosineSimilarity(Transform):
     Args:
         eps (float, optional): epsilon for division. Defaults to 1e-6.
 
-    Examples:
-        Scaled Adam
+    ## Examples:
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                bench.parameters(),
-                tz.m.Adam(),
-                tz.m.ScaleByGradCosineSimilarity(),
-                tz.m.LR(1e-2)
-            )
+    Scaled Adam
+    ```python
+    opt = tz.Modular(
+        bench.parameters(),
+        tz.m.Adam(),
+        tz.m.ScaleByGradCosineSimilarity(),
+        tz.m.LR(1e-2)
+    )
+    ```
     """
     def __init__(
         self,
@@ -209,19 +204,19 @@ class ScaleModulesByCosineSimilarity(Module):
         compare (Chainable): module or sequence of modules to compare to
         eps (float, optional): epsilon for division. Defaults to 1e-6.
 
-    Example:
-        Adam scaled by similarity to RMSprop
+    ## Examples:
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                bench.parameters(),
-                tz.m.ScaleModulesByCosineSimilarity(
-                    main = tz.m.Adam(),
-                    compare = tz.m.RMSprop(0.999, debiased=True),
-                ),
-                tz.m.LR(1e-2)
-            )
+    Adam scaled by similarity to RMSprop
+    ```python
+    opt = tz.Modular(
+        bench.parameters(),
+        tz.m.ScaleModulesByCosineSimilarity(
+            main = tz.m.Adam(),
+            compare = tz.m.RMSprop(0.999, debiased=True),
+        ),
+        tz.m.LR(1e-2)
+    )
+    ```
     """
     def __init__(
         self,

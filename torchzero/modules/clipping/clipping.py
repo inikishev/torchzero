@@ -151,35 +151,33 @@ def normalize_grads_(
 
 
 class ClipValue(Transform):
-    """Clips update magnitude to be within `(-value, value)` range.
+    """Clips update magnitude to be within ``(-value, value)`` range.
 
     Args:
         value (float): value to clip to.
-        target (str): refer to :ref:`target argument` in documentation.
+        target (str): refer to ``target argument`` in documentation.
 
     Examples:
 
-        Gradient clipping:
+    Gradient clipping:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.ClipValue(1),
+        tz.m.Adam(),
+        tz.m.LR(1e-2),
+    )
+    ```
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.ClipValue(1),
-                tz.m.Adam(),
-                tz.m.LR(1e-2),
-            )
-
-        Update clipping:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Adam(),
-                tz.m.ClipValue(1),
-                tz.m.LR(1e-2),
-            )
+    Update clipping:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.ClipValue(1),
+        tz.m.LR(1e-2),
+    )
+    ```
 
     """
     def __init__(self, value: float, target: Target = 'update'):
@@ -211,27 +209,25 @@ class ClipNorm(Transform):
 
     Examples:
 
-        Gradient norm clipping:
+    Gradient norm clipping:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.ClipNorm(1),
+        tz.m.Adam(),
+        tz.m.LR(1e-2),
+    )
+    ```
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.ClipNorm(1),
-                tz.m.Adam(),
-                tz.m.LR(1e-2),
-            )
-
-        Update norm clipping:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Adam(),
-                tz.m.ClipNorm(1),
-                tz.m.LR(1e-2),
-            )
+    Update norm clipping:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.ClipNorm(1),
+        tz.m.LR(1e-2),
+    )
+    ```
     """
     def __init__(
         self,
@@ -280,28 +276,26 @@ class Normalize(Transform):
             what this affects.
 
     Examples:
+    Gradient normalization:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Normalize(1),
+        tz.m.Adam(),
+        tz.m.LR(1e-2),
+    )
+    ```
 
-        Gradient normalization:
+    Update normalization:
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Normalize(1),
-                tz.m.Adam(),
-                tz.m.LR(1e-2),
-            )
-
-        Update normalization:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Adam(),
-                tz.m.Normalize(1),
-                tz.m.LR(1e-2),
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.Normalize(1),
+        tz.m.LR(1e-2),
+    )
+    ```
     """
     def __init__(
         self,
@@ -384,18 +378,17 @@ class Centralize(Transform):
 
     Examples:
 
-        Standard gradient centralization:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Centralize(dim=0),
-                tz.m.LR(1e-2),
-            )
+    Standard gradient centralization:
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Centralize(dim=0),
+        tz.m.LR(1e-2),
+    )
+    ```
 
     References:
-        - Yong, H., Huang, J., Hua, X., & Zhang, L. (2020). Gradient centralization: A new optimization technique for deep neural networks. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing. https://arxiv.org/abs/2004.01461
+    - Yong, H., Huang, J., Hua, X., & Zhang, L. (2020). Gradient centralization: A new optimization technique for deep neural networks. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part I 16 (pp. 635-652). Springer International Publishing. https://arxiv.org/abs/2004.01461
     """
     def __init__(
         self,
