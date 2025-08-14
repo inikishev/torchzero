@@ -162,22 +162,22 @@ class NewtonCG(Module):
         if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         if solver == 'cg':
-            x = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
+            d = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
 
         elif solver == 'minres':
-            x = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
+            d = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
 
         elif solver == 'minres_npc':
-            x = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+            d = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
 
         else:
             raise ValueError(f"Unknown solver {solver}")
 
         if warm_start:
             assert x0 is not None
-            x0.copy_(x)
+            x0.copy_(d)
 
-        var.update = x
+        var.update = d
 
         self._num_hvps += self._num_hvps_last_step
         return var
@@ -341,7 +341,8 @@ class NewtonCGSteihaug(Module):
 
         # ---------------------------------- run cg ---------------------------------- #
         success = False
-        x = None
+        d = None
+        x0 = [p.clone() for p in params]
         while not success:
             max_attempts -= 1
             if max_attempts < 0: break
@@ -352,31 +353,31 @@ class NewtonCGSteihaug(Module):
                 trust_radius = self.global_state['trust_radius'] = init
 
             if solver == 'cg':
-                x = cg(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg)
+                d = cg(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg)
 
             elif solver == 'minres':
-                x = minres(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
+                d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
 
             elif solver == 'minres_npc':
-                x = minres(A_mm=H_mm, b=b, trust_region=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+                d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
 
             else:
                 raise ValueError(f"unknown solver {solver}")
 
             # ------------------------------- trust region ------------------------------- #
-            Hx = H_mm(x)
-            pred_reduction = b.dot(x) - 0.5 * x.dot(Hx)
+            Hx = H_mm(d)
+            pred_reduction = b.dot(d) - 0.5 * d.dot(Hx)
 
-            params -= x
+            params -= d
             loss_star = closure(False)
-            params += x
+            params.copy_(x0)
             reduction = var.get_loss(False) - loss_star
 
             rho = reduction / (pred_reduction.clip(min=1e-8))
             is_finite = math.isfinite(loss_star)
 
             # find boundary of current step
-            d_radius = x.global_vector_norm()
+            d_radius = d.global_vector_norm()
 
             # failed step
             if rho < rho_bad or not is_finite:
@@ -391,9 +392,9 @@ class NewtonCGSteihaug(Module):
             if rho > eta and is_finite:
                 success = True
 
-        assert x is not None
+        assert d is not None
         if success:
-            var.update = x
+            var.update = d
 
         else:
             var.update = params.zeros_like()

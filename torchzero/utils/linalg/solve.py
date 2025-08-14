@@ -164,7 +164,8 @@ def cg(
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float = 0,
-    trust_region: float | None = None,
+    trust_radius: float | None = None,
+    npc_terminate: bool=False,
 ) -> torch.Tensor: ...
 @overload
 def cg(
@@ -174,7 +175,8 @@ def cg(
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
-    trust_region: float | None = None,
+    trust_radius: float | None = None,
+    npc_terminate: bool=False,
 ) -> TensorList: ...
 def cg(
     A_mm: Callable | torch.Tensor,
@@ -183,7 +185,8 @@ def cg(
     tol: float | None = 1e-4,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
-    trust_region: float | None = None,
+    trust_radius: float | None = None,
+    npc_terminate: bool=False,
 ):
     """
     Solution is bounded to have L2 norm no larger than :code:`trust_region`. If solution exceeds :code:`trust_region`, CG is terminated early, so it is also faster.
@@ -208,19 +211,21 @@ def cg(
     if maxiter is None:
         maxiter = generic_numel(b)
 
-    for _ in range(maxiter):
+    for iter in range(maxiter):
         Ad = A_mm_reg(d)
 
         d_Ad = d.dot(Ad)
-        if trust_region is not None and d_Ad <= eps:
-            return _trust_tau(x, d, trust_region)
+        if d_Ad <= eps:
+            if trust_radius is not None: return _trust_tau(x, d, trust_radius)
+            if iter == 0: return b * (b.dot(b) / d_Ad).abs()
+            if npc_terminate: return x
 
         alpha = r.dot(r) / d_Ad
         p_next = x + alpha * d
 
         # check if the step exceeds the trust-region boundary
-        if trust_region is not None and generic_vector_norm(p_next) >= trust_region:
-            return _trust_tau(x, d, trust_region)
+        if trust_radius is not None and generic_vector_norm(p_next) >= trust_radius:
+            return _trust_tau(x, d, trust_radius)
 
         # update step, residual and direction
         x = p_next
@@ -247,7 +252,7 @@ def minres(
     maxiter: int | None = None,
     reg: float = 0,
     npc_terminate: bool=True,
-    trust_region: float | None = None,
+    trust_radius: float | None = None,
 ) -> torch.Tensor: ...
 @overload
 def minres(
@@ -258,7 +263,7 @@ def minres(
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
-    trust_region: float | None = None,
+    trust_radius: float | None = None,
 ) -> TensorList: ...
 def minres(
     A_mm,
@@ -268,7 +273,7 @@ def minres(
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
-    trust_region: float | None = None, #trust region is experimental
+    trust_radius: float | None = None, #trust region is experimental
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
     eps = generic_finfo_eps(b)
@@ -311,9 +316,9 @@ def minres(
         delta1 = -c*beta
 
         cgamma1 = c*gamma1
-        if trust_region is not None and cgamma1 >= 0:
-            if npc_terminate: return _trust_tau(X, R, trust_region)
-            return _trust_tau(X, D, trust_region)
+        if trust_radius is not None and cgamma1 >= 0:
+            if npc_terminate: return _trust_tau(X, R, trust_radius)
+            return _trust_tau(X, D, trust_radius)
 
         if npc_terminate and cgamma1 >= 0:
             return R
@@ -322,8 +327,8 @@ def minres(
 
         if abs(gamma2) <= eps: # singular system
             # c=0; s=1; tau=0
-            if trust_region is None: return X
-            return _trust_tau(X, D, trust_region)
+            if trust_radius is None: return X
+            return _trust_tau(X, D, trust_radius)
 
         c = gamma1 / gamma2
         s = beta/gamma2
@@ -335,9 +340,9 @@ def minres(
         e = e_next
         X = X + tau*D
 
-        if trust_region is not None:
-            if generic_vector_norm(X) > trust_region:
-                return _trust_tau(X, D, trust_region)
+        if trust_radius is not None:
+            if generic_vector_norm(X) > trust_radius:
+                return _trust_tau(X, D, trust_radius)
 
         if (abs(beta) < eps) or (phi / b_norm <= tol):
             # R = zeros(R)

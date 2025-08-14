@@ -569,7 +569,7 @@ class Module(ABC):
         h: float,
         normalize: bool,
         retain_grad: bool,
-    ):
+    ) -> tuple[Sequence[torch.Tensor], Sequence[torch.Tensor] | None]:
         """
         Returns ``(Hvp, rgrad)``, where ``rgrad`` is gradient at current parameters,
         possibly with ``create_graph=True``, or it may be None with ``hvp_method="central"``.
