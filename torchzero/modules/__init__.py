@@ -8,7 +8,7 @@ from .line_search import *
 from .misc import *
 from .momentum import *
 from .ops import *
-from .optimizers import *
+from .adaptive import *
 from .projections import *
 from .quasi_newton import *
 from .second_order import *
@@ -20,3 +20,4 @@ from .variance_reduction import *
 from .weight_decay import *
 from .wrappers import *
 from .restarts import *
+from .zeroth_order import *

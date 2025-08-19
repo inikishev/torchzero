@@ -93,11 +93,11 @@ class Split(Module):
             if filter(p): true_idxs.append(i)
             else: false_idxs.append(i)
 
-        if 'true' in self.children:
+        if 'true' in self.children and len(true_idxs) > 0:
             true = self.children['true']
             var = _split(true, idxs=true_idxs, params=params, var=var)
 
-        if 'false' in self.children:
+        if 'false' in self.children and len(false_idxs) > 0:
             false = self.children['false']
             var = _split(false, idxs=false_idxs, params=params, var=var)
 

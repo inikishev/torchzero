@@ -264,7 +264,7 @@ class NewtonCGSteihaug(Module):
         init: float = 1,
         tol: float = 1e-4,
         reg: float = 1e-8,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: Literal["forward", "central", "autograd"] = "forward",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3,
         max_attempts: int = 10,

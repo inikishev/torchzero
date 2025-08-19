@@ -4,11 +4,17 @@ from functools import partial
 from typing import Any, Literal
 
 import numpy as np
-import scipy.optimize
 import torch
 
+import scipy.optimize
+
 from ...utils import Optimizer, TensorList
-from ...utils.derivatives import jacobian_and_hessian_mat_wrt, jacobian_wrt, flatten_jacobian
+from ...utils.derivatives import (
+    flatten_jacobian,
+    jacobian_and_hessian_mat_wrt,
+    jacobian_wrt,
+)
+
 
 def _ensure_float(x) -> float:
     if isinstance(x, torch.Tensor): return x.detach().cpu().item()
@@ -118,7 +124,7 @@ class ScipyMinimize(Optimizer):
         # return value and maybe gradients
         if self.use_jac_autograd:
             with torch.enable_grad(): value = _ensure_float(closure())
-            return value, params.ensure_grad_().grad.to_vec().detach().cpu().numpy()
+            return value, params.ensure_grad_().grad.to_vec().numpy(force=True)
         return _ensure_float(closure(False))
 
     @torch.no_grad
@@ -131,7 +137,7 @@ class ScipyMinimize(Optimizer):
             else: hess = None
         else: hess = self.hess
 
-        x0 = params.to_vec().detach().cpu().numpy()
+        x0 = params.to_vec().numpy(force=True)
 
         # make bounds
         lb, ub = self.group_vals('lb', 'ub', cls=list)
@@ -572,4 +578,3 @@ class ScipyBrute(Optimizer):
             **self._kwargs
         )
         params.from_vec_(torch.from_numpy(x0).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return None

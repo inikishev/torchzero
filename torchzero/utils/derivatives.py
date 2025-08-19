@@ -497,7 +497,7 @@ def hvp_fd_forward(
 
     vec_norm = None
     if normalize:
-        vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
+        vec_norm = torch.linalg.vector_norm(torch.cat([t.ravel() for t in vec])) # pylint:disable=not-callable
         if vec_norm == 0: return None, [torch.zeros_like(p) for p in params]
         vec = torch._foreach_div(vec, vec_norm)
 

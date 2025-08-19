@@ -377,16 +377,15 @@ class Module(ABC):
         If you want to force it to return a tuple even with a single key, pass a list/tuple of 1 or more keys.
 
         ```python
+        exp_avg = self.state_vals("exp_avg")
+        # returns cls (by default TensorList)
 
-            exp_avg = self.state_vals("exp_avg")
-            # returns cls (by default TensorList)
+        exp_avg, exp_avg_sq = self.state_vals("exp_avg", "exp_avg_sq")
+        # returns list of cls
 
-            exp_avg, exp_avg_sq = self.state_vals("exp_avg", "exp_avg_sq")
-            # returns list of cls
-
-            exp_avg = self.state_vals(["exp_avg"])
-            # always returns a list of cls, even if got a single key
-
+        exp_avg = self.state_vals(["exp_avg"])
+        # always returns a list of cls, even if got a single key
+        ```
 
         Args:
             *keys (str):

@@ -2,11 +2,12 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, Literal
 
+import numpy as np
+import torch
+
 import fcmaes
 import fcmaes.optimizer
 import fcmaes.retry
-import numpy as np
-import torch
 
 from ...utils import Optimizer, TensorList
 

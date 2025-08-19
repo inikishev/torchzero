@@ -16,9 +16,10 @@ def adaptive_tracking(
     maxiter: int,
     nplus: float = 2,
     nminus: float = 0.5,
+    f_0 = None,
 ):
     niter = 0
-    f_0 = f(0)
+    if f_0 is None: f_0 = f(0)
 
     a = a_init
     f_a = f(a)

@@ -10,6 +10,7 @@ from torch.optim.lbfgs import _cubic_interpolate
 from ...utils import as_tensorlist, totensor
 from ._polyinterp import polyinterp, polyinterp2
 from .line_search import LineSearchBase, TerminationCondition, termination_condition
+from ..step_size.adaptive import _bb_geom
 
 def _totensor(x):
     if not isinstance(x, torch.Tensor): return torch.tensor(x, dtype=torch.float32)
@@ -323,7 +324,6 @@ class StrongWolfe(LineSearchBase):
                 if f_0 < f_prev:
                     a_init = 2 * (f_0 - f_prev) / g_0
                     if init == 'quadratic-clip': a_init = min(1, 1.01*a_init)
-
         else:
             raise ValueError(init)
 

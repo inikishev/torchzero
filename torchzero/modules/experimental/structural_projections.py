@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable
 from ...utils import vec_to_tensors, TensorList
-from ..optimizers.shampoo import _merge_small_dims
+from ..adaptive.shampoo import _merge_small_dims
 from ..projections import ProjectionBase
 
 

@@ -67,6 +67,8 @@ class PolyakStepSize(Transform):
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', 1)
+        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
+            alpha = 1
         torch._foreach_mul_(tensors, alpha * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
@@ -164,12 +166,14 @@ class BarzilaiBorwein(Transform):
     def get_H(self, var):
         n = sum(p.numel() for p in var.params)
         p = var.params[0]
-        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        alpha = self.global_state.get('alpha', 1)
+        if abs(alpha) < 1e-24: alpha = 1
+        return ScaledIdentity(1 / alpha, shape=(n,n), device=p.device, dtype=p.dtype)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
-        if alpha is None or alpha < 0 or not math.isfinite(alpha):
+        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
             alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
 
         torch._foreach_mul_(tensors, alpha)
@@ -283,7 +287,7 @@ class BBStab(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
-        if alpha is None or alpha < 0 or not math.isfinite(alpha):
+        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
             alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
 
         torch._foreach_mul_(tensors, alpha)
@@ -350,8 +354,10 @@ class AdGD(Transform):
             raise ValueError(variant)
 
         alpha_new = min(a1, a2)
-        self.global_state['theta'] = alpha_new/alpha
-        self.global_state['alpha'] = alpha_new
+        if alpha_new < 0: alpha_new = max(a1, a2)
+        if alpha_new > 1e-16:
+            self.global_state['theta'] = alpha_new/alpha
+            self.global_state['alpha'] = alpha_new
 
         prev_p.copy_(p)
         prev_g.copy_(g)
@@ -360,7 +366,7 @@ class AdGD(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
-        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)):
+        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
             # alpha isn't None on 1st step
             self.state.clear()
             self.global_state.clear()

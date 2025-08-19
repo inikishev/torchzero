@@ -142,7 +142,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
     # ------------------------------ common methods ------------------------------ #
     def auto_initial_scale(self, s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
-        """returns multiplier to H or B on 2nd step if ``init_scale='auto'``"""
+        """returns multiplier to B on 2nd step if ``init_scale='auto'``. H should be divided by this!"""
         ys = y.dot(s)
         yy = y.dot(y)
         if ys != 0 and yy != 0: return yy/ys

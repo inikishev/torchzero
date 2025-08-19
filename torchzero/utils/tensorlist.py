@@ -1034,6 +1034,15 @@ class TensorList(list[torch.Tensor | Any]):
     #     """sets index in flattened view"""
     #     return self.clone().flatset_(idx, value)
 
+    def flat_get(self, idx: int):
+        cur = 0
+        for tensor in self:
+            numel = tensor.numel()
+            if idx < cur + numel:
+                return tensor.view(-1)[cur-idx]
+            cur += numel
+        raise IndexError(idx)
+
     def flat_set_(self, idx: int, value: Any):
         """sets index in flattened view"""
         cur = 0

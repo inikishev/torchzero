@@ -138,7 +138,7 @@ class FDM(GradApproximator):
             h = settings['h']
             fd_fn = _FD_FUNCS[settings['formula']]
 
-            p_flat = p.view(-1); g_flat = g.view(-1)
+            p_flat = p.ravel(); g_flat = g.ravel()
             for i in range(len(p_flat)):
                 loss, loss_approx, d = fd_fn(closure=closure, param=p_flat, idx=i, h=h, v_0=loss)
                 g_flat[i] = d

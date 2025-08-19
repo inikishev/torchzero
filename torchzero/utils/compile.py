@@ -38,7 +38,7 @@ class _MaybeCompiledFunc:
 _optional_compiler = _OptionalCompiler()
 """this holds .enable attribute, set to True to enable compiling for a few functions that benefit from it."""
 
-def set_compilation(enable: bool):
+def set_compilation(enable: bool=True):
     """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance."""
     _optional_compiler.enable = enable
 
