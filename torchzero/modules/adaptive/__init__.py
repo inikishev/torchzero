@@ -1,4 +1,4 @@
-from .adagrad import Adagrad, FullMatrixAdagrad
+from .adagrad import Adagrad, FullMatrixAdagrad, AdagradNorm
 
 # from .curveball import CurveBall
 # from .spectral import SpectralPreconditioner

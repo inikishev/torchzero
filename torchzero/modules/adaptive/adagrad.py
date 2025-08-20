@@ -27,6 +27,9 @@ def adagrad_(
     use_sqrt: bool = True,
     divide: bool = False,
 
+    decay: float | None = None,
+    beta: float | None = None,
+
     # inner args
     inner: Module | None = None,
     params: list[torch.Tensor] | None = None,
@@ -35,7 +38,10 @@ def adagrad_(
     """returns `tensors_`"""
     clr = alpha / (1 + step * lr_decay)
 
-    sq_sum_ = add_power_(tensors_, sum_=sq_sum_, pow=pow)
+    if beta is None or step == 1: sq_sum_ = add_power_(tensors_, sum_=sq_sum_, pow=pow)
+    else: sq_sum_ = lerp_power_(tensors_, exp_avg_pow_=sq_sum_, beta=beta, pow=pow)
+    if decay is not None:
+        sq_sum_.mul_(1-decay)
 
     if inner is not None:
         assert params is not None
@@ -73,10 +79,12 @@ class Adagrad(Transform):
         pow: float = 2,
         use_sqrt: bool = True,
         divide: bool=False,
+        beta:float | None = None,
+        decay: float | None = None,
         inner: Chainable | None = None,
     ):
         defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
-                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide)
+                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide, beta=beta, decay=decay)
         super().__init__(defaults=defaults, uses_grad=False)
 
         if inner is not None:
@@ -103,17 +111,124 @@ class Adagrad(Transform):
             alpha=alpha,
             lr_decay=lr_decay,
             eps=eps,
-            step=self.global_state["step"],
+            step=step,
             pow=pow,
             use_sqrt=use_sqrt,
             divide=divide,
 
+            beta = self.defaults["beta"],
+            decay = self.defaults["decay"],
             # inner args
             inner=self.children.get("inner", None),
             params=params,
             grads=grads,
         )
 
+
+def lerp(start, end, weight):
+    return start + weight * (end - start)
+
+def adagrad_norm_(
+    tensors_: TensorList,
+    accumulator: float | torch.Tensor,
+    alpha: float | NumberList,
+    lr_decay: float | NumberList,
+    eps: float | NumberList,
+    step: int,
+    use_sqrt: bool = True,
+    divide: bool = False,
+
+    decay: float | None = None,
+    beta: float | None = None,
+
+    # inner args
+    inner: Module | None = None,
+    params: list[torch.Tensor] | None = None,
+    grads: list[torch.Tensor] | None = None,
+):
+    """returns `tensors_`"""
+    clr = alpha / (1 + step * lr_decay)
+
+    gg = tensors_.dot(tensors_)
+
+    if beta is None or step == 1: accumulator += gg
+    else: accumulator = lerp(accumulator, gg, 1-beta)
+
+    if decay is not None:
+        accumulator *= 1-decay
+
+    if inner is not None:
+        assert params is not None
+        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
+
+    if divide: accumulator = accumulator / max(step, 1)
+
+    if use_sqrt: tensors_.div_(eps + accumulator.sqrt()).mul_(clr)
+    else: tensors_.div_(eps + accumulator).mul_(clr)
+
+    return tensors_, accumulator
+
+class AdagradNorm(Transform):
+    """Adagrad-Norm, divides by sum of past means of squares of gradients.
+
+    Args:
+        lr_decay (float, optional): learning rate decay. Defaults to 0.
+        initial_accumulator_value (float, optional): initial value of the sum of squares of gradients. Defaults to 0.
+        eps (float, optional): division epsilon. Defaults to 1e-10.
+        alpha (float, optional): step size. Defaults to 1.
+        pow (float, optional): power for gradients and accumulator root. Defaults to 2.
+        use_sqrt (bool, optional): whether to take the root of the accumulator. Defaults to True.
+        inner (Chainable | None, optional): Inner modules that are applied after updating accumulator and before preconditioning. Defaults to None.
+    """
+    def __init__(
+        self,
+        lr_decay: float = 0,
+        initial_accumulator_value: float = 0,
+        eps: float = 1e-10,
+        alpha: float = 1,
+        pow: float = 2,
+        use_sqrt: bool = True,
+        divide: bool=False,
+        beta:float | None = None,
+        decay: float | None = None,
+        inner: Chainable | None = None,
+    ):
+        defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
+                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide, beta=beta, decay=decay)
+        super().__init__(defaults=defaults, uses_grad=False)
+
+        if inner is not None:
+            self.set_child('inner', inner)
+
+    @torch.no_grad
+    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+        tensors = TensorList(tensors)
+        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+        lr_decay,alpha,eps = unpack_dicts(settings, 'lr_decay', 'alpha', 'eps', cls=NumberList)
+
+        use_sqrt, divide, initial_accumulator_value = itemgetter('use_sqrt', 'divide', "initial_accumulator_value")(settings[0])
+
+        accumulator = self.global_state.get("accumulator", initial_accumulator_value)
+
+        d, self.global_state["accumulator"] = adagrad_norm_(
+            tensors,
+            accumulator=accumulator,
+            alpha=alpha,
+            lr_decay=lr_decay,
+            eps=eps,
+            step=step,
+            use_sqrt=use_sqrt,
+            divide=divide,
+
+            beta = self.defaults["beta"],
+            decay = self.defaults["decay"],
+            # inner args
+            inner=self.children.get("inner", None),
+            params=params,
+            grads=grads,
+        )
+
+        return d
 
 
 class FullMatrixAdagrad(TensorwiseTransform):
