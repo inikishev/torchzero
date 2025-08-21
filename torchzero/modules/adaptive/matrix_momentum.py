@@ -5,6 +5,7 @@ import torch
 from ...core import Module, apply_transform, Chainable
 from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
+from ..functional import initial_step_size
 
 class MatrixMomentum(Module):
     """Second order momentum method.
@@ -12,7 +13,7 @@ class MatrixMomentum(Module):
     Matrix momentum is useful for convex objectives, also for some reason it has very really good generalization on elastic net logistic regression.
 
     Notes:
-        - ``mu`` needs to be tuned very carefully. It is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable. I have devised an adaptive version of this - ``tz.m.AdaptiveMatrixMomentum``, and it works well without having to tune ``mu``.
+        - ``mu`` needs to be tuned very carefully. It is supposed to be smaller than (1/largest eigenvalue), otherwise this will be very unstable. I have devised an adaptive version of this - ``tz.m.AdaptiveMatrixMomentum``, and it works well without having to tune ``mu``, however the adaptive version doesn't work on stochastic objectives.
 
         - In most cases ``MatrixMomentum`` should be the first module in the chain because it relies on autograd.
 
@@ -41,13 +42,16 @@ class MatrixMomentum(Module):
 
     def __init__(
         self,
+        lr:float,
         mu=0.1,
         beta: float = 1,
         hvp_method: Literal["autograd", "forward", "central"] = "autograd",
         h: float = 1e-3,
+        adaptive:bool = False,
+        adapt_freq: int | None = None,
         hvp_tfm: Chainable | None = None,
     ):
-        defaults = dict(mu=mu, beta=beta, hvp_method=hvp_method, h=h)
+        defaults = dict(lr=lr, mu=mu, beta=beta, hvp_method=hvp_method, h=h, adaptive=adaptive, adapt_freq=adapt_freq)
         super().__init__(defaults)
 
         if hvp_tfm is not None:
@@ -55,131 +59,85 @@ class MatrixMomentum(Module):
 
     def reset_for_online(self):
         super().reset_for_online()
-        self.clear_state_keys('prev_update')
+        self.clear_state_keys('p_prev')
 
     @torch.no_grad
     def update(self, var):
         assert var.closure is not None
-        prev_update = self.get_state(var.params, 'prev_update')
+        p = TensorList(var.params)
+        p_prev = self.get_state(p, 'p_prev', init=var.params)
+
         hvp_method = self.defaults['hvp_method']
         h = self.defaults['h']
+        step = self.global_state.get("step", 0)
+        self.global_state["step"] = step + 1
 
-        Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
-        Hvp = [t.detach() for t in Hvp]
+        if step > 0:
+            s = p - p_prev
 
-        if 'hvp_tfm' in self.children:
-            Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
+            Hs, _ = self.Hvp(s, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
+            Hs = [t.detach() for t in Hs]
 
-        self.store(var.params, "Hvp", Hvp)
+            if 'hvp_tfm' in self.children:
+                Hs = TensorList(apply_transform(self.children['hvp_tfm'], Hs, params=p, grads=var.grad, var=var))
 
+            self.store(p, ("Hs", "s"), (Hs, s))
+
+            # -------------------------------- adaptive mu ------------------------------- #
+            if self.defaults["adaptive"]:
+                g = TensorList(var.get_grad())
+
+                if self.defaults["adapt_freq"] is None:
+                    # ---------------------------- deterministic case ---------------------------- #
+                    g_prev = self.get_state(var.params, "g_prev", cls=TensorList)
+                    y = g - g_prev
+                    g_prev.copy_(g)
+                    self.global_state["mu_mul"] = s.global_vector_norm() / (y.global_vector_norm() + 1e-8)
+
+                else:
+                    # -------------------------------- stochastic -------------------------------- #
+                    adapt_freq = self.defaults["adapt_freq"]
+
+                    # we start on 1nd step, and want to adapt when we start, so use (step - 1)
+                    if (step - 1) % adapt_freq == 0:
+                        assert var.closure is not None
+                        params = TensorList(var.params)
+                        p_cur = params.clone()
+
+                        # move to previous params and evaluate p_prev with current mini-batch
+                        params.copy_(self.get_state(var.params, 'p_prev'))
+                        with torch.enable_grad():
+                            var.closure()
+                        g_prev = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+                        y = g - g_prev
+
+                        # move back to current params
+                        params.copy_(p_cur)
+
+                        self.global_state["mu_mul"] = s.global_vector_norm() / (y.global_vector_norm() + 1e-8)
+
+        torch._foreach_copy_(p_prev, var.params)
 
     @torch.no_grad
     def apply(self, var):
         update = TensorList(var.get_update())
-        Hvp, prev_update = self.get_state(var.params, 'Hvp', 'prev_update', cls=TensorList)
-        mu,beta = self.get_settings(var.params, 'mu','beta', cls=NumberList)
+        lr,mu = self.get_settings(var.params, "lr", 'mu', cls=NumberList)
 
-        update.add_(prev_update - Hvp*mu)
-        prev_update.set_(update * beta)
+        if "mu_mul" in self.global_state:
+            mu = mu * self.global_state["mu_mul"]
+
+        # --------------------------------- 1st step --------------------------------- #
+        # p_prev is not available so make a small step
+        step = self.global_state["step"]
+        if step == 1:
+            if self.defaults["adaptive"]: self.get_state(var.params, "g_prev", init=var.get_grad())
+            update.mul_(lr) # separate so that initial_step_size can clip correctly
+            update.mul_(initial_step_size(update, 1e-7))
+            return var
+
+        # -------------------------- matrix momentum update -------------------------- #
+        s, Hs = self.get_state(var.params, 's', 'Hs', cls=TensorList)
+
+        update.mul_(lr).sub_(s).add_(Hs*mu)
         var.update = update
         return var
-
-
-class AdaptiveMatrixMomentum(Module):
-    """Second order momentum method.
-
-    Matrix momentum is useful for convex objectives, also for some reason it has very good generalization on elastic net logistic regression.
-
-    .. note::
-        In most cases MatrixMomentum should be the first module in the chain because it relies on autograd.
-
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
-
-
-    Args:
-        mu_mul (float, optional): multiplier to the estimated mu. Defaults to 1.
-        beta (float, optional): decay for the buffer, this is not part of the original update rule. Defaults to 1.
-        hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
-
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        h (float, optional): finite difference step size if hvp_method is set to finite difference. Defaults to 1e-3.
-        hvp_tfm (Chainable | None, optional): optional module applied to hessian-vector products. Defaults to None.
-
-    Reference:
-        Orr, Genevieve, and Todd Leen. "Using curvature information for fast stochastic search." Advances in neural information processing systems 9 (1996).
-    """
-
-    def __init__(
-        self,
-        mu_mul: float = 1,
-        beta: float = 1,
-        eps=1e-4,
-        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
-        h: float = 1e-3,
-        hvp_tfm: Chainable | None = None,
-    ):
-        defaults = dict(mu_mul=mu_mul, beta=beta, hvp_method=hvp_method, h=h, eps=eps)
-        super().__init__(defaults)
-
-        if hvp_tfm is not None:
-            self.set_child('hvp_tfm', hvp_tfm)
-
-    def reset_for_online(self):
-        super().reset_for_online()
-        self.clear_state_keys('prev_params', 'prev_grad')
-
-    @torch.no_grad
-    def update(self, var):
-        assert var.closure is not None
-        prev_update, prev_params, prev_grad = self.get_state(var.params, 'prev_update', 'prev_params', 'prev_grad', cls=TensorList)
-
-        settings = self.defaults
-        hvp_method = settings['hvp_method']
-        h = settings['h']
-        eps = settings['eps']
-
-        mu_mul = NumberList(self.settings[p]['mu_mul'] for p in var.params)
-
-        Hvp, _ = self.Hvp(prev_update, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_grad=False)
-        Hvp = [t.detach() for t in Hvp]
-
-        if 'hvp_tfm' in self.children:
-            Hvp = TensorList(apply_transform(self.children['hvp_tfm'], Hvp, params=var.params, grads=var.grad, var=var))
-
-        # adaptive part
-        s_k = var.params - prev_params
-        prev_params.copy_(var.params)
-
-        if hvp_method != 'central': assert var.grad is not None
-        grad = var.get_grad()
-        y_k = grad - prev_grad
-        prev_grad.copy_(grad)
-
-        ada_mu = (s_k.global_vector_norm() / (y_k.global_vector_norm() + eps)) * mu_mul
-
-        self.store(var.params, ['Hvp', 'ada_mu'], [Hvp, ada_mu])
-
-    @torch.no_grad
-    def apply(self, var):
-        Hvp, ada_mu = self.get_state(var.params, 'Hvp', 'ada_mu')
-        Hvp = as_tensorlist(Hvp)
-        beta = NumberList(self.settings[p]['beta'] for p in var.params)
-        update = TensorList(var.get_update())
-        prev_update = TensorList(self.state[p]['prev_update'] for p in var.params)
-
-        update.add_(prev_update - Hvp*ada_mu)
-        prev_update.set_(update * beta)
-        var.update = update
-        return var
-

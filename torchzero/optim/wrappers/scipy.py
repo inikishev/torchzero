@@ -26,14 +26,6 @@ def _ensure_numpy(x):
     if isinstance(x, np.ndarray): return x
     return np.array(x)
 
-def matrix_clamp(H: torch.Tensor, reg: float):
-    try:
-        eigvals, eigvecs = torch.linalg.eigh(H) # pylint:disable=not-callable
-        eigvals.clamp_(min=reg)
-        return eigvecs @ torch.diag(eigvals) @ eigvecs.mH
-    except Exception:
-        return H
-
 Closure = Callable[[bool], Any]
 
 class ScipyMinimize(Optimizer):
@@ -81,7 +73,6 @@ class ScipyMinimize(Optimizer):
         options = None,
         jac: Literal['2-point', '3-point', 'cs', 'autograd'] = 'autograd',
         hess: Literal['2-point', '3-point', 'cs', 'autograd'] | scipy.optimize.HessianUpdateStrategy = 'autograd',
-        min_eigval: float | None = None,
     ):
         defaults = dict(lb=lb, ub=ub)
         super().__init__(params, defaults)
@@ -89,7 +80,6 @@ class ScipyMinimize(Optimizer):
         self.constraints = constraints
         self.tol = tol
         self.callback = callback
-        self.min_eigval = min_eigval
         self.options = options
 
         self.jac = jac
@@ -114,8 +104,7 @@ class ScipyMinimize(Optimizer):
         with torch.enable_grad():
             value = closure(False)
             _, H = jacobian_and_hessian_mat_wrt([value], wrt = params)
-        if self.min_eigval is not None: H = matrix_clamp(H, self.min_eigval)
-        return H.detach().cpu().numpy()
+        return H.numpy(force=True)
 
     def _objective(self, x: np.ndarray, params: TensorList, closure):
         # set params to x
@@ -124,7 +113,10 @@ class ScipyMinimize(Optimizer):
         # return value and maybe gradients
         if self.use_jac_autograd:
             with torch.enable_grad(): value = _ensure_float(closure())
-            return value, params.ensure_grad_().grad.to_vec().numpy(force=True)
+            grad = params.ensure_grad_().grad.to_vec().numpy(force=True)
+            # slsqp requires float64
+            if self.method.lower() == 'slsqp': grad = grad.astype(np.float64)
+            return value, grad
         return _ensure_float(closure(False))
 
     @torch.no_grad

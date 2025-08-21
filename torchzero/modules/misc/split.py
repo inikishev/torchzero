@@ -1,5 +1,5 @@
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence, Iterable
 from typing import cast
 
 import torch
@@ -50,13 +50,32 @@ def _split(
 
     return var
 
+_SingleFilter = Callable[[torch.Tensor], bool] | torch.Tensor | Iterable[torch.Tensor] | torch.nn.Module | Iterable[torch.nn.Module]
+Filter = _SingleFilter | Iterable[_SingleFilter]
+
+def _make_filter(filter: Filter):
+    if callable(filter): return filter
+    if isinstance(filter, torch.Tensor):
+        return lambda x: x is filter
+    if isinstance(filter, torch.nn.Module):
+        return _make_filter(filter.parameters())
+
+    # iterable
+    filters = [_make_filter(f) for f in filter]
+    return lambda x: any(f(x) for f in filters)
+
 class Split(Module):
     """Apply ``true`` modules to all parameters filtered by ``filter``, apply ``false`` modules to all other parameters.
 
     Args:
-        filter (Callable[[torch.Tensor], bool]): a function that takes in a parameter tensor and returns a boolean value.
-        true (Chainable | None): modules that are applied to tensors where ``filter`` returned True.
-        false (Chainable | None): modules that are applied to tensors where ``filter`` returned False.
+        filter (Filter, bool]):
+            a filter that selects tensors to be optimized by ``true``.
+            - tensor or iterable of tensors (e.g. ``encoder.parameters()``).
+            - function that takes in tensor and outputs a bool (e.g. ``lambda x: x.ndim >= 2``).
+            - a sequence of above (acts as "or", so returns true if any of them is true).
+
+        true (Chainable | None): modules that are applied to tensors where ``filter`` is ``True``.
+        false (Chainable | None): modules that are applied to tensors where ``filter`` is ``False``.
 
     ### Examples:
 
@@ -75,7 +94,7 @@ class Split(Module):
     )
     ```
     """
-    def __init__(self, filter: Callable[[torch.Tensor], bool], true: Chainable | None, false: Chainable | None):
+    def __init__(self, filter: Filter, true: Chainable | None, false: Chainable | None):
         defaults = dict(filter=filter)
         super().__init__(defaults)
 
@@ -85,7 +104,7 @@ class Split(Module):
     def step(self, var):
 
         params = var.params
-        filter = self.settings[params[0]]['filter']
+        filter = _make_filter(self.settings[params[0]]['filter'])
 
         true_idxs = []
         false_idxs = []

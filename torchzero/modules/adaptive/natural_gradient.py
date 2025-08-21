@@ -4,7 +4,7 @@ from ...core import Module, Chainable, apply_transform
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors, TensorList
 from ...utils.linalg import linear_operator
-from ..adaptive.ladagrad import lm_adagrad_apply, lm_adagrad_update
+from .lmadagrad import lm_adagrad_apply, lm_adagrad_update
 
 class NaturalGradient(Module):
     """Natural gradient approximated via empirical fisher information matrix.

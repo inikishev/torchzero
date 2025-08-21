@@ -8,10 +8,10 @@ from .adan import Adan
 from .adaptive_heavyball import AdaptiveHeavyBall
 from .aegd import AEGD
 from .esgd import ESGD
-from .ladagrad import LMAdagrad
+from .lmadagrad import LMAdagrad
 from .lion import Lion
 from .mars import MARSCorrection
-from .matrix_momentum import AdaptiveMatrixMomentum, MatrixMomentum
+from .matrix_momentum import MatrixMomentum
 from .msam import MSAM, MSAMObjective
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .natural_gradient import NaturalGradient
