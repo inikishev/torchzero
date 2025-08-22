@@ -121,7 +121,7 @@ class DNRTR(HessianUpdateStrategy):
         reset_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
-        scale_first: bool = True,
+        scale_first: bool = False,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
