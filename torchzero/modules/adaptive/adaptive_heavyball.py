@@ -4,7 +4,7 @@ from ...utils import TensorList, unpack_dicts, unpack_states
 
 
 def adaptive_heavy_ball(f, f_star, f_prev, g: TensorList, g_prev: TensorList, p: TensorList, p_prev: TensorList):
-    if f - f_star <= torch.finfo(p[0].dtype).eps: return g
+    if f - f_star <= torch.finfo(p[0].dtype).tiny * 2: return g
 
     g_g = g.dot(g)
     g_gp = g.dot(g_prev)

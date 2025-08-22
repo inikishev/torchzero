@@ -13,7 +13,7 @@ from ...core import (
 )
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ...utils.linalg import matrix_power_eigh
-from ..functional import add_power_, lerp_power_, root
+from ..functional import add_power_, lerp_power_, root, epsilon_step_size
 from ...utils.linalg.linear_operator import Dense
 
 def adagrad_(
@@ -322,7 +322,7 @@ class FullMatrixAdagrad(TensorwiseTransform):
         step = state.get('step', 0)
         state['step'] = step + 1
 
-        GG = state['GG']
+        GG: torch.Tensor = state['GG']
         sqrt = setting['sqrt']
         divide = setting['divide']
         precond_freq = setting['precond_freq']
@@ -348,7 +348,9 @@ class FullMatrixAdagrad(TensorwiseTransform):
             else: return torch.linalg.solve(GG, tensor.ravel()).view_as(tensor) # pylint:disable = not-callable
 
         except torch.linalg.LinAlgError:
-            scale = 1 / tensor.abs().max()
-            return tensor.mul_(scale.clip(min=torch.finfo(tensor.dtype).eps, max=1)) # conservative scaling
+            # fallback to diagonal AdaGrad
+            denom = GG.diagonal()
+            if sqrt: denom = denom.sqrt()
+            return tensor.div_(denom + max(reg, 1e-12))
 
         return (B @ tensor.ravel()).view_as(tensor)

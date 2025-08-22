@@ -1,3 +1,5 @@
+import math
+
 # pyright: reportArgumentType=false
 from collections.abc import Callable
 from typing import Any, overload
@@ -8,6 +10,7 @@ from .. import (
     TensorList,
     generic_eq,
     generic_finfo_eps,
+    generic_finfo_tiny,
     generic_numel,
     generic_randn_like,
     generic_vector_norm,
@@ -99,7 +102,7 @@ def nystrom_pcg(
         generator=generator,
     )
     lambd += reg
-    eps = torch.finfo(b.dtype).eps ** 2
+    eps = torch.finfo(b.dtype).tiny * 2
     if tol is None: tol = eps
 
     def A_mm_reg(x): # A_mm with regularization
@@ -139,9 +142,9 @@ def nystrom_pcg(
 
 
 def _safe_clip(x: torch.Tensor):
-    """makes sure scalar tensor x is not smaller than epsilon"""
+    """makes sure scalar tensor x is not smaller than tiny"""
     assert x.numel() == 1, x.shape
-    eps = torch.finfo(x.dtype).eps
+    eps = torch.finfo(x.dtype).tiny * 2
     if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
     return x
 
@@ -202,7 +205,7 @@ def cg(
 
     d = r.clone()
 
-    eps = generic_finfo_eps(b)**2
+    eps = generic_finfo_tiny(b) * 2
     if tol is None: tol = eps
 
     if generic_vector_norm(r) < tol:
@@ -276,8 +279,8 @@ def minres(
     trust_radius: float | None = None, #trust region is experimental
 ):
     A_mm_reg = _make_A_mm_reg(A_mm, reg)
-    eps = generic_finfo_eps(b)
-    if tol is None: tol = eps**2
+    eps = math.sqrt(generic_finfo_tiny(b) * 2)
+    if tol is None: tol = eps
 
     if maxiter is None: maxiter = generic_numel(b)
     if x0 is None:

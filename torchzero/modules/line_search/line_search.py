@@ -286,7 +286,7 @@ class GridLineSearch(LineSearchBase):
 
 
 def sufficient_decrease(f_0, g_0, f_a, a, c):
-    return f_a <= f_0 + c*a*min(g_0, 0)
+    return f_a < f_0 + c*a*min(g_0, 0)
 
 def curvature(g_0, g_a, c):
     if g_0 > 0: return True
@@ -305,7 +305,8 @@ def strong_wolfe(f_0, g_0, f_a, g_a, a, c1, c2):
 
 def goldstein(f_0, g_0, f_a, a, c):
     """same as armijo (sufficient_decrease) but additional lower bound"""
-    return f_0 + (1-c)*a*g_0 <= f_a <= f_a + c*a*g_0
+    g_0 = min(g_0, 0)
+    return f_0 + (1-c)*a*g_0 < f_a < f_0 + c*a*g_0
 
 TerminationCondition = Literal["armijo", "curvature", "strong_curvature", "wolfe", "strong_wolfe", "goldstein", "decrease"]
 def termination_condition(

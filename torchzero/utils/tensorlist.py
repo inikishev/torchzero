@@ -1122,6 +1122,10 @@ def generic_finfo_eps(x: torch.Tensor | TensorList) -> float:
     if isinstance(x, torch.Tensor): return torch.finfo(x.dtype).eps
     return torch.finfo(x[0].dtype).eps
 
+def generic_finfo_tiny(x: torch.Tensor | TensorList) -> float:
+    if isinstance(x, torch.Tensor): return torch.finfo(x.dtype).tiny
+    return torch.finfo(x[0].dtype).tiny
+
 @overload
 def generic_zeros_like(x: torch.Tensor) -> torch.Tensor: ...
 @overload

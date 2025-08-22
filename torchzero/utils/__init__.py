@@ -24,13 +24,22 @@ from .params import (
     _copy_param_groups,
     _make_param_groups,
 )
-from .python_tools import flatten, generic_eq, generic_ne, reduce_dim, unpack_dicts, safe_dict_update_
+from .python_tools import (
+    flatten,
+    generic_eq,
+    generic_ne,
+    reduce_dim,
+    safe_dict_update_,
+    unpack_dicts,
+)
 from .tensorlist import (
-    Distributions, Metrics,
+    Distributions,
+    Metrics,
     TensorList,
     as_tensorlist,
     generic_clamp,
     generic_finfo_eps,
+    generic_finfo_tiny,
     generic_max,
     generic_numel,
     generic_randn_like,

@@ -10,6 +10,20 @@ from ...utils import NumberList, TensorList, tofloat, unpack_dicts, unpack_state
 from ...utils.linalg.linear_operator import ScaledIdentity
 from ..functional import epsilon_step_size
 
+def _acceptable_alpha(alpha, param:torch.Tensor):
+    finfo = torch.finfo(param.dtype)
+    if (alpha is None) or (alpha < finfo.tiny*2) or (not math.isfinite(alpha)) or (alpha > finfo.max/2):
+        return False
+    return True
+
+def _get_H(self: Transform, var):
+    n = sum(p.numel() for p in var.params)
+    p = var.params[0]
+    alpha = self.global_state.get('alpha', 1)
+    if not _acceptable_alpha(alpha, p): alpha = 1
+
+    return ScaledIdentity(1 / alpha, shape=(n,n), device=p.device, dtype=p.dtype)
+
 
 class PolyakStepSize(Transform):
     """Polyak's subgradient method with known or unknown f*.
@@ -52,7 +66,7 @@ class PolyakStepSize(Transform):
         if f_star is None: f_star = f_best - y_val
 
         # calculate the step size
-        if gg <= torch.finfo(gg.dtype).eps: alpha = 0 # converged
+        if gg <= torch.finfo(gg.dtype).tiny * 2: alpha = 0 # converged
         else: alpha = (loss - f_star) / gg
 
         # clip
@@ -67,15 +81,13 @@ class PolyakStepSize(Transform):
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', 1)
-        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
-            alpha = 1
+        if not _acceptable_alpha(alpha, tensors[0]): alpha = epsilon_step_size(TensorList(tensors))
+
         torch._foreach_mul_(tensors, alpha * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
     def get_H(self, var):
-        n = sum(p.numel() for p in var.params)
-        p = var.params[0]
-        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return _get_H(self, var)
 
 
 def _bb_short(s: TensorList, y: TensorList, sy, eps):
@@ -149,7 +161,7 @@ class BarzilaiBorwein(Transform):
             s = params-prev_p
             y = g-prev_g
             sy = s.dot(y)
-            eps = torch.finfo(sy.dtype).min
+            eps = torch.finfo(sy.dtype).tiny * 2
 
             if type == 'short': alpha = _bb_short(s, y, sy, eps)
             elif type == 'long': alpha = _bb_long(s, y, sy, eps)
@@ -164,16 +176,13 @@ class BarzilaiBorwein(Transform):
         prev_g.copy_(g)
 
     def get_H(self, var):
-        n = sum(p.numel() for p in var.params)
-        p = var.params[0]
-        alpha = self.global_state.get('alpha', 1)
-        if abs(alpha) < 1e-24: alpha = 1
-        return ScaledIdentity(1 / alpha, shape=(n,n), device=p.device, dtype=p.dtype)
+        return _get_H(self, var)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
-        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
+
+        if not _acceptable_alpha(alpha, tensors[0]):
             alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
 
         torch._foreach_mul_(tensors, alpha)
@@ -240,7 +249,7 @@ class BBStab(Transform):
             s = params-prev_p
             y = g-prev_g
             sy = s.dot(y)
-            eps = torch.finfo(sy.dtype).min
+            eps = torch.finfo(sy.dtype).tiny
 
             if type == 'short': alpha = _bb_short(s, y, sy, eps)
             elif type == 'long': alpha = _bb_long(s, y, sy, eps)
@@ -279,15 +288,13 @@ class BBStab(Transform):
         prev_g.copy_(g)
 
     def get_H(self, var):
-        n = sum(p.numel() for p in var.params)
-        p = var.params[0]
-        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return _get_H(self, var)
 
     @torch.no_grad
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
-        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
+        if not _acceptable_alpha(alpha, tensors[0]):
             alpha = epsilon_step_size(TensorList(tensors), settings[0]['alpha_0'])
 
         torch._foreach_mul_(tensors, alpha)
@@ -366,7 +373,7 @@ class AdGD(Transform):
     def apply_tensors(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
-        if (alpha is None) or (alpha < 0) or (not math.isfinite(alpha)) or (alpha > torch.finfo(tensors[0].dtype).max):
+        if not _acceptable_alpha(alpha, tensors[0]):
             # alpha isn't None on 1st step
             self.state.clear()
             self.global_state.clear()
@@ -376,6 +383,4 @@ class AdGD(Transform):
         return tensors
 
     def get_H(self, var):
-        n = sum(p.numel() for p in var.params)
-        p = var.params[0]
-        return ScaledIdentity(1 / self.global_state.get('alpha', 1), shape=(n,n), device=p.device, dtype=p.dtype)
+        return _get_H(self, var)

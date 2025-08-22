@@ -120,7 +120,8 @@ class Backtracking(LineSearchBase):
         else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
 
         # scale init
-        if adaptive: init = max(init * self.global_state.get('init_scale', 1), 1e-12)
+        init_scale = self.global_state.get('init_scale', 1)
+        if adaptive: init = init * init_scale
 
         step_size = backtracking_line_search(objective, d, init=init, beta=beta,c=c, condition=condition, maxiter=maxiter)
 
@@ -131,7 +132,13 @@ class Backtracking(LineSearchBase):
             return step_size
 
         # on fail set init_scale to continue decreasing the step size
-        self.global_state['init_scale'] = self.global_state.get('init_scale', 1) * beta**maxiter
+        # or set to large step size when it becomes too small
+        if adaptive:
+            finfo = torch.finfo(var.params[0].dtype)
+            if init_scale <= finfo.tiny * 2:
+                self.global_state["init_scale"] = finfo.max / 2
+            else:
+                self.global_state['init_scale'] = init_scale * beta**maxiter
         return 0
 
 def _lerp(start,end,weight):
@@ -209,7 +216,12 @@ class AdaptiveBacktracking(LineSearchBase):
             # initial step size satisfied conditions, increase initial_scale by nplus
             if step_size == init and target_iters > 0:
                 self.global_state['initial_scale'] *= nplus ** target_iters
-                self.global_state['initial_scale'] = min(self.global_state['initial_scale'], 1e32) # avoid overflow error
+
+                # clip by maximum possibel value to avoid overflow exception
+                self.global_state['initial_scale'] = min(
+                    self.global_state['initial_scale'],
+                    torch.finfo(var.params[0].dtype).max / 2,
+                )
 
             else:
                 # otherwise make initial_scale such that target_iters iterations will satisfy armijo

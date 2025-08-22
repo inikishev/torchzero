@@ -353,8 +353,8 @@ class InverseFreeNewton(Module):
             if 'Y' not in self.global_state:
                 num = H.T
                 denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
-                eps = torch.finfo(H.dtype).eps
-                Y = self.global_state['Y'] = num.div_(denom.clip(min=eps, max=1/eps))
+                finfo = torch.finfo(H.dtype)
+                Y = self.global_state['Y'] = num.div_(denom.clip(min=finfo.tiny * 2, max=finfo.max / 2))
 
             else:
                 Y = self.global_state['Y']

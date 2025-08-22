@@ -15,13 +15,13 @@ def singular_vals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tenso
 
 def matrix_power_eigh(A: torch.Tensor, pow:float):
     L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
-    if pow % 2 != 0: L.clip_(min = torch.finfo(A.dtype).eps**2)
+    if pow % 2 != 0: L.clip_(min = torch.finfo(A.dtype).tiny * 2)
     return (Q * L.pow(pow).unsqueeze(-2)) @ Q.mH
 
 
 def inv_sqrt_2x2(A: torch.Tensor, force_pd: bool=False) -> torch.Tensor:
     """Inverse square root of a possibly batched 2x2 matrix using a general formula for 2x2 matrices so that this is way faster than torch linalg. I tried doing a hierarchical 2x2 preconditioning but it didn't work well."""
-    eps = torch.finfo(A.dtype).eps
+    eps = torch.finfo(A.dtype).tiny * 2
 
     a = A[..., 0, 0]
     b = A[..., 0, 1]

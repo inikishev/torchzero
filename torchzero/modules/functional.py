@@ -246,8 +246,10 @@ def epsilon_step_size(tensors: torch.Tensor | TensorList, alpha=1e-7) -> float:
 
 
 
-def safe_clip(x: torch.Tensor, min=1e-12):
+def safe_clip(x: torch.Tensor, min=None):
     """makes sure absolute value of scalar tensor x is not smaller than min"""
     assert x.numel() == 1, x.shape
+    if min is None: min = torch.finfo(x.dtype).min * 2
+
     if x.abs() < min: return x.new_full(x.size(), min).copysign(x)
     return x
