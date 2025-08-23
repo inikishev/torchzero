@@ -2,59 +2,73 @@
 
 <h1 align='center'>torchzero</h1>
 
-torchzero is a general purpose optimization library with a highly modular design.
+torchzero is a general purpose optimization library with a highly modular design. There are many algorithms implemented in torchzero, including first and second order algorithms, Quasi-Newton methods, conjugate gradient, gradient approximations, line searches, trust regions, etc. The modularity allows, for example, to use Newton or any Quasi-Newton method with any trust region or line search.
 
-> **note:** This project is under development, API is subject to change and there may be bugs.
-
-## What is done so far
-
-There are A LOT of modules, including first order, quasi-newton, second order, conjugate gradient methods, line searches and trust regions, gradient approximations, gauss newton for least squares.
-
-The list of modules is available here <https://torchzero.readthedocs.io/en/latest/autoapi/torchzero/modules/index.html>, although it is slightly outdated since I decided to rewrite the wiki.
-
-The modules represent gradient transformations and are freely combineable (see examples below). You can take newton, gauss-newton, any quasi-newton method, choose any line-search or trust region, add something else like restarts, even put a momentum or sharpness-aware minimization somewhere in the mix.
-
-A lot of work still needs to be done, some internal things that are too long to describe here, but also more tests, proper readme and documentation.
+> **note:** This project is being actively developed, there may be API changes.
 
 ## How to use
+
+An overview of the modules available in torchzero is available on the [docs](https://inikishev.github.io/torchzero/API/).
 
 Construct a modular optimizer and use like any other pytorch optimizer, although some modules require a closure as detailed in the next section.
 
 ```py
 optimizer = tz.Modular(
     model.parameters(),
-    tz.m.ClipValue(10),
+    tz.m.ClipValue(1),
     tz.m.Adam(),
-    tz.m.NormalizeByEMA(max_ema_growth=1.1),
-    tz.m.WeightDecay(1e-4),
-    tz.m.LR(1e-1),
+    tz.m.WeightDecay(1e-2),
+    tz.m.LR(1e-1)
 )
 ```
 
-### Closure
+Here is what happens:
+
+1. The gradient is passed to the ``ClipValue(1)`` module, which returns gradient with magnitudes clipped to be no larger than 1.
+
+2. Clipped gradient is passed to ``Adam()``, which updates Adam momentum buffers and returns the Adam update.
+
+3. The Adam update is passed to ``WeightDecay()`` which adds a weight decay penalty to the Adam update. Since we placed it after Adam, the weight decay is decoupled. By moving ``WeightDecay()`` before ``Adam()``, we can get coupled weight decay.
+
+4. Finally the update is passed to ``LR(0.1)``, which multiplies it by the learning rate of 0.1.
+
+### Advanced optimization¶
 
 Certain modules, particularly line searches and gradient approximations require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
 
 ```python
-# training loop
-for inputs, targets in dataloader:
+model = nn.Sequential(nn.Linear(10, 10), nn.ELU(), nn.Linear(10, 1))
+inputs = torch.randn(100,10)
+targets = torch.randn(100, 1)
 
-    def closure(backward=True): # make sure it is True by default
+optimizer = tz.Modular(
+    model.parameters(),
+    tz.m.CubicRegularization(tz.m.Newton()),
+)
+
+for i in range(1, 51):
+
+    def closure(backward=True):
         preds = model(inputs)
-        loss = criterion(preds, targets)
+        loss = F.mse_loss(preds, targets)
 
-        if backward: # gradient approximations always call with backward=False.
+        # If backward=True, closure should call
+        # optimizer.zero_grad() and loss.backward()
+        if backward:
             optimizer.zero_grad()
             loss.backward()
 
         return loss
 
     loss = optimizer.step(closure)
+
+    if i % 10 == 0:
+        print(f"step: {i}, loss: {loss.item():.4f}")
 ```
 
 The code above will also work with any other optimizer because all PyTorch optimizers and most custom ones support closure, so there is no need to rewrite training loop.
 
-Non-batched example (rosenbrock):
+Rosenbrock minimization example:
 
 ```py
 import torch
@@ -80,16 +94,18 @@ for step in range(24):
 
 ## Wiki
 
-The wiki is quite outdated <https://torchzero.readthedocs.io/en/latest/index.html>
+More information and examples along with visualizations and explanations of many of the algorithms implemented in torchzero are available on the [wiki](https://inikishev.github.io/torchzero/overview/Basics/)
 
 ## Installation
 
-to try this:
+torchzero can be installed from The Python Package Index:
+
+```bash
+pip install torchzero
+```
+
+Alternatively install it directly from this repo:
 
 ```bash
 pip install git+https://github.com/inikishev/torchzero
 ```
-
-requires `torch`, `numpy` and `typing_extensions`.
-
-Yes there is a deployment on Pypi, but I haven't ran it for a while, as I decided to wait until this is more refined, so it is outdated.

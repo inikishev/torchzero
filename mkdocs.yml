@@ -22,7 +22,7 @@ theme:
       toggle:
         icon: material/brightness-auto
         name: Switch to light mode
-      primary: black
+      primary: white
 
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
@@ -30,7 +30,7 @@ theme:
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-      primary: white
+      primary: black
 
     # Palette toggle for dark mode
     - media: "(prefers-color-scheme: dark)"
