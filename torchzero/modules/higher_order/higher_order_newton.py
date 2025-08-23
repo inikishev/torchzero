@@ -256,12 +256,9 @@ class HigherOrderNewton(Module):
             # load trust region value
             trust_value = self.global_state.get('trust_region', init)
 
-            # make sure its nottoo small or too large
+            # make sure its not too small or too large
             finfo = torch.finfo(x0.dtype)
-            if trust_value < finfo.tiny*2:
-                trust_value = finfo.max / (2*nplus)
-
-            elif trust_value > finfo.max / (2*nplus):
+            if trust_value < finfo.tiny*2 or trust_value > finfo.max / (2*nplus):
                 trust_value = self.global_state['trust_region'] = settings['init']
 
             # determine tr and prox values

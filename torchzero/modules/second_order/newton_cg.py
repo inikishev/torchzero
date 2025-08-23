@@ -269,9 +269,10 @@ class NewtonCGSteihaug(Module):
         h: float = 1e-3,
         max_attempts: int = 10,
         boundary_tol: float = 1e-1,
+        adapt_tol: bool = True,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad)
+        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad, adapt_tol=adapt_tol)
         super().__init__(defaults,)
 
         if inner is not None:
@@ -287,7 +288,7 @@ class NewtonCGSteihaug(Module):
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
-        tol = settings['tol']
+        tol = settings['tol'] * self.global_state.get('tol_mul', 1)
         reg = settings['reg']
         maxiter = settings['maxiter']
         hvp_method = settings['hvp_method']
@@ -349,9 +350,17 @@ class NewtonCGSteihaug(Module):
 
             trust_radius = self.global_state.get('trust_radius', init)
 
-            if trust_radius < 1e-12 or trust_radius > 1e24:
+            # make sure trust radius isn't too small or large
+            finfo = torch.finfo(x0[0].dtype)
+            if trust_radius < finfo.tiny * 2:
+                trust_radius = self.global_state['trust_radius'] = init
+                if self.defaults["adapt_tol"]:
+                    self.global_state["tol_mul"] = self.global_state.get("tol_mul", 0) * 0.1
+
+            elif trust_radius > finfo.max / 2:
                 trust_radius = self.global_state['trust_radius'] = init
 
+            # ----------------------------------- solve ---------------------------------- #
             if solver == 'cg':
                 d = cg(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg)
 

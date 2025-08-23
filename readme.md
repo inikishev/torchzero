@@ -32,7 +32,7 @@ Here is what happens:
 
 4. Finally the update is passed to ``LR(0.1)``, which multiplies it by the learning rate of 0.1.
 
-### Advanced optimization¶
+## Advanced optimization
 
 Certain modules, particularly line searches and gradient approximations require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
 

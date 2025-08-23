@@ -138,7 +138,9 @@ def default_radius(
             trust_radius = max(trust_radius, d_radius*nplus)
 
     # prevent very small or large values
-    if trust_radius < 1e-12 or trust_radius > 1e24: trust_radius = init
+    finfo = torch.finfo(g.dtype)
+    if trust_radius < finfo.tiny*2 or trust_radius > finfo.max/2:
+        trust_radius = init
 
     # return new trust region and success boolean
     return tofloat(trust_radius), rho > eta and is_finite

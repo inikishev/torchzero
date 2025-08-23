@@ -65,11 +65,12 @@ class TrustCG(TrustRegionBase):
         max_attempts: int = 10,
         radius_strategy: _RadiusStrategy | _RADIUS_KEYS = 'default',
         reg: float = 0,
+        cg_tol: float = 1e-4,
         prefer_exact: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(reg=reg, prefer_exact=prefer_exact)
+        defaults = dict(reg=reg, prefer_exact=prefer_exact, cg_tol=cg_tol)
         super().__init__(
             defaults=defaults,
             hess_module=hess_module,
@@ -92,4 +93,4 @@ class TrustCG(TrustRegionBase):
         if settings['prefer_exact'] and isinstance(H, linear_operator.ScaledIdentity):
             return H.solve_bounded(g, radius)
 
-        return cg(H.matvec, g, trust_radius=radius, reg=settings['reg'])
+        return cg(H.matvec, g, trust_radius=radius, reg=settings['reg'], tol=settings["cg_tol"])
