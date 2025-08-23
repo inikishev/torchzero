@@ -355,7 +355,7 @@ class AdGD(Transform):
 
         elif variant == 2:
             a1 = math.sqrt(2/3 + theta)*alpha
-            a2 = alpha / math.sqrt(max(1e-10, 2 * alpha**2 * L**2 - 1))
+            a2 = alpha / math.sqrt(max(torch.finfo(L.dtype).tiny * 2, 2 * alpha**2 * L**2 - 1))
 
         else:
             raise ValueError(variant)

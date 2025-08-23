@@ -85,7 +85,7 @@ class _StrongWolfe:
         if self.interpolation == 'quadratic':
             a = a_hi - a_lo
             denom = 2 * (f_hi - f_lo - g_lo*a)
-            if denom > 1e-10:
+            if denom > 1e-32:
                 num = g_lo * a**2
                 a_min = num / -denom
                 return _apply_bounds(a_min, bounds)
@@ -312,14 +312,14 @@ class StrongWolfe(LineSearchBase):
                 a_init = self.global_state['a_prev']
 
         elif init == 'first-order':
-            if 'g_prev' in self.global_state and g_0 < -1e-10:
+            if 'g_prev' in self.global_state and g_0 < -torch.finfo(dir[0].dtype).tiny * 2:
                 a_prev = self.global_state['a_prev']
                 g_prev = self.global_state['g_prev']
                 if g_prev < 0:
                     a_init = a_prev * g_prev / g_0
 
         elif init in ('quadratic', 'quadratic-clip'):
-            if 'f_prev' in self.global_state and g_0 < -1e-10:
+            if 'f_prev' in self.global_state and g_0 < -torch.finfo(dir[0].dtype).tiny * 2:
                 f_prev = self.global_state['f_prev']
                 if f_0 < f_prev:
                     a_init = 2 * (f_0 - f_prev) / g_0

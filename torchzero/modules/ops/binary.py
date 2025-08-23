@@ -265,7 +265,8 @@ class GramSchimdt(BinaryOperationBase):
     @torch.no_grad
     def transform(self, var, update: list[torch.Tensor], other: list[torch.Tensor]):
         update = TensorList(update); other = TensorList(other)
-        return update - (other*update) / ((other*other) + 1e-8)
+        min = torch.finfo(update[0].dtype).tiny * 2
+        return update - (other*update) / (other*other).clip(min=min)
 
 
 class Threshold(BinaryOperationBase):

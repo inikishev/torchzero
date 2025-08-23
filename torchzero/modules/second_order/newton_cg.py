@@ -90,7 +90,7 @@ class NewtonCG(Module):
     def __init__(
         self,
         maxiter: int | None = None,
-        tol: float = 1e-4,
+        tol: float = 1e-8,
         reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
@@ -262,7 +262,7 @@ class NewtonCGSteihaug(Module):
         rho_good: float = 0.99,
         rho_bad: float = 1e-4,
         init: float = 1,
-        tol: float = 1e-4,
+        tol: float = 1e-8,
         reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "forward",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
@@ -373,7 +373,7 @@ class NewtonCGSteihaug(Module):
             params.copy_(x0)
             reduction = var.get_loss(False) - loss_star
 
-            rho = reduction / (pred_reduction.clip(min=1e-8))
+            rho = reduction / (pred_reduction.clip(min=torch.finfo(pred_reduction.dtype).tiny))
             is_finite = math.isfinite(loss_star)
 
             # find boundary of current step

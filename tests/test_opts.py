@@ -582,8 +582,8 @@ UpdateGradientSignConsistency = Run(
     sphere_steps=10, sphere_loss=2,
 )
 IntermoduleCautious = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_reset=True)), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_reset=True)), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-4, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
@@ -596,8 +596,8 @@ ScaleByGradCosineSimilarity = Run(
     sphere_steps=10, sphere_loss=0.1,
 )
 ScaleModulesByCosineSimilarity = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_reset=True)),tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_reset=True)),tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.005, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
@@ -751,22 +751,22 @@ Shampoo = Run(
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #
 BFGS = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_reset=True), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-10, merge_invariant=True,
     sphere_steps=10, sphere_loss=1e-10,
 )
 SR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_reset=True, scale_first=True), tz.m.StrongWolfe(fallback=False)),
+    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_restart=True, scale_first=True), tz.m.StrongWolfe(fallback=False)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(fallback=False)),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-12, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 SSVM = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_reset=True), tz.m.StrongWolfe(fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_reset=True), tz.m.StrongWolfe(fallback=True)),
+    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_restart=True), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_restart=True), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     func='rosen', steps=50, loss=0.2, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
@@ -943,8 +943,8 @@ for QN in (
     tz.m.SSVM,
 ):
     Run(
-        func_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_reset=True), tz.m.StrongWolfe()),
-        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_reset=True), tz.m.StrongWolfe()),
+        func_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
+        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
         needs_closure=True,
         func='lstsq', steps=50, loss=1e-10, merge_invariant=True,
         sphere_steps=10, sphere_loss=1e-20,

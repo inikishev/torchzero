@@ -121,7 +121,7 @@ class LevenbergMarquardt(TrustRegionBase):
             return H.add_diagonal(reg).solve(g)
 
         diag = H.diagonal()
-        diag = torch.where(diag < 1e-10, 1, diag)
+        diag = torch.where(diag < torch.finfo(diag.dtype).tiny * 2, 1, diag)
         if y != 1: diag = (diag*y) + (1-y)
         return H.add_diagonal(diag*reg).solve(g)
 

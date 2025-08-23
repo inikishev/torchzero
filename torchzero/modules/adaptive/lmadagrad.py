@@ -145,6 +145,7 @@ class LMAdagrad(TensorwiseTransform):
             # scaled by parameter differences
             cur_p = param.clone()
             cur_g = tensor.clone()
+            eps = torch.finfo(cur_p.dtype).tiny * 2
             for i in range(1, order):
                 if f'prev_g_{i}' not in state:
                     state[f'prev_p_{i}'] = cur_p
@@ -159,7 +160,7 @@ class LMAdagrad(TensorwiseTransform):
                 cur_g = y
 
                 if i == order - 1:
-                    cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=1e-8) # pylint:disable=not-callable
+                    cur_g = cur_g / torch.linalg.norm(cur_p).clip(min=eps) # pylint:disable=not-callable
                     history.append(cur_g.view(-1))
 
         step = state.get('step', 0)

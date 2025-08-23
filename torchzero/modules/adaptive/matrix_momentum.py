@@ -1,11 +1,12 @@
 from typing import Literal
-
+from collections.abc import Callable
 import torch
 
 from ...core import Module, apply_transform, Chainable
 from ...utils import NumberList, TensorList, as_tensorlist
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
 from ..functional import initial_step_size
+
 
 class MatrixMomentum(Module):
     """Second order momentum method.
@@ -21,7 +22,6 @@ class MatrixMomentum(Module):
 
     Args:
         mu (float, optional): this has a similar role to (1 - beta) in normal momentum. Defaults to 0.1.
-        beta (float, optional): decay for the buffer, this is not part of the original update rule. Defaults to 1.
         hvp_method (str, optional):
             Determines how Hessian-vector products are evaluated.
 
@@ -44,14 +44,13 @@ class MatrixMomentum(Module):
         self,
         lr:float,
         mu=0.1,
-        beta: float = 1,
         hvp_method: Literal["autograd", "forward", "central"] = "autograd",
         h: float = 1e-3,
         adaptive:bool = False,
         adapt_freq: int | None = None,
         hvp_tfm: Chainable | None = None,
     ):
-        defaults = dict(lr=lr, mu=mu, beta=beta, hvp_method=hvp_method, h=h, adaptive=adaptive, adapt_freq=adapt_freq)
+        defaults = dict(lr=lr, mu=mu, hvp_method=hvp_method, h=h, adaptive=adaptive, adapt_freq=adapt_freq)
         super().__init__(defaults)
 
         if hvp_tfm is not None:
@@ -92,7 +91,9 @@ class MatrixMomentum(Module):
                     g_prev = self.get_state(var.params, "g_prev", cls=TensorList)
                     y = g - g_prev
                     g_prev.copy_(g)
-                    self.global_state["mu_mul"] = s.global_vector_norm() / (y.global_vector_norm() + 1e-8)
+                    denom = y.global_vector_norm()
+                    denom = denom.clip(min=torch.finfo(denom.dtype).tiny * 2)
+                    self.global_state["mu_mul"] = s.global_vector_norm() / denom
 
                 else:
                     # -------------------------------- stochastic -------------------------------- #
@@ -114,7 +115,9 @@ class MatrixMomentum(Module):
                         # move back to current params
                         params.copy_(p_cur)
 
-                        self.global_state["mu_mul"] = s.global_vector_norm() / (y.global_vector_norm() + 1e-8)
+                        denom = y.global_vector_norm()
+                        denom = denom.clip(min=torch.finfo(denom.dtype).tiny * 2)
+                        self.global_state["mu_mul"] = s.global_vector_norm() / denom
 
         torch._foreach_copy_(p_prev, var.params)
 

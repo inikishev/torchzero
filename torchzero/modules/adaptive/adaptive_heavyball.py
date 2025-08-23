@@ -21,7 +21,7 @@ class AdaptiveHeavyBall(Transform):
 
     This is related to conjugate gradient methods, it may be very good for non-stochastic convex objectives, but won't work on stochastic ones.
 
-    .. note::
+    note:
         The step size is determined by the algorithm, so learning rate modules shouldn't be used.
 
     Args:

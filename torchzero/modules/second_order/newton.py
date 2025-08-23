@@ -75,7 +75,7 @@ class Newton(Module):
         use_lstsq (bool, Optional):
             if True, least squares will be used to solve the linear system, this may generate reasonable directions
             when hessian is not invertible. If False, tries cholesky, if it fails tries LU, and then least squares.
-            If ``eigval_tfm`` is specified, eigendecomposition will always be used to solve the linear system and this
+            If ``eigval_fn`` is specified, eigendecomposition will always be used to solve the linear system and this
             argument will be ignored.
         hessian_method (str):
             how to calculate hessian. Defaults to "autograd".
@@ -91,8 +91,8 @@ class Newton(Module):
             Or it returns a single tensor which is used as the update.
 
             Defaults to None.
-        eigval_tfm (Callable | None, optional):
-            optional eigenvalues transform, for example :code:`torch.abs` or :code:`lambda L: torch.clip(L, min=1e-8)`.
+        eigval_fn (Callable | None, optional):
+            optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
             If this is specified, eigendecomposition will be used to invert the hessian.
 
     # See also
@@ -111,8 +111,8 @@ class Newton(Module):
     The linear system is solved via cholesky decomposition, if that fails, LU decomposition, and if that fails, least squares.
     Least squares can be forced by setting ``use_lstsq=True``, which may generate better search directions when linear system is overdetermined.
 
-    Additionally, if ``eigval_tfm`` is specified or ``search_negative`` is ``True``,
-    eigendecomposition of the hessian is computed, ``eigval_tfm`` is applied to the eigenvalues,
+    Additionally, if ``eigval_fn`` is specified or ``search_negative`` is ``True``,
+    eigendecomposition of the hessian is computed, ``eigval_fn`` is applied to the eigenvalues,
     and ``(H + yI)⁻¹`` is computed using the computed eigenvectors and transformed eigenvalues.
     This is more generally more computationally expensive.
 
@@ -122,7 +122,7 @@ class Newton(Module):
     This is because it jumps to the stationary point, which may be the maxima of the quadratic approximation.
 
     The first modification to handle non-convexity is to modify the eignevalues to be positive,
-    for example by setting ``eigval_tfm = lambda L: L.abs().clip(min=1e-4)``.
+    for example by setting ``eigval_fn = lambda L: L.abs().clip(min=1e-4)``.
 
     Second modification is ``search_negative=True``, which will search along a negative curvature direction if one is detected.
     This also requires an eigendecomposition.
@@ -174,9 +174,9 @@ class Newton(Module):
         vectorize: bool = True,
         inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
-        eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_tfm=eigval_tfm, search_negative=search_negative, update_freq=update_freq)
+        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, search_negative=search_negative, update_freq=update_freq)
         super().__init__(defaults)
 
         if inner is not None:
@@ -230,7 +230,7 @@ class Newton(Module):
         settings = self.settings[params[0]]
         search_negative = settings['search_negative']
         H_tfm = settings['H_tfm']
-        eigval_tfm = settings['eigval_tfm']
+        eigval_fn = settings['eigval_fn']
         use_lstsq = settings['use_lstsq']
 
         # -------------------------------- inner step -------------------------------- #
@@ -252,8 +252,8 @@ class Newton(Module):
                 H, is_inv = ret
                 if is_inv: update = H @ g
 
-        if search_negative or (eigval_tfm is not None):
-            update = _eigh_solve(H, g, eigval_tfm, search_negative=search_negative)
+        if search_negative or (eigval_fn is not None):
+            update = _eigh_solve(H, g, eigval_fn, search_negative=search_negative)
 
         if update is None and use_lstsq: update = _least_squares_solve(H, g)
         if update is None: update = _cholesky_solve(H, g)
@@ -267,10 +267,10 @@ class Newton(Module):
     def get_H(self,var):
         H = self.global_state["H"]
         settings = self.defaults
-        if settings['eigval_tfm'] is not None:
+        if settings['eigval_fn'] is not None:
             try:
                 L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
-                L = settings['eigval_tfm'](L)
+                L = settings['eigval_fn'](L)
                 H = Q @ L.diag_embed() @ Q.mH
                 H_inv = Q @ L.reciprocal().diag_embed() @ Q.mH
                 return DenseWithInverse(H, H_inv)

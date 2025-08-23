@@ -163,13 +163,13 @@ class LBFGS(Transform):
         ptol (float | None, optional):
             skips updating the history if maximum absolute value of
             parameter difference is less than this value. Defaults to 1e-10.
-        ptol_reset (bool, optional):
+        ptol_restart (bool, optional):
             If true, whenever parameter difference is less then ``ptol``,
             L-BFGS state will be reset. Defaults to None.
         gtol (float | None, optional):
             skips updating the history if if maximum absolute value of
             gradient difference is less than this value. Defaults to 1e-10.
-        ptol_reset (bool, optional):
+        ptol_restart (bool, optional):
             If true, whenever gradient difference is less then ``gtol``,
             L-BFGS state will be reset. Defaults to None.
         sy_tol (float | None, optional):
@@ -207,9 +207,9 @@ class LBFGS(Transform):
         self,
         history_size=10,
         ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
+        ptol_restart: bool = False,
         gtol: float | None = 1e-10,
-        gtol_reset: bool = False,
+        gtol_restart: bool = False,
         sy_tol: float = 1e-10,
         scale_first:bool=True,
         update_freq = 1,
@@ -221,8 +221,8 @@ class LBFGS(Transform):
             scale_first=scale_first,
             ptol=ptol,
             gtol=gtol,
-            ptol_reset=ptol_reset,
-            gtol_reset=gtol_reset,
+            ptol_restart=ptol_restart,
+            gtol_restart=gtol_restart,
             sy_tol=sy_tol,
             damping = damping,
         )
@@ -262,8 +262,8 @@ class LBFGS(Transform):
 
         ptol = self.defaults['ptol']
         gtol = self.defaults['gtol']
-        ptol_reset = self.defaults['ptol_reset']
-        gtol_reset = self.defaults['gtol_reset']
+        ptol_restart = self.defaults['ptol_restart']
+        gtol_restart = self.defaults['gtol_restart']
         sy_tol = self.defaults['sy_tol']
         damping = self.defaults['damping']
 
@@ -286,7 +286,7 @@ class LBFGS(Transform):
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None:
             if s is not None and s.abs().global_max() <= ptol:
-                if ptol_reset:
+                if ptol_restart:
                     self._reset_self()
                 sy = None
                 below_tol = True
@@ -294,7 +294,7 @@ class LBFGS(Transform):
         # tolerance on gradient difference to avoid exploding when there is no curvature
         if gtol is not None:
             if y is not None and y.abs().global_max() <= gtol:
-                if gtol_reset: self._reset_self()
+                if gtol_restart: self._reset_self()
                 sy = None
                 below_tol = True
 

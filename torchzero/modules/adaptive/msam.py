@@ -42,13 +42,15 @@ def msam_(
     # can't really decouple it from lr
     # but at least it is now expressed as function of g
 
-    denom = (velocity_.global_vector_norm() / rho).clip(min=1e-8)
+    denom = velocity_.global_vector_norm() / rho
+    denom = denom.clip(min=torch.finfo(tensors[0].dtype).tiny * 2)
     vn = velocity_ / denom
 
     mom_ = nag_ if nesterov else ema_
     velocity_ = mom_(tensors, velocity_, momentum, dampening=0, lerp=lerp)
 
-    denom = (velocity_.global_vector_norm() / rho).clip(min=1e-8)
+    denom = velocity_.global_vector_norm() / rho
+    denom = denom.clip(min=torch.finfo(tensors[0].dtype).tiny * 2)
     v1n = velocity_ / denom
 
     if inner is not None:

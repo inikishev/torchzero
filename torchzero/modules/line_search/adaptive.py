@@ -94,7 +94,10 @@ class AdaptiveTracking(LineSearchBase):
         a_prev = self.global_state.get('a_prev', init)
         if adaptive: a_prev = a_prev * self.global_state.get('init_scale', 1)
 
-        a_init = max(a_prev, 1e-10)
+        a_init = a_prev
+        if a_init < torch.finfo(var.params[0].dtype).tiny * 2:
+            a_init = torch.finfo(var.params[0].dtype).max / 2
+
         step_size, f, niter = adaptive_tracking(
             objective,
             a_init=a_init,
@@ -111,7 +114,7 @@ class AdaptiveTracking(LineSearchBase):
             # if niter == 1, forward tracking failed to decrease function value compared to f_a_prev
             if niter == 1 and step_size >= a_init: step_size *= nminus
 
-            self.global_state['a_prev'] = max(min(step_size, 1e16), 1e-10)
+            self.global_state['a_prev'] = step_size
             return step_size
 
         # on fail reduce beta scale value
@@ -119,72 +122,3 @@ class AdaptiveTracking(LineSearchBase):
         self.global_state['a_prev'] = init
         return 0
 
-
-def _within_bounds(x, lb, ub):
-    if not math.isfinite(x): return False
-    if lb is not None and x < lb: return False
-    if ub is not None and x > ub: return False
-    return True
-
-def _quad_interp(f_0, g_0, a, f_a, bisect: bool, lb=None, ub=None) -> float | None:
-    denom = 2 * (f_a - f_0 - g_0*a)
-    if denom > 1e-10:
-        num = g_0 * a**2
-        a_min = num / -denom
-        if _within_bounds(a_min, lb, ub): return a_min
-    if bisect:
-        return a/2
-    return None
-
-
-def _cubic_interp(f_0, g_0, a_1, f_1, a_2, f_2, bisect: bool, quad: bool, lb=None, ub=None) -> float | None:
-    if a_1 > a_2:
-        f_1, a_1, f_2, a_2 = f_2, a_2, f_1, a_1
-
-    # ----------------------------------- cubic ---------------------------------- #
-    v1 = (f_1 - f_0 - g_0 * a_1) / (a_1**2)
-    v2 = (f_2 - f_0 - g_0 * a_2) / (a_2**2)
-
-    denom = a_2 - a_1
-    if abs(denom) > 1e-10:
-
-        c3 = (v2 - v1) / denom
-        c2 = v1 - a_1 * c3
-        c1 = g_0
-
-        if abs(c3) > 1e-10:
-            discriminant = c2**2 - 3 * c3 * c1
-            if discriminant > 0:
-                a_min = (-c2 + np.sqrt(discriminant)) / (3 * c3)
-                if 0 <= a_min <= a_2 and _within_bounds(a_min, lb, ub):
-                    return a_min
-
-        # --------------------------------- quadratic -------------------------------- #
-        if not quad: return None
-        w1 = (f_1 - f_0) / a_1
-        w2 = (f_2 - f_0) / a_2
-
-        b2 = (w2 - w1) / denom
-        b1 = w1 - a_1 * b2
-
-        if b2 > 1e-10:
-            a_min = -b1 / (2 * b2)
-
-            if 0 <= a_min <= a_2 and _within_bounds(a_min, lb, ub):
-                return a_min
-
-    # --------------------------------- bisectin --------------------------------- #
-    if not bisect: return None
-    fs = [(0, f_0), (a_1, f_1), (a_2, f_2)]
-    fs.sort(key = lambda x: x[1])
-    a1 = fs[0][0]; a2 = fs[1][0]
-    return a1 + (a2-a1)/2
-
-def _insort_(a_list, f_list, a_new, f_new):
-    improved = math.isfinite(f_new) and (len(a_list) < 2 or f_new < f_list[1])
-
-    if math.isfinite(f_new):
-        fs = list(zip(a_list, f_list))
-        insort(fs, (a_new, f_new), key = lambda x: x[1])
-
-    return improved

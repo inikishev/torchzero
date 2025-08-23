@@ -157,26 +157,26 @@ def _quad_interp(points):
     assert points.shape[0] == 2, points.shape
     if points[0, 0] == 0:
         denom = 2 * (points[1, 1] - points[0, 1] - points[0, 2] * points[1, 0])
-        if abs(denom) > 1e-10:
+        if abs(denom) > 1e-32:
             return -points[0, 2] * points[1, 0] ** 2 / denom
     else:
         denom = (points[0, 0] - points[1, 0]) ** 2
-        if denom > 1e-10:
+        if denom > 1e-32:
             a = -(points[0, 1] - points[1, 1] - points[0, 2] * (points[0, 0] - points[1, 0])) / denom
-            if a > 1e-10:
+            if a > 1e-32:
                 return points[0, 0] - points[0, 2]/(2*a)
     return None
 
 def _cubic_interp(points, lb, ub):
     assert points.shape[0] == 2, points.shape
     denom = points[0, 0] - points[1, 0]
-    if abs(denom) > 1e-10:
+    if abs(denom) > 1e-32:
         d1 = points[0, 2] + points[1, 2] - 3 * ((points[0, 1] - points[1, 1]) / denom)
         value = d1 ** 2 - points[0, 2] * points[1, 2]
         if value > 0:
             d2 = np.sqrt(value)
             denom = points[1, 2] - points[0, 2] + 2 * d2
-            if abs(denom) > 1e-10:
+            if abs(denom) > 1e-32:
                 x_sol = points[1, 0] - (points[1, 0] - points[0, 0]) * ((points[1, 2] + d2 - d1) / denom)
                 if _within_bounds(x_sol, lb, ub): return x_sol
 

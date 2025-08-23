@@ -193,7 +193,7 @@ class HigherOrderNewton(Module):
         init: float | None = None,
         eta: float = 1e-6,
         max_attempts = 10,
-        boundary_tol: float = 1e-3,
+        boundary_tol: float = 1e-2,
         de_iters: int | None = None,
         vectorize: bool = True,
     ):
@@ -255,8 +255,16 @@ class HigherOrderNewton(Module):
 
             # load trust region value
             trust_value = self.global_state.get('trust_region', init)
-            if trust_value < 1e-8 or trust_value > 1e16: trust_value = self.global_state['trust_region'] = settings['init']
 
+            # make sure its nottoo small or too large
+            finfo = torch.finfo(x0.dtype)
+            if trust_value < finfo.tiny*2:
+                trust_value = finfo.max / (2*nplus)
+
+            elif trust_value > finfo.max / (2*nplus):
+                trust_value = self.global_state['trust_region'] = settings['init']
+
+            # determine tr and prox values
             if trust_method is None: trust_method = 'none'
             else: trust_method = trust_method.lower()
 
@@ -305,7 +313,8 @@ class HigherOrderNewton(Module):
                 elif rho > rho_good:
                     step = (x_star - x0)
                     magn = torch.linalg.vector_norm(step) # pylint:disable=not-callable
-                    if trust_method == 'proximal' or (magn - trust_value) / trust_value > -boundary_tol: # close to boundary
+                    if trust_method == 'proximal' or (trust_value - magn) / trust_value <= boundary_tol:
+                        # close to boundary
                         self.global_state['trust_region'] = trust_value * nplus
 
                 # if the ratio is high enough then accept the proposed step

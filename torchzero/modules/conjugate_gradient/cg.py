@@ -26,7 +26,7 @@ class ConguateGradientBase(Transform, ABC):
     Args:
         defaults (dict | None, optional): dictionary of settings defaults. Defaults to None.
         clip_beta (bool, optional): whether to clip beta to be no less than 0. Defaults to False.
-        reset_interval (int | None | Literal["auto"], optional):
+        restart_interval (int | None | Literal["auto"], optional):
             interval between resetting the search direction.
             "auto" means number of dimensions + 1, None means no reset. Defaults to None.
         inner (Chainable | None, optional): previous direction is added to the output of this module. Defaults to None.
@@ -38,10 +38,10 @@ class ConguateGradientBase(Transform, ABC):
         def __init__(
             self,
             clip_beta=True,
-            reset_interval: int | None = None,
+            restart_interval: int | None = None,
             inner: Chainable | None = None
         ):
-            super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+            super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
         def get_beta(self, p, g, prev_g, prev_d):
             denom = prev_g.dot(prev_g)
@@ -50,9 +50,9 @@ class ConguateGradientBase(Transform, ABC):
     ```
 
     """
-    def __init__(self, defaults = None, clip_beta: bool = False, reset_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None):
+    def __init__(self, defaults = None, clip_beta: bool = False, restart_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None):
         if defaults is None: defaults = {}
-        defaults['reset_interval'] = reset_interval
+        defaults['restart_interval'] = restart_interval
         defaults['clip_beta'] = clip_beta
         super().__init__(defaults, uses_grad=False)
 
@@ -120,9 +120,9 @@ class ConguateGradientBase(Transform, ABC):
         d_prev.copy_(dir)
 
         # resetting
-        reset_interval = settings[0]['reset_interval']
-        if reset_interval == 'auto': reset_interval = tensors.global_numel() + 1
-        if reset_interval is not None and step % reset_interval == 0:
+        restart_interval = settings[0]['restart_interval']
+        if restart_interval == 'auto': restart_interval = tensors.global_numel() + 1
+        if restart_interval is not None and step % restart_interval == 0:
             self.state.clear()
             self.global_state.clear()
 
@@ -140,8 +140,8 @@ class PolakRibiere(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, clip_beta=True, reset_interval: int | None = None, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, clip_beta=True, restart_interval: int | None = None, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return polak_ribiere_beta(g, prev_g)
@@ -157,8 +157,8 @@ class FletcherReeves(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def initialize(self, p, g):
         self.global_state['prev_gg'] = g.dot(g)
@@ -183,8 +183,8 @@ class HestenesStiefel(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return hestenes_stiefel_beta(g, prev_d, prev_g)
@@ -202,8 +202,8 @@ class DaiYuan(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1)`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return dai_yuan_beta(g, prev_d, prev_g)
@@ -221,8 +221,8 @@ class LiuStorey(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return liu_storey_beta(g, prev_d, prev_g)
@@ -239,8 +239,8 @@ class ConjugateDescent(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return conjugate_descent_beta(g, prev_d, prev_g)
@@ -264,8 +264,8 @@ class HagerZhang(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return hager_zhang_beta(g, prev_d, prev_g)
@@ -291,8 +291,8 @@ class DYHS(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, reset_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, reset_interval=reset_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
+        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return dyhs_beta(g, prev_d, prev_g)
@@ -305,7 +305,7 @@ def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
     return H
 
 class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain hessian
-    """Projected gradient method.
+    """Projected gradient method. Directly projects the gradient onto subspace conjugate to past directions.
 
     Notes:
         - This method uses N^2 memory.
@@ -313,18 +313,18 @@ class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain he
         - This is not the same as projected gradient descent.
 
     Reference:
-        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.
+        Pearson, J. D. (1969). Variable metric methods of minimisation. The Computer Journal, 12(2), 171–178. doi:10.1093/comjnl/12.2.171.  (algorithm 5 in section 6)
 
     """
 
     def __init__(
         self,
         init_scale: float | Literal["auto"] = 1,
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None | Literal['auto'] = 'auto',
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None | Literal['auto'] = 'auto',
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -337,9 +337,9 @@ class ProjectedGradientMethod(HessianUpdateStrategy): # this doesn't maintain he
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,

@@ -32,13 +32,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
 
             Defaults to "auto".
         tol (float, optional):
-            algorithm-dependent tolerance (usually on curvature condition). Defaults to 1e-8.
+            algorithm-dependent tolerance (usually on curvature condition). Defaults to 1e-32.
         ptol (float | None, optional):
-            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-10.
-        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
+            tolerance for minimal parameter difference to avoid instability. Defaults to 1e-32.
+        ptol_restart (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
         gtol (float | None, optional):
-            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-10.
-        reset_interval (int | None | Literal["auto"], optional):
+            tolerance for minimal gradient difference to avoid instability when there is no curvature. Defaults to 1e-32.
+        restart_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
             "auto" corresponds to number of decision variables + 1.
@@ -96,11 +96,11 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         self,
         defaults: dict | None = None,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None | Literal['auto'] = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -109,7 +109,7 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
-        safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_reset=ptol_reset, gtol=gtol, inverse=inverse, beta=beta, reset_interval=reset_interval, scale_first=scale_first))
+        safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_restart=ptol_restart, gtol=gtol, inverse=inverse, beta=beta, restart_interval=restart_interval, scale_first=scale_first))
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_for_online(self):
@@ -166,10 +166,10 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         state['step'] = step
         init_scale = setting['init_scale']
         ptol = setting['ptol']
-        ptol_reset = setting['ptol_reset']
+        ptol_restart = setting['ptol_restart']
         gtol = setting['gtol']
-        reset_interval = setting['reset_interval']
-        if reset_interval == 'auto': reset_interval = tensor.numel() + 1
+        restart_interval = setting['restart_interval']
+        if restart_interval == 'auto': restart_interval = tensor.numel() + 1
 
         if M is None or 'f_prev' not in state:
             if M is None: # won't be true on reset_for_online
@@ -192,13 +192,13 @@ class HessianUpdateStrategy(TensorwiseTransform, ABC):
         state['p_prev'].copy_(p)
         state['g_prev'].copy_(g)
 
-        if reset_interval is not None and step % reset_interval == 0:
+        if restart_interval is not None and step % restart_interval == 0:
             self.reset_P(M, s, y, inverse, init_scale, state)
             return
 
         # tolerance on parameter difference to avoid exploding after converging
         if ptol is not None and s.abs().max() <= ptol:
-            if ptol_reset: self.reset_P(M, s, y, inverse, init_scale, state) # reset history
+            if ptol_restart: self.reset_P(M, s, y, inverse, init_scale, state) # reset history
             return
 
         # tolerance on gradient difference to avoid exploding when there is no curvature
@@ -294,11 +294,11 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -311,9 +311,9 @@ class _InverseHessianUpdateStrategyDefaults(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -326,11 +326,11 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -343,9 +343,9 @@ class _HessianUpdateStrategyDefaults(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -400,12 +400,12 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
 
             Defaults to "auto".
         tol (float, optional):
-            tolerance on curvature condition. Defaults to 1e-8.
+            tolerance on curvature condition. Defaults to 1e-32.
         ptol (float | None, optional):
             skips update if maximum difference between current and previous gradients is less than this, to avoid instability.
-            Defaults to 1e-10.
-        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
-        reset_interval (int | None | Literal["auto"], optional):
+            Defaults to 1e-32.
+        ptol_restart (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
+        restart_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
             "auto" corresponds to number of decision variables + 1.
@@ -465,28 +465,25 @@ def sr1_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol:float):
     return H
 
 class SR1(_InverseHessianUpdateStrategyDefaults):
-    """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.
-
-    Note:
-        a trust region or an accurate line search is recommended.
-
-    Warning:
-        this uses at least O(N^2) memory.
+    """Symmetric Rank 1. This works best with a trust region:
+    ```python
+    tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False))
+    ```
 
     Args:
         init_scale (float | Literal["auto"], optional):
             initial hessian matrix is set to identity times this.
 
-            "auto" corresponds to a heuristic from Nocedal. Stephen J. Wright. Numerical Optimization p.142-143.
+            "auto" corresponds to a heuristic from [1] p.142-143.
 
             Defaults to "auto".
         tol (float, optional):
-            tolerance for denominator in SR1 update rule as in Nocedal, Wright. “Numerical optimization” 2nd p.146. Defaults to 1e-8.
+            tolerance for denominator in SR1 update rule as in [1] p.146. Defaults to 1e-32.
         ptol (float | None, optional):
             skips update if maximum difference between current and previous gradients is less than this, to avoid instability.
-            Defaults to 1e-10.
-        ptol_reset (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
-        reset_interval (int | None | Literal["auto"], optional):
+            Defaults to 1e-32.
+        ptol_restart (bool, optional): whether to reset the hessian approximation when ptol tolerance is not met. Defaults to False.
+        restart_interval (int | None | Literal["auto"], optional):
             interval between resetting the hessian approximation.
 
             "auto" corresponds to number of decision variables + 1.
@@ -504,7 +501,7 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
             If False, the update rule is applied to each parameter separately. Defaults to True.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
-    ## Examples:
+    ### Examples:
 
     SR1 with trust region
     ```python
@@ -514,14 +511,8 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
     )
     ```
 
-    SR1 with strong wolfe line search:
-    ```python
-    opt = tz.Modular(
-        model.parameters(),
-        tz.m.SR1(),
-        tz.m.Backtracking(c2=0.1)
-    )
-    ```
+    ###  References:
+        [1]. Nocedal. Stephen J. Wright. Numerical Optimization
     """
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
@@ -841,11 +832,11 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
     def __init__(
         self,
         init_scale: float | Literal["auto"] = 'auto',
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None | Literal['auto'] = 'auto',
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None | Literal['auto'] = 'auto',
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -856,9 +847,9 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol = ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -959,11 +950,11 @@ class SSVM(HessianUpdateStrategy):
         self,
         switch: tuple[float,float] | Literal[1,2,3,4] = 3,
         init_scale: float | Literal["auto"] = 'auto',
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -976,9 +967,9 @@ class SSVM(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -1138,11 +1129,11 @@ class NewSSM(HessianUpdateStrategy):
         self,
         type: Literal[1, 2] = 1,
         init_scale: float | Literal["auto"] = "auto",
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -1154,9 +1145,9 @@ class NewSSM(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
@@ -1172,7 +1163,7 @@ class NewSSM(HessianUpdateStrategy):
 # ---------------------------- Shor’s r-algorithm ---------------------------- #
 # def shor_r(B:torch.Tensor, y:torch.Tensor, gamma:float):
 #     r = B.T @ y
-#     r /= torch.linalg.vector_norm(r).clip(min=1e-8) # pylint:disable=not-callable
+#     r /= torch.linalg.vector_norm(r).clip(min=1e-32) # pylint:disable=not-callable
 
 #     I = torch.eye(B.size(1), device=B.device, dtype=B.dtype)
 #     return B @ (I - gamma*r.outer(r))
@@ -1181,7 +1172,8 @@ class NewSSM(HessianUpdateStrategy):
 def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
     p = H@y
     #(1-y)^2 (ppT)/(pTq)
-    term = p.outer(p).div_(p.dot(y).clip(min=1e-8))
+    #term = p.outer(p).div_(p.dot(y).clip(min=1e-32))
+    term = p.outer(p).div_(safe_clip(p.dot(y)))
     H.sub_(term, alpha=1-alpha**2)
     return H
 
@@ -1193,21 +1185,23 @@ class ShorR(HessianUpdateStrategy):
         Similarly to conjugate gradient, ShorR doesn't have an automatic step size scaling,
         so setting ``a_init`` in the line search is recommended.
 
-    Reference:
-        Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720.
+    References:
+        S HOR , N. Z. (1985) Minimization Methods for Non-differentiable Functions. New York: Springer.
 
-        Ansari, Zafar A. Limited Memory Space Dilation and Reduction Algorithms. Diss. Virginia Tech, 1998.
+        Burke, James V., Adrian S. Lewis, and Michael L. Overton. "The Speed of Shor's R-algorithm." IMA Journal of numerical analysis 28.4 (2008): 711-720. - good overview.
+
+        Ansari, Zafar A. Limited Memory Space Dilation and Reduction Algorithms. Diss. Virginia Tech, 1998. - this is where a more efficient formula is described.
     """
 
     def __init__(
         self,
         alpha=0.5,
         init_scale: float | Literal["auto"] = 1,
-        tol: float = 1e-8,
-        ptol: float | None = 1e-10,
-        ptol_reset: bool = False,
-        gtol: float | None = 1e-10,
-        reset_interval: int | None | Literal['auto'] = None,
+        tol: float = 1e-32,
+        ptol: float | None = 1e-32,
+        ptol_restart: bool = False,
+        gtol: float | None = 1e-32,
+        restart_interval: int | None | Literal['auto'] = None,
         beta: float | None = None,
         update_freq: int = 1,
         scale_first: bool = False,
@@ -1221,9 +1215,9 @@ class ShorR(HessianUpdateStrategy):
             init_scale=init_scale,
             tol=tol,
             ptol=ptol,
-            ptol_reset=ptol_reset,
+            ptol_restart=ptol_restart,
             gtol=gtol,
-            reset_interval=reset_interval,
+            restart_interval=restart_interval,
             beta=beta,
             update_freq=update_freq,
             scale_first=scale_first,
