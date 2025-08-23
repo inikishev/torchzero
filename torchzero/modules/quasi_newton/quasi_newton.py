@@ -866,6 +866,7 @@ class ProjectedNewtonRaphson(HessianUpdateStrategy):
 
     def reset_P(self, P, s, y, inverse, init_scale, state):
         assert inverse
+        if 'R' not in state: state['R'] = torch.eye(P.size(-1), device=P.device, dtype=P.dtype)
         P.copy_(state["R"])
 
 # Oren, S. S., & Spedicato, E. (1976). Optimal conditioning of self-scaling variable metric algorithms. Mathematical programming, 10(1), 70-90.

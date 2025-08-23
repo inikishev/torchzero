@@ -1,0 +1,35 @@
+name: Deploy MkDocs to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to your main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs and theme (e.g., Material for MkDocs)
+        run: |
+            python -m pip install --upgrade pip
+            python -m pip install pytest
+            python -m pip install scipy
+            python -m pip install mkdocs mkdocs-material
+            python -m pip install git+https://github.com/inikishev/torchzero.git
+            python -m pip install git+https://github.com/my-unlisted-repos/visualbench.git
+
+            - name: Build MkDocs site
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ github.token }}
+          publish_dir: ./site # The directory where MkDocs builds the site

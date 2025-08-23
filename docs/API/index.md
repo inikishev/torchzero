@@ -5,7 +5,7 @@ There are a lot of modules, so they are vaguely split into sub-packages, althoug
 
 ## Optimization algorithms
 
-* [Optimizers](modules/optimizers.md) - optimizers that don't fall into any of the other categories, e.g. Adam, Muon, SAM, etc.
+* [Optimizers](modules/adaptive.md) - Adaptive per-parameter learning rates + some other deep learning optimizers, e.g. Adam, etc.
 * [Momentum](modules/momentum.md) - momentums and exponential moving averages.
 * [Quasi-newton](modules/conjugate_gradient.md) - conjugate gradient methods.
 * [Quasi-newton](modules/quasi_newton.md) - quasi-newton methods that estimate the hessian using gradient information.

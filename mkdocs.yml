@@ -73,6 +73,8 @@ markdown_extensions:
         kwds:
           case: lower
 
+  - pymdownx.arithmatex # adds latex
+
   # extensions of unknown purpose copied from https://www.youtube.com/watch?v=xlABhbnNrfI
   - attr_list
   - pymdownx.highlight:
@@ -124,12 +126,19 @@ plugins:
           # - scipy.optimize
 
 nav:
-  - Home: index.md
+  - Home: API/index.md
   - About: about.md
+  - Overview:
+    - Basics: overview/Basics.ipynb
+    - 1. Gradient descent: overview/1. Gradient descent.ipynb
+    - 2. Momentum: overview/2. Momentum.ipynb
+    - 3. Adaptive methods: overview/3. Adaptive methods.ipynb
+    - 4. Second order methods: overview/4. Second order methods.ipynb
+    - 5. Conjugate gradient: overview/5. Conjugate gradient.ipynb
+    - 6. Quasi-Newton methods: overview/6. Quasi-Newton methods.ipynb
   - API reference:
-    - Modules:
-      - API/index.md
-      - All modules: API/all.md
+    - Modules: API/index.md
+      # - All modules: API/all.md
       # - Categories:
       #   - Algorithms:
       #     - Optimizers: API/modules/optimizers.md
@@ -139,8 +148,6 @@ nav:
       #     - Step size: API/modules/step_size.md
       #     - Line search: API/modules/line_search.md
       #     - Trust region: API/modules/trust_region.md
-
-    - Core: API/core.md
 
 
 extra:
@@ -152,3 +159,7 @@ extra:
 
 extra_css:
   - css/bigger_titles.css
+  - css/extra_width.css
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML # latex
