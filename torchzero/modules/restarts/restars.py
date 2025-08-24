@@ -60,18 +60,18 @@ class RestartStrategyBase(Module, ABC):
 
 
 class RestartOnStuck(RestartStrategyBase):
-    """Resets the state when update (difference in parameters) is close to zero for multiple steps in a row.
+    """Resets the state when update (difference in parameters) is zero for multiple steps in a row.
 
     Args:
         modules (Chainable | None):
             modules to reset. If None, resets all modules.
         tol (float, optional):
-            step is considered failed when maximum absolute parameter difference is smaller than this. Defaults to 1e-10.
+            step is considered failed when maximum absolute parameter difference is smaller than this. Defaults to None (uses twice the smallest respresentable number)
         n_tol (int, optional):
-            number of failed consequtive steps required to trigger a reset. Defaults to 4.
+            number of failed consequtive steps required to trigger a reset. Defaults to 10.
 
     """
-    def __init__(self, modules: Chainable | None, tol: float = 1e-10, n_tol: int = 4):
+    def __init__(self, modules: Chainable | None, tol: float | None = None, n_tol: int = 10):
         defaults = dict(tol=tol, n_tol=n_tol)
         super().__init__(defaults, modules)
 
@@ -82,6 +82,7 @@ class RestartOnStuck(RestartStrategyBase):
 
         params = TensorList(var.params)
         tol = self.defaults['tol']
+        if tol is None: tol = torch.finfo(params[0].dtype).tiny * 2
         n_tol = self.defaults['n_tol']
         n_bad = self.global_state.get('n_bad', 0)
 
