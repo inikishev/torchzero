@@ -3,12 +3,12 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
-from typing import Any, Literal, Protocol, cast, final
+from typing import Any, Literal, Protocol, cast, final, overload
 
 import torch
 
 from ...core import Chainable, Module, Var, apply_transform
-from ...utils import TensorList, safe_dict_update_, tofloat, vec_to_tensors
+from ...utils import TensorList, safe_dict_update_, tofloat, vec_to_tensors, generic_finfo, generic_vector_norm
 from ...utils.linalg.linear_operator import LinearOperator
 
 
@@ -89,18 +89,41 @@ def _get_rho(params: Sequence[torch.Tensor], closure:Callable,
 
     # expected reduction is g.T @ p + 0.5 * p.T @ B @ p
     Hu = H.matvec(d)
-    pred_reduction = - (g.dot(d) + 0.5 * d.dot(Hu))
+    pred_reduction = g.dot(d) - 0.5 * d.dot(Hu)
 
-    rho = reduction / (pred_reduction.clip(min=1e-15))
+    rho = reduction / (pred_reduction.clip(min=torch.finfo(g.dtype).tiny * 2))
     return rho, f_star, reduction, pred_reduction
 
+def _get_rho_tensorlist(params: Sequence[torch.Tensor], closure:Callable,
+             f: float, g: TensorList, Hvp: Callable[[TensorList], TensorList], d:TensorList):
+    """rho is reduction/pred_reduction"""
+    params = TensorList(params)
+    x0 = params.clone() # same as in line searches, large directions are undone very imprecisely
+
+    # evaluate before modifying params to not break autograd
+    Hu = Hvp(d)
+
+    # actual f
+    params -= d
+    f_star = closure(False)
+    params.copy_(x0)
+
+    reduction = f - f_star
+
+    # expected f is g.T @ p + 0.5 * p.T @ B @ p
+    pred_reduction = g.dot(d) - 0.5 * d.dot(Hu)
+
+    rho = reduction / (pred_reduction.clip(min=torch.finfo(g[0].dtype).tiny * 2))
+    return rho, f_star, reduction, pred_reduction
+
+@torch.no_grad
 def default_radius(
     params: Sequence[torch.Tensor],
     closure: Callable,
     f: float,
-    g: torch.Tensor,
-    H: LinearOperator,
-    d: torch.Tensor,
+    g: torch.Tensor | TensorList,
+    H: LinearOperator | Callable,
+    d: torch.Tensor | TensorList,
     trust_radius: float,
     eta: float, # 0.0
     nplus: float, # 3.5
@@ -111,7 +134,8 @@ def default_radius(
     init: float,
     state: Mapping[str, Any],
     settings: Mapping[str, Any],
-    radius_fn: Callable | None = torch.linalg.vector_norm,
+    radius_fn: Callable | None = generic_vector_norm,
+    check_overflow: bool = True,
     # dynamic_nminus: bool=False,
 ) -> tuple[float, bool]:
 
@@ -120,7 +144,11 @@ def default_radius(
         warnings.warn(f"trust region eta={eta} is larger than rho_bad={rho_bad}, "
                       "this can lead to trust region getting stuck.")
 
-    rho, f_star, _, _ = _get_rho(params=params, closure=closure, f=f, g=g, H=H, d=d)
+    if isinstance(g, torch.Tensor):
+        rho, f_star, _, _ = _get_rho(params=params, closure=closure, f=f, g=g, H=H, d=d) # pyright:ignore[reportArgumentType]
+    else:
+        rho, f_star, _, _ = _get_rho_tensorlist(params=params, closure=closure, f=f, g=g, Hvp=H, d=d) # pyright:ignore[reportArgumentType]
+
     is_finite = math.isfinite(f_star)
 
     # find boundary of current step
@@ -138,9 +166,10 @@ def default_radius(
             trust_radius = max(trust_radius, d_radius*nplus)
 
     # prevent very small or large values
-    finfo = torch.finfo(g.dtype)
-    if trust_radius < finfo.tiny*2 or trust_radius > finfo.max/2:
-        trust_radius = init
+    if check_overflow:
+        finfo = generic_finfo(g)
+        if trust_radius < finfo.tiny*2 or trust_radius > finfo.max/2:
+            trust_radius = init
 
     # return new trust region and success boolean
     return tofloat(trust_radius), rho > eta and is_finite

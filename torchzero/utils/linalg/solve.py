@@ -1,39 +1,29 @@
-import math
-
 # pyright: reportArgumentType=false
+import math
+from collections import deque
 from collections.abc import Callable
-from typing import Any, overload
+from typing import Any, NamedTuple, overload
 
 import torch
 
 from .. import (
     TensorList,
     generic_eq,
-    generic_finfo_eps,
     generic_finfo_tiny,
     generic_numel,
-    generic_randn_like,
     generic_vector_norm,
     generic_zeros_like,
 )
 
 
-def _make_A_mm_reg(A_mm: Callable | torch.Tensor, reg):
-    if callable(A_mm):
-        def A_mm_reg(x): # A_mm with regularization
-            Ax = A_mm(x)
-            if not generic_eq(reg, 0): Ax += x*reg
-            return Ax
-        return A_mm_reg
-
-    if not isinstance(A_mm, torch.Tensor): raise TypeError(type(A_mm))
-
-    def Ax_reg(x): # A_mm with regularization
-        if A_mm.ndim == 1: Ax = A_mm * x
-        else: Ax = A_mm @ x
-        if reg != 0: Ax += x*reg
+def _make_A_mm_reg(A_mm: Callable, reg):
+    def A_mm_reg(x): # A_mm with regularization
+        Ax = A_mm(x)
+        if not generic_eq(reg, 0): Ax += x*reg
         return Ax
-    return Ax_reg
+    return A_mm_reg
+
+def _identity(x): return x
 
 
 # https://arxiv.org/pdf/2110.02820
@@ -148,101 +138,233 @@ def _safe_clip(x: torch.Tensor):
     if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
     return x
 
-def _trust_tau(x,d,trust_region):
+def _trust_tau(x,d,trust_radius):
     xx = x.dot(x)
     xd = x.dot(d)
     dd = _safe_clip(d.dot(d))
 
-    rad = (xd**2 - dd * (xx - trust_region**2)).clip(min=0).sqrt()
+    rad = (xd**2 - dd * (xx - trust_radius**2)).clip(min=0).sqrt()
     tau = (-xd + rad) / dd
 
     return x + tau * d
 
 
+class CG:
+    """Conjugate gradient method.
+
+    Args:
+        A_mm (Callable[[torch.Tensor], torch.Tensor] | torch.Tensor): Callable that returns matvec ``Ax``.
+        b (torch.Tensor): right hand side
+        x0 (torch.Tensor | None, optional): initial guess, defaults to zeros. Defaults to None.
+        tol (float | None, optional): tolerance for convergence. Defaults to 1e-8.
+        maxiter (int | None, optional):
+            maximum number of iterations, if None sets to number of dimensions. Defaults to None.
+        reg (float, optional): regularization. Defaults to 0.
+        trust_radius (float | None, optional):
+            CG is terminated whenever solution exceeds trust region, returning a solution modified to be within it. Defaults to None.
+        npc_terminate (bool, optional):
+            whether to terminate CG whenever negative curavture is detected. Defaults to False.
+        miniter (int, optional):
+            minimal number of iterations even if tolerance is satisfied, this ensures some progress
+            is always made.
+        history_size (int, optional):
+            number of past iterations to store, to re-use them when trust radius is decreased.
+        P_mm (Callable | torch.Tensor | None, optional):
+            Callable that returns inverse preconditioner times vector. Defaults to None.
+    """
+    def __init__(
+        self,
+        A_mm: Callable,
+        b: torch.Tensor | TensorList,
+        x0: torch.Tensor | TensorList | None = None,
+        tol: float | None = 1e-4,
+        maxiter: int | None = None,
+        reg: float = 0,
+        trust_radius: float | None = None,
+        npc_terminate: bool=False,
+        miniter: int = 0,
+        history_size: int = 0,
+        P_mm: Callable | None = None,
+):
+        # --------------------------------- set attrs -------------------------------- #
+        self.A_mm = _make_A_mm_reg(A_mm, reg)
+        self.b = b
+        if tol is None: tol = generic_finfo_tiny(b) * 2
+        self.tol = tol
+        self.eps = generic_finfo_tiny(b) * 2
+        if maxiter is None: maxiter = generic_numel(b)
+        self.maxiter = maxiter
+        self.miniter = miniter
+        self.trust_radius = trust_radius
+        self.npc_terminate = npc_terminate
+        self.P_mm = P_mm if P_mm is not None else _identity
+
+        if history_size > 0:
+            self.history = deque(maxlen = history_size)
+            """history of (x, x_norm, d)"""
+        else:
+            self.history = None
+
+        # -------------------------------- initialize -------------------------------- #
+
+        self.iter = 0
+
+        if x0 is None:
+            self.x = generic_zeros_like(b)
+            self.r = b
+        else:
+            self.x = x0
+            self.r = b - A_mm(self.x)
+
+        self.z = self.P_mm(self.r)
+        self.d = self.z
+
+        if self.history is not None:
+            self.history.append((self.x, generic_vector_norm(self.x), self.d))
+
+    def step(self) -> tuple[Any, bool]:
+        """returns ``(solution, should_terminate)``"""
+        x, b, d, r, z = self.x, self.b, self.d, self.r, self.z
+
+        if self.iter >= self.maxiter:
+            return x, True
+
+        Ad = self.A_mm(d)
+        dAd = d.dot(Ad)
+
+        # check negative curvature
+        if dAd <= self.eps:
+            if self.trust_radius is not None: return _trust_tau(x, d, self.trust_radius), True
+            if self.iter == 0: return b * (b.dot(b) / dAd).abs(), True
+            if self.npc_terminate: return x, True
+
+        rz = r.dot(z)
+        alpha = rz / dAd
+        x_next = x + alpha * d
+
+        # check if the step exceeds the trust-region boundary
+        x_next_norm = None
+        if self.trust_radius is not None:
+            x_next_norm = generic_vector_norm(x_next)
+            if x_next_norm >= self.trust_radius:
+                return _trust_tau(x, d, self.trust_radius), True
+
+        # update step, residual and direction
+        r_next = r - alpha * Ad
+
+        # check if r is sufficiently small
+        if self.iter >= self.miniter and generic_vector_norm(r_next) < self.tol:
+            return x_next, True
+
+        # update d, r, z
+        z_next = self.P_mm(r_next)
+        beta = r_next.dot(z_next) / rz
+
+        self.d = z_next + beta * d
+        self.x = x_next
+        self.r = r_next
+        self.z = z_next
+
+        # update history
+        if self.history is not None:
+            if x_next_norm is None: x_next_norm = generic_vector_norm(x_next)
+            self.history.append((self.x, x_next_norm, self.d))
+
+        self.iter += 1
+        return x, False
+
+
+    def solve(self):
+        # return initial guess if it is good enough
+        if self.miniter < 1 and generic_vector_norm(self.r) < self.tol:
+            return self.x
+
+        should_terminate = False
+        sol = None
+
+        while not should_terminate:
+            sol, should_terminate = self.step()
+
+        assert sol is not None
+        return sol
+
+def find_within_trust_radius(history, trust_radius: float):
+    """find first ``x`` in history that exceeds trust radius, if no such ``x`` exists, returns ``None``"""
+    for x, x_norm, d in reversed(tuple(history)):
+        if x_norm <= trust_radius:
+            return _trust_tau(x, d, trust_radius)
+    return None
+
+class _TensorSolution(NamedTuple):
+    x: torch.Tensor
+    solver: CG
+
+class _TensorListSolution(NamedTuple):
+    x: TensorList
+    solver: CG
+
+
 @overload
 def cg(
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
+    A_mm: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     x0: torch.Tensor | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float = 0,
     trust_radius: float | None = None,
-    npc_terminate: bool=False,
-) -> torch.Tensor: ...
+    npc_terminate: bool = False,
+    miniter: int = 0,
+    history_size: int = 0,
+    P_mm: Callable[[torch.Tensor], torch.Tensor] | None = None
+) -> _TensorSolution: ...
 @overload
 def cg(
     A_mm: Callable[[TensorList], TensorList],
     b: TensorList,
     x0: TensorList | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     trust_radius: float | None = None,
     npc_terminate: bool=False,
-) -> TensorList: ...
+    miniter: int = 0,
+    history_size: int = 0,
+    P_mm: Callable[[TensorList], TensorList] | None = None
+) -> _TensorListSolution: ...
 def cg(
-    A_mm: Callable | torch.Tensor,
+    A_mm: Callable,
     b: torch.Tensor | TensorList,
     x0: torch.Tensor | TensorList | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     trust_radius: float | None = None,
-    npc_terminate: bool=False,
+    npc_terminate: bool = False,
+    miniter: int = 0,
+    history_size:int = 0,
+    P_mm: Callable | None = None
 ):
-    """
-    Solution is bounded to have L2 norm no larger than :code:`trust_region`. If solution exceeds :code:`trust_region`, CG is terminated early, so it is also faster.
-    """
-    A_mm_reg = _make_A_mm_reg(A_mm, reg)
+    solver = CG(
+        A_mm=A_mm,
+        b=b,
+        x0=x0,
+        tol=tol,
+        maxiter=maxiter,
+        reg=reg,
+        trust_radius=trust_radius,
+        npc_terminate=npc_terminate,
+        miniter=miniter,
+        history_size=history_size,
+        P_mm=P_mm,
+    )
 
-    if x0 is None:
-        x = generic_zeros_like(b)
-        r = b
-    else:
-        x = x0
-        r = b - A_mm_reg(x)
+    x = solver.solve()
 
-    d = r.clone()
+    if isinstance(b, torch.Tensor):
+        return _TensorSolution(x, solver)
 
-    eps = generic_finfo_tiny(b) * 2
-    if tol is None: tol = eps
-
-    if generic_vector_norm(r) < tol:
-        return x
-
-    if maxiter is None:
-        maxiter = generic_numel(b)
-
-    for iter in range(maxiter):
-        Ad = A_mm_reg(d)
-
-        d_Ad = d.dot(Ad)
-        if d_Ad <= eps:
-            if trust_radius is not None: return _trust_tau(x, d, trust_radius)
-            if iter == 0: return b * (b.dot(b) / d_Ad).abs()
-            if npc_terminate: return x
-
-        alpha = r.dot(r) / d_Ad
-        p_next = x + alpha * d
-
-        # check if the step exceeds the trust-region boundary
-        if trust_radius is not None and generic_vector_norm(p_next) >= trust_radius:
-            return _trust_tau(x, d, trust_radius)
-
-        # update step, residual and direction
-        x = p_next
-        r_next = r - alpha * Ad
-
-        if generic_vector_norm(r_next) < tol:
-            return x
-
-        beta = r_next.dot(r_next) / r.dot(r)
-        d = r_next + beta * d
-        r = r_next
-
-    return x
-
+    return _TensorListSolution(x, solver)
 
 
 # Liu, Yang, and Fred Roosta. "MINRES: From negative curvature detection to monotonicity properties." SIAM Journal on Optimization 32.4 (2022): 2636-2661.

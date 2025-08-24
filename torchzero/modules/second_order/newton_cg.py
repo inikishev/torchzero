@@ -1,13 +1,14 @@
+import warnings
 import math
-from typing import Literal, overload
-
+from typing import Literal, cast
+from operator import itemgetter
 import torch
 
 from ...core import Chainable, Module, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, generic_vector_norm
+from ...utils import TensorList, as_tensorlist, tofloat
 from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import cg, minres
-
+from ...utils.linalg.solve import cg, minres, find_within_trust_radius
+from ..trust_region.trust_region import default_radius
 
 class NewtonCG(Module):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
@@ -95,10 +96,12 @@ class NewtonCG(Module):
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3,
+        miniter:int = 1,
         warm_start=False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, solver=solver, h=h, warm_start=warm_start)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults,)
 
         if inner is not None:
@@ -162,7 +165,7 @@ class NewtonCG(Module):
         if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         if solver == 'cg':
-            d = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg)
+            d, _ = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, miniter=self.defaults["miniter"],reg=reg)
 
         elif solver == 'minres':
             d = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
@@ -264,15 +267,20 @@ class NewtonCGSteihaug(Module):
         init: float = 1,
         tol: float = 1e-8,
         reg: float = 1e-8,
-        hvp_method: Literal["forward", "central", "autograd"] = "forward",
-        solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
+        hvp_method: Literal["forward", "central"] = "forward",
+        solver: Literal['cg', "minres"] = 'cg',
         h: float = 1e-3,
-        max_attempts: int = 10,
+        max_attempts: int = 100,
+        max_history: int = 100,
         boundary_tol: float = 1e-1,
+        miniter: int = 1,
+        rms_beta: float | None = None,
         adapt_tol: bool = True,
+        npc_terminate: bool = False,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, maxiter=maxiter, reg=reg, hvp_method=hvp_method, h=h, eta=eta, nplus=nplus, nminus=nminus, init=init, max_attempts=max_attempts, solver=solver, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad, adapt_tol=adapt_tol)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults,)
 
         if inner is not None:
@@ -287,22 +295,16 @@ class NewtonCGSteihaug(Module):
         closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
-        settings = self.settings[params[0]]
-        tol = settings['tol'] * self.global_state.get('tol_mul', 1)
-        reg = settings['reg']
-        maxiter = settings['maxiter']
-        hvp_method = settings['hvp_method']
-        h = settings['h']
-        max_attempts = settings['max_attempts']
-        solver = settings['solver'].lower().strip()
-        boundary_tol = settings['boundary_tol']
+        tol = self.defaults['tol'] * self.global_state.get('tol_mul', 1)
+        solver = self.defaults['solver'].lower().strip()
 
-        eta = settings['eta']
-        nplus = settings['nplus']
-        nminus = settings['nminus']
-        rho_good = settings['rho_good']
-        rho_bad = settings['rho_bad']
-        init = settings['init']
+        (reg, maxiter, hvp_method, h, max_attempts, boundary_tol,
+         eta, nplus, nminus, rho_good, rho_bad, init, npc_terminate,
+         miniter, max_history, adapt_tol) = itemgetter(
+             "reg", "maxiter", "hvp_method", "h", "max_attempts", "boundary_tol",
+             "eta", "nplus", "nminus", "rho_good", "rho_bad", "init", "npc_terminate",
+             "miniter", "max_history", "adapt_tol",
+        )(self.defaults)
 
         self._num_hvps_last_step = 0
 
@@ -334,73 +336,94 @@ class NewtonCGSteihaug(Module):
                 raise ValueError(hvp_method)
 
 
-        # -------------------------------- inner step -------------------------------- #
+        # ------------------------- update RMS preconditioner ------------------------ #
         b = var.get_update()
+        P_mm = None
+        rms_beta = self.defaults["rms_beta"]
+        if rms_beta is not None:
+            exp_avg_sq = self.get_state(params, "exp_avg_sq", init=b, cls=TensorList)
+            exp_avg_sq.mul_(rms_beta).addcmul(b, b, value=1-rms_beta)
+            exp_avg_sq_sqrt = exp_avg_sq.sqrt().add_(1e-8)
+            def _P_mm(x):
+                return x / exp_avg_sq_sqrt
+            P_mm = _P_mm
+
+        # -------------------------------- inner step -------------------------------- #
         if 'inner' in self.children:
             b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
         b = as_tensorlist(b)
 
-        # ---------------------------------- run cg ---------------------------------- #
+        # ------------------------------- trust region ------------------------------- #
         success = False
         d = None
         x0 = [p.clone() for p in params]
+        solution = None
+
         while not success:
             max_attempts -= 1
             if max_attempts < 0: break
 
             trust_radius = self.global_state.get('trust_radius', init)
 
-            # make sure trust radius isn't too small or large
+            # -------------- make sure trust radius isn't too small or large ------------- #
             finfo = torch.finfo(x0[0].dtype)
             if trust_radius < finfo.tiny * 2:
                 trust_radius = self.global_state['trust_radius'] = init
-                if self.defaults["adapt_tol"]:
-                    self.global_state["tol_mul"] = self.global_state.get("tol_mul", 0) * 0.1
+                if adapt_tol:
+                    self.global_state["tol_mul"] = self.global_state.get("tol_mul", 1) * 0.1
 
             elif trust_radius > finfo.max / 2:
                 trust_radius = self.global_state['trust_radius'] = init
 
             # ----------------------------------- solve ---------------------------------- #
-            if solver == 'cg':
-                d = cg(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg)
+            d = None
+            if solution is not None and solution.history is not None:
+                d = find_within_trust_radius(solution.history, trust_radius)
 
-            elif solver == 'minres':
-                d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
+            if d is None:
+                if solver == 'cg':
+                    d, solution = cg(
+                        A_mm=H_mm,
+                        b=b,
+                        tol=tol,
+                        maxiter=maxiter,
+                        reg=reg,
+                        trust_radius=trust_radius,
+                        miniter=miniter,
+                        npc_terminate=npc_terminate,
+                        history_size=max_history,
+                        P_mm=P_mm,
+                    )
 
-            elif solver == 'minres_npc':
-                d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+                elif solver == 'minres':
+                    d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=npc_terminate)
 
-            else:
-                raise ValueError(f"unknown solver {solver}")
+                else:
+                    raise ValueError(f"unknown solver {solver}")
 
-            # ------------------------------- trust region ------------------------------- #
-            Hx = H_mm(d)
-            pred_reduction = b.dot(d) - 0.5 * d.dot(Hx)
+            # ---------------------------- update trust radius --------------------------- #
+            self.global_state["trust_radius"], success = default_radius(
+                params=params,
+                closure=closure,
+                f=tofloat(var.get_loss(False)),
+                g=b,
+                H=H_mm,
+                d=d,
+                trust_radius=trust_radius,
+                eta=eta,
+                nplus=nplus,
+                nminus=nminus,
+                rho_good=rho_good,
+                rho_bad=rho_bad,
+                boundary_tol=boundary_tol,
 
-            params -= d
-            loss_star = closure(False)
-            params.copy_(x0)
-            reduction = var.get_loss(False) - loss_star
+                init=init, # init isn't used because check_overflow=False
+                state=self.global_state, # not used
+                settings=self.defaults, # not used
+                check_overflow=False, # this is checked manually to adapt tolerance
+            )
 
-            rho = reduction / (pred_reduction.clip(min=torch.finfo(pred_reduction.dtype).tiny))
-            is_finite = math.isfinite(loss_star)
-
-            # find boundary of current step
-            d_radius = d.global_vector_norm()
-
-            # failed step
-            if rho < rho_bad or not is_finite:
-                self.global_state['trust_radius'] = d_radius * nminus
-
-            # very good step
-            elif rho > rho_good and is_finite:
-                if (boundary_tol is None) or (trust_radius-d_radius)/trust_radius < boundary_tol:
-                    self.global_state['trust_radius'] = max(trust_radius, d_radius*nplus)
-
-            # if the ratio is high enough then accept the proposed step
-            if rho > eta and is_finite:
-                success = True
-
+        # --------------------------- assign new direction --------------------------- #
         assert d is not None
         if success:
             var.update = d
@@ -410,5 +433,3 @@ class NewtonCGSteihaug(Module):
 
         self._num_hvps += self._num_hvps_last_step
         return var
-
-

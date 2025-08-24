@@ -1118,6 +1118,11 @@ def generic_numel(x: torch.Tensor | TensorList) -> int:
     if isinstance(x, torch.Tensor): return x.numel()
     return x.global_numel()
 
+
+def generic_finfo(x: torch.Tensor | TensorList) -> torch.finfo:
+    if isinstance(x, torch.Tensor): return torch.finfo(x.dtype)
+    return torch.finfo(x[0].dtype)
+
 def generic_finfo_eps(x: torch.Tensor | TensorList) -> float:
     if isinstance(x, torch.Tensor): return torch.finfo(x.dtype).eps
     return torch.finfo(x[0].dtype).eps

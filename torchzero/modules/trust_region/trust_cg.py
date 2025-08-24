@@ -93,4 +93,5 @@ class TrustCG(TrustRegionBase):
         if settings['prefer_exact'] and isinstance(H, linear_operator.ScaledIdentity):
             return H.solve_bounded(g, radius)
 
-        return cg(H.matvec, g, trust_radius=radius, reg=settings['reg'], tol=settings["cg_tol"])
+        x, _ = cg(H.matvec, g, trust_radius=radius, reg=settings['reg'], tol=settings["cg_tol"])
+        return x

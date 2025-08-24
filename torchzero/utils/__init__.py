@@ -38,6 +38,7 @@ from .tensorlist import (
     TensorList,
     as_tensorlist,
     generic_clamp,
+    generic_finfo,
     generic_finfo_eps,
     generic_finfo_tiny,
     generic_max,
