@@ -13,21 +13,12 @@ from ..trust_region.trust_region import default_radius
 class NewtonCG(Module):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
 
-    This optimizer implements Newton's method using a matrix-free conjugate
-    gradient (CG) or a minimal-residual (MINRES) solver to approximate the search direction. Instead of
-    forming the full Hessian matrix, it only requires Hessian-vector products
-    (HVPs). These can be calculated efficiently using automatic
-    differentiation or approximated using finite differences.
+    Notes:
+        * In most cases NewtonCGSteihaug should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
-    .. note::
-        In most cases NewtonCG should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        * This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
-
-    .. warning::
+    Warning:
         CG may fail if hessian is not positive-definite.
 
     Args:
@@ -66,26 +57,24 @@ class NewtonCG(Module):
             NewtonCG will attempt to apply preconditioning to the output of this module.
 
     Examples:
-        Newton-CG with a backtracking line search:
+    Newton-CG with a backtracking line search:
 
-        .. code-block:: python
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NewtonCG(),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NewtonCG(),
-                tz.m.Backtracking()
-            )
-
-        Truncated Newton method (useful for large-scale problems):
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NewtonCG(maxiter=10, warm_start=True),
-                tz.m.Backtracking()
-            )
-
+    Truncated Newton method (useful for large-scale problems):
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NewtonCG(maxiter=10),
+        tz.m.Backtracking()
+    )
+    ```
 
     """
     def __init__(
@@ -95,7 +84,7 @@ class NewtonCG(Module):
         reg: float = 1e-8,
         hvp_method: Literal["forward", "central", "autograd"] = "autograd",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
-        h: float = 1e-3,
+        h: float = 1e-3, # tuned 1e-4 or 1e-3
         miniter:int = 1,
         warm_start=False,
         inner: Chainable | None = None,
@@ -187,96 +176,98 @@ class NewtonCG(Module):
 
 
 class NewtonCGSteihaug(Module):
-    """Trust region Newton's method with a matrix-free Steihaug-Toint conjugate gradient or MINRES solver.
+    """Newton's method with trust region and a matrix-free Steihaug-Toint conjugate gradient solver.
 
-    This optimizer implements Newton's method using a matrix-free conjugate
-    gradient (CG) solver to approximate the search direction. Instead of
-    forming the full Hessian matrix, it only requires Hessian-vector products
-    (HVPs). These can be calculated efficiently using automatic
-    differentiation or approximated using finite differences.
+    Notes:
+        * In most cases NewtonCGSteihaug should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
-    .. note::
-        In most cases NewtonCGSteihaug should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
-
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
-
-    .. warning::
-        CG may fail if hessian is not positive-definite.
+        * This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
-        maxiter (int | None, optional):
-            Maximum number of iterations for the conjugate gradient solver.
-            By default, this is set to the number of dimensions in the
-            objective function, which is the theoretical upper bound for CG
-            convergence. Setting this to a smaller value (truncated Newton)
-            can still generate good search directions. Defaults to None.
         eta (float, optional):
-            whenever actual to predicted loss reduction ratio is larger than this, a step is accepted.
-        nplus (float, optional):
-            trust region multiplier on successful steps.
-        nminus (float, optional):
-            trust region multiplier on unsuccessful steps.
-        init (float, optional): initial trust region.
+            if ratio of actual to predicted rediction is larger than this, step is accepted. Defaults to 0.0.
+        nplus (float, optional): increase factor on successful steps. Defaults to 1.5.
+        nminus (float, optional): decrease factor on unsuccessful steps. Defaults to 0.75.
+        rho_good (float, optional):
+            if ratio of actual to predicted rediction is larger than this, trust region size is multiplied by `nplus`.
+        rho_bad (float, optional):
+            if ratio of actual to predicted rediction is less than this, trust region size is multiplied by `nminus`.
+        init (float, optional): Initial trust region value. Defaults to 1.
+        max_attempts (max_attempts, optional):
+            maximum number of trust radius reductions per step. A zero update vector is returned when
+            this limit is exceeded. Defaults to 10.
+        max_history (int, optional):
+            CG will store this many intermediate solutions, reusing them when trust radius is reduced
+            instead of re-running CG. Each solution storage requires 2N memory. Defaults to 100.
+        boundary_tol (float | None, optional):
+            The trust region only increases when suggested step's norm is at least `(1-boundary_tol)*trust_region`.
+            This prevents increasing trust region when solution is not on the boundary. Defaults to 1e-2.
+
+        maxiter (int | None, optional):
+            maximum number of CG iterations per step. Each iteration requies one backward pass if `hvp_method="forward"`, two otherwise. Defaults to None.
+        miniter (int, optional):
+            minimal number of CG iterations. This prevents making no progress
         tol (float, optional):
-            Relative tolerance for the conjugate gradient solver to determine
-            convergence. Defaults to 1e-4.
-        reg (float, optional):
-            Regularization parameter (damping) added to the Hessian diagonal.
-            This helps ensure the system is positive-definite. Defaults to 1e-8.
+            terminates CG when norm of the residual is less than this value. Defaults to 1e-8.
+            when initial guess is below tolerance. Defaults to 1.
+        reg (float, optional): hessian regularization. Defaults to 1e-8.
+        solver (str, optional): solver, "cg" or "minres". "cg" is recommended. Defaults to 'cg'.
+        adapt_tol (bool, optional):
+            if True, whenever trust radius collapses to smallest representable number,
+            the tolerance is multiplied by 0.1. Defaults to True.
+        npc_terminate (bool, optional):
+            whether to terminate CG/MINRES whenever negative curvature is detected. Defaults to False.
+        rms_beta (float | None, optional):
+            if not None, uses square root of exponential moving average of squared gradients as a preconditioner for CG. Defaults to None.
+
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            either "forward" to use forward formula which requires one backward pass per Hvp, or "central" to use a more accurate central formula which requires two backward passes. "forward" is usually accurate enough. Defaults to "forward".
+        h (float, optional): finite difference step size. Defaults to 1e-3.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        h (float, optional):
-            The step size for finite differences if :code:`hvp_method` is
-            ``"forward"`` or ``"central"``. Defaults to 1e-3.
         inner (Chainable | None, optional):
-            NewtonCG will attempt to apply preconditioning to the output of this module.
+            applies preconditioning to output of this module. Defaults to None.
 
-    Examples:
-        Trust-region Newton-CG:
+    ### Examples:
+    Trust-region Newton-CG:
 
-        .. code-block:: python
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NewtonCGSteihaug(),
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NewtonCGSteihaug(),
-            )
-
-    Reference:
+    ### Reference:
         Steihaug, Trond. "The conjugate gradient method and trust regions in large scale optimization." SIAM Journal on Numerical Analysis 20.3 (1983): 626-637.
     """
     def __init__(
         self,
-        maxiter: int | None = None,
+        # trust region settings
         eta: float= 0.0,
         nplus: float = 3.5,
         nminus: float = 0.25,
         rho_good: float = 0.99,
         rho_bad: float = 1e-4,
         init: float = 1,
-        tol: float = 1e-8,
-        reg: float = 1e-8,
-        hvp_method: Literal["forward", "central"] = "forward",
-        solver: Literal['cg', "minres"] = 'cg',
-        h: float = 1e-3,
         max_attempts: int = 100,
         max_history: int = 100,
-        boundary_tol: float = 1e-1,
+        boundary_tol: float = 1e-6, # tuned
+
+        # cg settings
+        maxiter: int | None = None,
         miniter: int = 1,
-        rms_beta: float | None = None,
+        tol: float = 1e-8,
+        reg: float = 1e-8,
+        solver: Literal['cg', "minres"] = 'cg',
         adapt_tol: bool = True,
         npc_terminate: bool = False,
+        rms_beta: float | None = None,
+
+        # hvp settings
+        hvp_method: Literal["forward", "central"] = "central",
+        h: float = 1e-3, # tuned 1e-4 or 1e-3
+
+        # inner
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
@@ -341,7 +332,7 @@ class NewtonCGSteihaug(Module):
         P_mm = None
         rms_beta = self.defaults["rms_beta"]
         if rms_beta is not None:
-            exp_avg_sq = self.get_state(params, "exp_avg_sq", init=b, cls=TensorList)
+            exp_avg_sq = self.get_state(params, "exp_avg_sq", init=torch.ones_like, cls=TensorList)
             exp_avg_sq.mul_(rms_beta).addcmul(b, b, value=1-rms_beta)
             exp_avg_sq_sqrt = exp_avg_sq.sqrt().add_(1e-8)
             def _P_mm(x):

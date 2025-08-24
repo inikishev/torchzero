@@ -14,13 +14,13 @@ class LevenbergMarquardt(TrustRegionBase):
         hess_module (Module | None, optional):
             A module that maintains a hessian approximation (not hessian inverse!).
             This includes all full-matrix quasi-newton methods, ``tz.m.Newton`` and ``tz.m.GaussNewton``.
-            When using quasi-newton methods, set `inverse=False` when constructing them.
+            When using quasi-newton methods, set ``inverse=False`` when constructing them.
         y (float, optional):
             when ``y=0``, identity matrix is added to hessian, when ``y=1``, diagonal of the hessian approximation
             is added. Values between interpolate. This should only be used with Gauss-Newton. Defaults to 0.
         eta (float, optional):
             if ratio of actual to predicted rediction is larger than this, step is accepted.
-            When :code:`hess_module` is GaussNewton, this can be set to 0. Defaults to 0.15.
+            When ``hess_module`` is ``Newton`` or ``GaussNewton``, this can be set to 0. Defaults to 0.15.
         nplus (float, optional): increase factor on successful steps. Defaults to 1.5.
         nminus (float, optional): decrease factor on unsuccessful steps. Defaults to 0.75.
         rho_good (float, optional):

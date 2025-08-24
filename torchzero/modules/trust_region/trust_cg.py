@@ -60,7 +60,7 @@ class TrustCG(TrustRegionBase):
         nminus: float = 0.25,
         rho_good: float = 0.99,
         rho_bad: float = 1e-4,
-        boundary_tol: float | None = 1e-1,
+        boundary_tol: float | None = 1e-6, # tuned
         init: float = 1,
         max_attempts: int = 10,
         radius_strategy: _RadiusStrategy | _RADIUS_KEYS = 'default',
