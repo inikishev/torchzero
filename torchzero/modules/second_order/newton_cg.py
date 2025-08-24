@@ -217,8 +217,6 @@ class NewtonCGSteihaug(Module):
             the tolerance is multiplied by 0.1. Defaults to True.
         npc_terminate (bool, optional):
             whether to terminate CG/MINRES whenever negative curvature is detected. Defaults to False.
-        rms_beta (float | None, optional):
-            if not None, uses square root of exponential moving average of squared gradients as a preconditioner for CG. Defaults to None.
 
         hvp_method (str, optional):
             either "forward" to use forward formula which requires one backward pass per Hvp, or "central" to use a more accurate central formula which requires two backward passes. "forward" is usually accurate enough. Defaults to "forward".
@@ -261,7 +259,6 @@ class NewtonCGSteihaug(Module):
         solver: Literal['cg', "minres"] = 'cg',
         adapt_tol: bool = True,
         npc_terminate: bool = False,
-        rms_beta: float | None = None,
 
         # hvp settings
         hvp_method: Literal["forward", "central"] = "central",
@@ -327,19 +324,8 @@ class NewtonCGSteihaug(Module):
                 raise ValueError(hvp_method)
 
 
-        # ------------------------- update RMS preconditioner ------------------------ #
-        b = var.get_update()
-        P_mm = None
-        rms_beta = self.defaults["rms_beta"]
-        if rms_beta is not None:
-            exp_avg_sq = self.get_state(params, "exp_avg_sq", init=torch.ones_like, cls=TensorList)
-            exp_avg_sq.mul_(rms_beta).addcmul(b, b, value=1-rms_beta)
-            exp_avg_sq_sqrt = exp_avg_sq.sqrt().add_(1e-8)
-            def _P_mm(x):
-                return x / exp_avg_sq_sqrt
-            P_mm = _P_mm
-
         # -------------------------------- inner step -------------------------------- #
+        b = var.get_update()
         if 'inner' in self.children:
             b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
         b = as_tensorlist(b)
@@ -383,7 +369,6 @@ class NewtonCGSteihaug(Module):
                         miniter=miniter,
                         npc_terminate=npc_terminate,
                         history_size=max_history,
-                        P_mm=P_mm,
                     )
 
                 elif solver == 'minres':
