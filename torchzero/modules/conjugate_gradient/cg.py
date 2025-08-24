@@ -50,7 +50,7 @@ class ConguateGradientBase(Transform, ABC):
     ```
 
     """
-    def __init__(self, defaults = None, clip_beta: bool = False, restart_interval: int | None | Literal['auto'] = None, inner: Chainable | None = None):
+    def __init__(self, defaults, clip_beta: bool, restart_interval: int | None | Literal['auto'], inner: Chainable | None = None):
         if defaults is None: defaults = {}
         defaults['restart_interval'] = restart_interval
         defaults['clip_beta'] = clip_beta
@@ -140,8 +140,8 @@ class PolakRibiere(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, clip_beta=True, restart_interval: int | None = None, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, clip_beta=True, restart_interval: int | None | Literal['auto'] = 'auto', inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return polak_ribiere_beta(g, prev_g)
@@ -158,7 +158,7 @@ class FletcherReeves(ConguateGradientBase):
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
     def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def initialize(self, p, g):
         self.global_state['prev_gg'] = g.dot(g)
@@ -183,8 +183,8 @@ class HestenesStiefel(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return hestenes_stiefel_beta(g, prev_d, prev_g)
@@ -202,8 +202,8 @@ class DaiYuan(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1)`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return dai_yuan_beta(g, prev_d, prev_g)
@@ -221,8 +221,8 @@ class LiuStorey(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return liu_storey_beta(g, prev_d, prev_g)
@@ -239,8 +239,8 @@ class ConjugateDescent(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return conjugate_descent_beta(g, prev_d, prev_g)
@@ -264,8 +264,8 @@ class HagerZhang(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return hager_zhang_beta(g, prev_d, prev_g)
@@ -291,8 +291,8 @@ class DYHS(ConguateGradientBase):
     Note:
         This requires step size to be determined via a line search, so put a line search like ``tz.m.StrongWolfe(c2=0.1, a_init="first-order")`` after this.
     """
-    def __init__(self, restart_interval: int | None | Literal['auto'] = None, clip_beta=False, inner: Chainable | None = None):
-        super().__init__(clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
+    def __init__(self, restart_interval: int | None | Literal['auto'] = 'auto', clip_beta=False, inner: Chainable | None = None):
+        super().__init__({}, clip_beta=clip_beta, restart_interval=restart_interval, inner=inner)
 
     def get_beta(self, p, g, prev_g, prev_d):
         return dyhs_beta(g, prev_d, prev_g)

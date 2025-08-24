@@ -330,7 +330,6 @@ class StrongWolfe(LineSearchBase):
         if adaptive:
             a_init *= self.global_state.get('initial_scale', 1)
 
-
         strong_wolfe = _StrongWolfe(
             f=objective,
             f_0=f_0,
@@ -360,7 +359,6 @@ class StrongWolfe(LineSearchBase):
                     if inverted: a = -a
 
         if a is not None and a != 0 and math.isfinite(a):
-            #self.global_state['initial_scale'] = min(1.0, self.global_state.get('initial_scale', 1) * math.sqrt(2))
             self.global_state['initial_scale'] = 1
             self.global_state['a_prev'] = a
             self.global_state['f_prev'] = f_0
