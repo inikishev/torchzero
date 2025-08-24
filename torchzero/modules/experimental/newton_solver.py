@@ -131,7 +131,7 @@ class NewtonSolver(Module):
         if maxiter is None: maxiter = b.global_numel()
         loss = None
         initial_loss = lstsq_closure(False) if tol is not None else None # skip unnecessary closure if tol is None
-        if initial_loss is None or initial_loss > 1e-12:
+        if initial_loss is None or initial_loss > torch.finfo(b[0].dtype).eps:
             for i in range(maxiter):
                 loss = solver.step(lstsq_closure)
                 assert loss is not None

@@ -50,7 +50,7 @@ class EscapeAnnealing(Module):
                 params.add_(pert)
                 f_star = closure(False)
 
-                if math.isfinite(f_star) and f_star < f_0-1e-10:
+                if math.isfinite(f_star) and f_star < f_0-1e-12:
                     var.update = None
                     var.stop = True
                     var.skip_update = True

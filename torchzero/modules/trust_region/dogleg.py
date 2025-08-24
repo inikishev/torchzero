@@ -67,9 +67,10 @@ class Dogleg(TrustRegionBase):
 
     def trust_solve(self, f, g, H, radius, params, closure, settings):
         if radius > 2: radius = self.global_state['radius'] = 2
+        eps = torch.finfo(g.dtype).tiny * 2
 
         gHg = g.dot(H.matvec(g))
-        if gHg <= 1e-12:
+        if gHg <= eps:
             return (radius / torch.linalg.vector_norm(g)) * g # pylint:disable=not-callable
 
         p_cauchy = (g.dot(g) / gHg) * g
@@ -79,7 +80,7 @@ class Dogleg(TrustRegionBase):
         b = p_cauchy
 
         aa = a.dot(a)
-        if aa < 1e-12:
+        if aa < eps:
             return (radius / torch.linalg.vector_norm(g)) * g # pylint:disable=not-callable
 
         ab = a.dot(b)

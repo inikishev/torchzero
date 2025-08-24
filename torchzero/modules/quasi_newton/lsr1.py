@@ -5,7 +5,7 @@ from operator import itemgetter
 import torch
 
 from ...core import Chainable, Module, Transform, Var, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, vec_to_tensors_
+from ...utils import NumberList, TensorList, as_tensorlist, generic_finfo_tiny, unpack_states, vec_to_tensors_
 from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
@@ -14,6 +14,7 @@ from .damping import DampingStrategyType, apply_damping
 def lsr1_Hx(x, s_history: Sequence, y_history: Sequence,):
     m = len(s_history)
     if m == 0: return x.clone()
+    eps = generic_finfo_tiny(x) * 2
 
     w_list = []
     wy_list: list = [None for _ in range(m)]
@@ -30,7 +31,7 @@ def lsr1_Hx(x, s_history: Sequence, y_history: Sequence,):
 
             wy = wy_list[j]
             if wy is None: wy = wy_list[j] = w_j.dot(y_j)
-            if wy.abs() < 1e-12: continue
+            if wy.abs() < eps: continue
 
             alpha = w_j.dot(y_k) / wy
             Hx.add_(w_j, alpha=alpha)
@@ -47,7 +48,7 @@ def lsr1_Hx(x, s_history: Sequence, y_history: Sequence,):
         wy = wy_list[k]
 
         if wy is None: wy = w_k.dot(y_k) # this happens when m = 1 so inner loop doesn't run
-        if wy.abs() < 1e-12: continue
+        if wy.abs() < eps: continue
 
         alpha = w_k.dot(x) / wy
         Hx.add_(w_k, alpha=alpha)

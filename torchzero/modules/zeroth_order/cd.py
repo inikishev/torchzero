@@ -295,6 +295,7 @@ class CCDLS(Module):
             raise RuntimeError("CD requires closure")
 
         params = TensorList(var.params)
+        finfo = torch.finfo(params[0].dtype)
         f_0 = var.get_loss(False)
 
         # ------------------------------ determine index ----------------------------- #
@@ -313,10 +314,11 @@ class CCDLS(Module):
 
         # ---------------------------------- adapt h --------------------------------- #
         if f_0 <= f_p and f_0 <= f_n:
-            h_vec.flat_set_lambda_(idx, lambda x: max(x/2, 1e-10))
+            h_vec.flat_set_lambda_(idx, lambda x: max(x/2, finfo.tiny * 2))
         else:
-            if abs(f_0 - f_n) < 1e-12 or abs((f_p - f_0) / (f_0 - f_n) - 1) < 1e-2:
-                h_vec.flat_set_lambda_(idx, lambda x: min(x*2, 1e10))
+            # here eps, not tiny
+            if abs(f_0 - f_n) < finfo.eps or abs((f_p - f_0) / (f_0 - f_n) - 1) < 1e-2:
+                h_vec.flat_set_lambda_(idx, lambda x: min(x*2, finfo.max / 2))
 
         # ------------------------------- update igrad ------------------------------- #
         if f_0 < f_p and f_0 < f_n: alpha = 0
@@ -341,9 +343,9 @@ class CCDLS(Module):
         decay2 = self.defaults["decay2"]
         decay = self.global_state.get("decay", self.defaults["decay"])
 
-        if abs(a) > 1e-16:
+        if abs(a) > finfo.tiny * 2:
             assert f_a < f_0
-            self.global_state['a_prev'] = max(min(a, 1e24), 1e-16)
+            self.global_state['a_prev'] = max(min(a, finfo.max / 2), finfo.tiny * 2)
             self.global_state["decay"] = self.defaults["decay"]
 
         # ---------------------------- soft reset on fail ---------------------------- #

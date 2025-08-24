@@ -346,23 +346,24 @@ class AdGD(Transform):
         sqrt = settings[0]['sqrt']
         alpha = self.global_state.get('alpha', math.inf)
         L = (g - prev_g).global_vector_norm() / (p - prev_p).global_vector_norm()
+        eps = torch.finfo(L.dtype).tiny * 2
 
         if variant == 1:
             a1 = math.sqrt(1 + theta)*alpha
             val = math.sqrt(2) if sqrt else 2
-            if L > 1e-12: a2 = 1 / (val*L)
+            if L > eps: a2 = 1 / (val*L)
             else: a2 = math.inf
 
         elif variant == 2:
             a1 = math.sqrt(2/3 + theta)*alpha
-            a2 = alpha / math.sqrt(max(torch.finfo(L.dtype).tiny * 2, 2 * alpha**2 * L**2 - 1))
+            a2 = alpha / math.sqrt(max(eps, 2 * alpha**2 * L**2 - 1))
 
         else:
             raise ValueError(variant)
 
         alpha_new = min(a1, a2)
         if alpha_new < 0: alpha_new = max(a1, a2)
-        if alpha_new > 1e-16:
+        if alpha_new > eps:
             self.global_state['theta'] = alpha_new/alpha
             self.global_state['alpha'] = alpha_new
 
