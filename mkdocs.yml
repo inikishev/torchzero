@@ -129,13 +129,13 @@ nav:
   - Home: API/index.md
   - About: about.md
   - Overview:
-    - Basics: overview/Basics.ipynb
-    - 1. Gradient descent: overview/1. Gradient descent.ipynb
+    - Basics: Basics.ipynb
+    - 1. First order methods: overview/1. First order methods.ipynb
     - 2. Momentum: overview/2. Momentum.ipynb
     - 3. Adaptive methods: overview/3. Adaptive methods.ipynb
     - 4. Second order methods: overview/4. Second order methods.ipynb
-    - 5. Conjugate gradient: overview/5. Conjugate gradient.ipynb
-    - 6. Quasi-Newton methods: overview/6. Quasi-Newton methods.ipynb
+    - 5. Quasi-Newton methods: overview/5. Quasi-Newton methods.ipynb
+    - 6. Conjugate gradient: overview/6. Conjugate gradient.ipynb
   - API reference:
     - Modules: API/index.md
       # - All modules: API/all.md
