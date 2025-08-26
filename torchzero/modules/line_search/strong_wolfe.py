@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.optim.lbfgs import _cubic_interpolate
 
-from ...utils import as_tensorlist, totensor
+from ...utils import as_tensorlist, totensor, tofloat
 from ._polyinterp import polyinterp, polyinterp2
 from .line_search import LineSearchBase, TerminationCondition, termination_condition
 from ..step_size.adaptive import _bb_geom
@@ -92,7 +92,7 @@ class _StrongWolfe:
             return _apply_bounds(a_lo + 0.5 * (a_hi - a_lo), bounds)
 
         if self.interpolation in ('polynomial', 'polynomial2'):
-            finite_history = [(a, f, g) for a, (f,g) in self.history.items() if math.isfinite(a) and math.isfinite(f) and math.isfinite(g)]
+            finite_history = [(tofloat(a), tofloat(f), tofloat(g)) for a, (f,g) in self.history.items() if math.isfinite(a) and math.isfinite(f) and math.isfinite(g)]
             if bounds is None: bounds = (None, None)
             polyinterp_fn = polyinterp if self.interpolation == 'polynomial' else polyinterp2
             try:
