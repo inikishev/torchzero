@@ -23,8 +23,6 @@ class ForwardGradient(RandomizedFDM):
     Args:
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         distribution (Distributions, optional): distribution for random gradient samples. Defaults to "gaussian".
-        beta (float, optional):
-            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         jvp_method (str, optional):
@@ -40,14 +38,13 @@ class ForwardGradient(RandomizedFDM):
         self,
         n_samples: int = 1,
         distribution: Distributions = "gaussian",
-        beta: float = 0,
         pre_generate = True,
         jvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
         h: float = 1e-3,
         target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples, distribution=distribution, beta=beta, target=target, pre_generate=pre_generate, seed=seed)
+        super().__init__(h=h, n_samples=n_samples, distribution=distribution, target=target, pre_generate=pre_generate, seed=seed)
         self.defaults['jvp_method'] = jvp_method
 
     @torch.no_grad
@@ -62,7 +59,7 @@ class ForwardGradient(RandomizedFDM):
         distribution = settings['distribution']
         default = [None]*n_samples
         perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
-        generator = self._get_generator(settings['seed'], params)
+        generator = self.get_generator(params[0].device, self.defaults['seed'])
 
         grad = None
         for i in range(n_samples):

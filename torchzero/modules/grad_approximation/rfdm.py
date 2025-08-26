@@ -164,7 +164,6 @@ class RandomizedFDM(GradApproximator):
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "rademacher".
             If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
-        beta (float, optional): optinal momentum for generated perturbations. Defaults to 1e-3.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -173,7 +172,7 @@ class RandomizedFDM(GradApproximator):
     Examples:
     #### Simultaneous perturbation stochastic approximation (SPSA) method
 
-    SPSA is randomized finite differnce with rademacher distribution and central formula.
+    SPSA is randomized FDM with rademacher distribution and central formula.
     ```py
     spsa = tz.Modular(
         model.parameters(),
@@ -184,8 +183,7 @@ class RandomizedFDM(GradApproximator):
 
     #### Random-direction stochastic approximation (RDSA) method
 
-    RDSA is randomized finite differnce with usually gaussian distribution and central formula.
-
+    RDSA is randomized FDM with usually gaussian distribution and central formula.
     ```
     rdsa = tz.Modular(
         model.parameters(),
@@ -194,23 +192,9 @@ class RandomizedFDM(GradApproximator):
     )
     ```
 
-    #### RandomizedFDM with momentum
-
-    Momentum might help by reducing the variance of the estimated gradients.
-
-    ```
-    momentum_spsa = tz.Modular(
-        model.parameters(),
-        tz.m.RandomizedFDM(),
-        tz.m.HeavyBall(0.9),
-        tz.m.LR(1e-3)
-    )
-    ```
-
     #### Gaussian smoothing method
 
     GS uses many gaussian samples with possibly a larger finite difference step size.
-
     ```
     gs = tz.Modular(
         model.parameters(),
@@ -220,44 +204,15 @@ class RandomizedFDM(GradApproximator):
     )
     ```
 
-    #### SPSA-NewtonCG
+    #### RandomizedFDM with momentum
 
-    NewtonCG with hessian-vector product estimated via gradient difference
-    calls closure multiple times per step. If each closure call estimates gradients
-    with different perturbations, NewtonCG is unable to produce useful directions.
-
-    By setting pre_generate to True, perturbations are generated once before each step,
-    and each closure call estimates gradients using the same pre-generated perturbations.
-    This way closure-based algorithms are able to use gradients estimated in a consistent way.
-
+    Momentum might help by reducing the variance of the estimated gradients.
     ```
-    opt = tz.Modular(
+    momentum_spsa = tz.Modular(
         model.parameters(),
-        tz.m.RandomizedFDM(n_samples=10),
-        tz.m.NewtonCG(hvp_method="forward", pre_generate=True),
-        tz.m.Backtracking()
-    )
-    ```
-
-    #### SPSA-LBFGS
-
-    LBFGS uses a memory of past parameter and gradient differences. If past gradients
-    were estimated with different perturbations, LBFGS directions will be useless.
-
-    To alleviate this momentum can be added to random perturbations to make sure they only
-    change by a little bit, and the history stays relevant. The momentum is determined by the :code:`beta` parameter.
-    The disadvantage is that the subspace the algorithm is able to explore changes slowly.
-
-    Additionally we will reset SPSA and LBFGS memory every 100 steps to remove influence from old gradient estimates.
-
-    ```
-    opt = tz.Modular(
-        bench.parameters(),
-        tz.m.ResetEvery(
-            [tz.m.RandomizedFDM(n_samples=10, pre_generate=True, beta=0.99), tz.m.LBFGS()],
-            steps = 100,
-        ),
-        tz.m.Backtracking()
+        tz.m.RandomizedFDM(),
+        tz.m.HeavyBall(0.9),
+        tz.m.LR(1e-3)
     )
     ```
     """
@@ -268,75 +223,46 @@ class RandomizedFDM(GradApproximator):
         n_samples: int = 1,
         formula: _FD_Formula = "central",
         distribution: Distributions = "rademacher",
-        beta: float = 0,
         pre_generate = True,
         seed: int | None | torch.Generator = None,
         target: GradTarget = "closure",
     ):
-        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, beta=beta, pre_generate=pre_generate, seed=seed)
+        defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, pre_generate=pre_generate, seed=seed)
         super().__init__(defaults, target=target)
 
-    def reset(self):
-        self.state.clear()
-        generator = self.global_state.get('generator', None) # avoid resetting generator
-        self.global_state.clear()
-        if generator is not None: self.global_state['generator'] = generator
-        for c in self.children.values(): c.reset()
-
-    def _get_generator(self, seed: int | None | torch.Generator, params: list[torch.Tensor]):
-        if 'generator' not in self.global_state:
-            if isinstance(seed, torch.Generator): self.global_state['generator'] = seed
-            elif seed is not None: self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
-            else: self.global_state['generator'] = None
-        return self.global_state['generator']
 
     def pre_step(self, var):
-        h, beta = self.get_settings(var.params, 'h', 'beta')
-
-        n_samples = self.defaults['n_samples']
-        distribution = self.defaults['distribution']
+        h = self.get_settings(var.params, 'h')
         pre_generate = self.defaults['pre_generate']
 
         if pre_generate:
+            n_samples = self.defaults['n_samples']
+            distribution = self.defaults['distribution']
+
             params = TensorList(var.params)
-            generator = self._get_generator(self.defaults['seed'], var.params)
+            generator = self.get_generator(params[0].device, self.defaults['seed'])
             perturbations = [params.sample_like(distribution=distribution, variance=1, generator=generator) for _ in range(n_samples)]
 
+            # this is false for ForwardGradient where h isn't used and it subclasses this
             if self.PRE_MULTIPLY_BY_H:
                 torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])
 
-            if all(i==0 for i in beta):
-                # just use pre-generated perturbations
-                for param, prt in zip(params, zip(*perturbations)):
-                    self.state[param]['perturbations'] = prt
-
-            else:
-                # lerp old and new perturbations. This makes the subspace change gradually
-                # which in theory might improve algorithms with history
-                for i,p in enumerate(params):
-                    state = self.state[p]
-                    if 'perturbations' not in state: state['perturbations'] = [p[i] for p in perturbations]
-
-                cur = [self.state[p]['perturbations'][:n_samples] for p in params]
-                cur_flat = [p for l in cur for p in l]
-                new_flat = [p for l in zip(*perturbations) for p in l]
-                betas = [1-v for b in beta for v in [b]*n_samples]
-                torch._foreach_lerp_(cur_flat, new_flat, betas)
+            for param, prt in zip(params, zip(*perturbations)):
+                self.state[param]['perturbations'] = prt
 
     @torch.no_grad
     def approximate(self, closure, params, loss):
         params = TensorList(params)
-        orig_params = params.clone() # store to avoid small changes due to float imprecision
         loss_approx = None
 
         h = NumberList(self.settings[p]['h'] for p in params)
-        settings = self.settings[params[0]]
-        n_samples = settings['n_samples']
-        fd_fn = _RFD_FUNCS[settings['formula']]
+        n_samples = self.defaults['n_samples']
+        distribution = self.defaults['distribution']
+        fd_fn = _RFD_FUNCS[self.defaults['formula']]
+
         default = [None]*n_samples
         perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
-        distribution = settings['distribution']
-        generator = self._get_generator(settings['seed'], params)
+        generator = self.get_generator(params[0].device, self.defaults['seed'])
 
         grad = None
         for i in range(n_samples):
@@ -356,7 +282,6 @@ class RandomizedFDM(GradApproximator):
             if grad is None: grad = prt * d
             else: grad += prt * d
 
-        params.set_(orig_params)
         assert grad is not None
         if n_samples > 1: grad.div_(n_samples)
 
@@ -384,8 +309,6 @@ class SPSA(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "rademacher".
-        beta (float, optional):
-            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -408,8 +331,6 @@ class RDSA(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 1.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'central2'.
         distribution (Distributions, optional): distribution. Defaults to "gaussian".
-        beta (float, optional):
-            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -425,12 +346,11 @@ class RDSA(RandomizedFDM):
         n_samples: int = 1,
         formula: _FD_Formula = "central2",
         distribution: Distributions = "gaussian",
-        beta: float = 0,
         pre_generate = True,
         target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed)
 
 class GaussianSmoothing(RandomizedFDM):
     """
@@ -445,8 +365,6 @@ class GaussianSmoothing(RandomizedFDM):
         n_samples (int, optional): number of random gradient samples. Defaults to 100.
         formula (_FD_Formula, optional): finite difference formula. Defaults to 'forward2'.
         distribution (Distributions, optional): distribution. Defaults to "gaussian".
-        beta (float, optional):
-            If this is set to a value higher than zero, instead of using directional derivatives in a new random direction on each step, the direction changes gradually with momentum based on this value. This may make it possible to use methods with memory. Defaults to 0.
         pre_generate (bool, optional):
             whether to pre-generate gradient samples before each step. If samples are not pre-generated, whenever a method performs multiple closure evaluations, the gradient will be evaluated in different directions each time. Defaults to True.
         seed (int | None | torch.Generator, optional): Seed for random generator. Defaults to None.
@@ -462,12 +380,11 @@ class GaussianSmoothing(RandomizedFDM):
         n_samples: int = 100,
         formula: _FD_Formula = "forward2",
         distribution: Distributions = "gaussian",
-        beta: float = 0,
         pre_generate = True,
         target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,beta=beta,pre_generate=pre_generate,target=target,seed=seed)
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed)
 
 class MeZO(GradApproximator):
     """Gradient approximation via memory-efficient zeroth order optimizer (MeZO) - https://arxiv.org/abs/2305.17333.
@@ -525,9 +442,9 @@ class MeZO(GradApproximator):
         loss_approx = None
 
         h = NumberList(self.settings[p]['h'] for p in params)
-        settings = self.settings[params[0]]
-        n_samples = settings['n_samples']
-        fd_fn = _RFD_FUNCS[settings['formula']]
+        n_samples = self.defaults['n_samples']
+        fd_fn = _RFD_FUNCS[self.defaults['formula']]
+
         prt_fns = self.global_state['prt_fns']
 
         grad = None

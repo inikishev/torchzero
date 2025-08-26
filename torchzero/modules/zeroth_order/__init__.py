@@ -1,1 +1,1 @@
-from .cd import CD, CCD, CCDLS
+from .cd import CD

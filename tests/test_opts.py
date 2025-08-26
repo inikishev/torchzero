@@ -400,13 +400,6 @@ RandomizedFDM_4samples = Run(
     func='booth', steps=50, loss=1e-5, merge_invariant=True,
     sphere_steps=100, sphere_loss=400,
 )
-RandomizedFDM_4samples_lerp = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, beta=0.99, seed=0), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, beta=0.9, seed=0), tz.m.LR(0.001)),
-    needs_closure=True,
-    func='booth', steps=50, loss=1e-5, merge_invariant=True,
-    sphere_steps=100, sphere_loss=505,
-)
 RandomizedFDM_4samples_no_pre_generate = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.001)),

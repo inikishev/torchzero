@@ -531,7 +531,11 @@ class Module(ABC):
     def reset(self):
         """Resets the internal state of the module (e.g. momentum) and all children. By default clears state and global state."""
         self.state.clear()
+
+        generator = self.global_state.get("generator", None)
         self.global_state.clear()
+        if generator is not None: self.global_state["generator"] = generator
+
         for c in self.children.values(): c.reset()
 
     def reset_for_online(self):
