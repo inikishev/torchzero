@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from .line_search import LineSearchBase
-
+from ...utils import tofloat
 
 # polynomial interpolation
 # this code is from https://github.com/hjmshi/PyTorch-LBFGS/blob/master/functions/LBFGS.py
@@ -284,6 +284,8 @@ def polyinterp2(points, lb, ub, unbounded: bool = False):
             x_sol = _cubic_interp(p, lb, ub)
             if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
 
+    if lb is not None: lb = tofloat(lb)
+    if ub is not None: ub = tofloat(ub)
     x_sol = _poly_interp(points, lb, ub)
     if x_sol is not None and _within_bounds(x_sol, lb, ub): return x_sol
     return polyinterp2(points[1:], lb, ub)

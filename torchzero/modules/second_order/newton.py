@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, Var
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     flatten_jacobian,
@@ -50,7 +50,87 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
         return None
 
 
+def _get_loss_grad_and_hessian(var: Var, hessian_method:str, vectorize:bool):
+    """returns (loss, g_list, H). Also sets var.loss and var.grad.
+    If hessian_method isn't 'autograd', loss is not set and returned as None"""
+    closure = var.closure
+    if closure is None:
+        raise RuntimeError("Second order methods requires a closure to be provided to the `step` method.")
 
+    params = var.params
+
+    # ------------------------ calculate grad and hessian ------------------------ #
+    loss = None
+    if hessian_method == 'autograd':
+        with torch.enable_grad():
+            loss = var.loss = var.loss_approx = closure(False)
+            g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
+            g_list = [t[0] for t in g_list] # remove leading dim from loss
+            var.grad = g_list
+            H = flatten_jacobian(H_list)
+
+    elif hessian_method in ('func', 'autograd.functional'):
+        strat = 'forward-mode' if vectorize else 'reverse-mode'
+        with torch.enable_grad():
+            g_list = var.get_grad(retain_graph=True)
+            H = hessian_mat(partial(closure, backward=False), params,
+                            method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
+
+    else:
+        raise ValueError(hessian_method)
+
+    return loss, g_list, H
+
+def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool) -> torch.Tensor:
+    """returns the update tensor, then do vec_to_tensor(update, params)"""
+    params = var.params
+
+    if damping != 0:
+        H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
+
+    # -------------------------------- inner step -------------------------------- #
+    update = var.get_update()
+    if inner is not None:
+        update = apply_transform(inner, update, params=params, grads=var.grad, var=var)
+
+    g = torch.cat([t.ravel() for t in update])
+
+    # ----------------------------------- solve ---------------------------------- #
+    update = None
+
+    if H_tfm is not None:
+        ret = H_tfm(H, g)
+
+        if isinstance(ret, torch.Tensor):
+            update = ret
+
+        else: # returns (H, is_inv)
+            H, is_inv = ret
+            if is_inv: update = H @ g
+
+    if eigval_fn is not None:
+        update = _eigh_solve(H, g, eigval_fn, search_negative=False)
+
+    if update is None and use_lstsq: update = _least_squares_solve(H, g)
+    if update is None: update = _cholesky_solve(H, g)
+    if update is None: update = _lu_solve(H, g)
+    if update is None: update = _least_squares_solve(H, g)
+
+    return update
+
+def _get_H(H: torch.Tensor, eigval_fn):
+    if eigval_fn is not None:
+        try:
+            L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
+            L: torch.Tensor = eigval_fn(L)
+            H = Q @ L.diag_embed() @ Q.mH
+            H_inv = Q @ L.reciprocal().diag_embed() @ Q.mH
+            return DenseWithInverse(H, H_inv)
+
+        except torch.linalg.LinAlgError:
+            pass
+
+    return Dense(H)
 
 class Newton(Module):
     """Exact newton's method via autograd.
@@ -111,10 +191,9 @@ class Newton(Module):
     The linear system is solved via cholesky decomposition, if that fails, LU decomposition, and if that fails, least squares.
     Least squares can be forced by setting ``use_lstsq=True``, which may generate better search directions when linear system is overdetermined.
 
-    Additionally, if ``eigval_fn`` is specified or ``search_negative`` is ``True``,
-    eigendecomposition of the hessian is computed, ``eigval_fn`` is applied to the eigenvalues,
-    and ``(H + yI)⁻¹`` is computed using the computed eigenvectors and transformed eigenvalues.
-    This is more generally more computationally expensive.
+    Additionally, if ``eigval_fn`` is specified, eigendecomposition of the hessian is computed,
+    ``eigval_fn`` is applied to the eigenvalues, and ``(H + yI)⁻¹`` is computed using the computed eigenvectors and transformed eigenvalues. This is more generally more computationally expensive,
+    but not by much
 
     ## Handling non-convexity
 
@@ -167,7 +246,6 @@ class Newton(Module):
     def __init__(
         self,
         damping: float = 0,
-        search_negative: bool = False,
         use_lstsq: bool = False,
         update_freq: int = 1,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
@@ -176,7 +254,7 @@ class Newton(Module):
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, search_negative=search_negative, update_freq=update_freq)
+        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, update_freq=update_freq)
         super().__init__(defaults)
 
         if inner is not None:
@@ -184,200 +262,31 @@ class Newton(Module):
 
     @torch.no_grad
     def update(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
-
-        settings = self.settings[params[0]]
-        damping = settings['damping']
-        hessian_method = settings['hessian_method']
-        vectorize = settings['vectorize']
-        update_freq = settings['update_freq']
-
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        g_list = var.grad
-        H = None
-        if step % update_freq == 0:
-            # ------------------------ calculate grad and hessian ------------------------ #
-            if hessian_method == 'autograd':
-                with torch.enable_grad():
-                    loss = var.loss = var.loss_approx = closure(False)
-                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
-                    g_list = [t[0] for t in g_list] # remove leading dim from loss
-                    var.grad = g_list
-                    H = flatten_jacobian(H_list)
-
-            elif hessian_method in ('func', 'autograd.functional'):
-                strat = 'forward-mode' if vectorize else 'reverse-mode'
-                with torch.enable_grad():
-                    g_list = var.get_grad(retain_graph=True)
-                    H = hessian_mat(partial(closure, backward=False), params,
-                                    method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
-
-            else:
-                raise ValueError(hessian_method)
-
-            if damping != 0: H.add_(torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping))
-            self.global_state['H'] = H
+        if step % self.defaults['update_freq'] == 0:
+            loss, g_list, self.global_state['H'] = _get_loss_grad_and_hessian(
+                var, self.defaults['hessian_method'], self.defaults['vectorize']
+            )
 
     @torch.no_grad
     def apply(self, var):
-        H = self.global_state["H"]
-
         params = var.params
-        settings = self.settings[params[0]]
-        search_negative = settings['search_negative']
-        H_tfm = settings['H_tfm']
-        eigval_fn = settings['eigval_fn']
-        use_lstsq = settings['use_lstsq']
-
-        # -------------------------------- inner step -------------------------------- #
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
-
-        g = torch.cat([t.ravel() for t in update])
-
-        # ----------------------------------- solve ---------------------------------- #
-        update = None
-        if H_tfm is not None:
-            ret = H_tfm(H, g)
-
-            if isinstance(ret, torch.Tensor):
-                update = ret
-
-            else: # returns (H, is_inv)
-                H, is_inv = ret
-                if is_inv: update = H @ g
-
-        if search_negative or (eigval_fn is not None):
-            update = _eigh_solve(H, g, eigval_fn, search_negative=search_negative)
-
-        if update is None and use_lstsq: update = _least_squares_solve(H, g)
-        if update is None: update = _cholesky_solve(H, g)
-        if update is None: update = _lu_solve(H, g)
-        if update is None: update = _least_squares_solve(H, g)
+        update = _newton_step(
+            var=var,
+            H = self.global_state["H"],
+            damping=self.defaults["damping"],
+            inner=self.children.get("inner", None),
+            H_tfm=self.defaults["H_tfm"],
+            eigval_fn=self.defaults["eigval_fn"],
+            use_lstsq=self.defaults["use_lstsq"],
+        )
 
         var.update = vec_to_tensors(update, params)
 
         return var
 
-    def get_H(self,var):
-        H = self.global_state["H"]
-        settings = self.defaults
-        if settings['eigval_fn'] is not None:
-            try:
-                L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
-                L = settings['eigval_fn'](L)
-                H = Q @ L.diag_embed() @ Q.mH
-                H_inv = Q @ L.reciprocal().diag_embed() @ Q.mH
-                return DenseWithInverse(H, H_inv)
+    def get_H(self,var=...):
+        return _get_H(self.global_state["H"], self.defaults["eigval_tfm"])
 
-            except torch.linalg.LinAlgError:
-                pass
-
-        return Dense(H)
-
-
-class InverseFreeNewton(Module):
-    """Inverse-free newton's method
-
-    .. note::
-        In most cases Newton should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
-
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating the hessian.
-        The closure must accept a ``backward`` argument (refer to documentation).
-
-    .. warning::
-        this uses roughly O(N^2) memory.
-
-    Reference
-        Massalski, Marcin, and Magdalena Nockowska-Rosiak. "INVERSE-FREE NEWTON'S METHOD." Journal of Applied Analysis & Computation 15.4 (2025): 2238-2257.
-    """
-    def __init__(
-        self,
-        update_freq: int = 1,
-        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
-        vectorize: bool = True,
-        inner: Chainable | None = None,
-    ):
-        defaults = dict(hessian_method=hessian_method, vectorize=vectorize, update_freq=update_freq)
-        super().__init__(defaults)
-
-        if inner is not None:
-            self.set_child('inner', inner)
-
-    @torch.no_grad
-    def update(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
-
-        settings = self.settings[params[0]]
-        hessian_method = settings['hessian_method']
-        vectorize = settings['vectorize']
-        update_freq = settings['update_freq']
-
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
-
-        g_list = var.grad
-        Y = None
-        if step % update_freq == 0:
-            # ------------------------ calculate grad and hessian ------------------------ #
-            if hessian_method == 'autograd':
-                with torch.enable_grad():
-                    loss = var.loss = var.loss_approx = closure(False)
-                    g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
-                    g_list = [t[0] for t in g_list] # remove leading dim from loss
-                    var.grad = g_list
-                    H = flatten_jacobian(H_list)
-
-            elif hessian_method in ('func', 'autograd.functional'):
-                strat = 'forward-mode' if vectorize else 'reverse-mode'
-                with torch.enable_grad():
-                    g_list = var.get_grad(retain_graph=True)
-                    H = hessian_mat(partial(closure, backward=False), params,
-                                    method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
-
-            else:
-                raise ValueError(hessian_method)
-
-            self.global_state["H"] = H
-
-            # inverse free part
-            if 'Y' not in self.global_state:
-                num = H.T
-                denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
-                finfo = torch.finfo(H.dtype)
-                Y = self.global_state['Y'] = num.div_(denom.clip(min=finfo.tiny * 2, max=finfo.max / 2))
-
-            else:
-                Y = self.global_state['Y']
-                I = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
-                I -= H @ Y
-                Y = self.global_state['Y'] = Y @ I
-
-
-    def apply(self, var):
-        Y = self.global_state["Y"]
-        params = var.params
-
-        # -------------------------------- inner step -------------------------------- #
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
-
-        g = torch.cat([t.ravel() for t in update])
-
-        # ----------------------------------- solve ---------------------------------- #
-        var.update = vec_to_tensors(Y@g, params)
-
-        return var
-
-    def get_H(self,var):
-        return DenseWithInverse(A = self.global_state["H"], A_inv=self.global_state["Y"])

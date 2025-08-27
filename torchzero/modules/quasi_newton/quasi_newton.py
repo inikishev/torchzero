@@ -1182,9 +1182,9 @@ class ShorR(HessianUpdateStrategy):
     """Shor’s r-algorithm.
 
     Note:
-        A line search such as ``tz.m.StrongWolfe(a_init="quadratic", fallback=True)`` is required.
-        Similarly to conjugate gradient, ShorR doesn't have an automatic step size scaling,
-        so setting ``a_init`` in the line search is recommended.
+        - A line search such as ``[tz.m.StrongWolfe(a_init="quadratic", fallback=True), tz.m.Mul(1.2)]`` is required. Similarly to conjugate gradient, ShorR doesn't have an automatic step size scaling, so setting ``a_init`` in the line search is recommended.
+
+        - The line search should try to overstep by a little, therefore it can help to multiply direction given by a line search by some value slightly larger than 1 such as 1.2.
 
     References:
         Those are the original references, but neither seem to be available online:
@@ -1232,3 +1232,9 @@ class ShorR(HessianUpdateStrategy):
 
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):
         return shor_r_(H=H, y=y, alpha=setting['alpha'])
+
+
+# Todd, Michael J. "The symmetric rank-one quasi-Newton method is a space-dilation subgradient algorithm." Operations research letters 5.5 (1986): 217-219.
+# TODO
+
+# Sorensen, D. C. "The q-superlinear convergence of a collinear scaling algorithm for unconstrained optimization." SIAM Journal on Numerical Analysis 17.1 (1980): 84-114.
