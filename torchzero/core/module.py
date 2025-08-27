@@ -13,8 +13,9 @@ from ..utils import (
     Params,
     _make_param_groups,
     get_state_vals,
+    vec_to_tensors
 )
-from ..utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
+from ..utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward, flatten_jacobian
 from ..utils.python_tools import flatten
 from ..utils.linalg.linear_operator import LinearOperator
 
@@ -571,7 +572,7 @@ class Module(ABC):
         hvp_method: Literal['autograd', 'forward', 'central'],
         h: float,
         normalize: bool,
-        retain_grad: bool,
+        retain_graph: bool,
     ) -> tuple[Sequence[torch.Tensor], Sequence[torch.Tensor] | None]:
         """
         Returns ``(Hvp, rgrad)``, where ``rgrad`` is gradient at current parameters,
@@ -620,7 +621,7 @@ class Module(ABC):
 
         if hvp_method == 'autograd':
             assert rgrad is not None
-            Hvp = hvp(var.params, rgrad, v, retain_graph=retain_grad)
+            Hvp = hvp(var.params, rgrad, v, retain_graph=retain_graph)
 
         elif hvp_method == 'forward':
             assert rgrad is not None
@@ -633,6 +634,64 @@ class Module(ABC):
             raise ValueError(hvp_method)
 
         return Hvp, rgrad
+
+    @torch.no_grad
+    def hessian_matrix_product(
+        self,
+        M: torch.Tensor,
+        at_x0: bool,
+        var: Var,
+        rgrad: Sequence[torch.Tensor] | None,
+        hvp_method: Literal["batched", 'autograd', 'forward', 'central'],
+        h: float,
+        normalize: bool,
+        retain_graph: bool,
+    ) -> tuple[torch.Tensor, Sequence[torch.Tensor] | None]:
+        """M is (n_dim, n_hvps), computes H @ M - (n_dim, n_hvps)"""
+
+        # get grad
+        if rgrad is None and hvp_method in ('autograd', 'forward', "batched"):
+            if at_x0: rgrad = var.get_grad(create_graph = hvp_method in ('autograd', "batched"))
+            else:
+                if var.closure is None: raise RuntimeError("Closure is required to calculate HVp")
+                with torch.enable_grad():
+                    loss = var.closure()
+                    create_graph = hvp_method in ('autograd', "batched")
+                    rgrad = torch.autograd.grad(loss, var.params, create_graph=create_graph)
+
+        if hvp_method == "batched":
+            assert rgrad is not None
+            with torch.enable_grad():
+                flat_inputs = torch.cat([g.ravel() for g in rgrad])
+                HM_list = torch.autograd.grad(flat_inputs, var.params, grad_outputs=M.T, is_grads_batched=True, retain_graph=retain_graph)
+                HM = flatten_jacobian(HM_list).T
+
+        elif hvp_method == 'autograd':
+            assert rgrad is not None
+            with torch.enable_grad():
+                flat_inputs = torch.cat([g.ravel() for g in rgrad])
+                HV_tensors = [torch.autograd.grad(
+                    flat_inputs, var.params, grad_outputs=col,
+                    retain_graph = retain_graph or (i < M.size(1) - 1)
+                ) for i,col in enumerate(M.unbind(1))]
+                HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+                HM = torch.stack(HM_list, 1)
+
+        elif hvp_method == 'forward':
+            assert rgrad is not None
+            HV_tensors = [hvp_fd_forward(var.closure, var.params, vec_to_tensors(col, var.params), h=h, g_0=rgrad, normalize=normalize)[1] for col in M.unbind(1)]
+            HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+            HM = flatten_jacobian(HM_list)
+
+        elif hvp_method == 'central':
+            HV_tensors = [hvp_fd_central(var.closure, var.params, vec_to_tensors(col, var.params), h=h, normalize=normalize)[1] for col in M.unbind(1)]
+            HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+            HM = flatten_jacobian(HM_list)
+
+        else:
+            raise ValueError(hvp_method)
+
+        return HM, rgrad
 
     def get_generator(self, device: torch.types.Device, seed: int | None):
         if seed is None: return None

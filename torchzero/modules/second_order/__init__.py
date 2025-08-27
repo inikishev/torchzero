@@ -4,3 +4,4 @@ from .multipoint import SixthOrder3P, SixthOrder3PM2, SixthOrder5P, TwoPointNewt
 from .newton import Newton
 from .newton_cg import NewtonCG, NewtonCGSteihaug
 from .nystrom import NystromPCG, NystromSketchAndSolve
+from .rsn import RSN

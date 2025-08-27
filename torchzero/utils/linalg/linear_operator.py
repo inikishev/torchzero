@@ -35,8 +35,8 @@ class LinearOperator(ABC):
         """solve with a norm bound on x"""
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement solve_bounded")
 
-    def update(self, *args, **kwargs) -> None:
-        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement update")
+    # def update(self, *args, **kwargs) -> None:
+    #     raise NotImplementedError(f"{self.__class__.__name__} doesn't implement update")
 
     def add(self, x: torch.Tensor) -> "LinearOperator":
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement add")
@@ -298,6 +298,7 @@ class AtA(LinearOperator):
 class AAT(LinearOperator):
     def __init__(self, A: torch.Tensor):
         self.A = A
+        self.device = self.A.device; self.dtype = self.A.dtype
 
     def matvec(self, x): return self.A.mv(self.A.mH.mv(x))
     def rmatvec(self, x): return self.matvec(x)
@@ -325,5 +326,52 @@ class AAT(LinearOperator):
 
     def size(self):
         n = self.A.size(1)
+        return (n,n)
+
+
+class Sketched(LinearOperator):
+    """A projected by sketching matrix S, representing the operator S @ A_proj @ S.T.
+
+    Where A is (n, n) and S is (n, sketch_size).
+    """
+    def __init__(self, S: torch.Tensor, A_proj: torch.Tensor):
+        self.S = S
+        self.A_proj = A_proj
+        self.device = self.A_proj.device; self.dtype = self.A_proj.dtype
+
+
+    def matvec(self, x):
+        x_proj = self.S.T @ x
+        Ax_proj = self.A_proj @ x_proj
+        return self.S @ Ax_proj
+
+    def rmatvec(self, x):
+        x_proj = self.S.T @ x
+        ATx_proj = self.A_proj.mH @ x_proj
+        return self.S @ ATx_proj
+
+
+    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.S, self.A_proj, self.S.T, x])) # pylint:disable=not-callable
+    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.S, self.A_proj.mH, self.S.T, x])) # pylint:disable=not-callable
+
+
+    def is_dense(self): return False
+    def to_tensor(self): return self.S @ self.A_proj @ self.S.T
+    def transpose(self): return Sketched(self.S, self.A_proj.mH)
+
+    def add_diagonal(self, x):
+        """this doesn't correspond to adding diagonal to A, however it still works for LM etc."""
+        if isinstance(x, torch.Tensor) and x.numel() <= 1: x = x.item()
+        if isinstance(x, (int,float)): x = torch.full((self.A_proj.shape[0],), fill_value=x, device=self.A_proj.device, dtype=self.A_proj.dtype)
+        return Sketched(S=self.S, A_proj=self.A_proj + x.diag_embed())
+
+    def solve(self, b):
+        return self.S @ torch.linalg.lstsq(self.A_proj, self.S.T @ b).solution # pylint:disable=not-callable
+
+    def inv(self):
+        return Sketched(S=self.S, A_proj=torch.linalg.pinv(self.A_proj)) # pylint:disable=not-callable
+
+    def size(self):
+        n = self.S.size(0)
         return (n,n)
 

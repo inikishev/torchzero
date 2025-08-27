@@ -5,13 +5,13 @@ import torch.autograd.forward_ad as fwAD
 
 from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
 
-def _jacobian(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_input = torch.cat([i.reshape(-1) for i in output])
-    grad_ouputs = torch.eye(len(flat_input), device=output[0].device, dtype=output[0].dtype)
+def _jacobian(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_outputs = torch.cat([i.reshape(-1) for i in outputs])
+    grad_ouputs = torch.eye(len(flat_outputs), device=outputs[0].device, dtype=outputs[0].dtype)
     jac = []
-    for i in range(flat_input.numel()):
+    for i in range(flat_outputs.numel()):
         jac.append(torch.autograd.grad(
-            flat_input,
+            flat_outputs,
             wrt,
             grad_ouputs[i],
             retain_graph=True,
@@ -22,12 +22,12 @@ def _jacobian(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], creat
     return [torch.stack(z) for z in zip(*jac)]
 
 
-def _jacobian_batched(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_input = torch.cat([i.reshape(-1) for i in output])
+def _jacobian_batched(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
+    flat_outputs = torch.cat([i.reshape(-1) for i in outputs])
     return torch.autograd.grad(
-        flat_input,
+        flat_outputs,
         wrt,
-        torch.eye(len(flat_input), device=output[0].device, dtype=output[0].dtype),
+        torch.eye(len(flat_outputs), device=outputs[0].device, dtype=outputs[0].dtype),
         retain_graph=True,
         create_graph=create_graph,
         allow_unused=True,
@@ -51,13 +51,13 @@ def flatten_jacobian(jacs: Sequence[torch.Tensor]) -> torch.Tensor:
     return torch.cat([j.reshape(n_out, -1) for j in jacs], dim=1)
 
 
-def jacobian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
+def jacobian_wrt(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True) -> Sequence[torch.Tensor]:
     """Calculate jacobian of a sequence of tensors w.r.t another sequence of tensors.
     Returns a sequence of tensors with the length as `wrt`.
     Each tensor will have the shape `(*output.shape, *wrt[i].shape)`.
 
     Args:
-        input (Sequence[torch.Tensor]): input sequence of tensors.
+        outputs (Sequence[torch.Tensor]): input sequence of tensors.
         wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
@@ -68,16 +68,16 @@ def jacobian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], cr
     Returns:
         sequence of tensors with the length as `wrt`.
     """
-    if batched: return _jacobian_batched(output, wrt, create_graph)
-    return _jacobian(output, wrt, create_graph)
+    if batched: return _jacobian_batched(outputs, wrt, create_graph)
+    return _jacobian(outputs, wrt, create_graph)
 
-def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+def jacobian_and_hessian_wrt(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
     Calculating hessian requires calculating the jacobian. So this function is more efficient than
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
 
     Args:
-        input (Sequence[torch.Tensor]): input sequence of tensors.
+        outputs (Sequence[torch.Tensor]): input sequence of tensors.
         wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
@@ -87,7 +87,7 @@ def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch
     Returns:
         tuple with jacobians sequence and hessians sequence.
     """
-    jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
+    jac = jacobian_wrt(outputs, wrt, create_graph=True, batched = batched)
     return jac, jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
 
 
@@ -96,13 +96,13 @@ def jacobian_and_hessian_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch
 #     Note - I only tested this for cases where input is a scalar."""
 #     return torch.cat([h.reshape(h.size(0), h[1].numel()) for h in hessians], 1)
 
-def jacobian_and_hessian_mat_wrt(output: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
+def jacobian_and_hessian_mat_wrt(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False, batched=True):
     """Calculate jacobian and hessian of a sequence of tensors w.r.t another sequence of tensors.
     Calculating hessian requires calculating the jacobian. So this function is more efficient than
     calling `jacobian` and `hessian` separately, which would calculate jacobian twice.
 
     Args:
-        input (Sequence[torch.Tensor]): input sequence of tensors.
+        outputs (Sequence[torch.Tensor]): input sequence of tensors.
         wrt (Sequence[torch.Tensor]): sequence of tensors to differentiate w.r.t.
         create_graph (bool, optional):
             pytorch option, if True, graph of the derivative will be constructed,
@@ -112,7 +112,7 @@ def jacobian_and_hessian_mat_wrt(output: Sequence[torch.Tensor], wrt: Sequence[t
     Returns:
         tuple with jacobians sequence and hessians sequence.
     """
-    jac = jacobian_wrt(output, wrt, create_graph=True, batched = batched)
+    jac = jacobian_wrt(outputs, wrt, create_graph=True, batched = batched)
     H_list = jacobian_wrt(jac, wrt, batched = batched, create_graph=create_graph)
     return flatten_jacobian(jac), flatten_jacobian(H_list)
 

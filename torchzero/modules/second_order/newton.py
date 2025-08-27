@@ -81,7 +81,7 @@ def _get_loss_grad_and_hessian(var: Var, hessian_method:str, vectorize:bool):
 
     return loss, g_list, H
 
-def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool) -> torch.Tensor:
+def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None) -> torch.Tensor:
     """returns the update tensor, then do vec_to_tensor(update, params)"""
     params = var.params
 
@@ -94,6 +94,7 @@ def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None,
         update = apply_transform(inner, update, params=params, grads=var.grad, var=var)
 
     g = torch.cat([t.ravel() for t in update])
+    if g_proj is not None: g = g_proj(g)
 
     # ----------------------------------- solve ---------------------------------- #
     update = None
@@ -161,7 +162,6 @@ class Newton(Module):
             how to calculate hessian. Defaults to "autograd".
         vectorize (bool, optional):
             whether to enable vectorized hessian. Defaults to True.
-        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
@@ -174,6 +174,7 @@ class Newton(Module):
         eigval_fn (Callable | None, optional):
             optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
             If this is specified, eigendecomposition will be used to invert the hessian.
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
 
     # See also
 
@@ -250,9 +251,9 @@ class Newton(Module):
         update_freq: int = 1,
         hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
         vectorize: bool = True,
-        inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        inner: Chainable | None = None,
     ):
         defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, update_freq=update_freq)
         super().__init__(defaults)

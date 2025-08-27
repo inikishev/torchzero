@@ -145,7 +145,7 @@ class ESGD(Module):
                 u = [torch.randn(p.size(), generator=generator, device=p.device, dtype=p.dtype) for p in params]
 
                 Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
-                                     h=fd_h, normalize=True, retain_grad=j < n_samples-1)
+                                     h=fd_h, normalize=True, retain_graph=j < n_samples-1)
 
                 if D is None: D = Hvp
                 else: torch._foreach_add_(D, Hvp)

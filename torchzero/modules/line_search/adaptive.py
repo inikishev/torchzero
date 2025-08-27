@@ -10,7 +10,7 @@ import torch
 from .line_search import LineSearchBase, TerminationCondition, termination_condition
 
 
-def adaptive_tracking(
+def adaptive_bisection(
     f,
     a_init,
     maxiter: int,
@@ -56,7 +56,7 @@ def adaptive_tracking(
     return 0, f_0, niter
 
 
-class AdaptiveTracking(LineSearchBase):
+class AdaptiveBisection(LineSearchBase):
     """A line search that evaluates previous step size, if value increased, backtracks until the value stops decreasing,
     otherwise forward-tracks until value stops decreasing.
 
@@ -98,7 +98,7 @@ class AdaptiveTracking(LineSearchBase):
         if a_init < torch.finfo(var.params[0].dtype).tiny * 2:
             a_init = torch.finfo(var.params[0].dtype).max / 2
 
-        step_size, f, niter = adaptive_tracking(
+        step_size, f, niter = adaptive_bisection(
             objective,
             a_init=a_init,
             maxiter=maxiter,

@@ -307,7 +307,7 @@ class RandomHvp(Module):
                 u = params.sample_like(distribution=distribution, variance=1)
 
                 Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
-                                    h=h, normalize=True, retain_grad=i < n_samples-1)
+                                    h=h, normalize=True, retain_graph=i < n_samples-1)
 
                 if D is None: D = Hvp
                 else: torch._foreach_add_(D, Hvp)
