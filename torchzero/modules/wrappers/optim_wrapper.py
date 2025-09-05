@@ -66,40 +66,19 @@ class Wrap(Module):
         for p, u in zip(params, var.get_update()):
             p.grad = u
 
-        # if this module is last, can step with _opt directly
-        # direct step can't be applied if next module is LR but _opt doesn't support lr,
-        # and if there are multiple different per-parameter lrs (would be annoying to support)
-        # if var.is_last and (
-        #     (var.last_module_lrs is None)
-        #     or
-        #     (('lr' in self.optimizer.defaults) and (len(set(var.last_module_lrs)) == 1))
-        # ):
-        #     lr = 1 if var.last_module_lrs is None else var.last_module_lrs[0]
+        # if this is last module, simply use optimizer to update parameters
+        if var.modular is not None and self is var.modular.modules[-1]:
+            self.optimizer.step()
 
-        #     # update optimizer lr with desired lr
-        #     if lr != 1:
-        #         self.optimizer.defaults['__original_lr__'] = self.optimizer.defaults['lr']
-        #         for g in self.optimizer.param_groups:
-        #             g['__original_lr__'] = g['lr']
-        #             g['lr'] = g['lr'] * lr
+            # restore grad
+            for p, g in zip(params, orig_grad):
+                p.grad = g
 
-        #     # step
-        #     self.optimizer.step()
-
-        #     # restore original lr
-        #     if lr != 1:
-        #         self.optimizer.defaults['lr'] = self.optimizer.defaults.pop('__original_lr__')
-        #         for g in self.optimizer.param_groups:
-        #             g['lr'] = g.pop('__original_lr__')
-
-        #     # restore grad
-        #     for p, g in zip(params, orig_grad):
-        #         p.grad = g
-
-        #     var.stop = True; var.skip_update = True
-        #     return var
+            var.stop = True; var.skip_update = True
+            return var
 
         # this is not the last module, meaning update is difference in parameters
+        # and passed to next module
         params_before_step = [p.clone() for p in params]
         self.optimizer.step() # step and update params
         for p, g in zip(params, orig_grad):
