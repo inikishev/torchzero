@@ -45,9 +45,9 @@ class NewtonNewton(Module):
         order: int = 3,
         search_negative: bool = False,
         vectorize: bool = True,
-        eigval_tfm: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
-        defaults = dict(order=order, reg=reg, vectorize=vectorize, eigval_tfm=eigval_tfm, search_negative=search_negative)
+        defaults = dict(order=order, reg=reg, vectorize=vectorize, eigval_fn=eigval_fn, search_negative=search_negative)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -61,7 +61,7 @@ class NewtonNewton(Module):
         vectorize = settings['vectorize']
         order = settings['order']
         search_negative = settings['search_negative']
-        eigval_tfm = settings['eigval_tfm']
+        eigval_fn = settings['eigval_fn']
 
         # ------------------------ calculate grad and hessian ------------------------ #
         Hs = []
@@ -82,8 +82,8 @@ class NewtonNewton(Module):
                     Hs.append(H)
 
                     x = None
-                    if search_negative or (is_last and eigval_tfm is not None):
-                        x = _eigh_solve(H, xp, eigval_tfm, search_negative=search_negative)
+                    if search_negative or (is_last and eigval_fn is not None):
+                        x = _eigh_solve(H, xp, eigval_fn, search_negative=search_negative)
                     if x is None: x = _cholesky_solve(H, xp)
                     if x is None: x = _lu_solve(H, xp)
                     if x is None: x = _least_squares_solve(H, xp)

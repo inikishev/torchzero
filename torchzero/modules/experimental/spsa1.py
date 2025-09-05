@@ -48,7 +48,7 @@ class SPSA1(GradApproximator):
             n_samples = self.defaults['n_samples']
             h = self.get_settings(var.params, 'h')
 
-            perturbations = [params.sample_like(distribution='rademacher', generator=generator) for _ in range(n_samples)]
+            perturbations = [params.rademacher_like(generator=generator) for _ in range(n_samples)]
             torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])
 
             for param, prt in zip(params, zip(*perturbations)):
@@ -74,7 +74,7 @@ class SPSA1(GradApproximator):
             prt = perturbations[i]
 
             if prt[0] is None:
-                prt = params.sample_like('rademacher', generator=generator).mul_(h)
+                prt = params.rademacher_like(generator=generator).mul_(h)
 
             else: prt = TensorList(prt)
 

@@ -91,7 +91,7 @@ def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None,
     # -------------------------------- inner step -------------------------------- #
     update = var.get_update()
     if inner is not None:
-        update = apply_transform(inner, update, params=params, grads=var.grad, var=var)
+        update = apply_transform(inner, update, params=params, grads=var.grad, loss=var.loss, var=var)
 
     g = torch.cat([t.ravel() for t in update])
     if g_proj is not None: g = g_proj(g)
@@ -289,5 +289,5 @@ class Newton(Module):
         return var
 
     def get_H(self,var=...):
-        return _get_H(self.global_state["H"], self.defaults["eigval_tfm"])
+        return _get_H(self.global_state["H"], self.defaults["eigval_fn"])
 

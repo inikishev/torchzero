@@ -29,3 +29,5 @@ from .quasi_newton import (
     ShorR,
     ThomasOptimalMethod,
 )
+
+from .sg2 import SG2, SPSA2

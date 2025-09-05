@@ -20,7 +20,7 @@ def inm(f:torch.Tensor, J:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
     P = FbT.add_(J)
     return P
 
-def _eigval_tfm(J: torch.Tensor, fn) -> torch.Tensor:
+def _eigval_fn(J: torch.Tensor, fn) -> torch.Tensor:
     if fn is None: return J
     L, Q = torch.linalg.eigh(J) # pylint:disable=not-callable
     return (Q * L.unsqueeze(-2)) @ Q.mH
@@ -62,7 +62,7 @@ class INM(Module):
             )
 
             f = torch.cat([t.ravel() for t in f_list])
-            J = _eigval_tfm(J, self.defaults["eigval_fn"])
+            J = _eigval_fn(J, self.defaults["eigval_fn"])
 
             x_list = TensorList(var.params)
             f_list = TensorList(var.get_grad())
