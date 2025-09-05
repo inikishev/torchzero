@@ -3,7 +3,9 @@ from collections.abc import Callable, Sequence
 
 import torch
 
-from .module import Chainable, Modular, Module, Var
+from .chain import Chain
+from .module import Chainable, Module
+from .var import Var
 
 
 class Reformulation(Module, ABC):

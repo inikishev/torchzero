@@ -5,7 +5,9 @@ from typing import Any, Literal, final
 import torch
 
 from ..utils import TensorList, set_storage_, vec_to_tensors
-from .module import Chain, Chainable, Module, Var
+from .chain import Chain
+from .module import Chainable, Module
+from .var import Var
 
 Target = Literal['grad', 'update', 'closure', 'params_direct', 'params_difference', 'update_difference']
 

@@ -1,2 +1,5 @@
-from .module import Chain, Chainable, Modular, Module, Var, maybe_chain
+from .chain import Chain, maybe_chain
+from .modular import Modular
+from .module import Chainable, Module
 from .transform import Target, TensorwiseTransform, Transform, apply_transform
+from .var import Var
