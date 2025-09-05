@@ -10,6 +10,7 @@ import torch
 
 from ...core import Module, Target, Var
 from ...utils import tofloat, set_storage_
+from ..functional import clip_by_finfo
 
 
 class MaxLineSearchItersReached(Exception): pass
@@ -103,23 +104,18 @@ class LineSearchBase(Module, ABC):
     ):
         if not math.isfinite(step_size): return
 
-         # fixes overflow when backtracking keeps increasing alpha after converging
-        step_size = max(min(tofloat(step_size), 1e36), -1e36)
+         # avoid overflow error
+        step_size = clip_by_finfo(tofloat(step_size), torch.finfo(update[0].dtype))
 
         # skip is parameters are already at suggested step size
         if self._current_step_size == step_size: return
 
-        # this was basically causing floating point imprecision to build up
-        #if False:
-        # if abs(alpha) < abs(step_size) and step_size != 0:
-        #     torch._foreach_add_(params, update, alpha=alpha)
-
-        # else:
         assert self._initial_params is not None
         if step_size == 0:
             new_params = [p.clone() for p in self._initial_params]
         else:
             new_params = torch._foreach_sub(self._initial_params, update, alpha=step_size)
+
         for c, n in zip(params, new_params):
             set_storage_(c, n)
 
@@ -131,10 +127,7 @@ class LineSearchBase(Module, ABC):
         params: list[torch.Tensor],
         update: list[torch.Tensor],
     ):
-        # if not np.isfinite(step_size): step_size = [0 for _ in step_size]
-        # alpha = [self._current_step_size - s for s in step_size]
-        # if any(a!=0 for a in alpha):
-        #     torch._foreach_add_(params, torch._foreach_mul(update, alpha))
+
         assert self._initial_params is not None
         if not np.isfinite(step_size).all(): step_size = [0 for _ in step_size]
 
@@ -248,16 +241,14 @@ class LineSearchBase(Module, ABC):
         except MaxLineSearchItersReached:
             step_size = self._best_step_size
 
+        step_size = clip_by_finfo(step_size, torch.finfo(update[0].dtype))
+
         # set loss_approx
         if var.loss_approx is None: var.loss_approx = self._lowest_loss
 
-        # this is last module - set step size to found step_size times lr
-        if var.is_last:
-            if var.last_module_lrs is None:
-                self.set_step_size_(step_size, params=params, update=update)
-
-            else:
-                self._set_per_parameter_step_size_([step_size*lr for lr in var.last_module_lrs], params=params, update=update)
+        # if this is last module, directly update parameters to avoid redundant operations
+        if var.modular is not None and self is var.modular.modules[-1]:
+            self.set_step_size_(step_size, params=params, update=update)
 
             var.stop = True; var.skip_update = True
             return var
@@ -277,7 +268,7 @@ class GridLineSearch(LineSearchBase):
 
     @torch.no_grad
     def search(self, update, var):
-        start,end,num=itemgetter('start','end','num')(self.defaults)
+        start, end, num = itemgetter('start', 'end', 'num')(self.defaults)
 
         for lr in torch.linspace(start,end,num):
             self.evaluate_f(lr.item(), var=var, backward=False)

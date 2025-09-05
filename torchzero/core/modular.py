@@ -21,7 +21,7 @@ from ..utils.linalg.linear_operator import LinearOperator
 from ..utils.python_tools import flatten
 from .module import Chainable, Module
 from .var import Var
-
+from .functional import step
 
 class _EvalCounterClosure:
     """keeps track of how many times closure has been evaluated, and sets closure return"""
@@ -44,8 +44,6 @@ class _EvalCounterClosure:
         return v
 
 
-
-
 def unroll_modules(*modules: Chainable) -> list[Module]:
     unrolled = []
 
@@ -58,28 +56,6 @@ def unroll_modules(*modules: Chainable) -> list[Module]:
 
     return unrolled
 
-
-def step(var: Var, modules: Sequence[Module], is_nested:bool = False):
-    n_modules = len(modules)
-    if n_modules == 0: return var.clone(clone_update=False)
-
-    last_module = modules[-1]
-    last_lr = last_module.defaults.get('lr', None)
-
-    # step
-    for i, module in enumerate(modules):
-        if i!=0: var = var.clone(clone_update=False)
-
-        # last module, or next to last module before lr
-        if (i == n_modules - 1) or ((i == n_modules - 2) and (last_lr is not None)):
-            if len(module.children) != 0 or is_nested: var.nested_is_last = True
-            else: var.is_last = True
-            if last_lr is not None: var.last_module_lrs = [last_module.settings[p]['lr'] for p in var.params]
-
-        var = module.step(var)
-        if var.stop: break
-
-    return var
 
 # have to inherit from Modular to support lr schedulers
 # although Accelerate doesn't work due to converting param_groups to a dict
@@ -232,7 +208,7 @@ class Modular(torch.optim.Optimizer):
         if len(self.modules) == 0: raise RuntimeError("There are no modules in this `Modular` optimizer")
 
         # step
-        var = step(var, self.modules, is_nested=False)
+        var = step(var, self.modules)
 
         # apply update
         if not var.skip_update:

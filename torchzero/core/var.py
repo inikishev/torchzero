@@ -71,7 +71,7 @@ class Var:
         Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
         e.g. when projecting."""
 
-        self.modular: "Modular" = modular # pyright:ignore[reportAttributeAccessIssue]
+        self.modular: "Modular | None" = modular
         """Modular optimizer object that created this ``Var``."""
 
         self.update: list[torch.Tensor] | None = None
@@ -104,27 +104,6 @@ class Var:
         ```python
         def hook(optimizer: Modular, var: Vars): ...
         ```
-        """
-
-        self.is_last: bool = False
-        """
-        Indicates that current module is either last or next-to-last before a learning rate module.
-        This is always False if current module has children or is a child.
-        This is because otherwise the ``is_last`` would be passed to child modules, even though they aren't last.
-        """
-
-        self.nested_is_last: bool = False
-        """
-        Indicates that current module is either last or next-to-last before a learning rate module, for modules
-        that have children. This will be passed to the children unless ``var.clone()`` is used, therefore
-        a child of a last module may also receive ``var.nested_is_last=True``.
-        """
-
-        self.last_module_lrs: list[float] | None = None
-        """
-        List of per-parameter learning rates if current module is next-to-last before a
-        learning rate module, otherwise this is set to None. Ignore this unless you are manually applying
-        update to parameters.
         """
 
         self.stop: bool = False
@@ -214,8 +193,6 @@ class Var:
 
     def clone(self, clone_update: bool, parent: "Var | None" = None):
         """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via ``torch.clone``).
-
-        Doesn't copy ``is_last``, ``nested_is_last`` and ``last_module_lrs``. They will always be ``False``/``None``.
 
         Setting ``parent`` is only if clone's parameters are something different,
         while clone's closure referes to the same objective but with a "view" on parameters.

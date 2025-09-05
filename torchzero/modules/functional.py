@@ -253,3 +253,10 @@ def safe_clip(x: torch.Tensor, min=None):
 
     if x.abs() < min: return x.new_full(x.size(), min).copysign(x)
     return x
+
+
+def clip_by_finfo(x, finfo: torch.finfo):
+    """clips by (dtype.max / 2, dtype.min / 2)"""
+    if x > finfo.max / 2: return finfo.max / 2
+    if x < finfo.min / 2: return finfo.min / 2
+    return x

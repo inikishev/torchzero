@@ -754,7 +754,7 @@ SR1 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_restart=True, scale_first=True), tz.m.StrongWolfe(fallback=False)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(fallback=False)),
     needs_closure=True,
-    func='rosen', steps=50, loss=1e-12, merge_invariant=True,
+    func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 SSVM = Run(
@@ -806,7 +806,7 @@ NewtonCG = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
-    func='rosen', steps=20, loss=1e-7, merge_invariant=True,
+    func='rosen', steps=20, loss=1e-10, merge_invariant=True,
     sphere_steps=2, sphere_loss=3e-4,
 )
 

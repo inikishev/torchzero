@@ -15,7 +15,7 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
     if var.closure is None and len(modules) > 1: raise ValueError('Multistep and Sequential require closure')
 
     # store original params unless this is last module and can update params directly
-    params_before_steps = None if (var.is_last and var.last_module_lrs is None) else [p.clone() for p in params]
+    params_before_steps = [p.clone() for p in params]
 
     # first step - pass var as usual
     var = modules[0].step(var)
@@ -27,8 +27,8 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
 
             # update params
             if (not new_var.skip_update):
-                if new_var.last_module_lrs is not None:
-                    torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
+                # if new_var.last_module_lrs is not None:
+                #     torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
                 torch._foreach_sub_(params, new_var.get_update())
 
@@ -41,16 +41,16 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
 
         # final parameter update
         if (not new_var.skip_update):
-            if new_var.last_module_lrs is not None:
-                torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
+            # if new_var.last_module_lrs is not None:
+            #     torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
             torch._foreach_sub_(params, new_var.get_update())
 
     # if last module, update is applied so return new var
-    if params_before_steps is None:
-        new_var.stop = True
-        new_var.skip_update = True
-        return new_var
+    # if params_before_steps is None:
+    #     new_var.stop = True
+    #     new_var.skip_update = True
+    #     return new_var
 
     # otherwise use parameter difference as update
     var.update = list(torch._foreach_sub(params_before_steps, params))
@@ -106,10 +106,10 @@ class NegateOnLossIncrease(Module):
         f_1 = closure(False)
 
         if f_1 <= f_0:
-            if var.is_last and var.last_module_lrs is None:
-                var.stop = True
-                var.skip_update = True
-                return var
+            # if var.is_last and var.last_module_lrs is None:
+            #     var.stop = True
+            #     var.skip_update = True
+            #     return var
 
             torch._foreach_add_(var.params, update)
             return var
