@@ -10,34 +10,48 @@ class Wrap(Module):
     """
     Wraps a pytorch optimizer to use it as a module.
 
-    .. note::
-        Custom param groups are supported only by `set_param_groups`, settings passed to Modular will be ignored.
+    Note:
+        Custom param groups are supported only by ``set_param_groups``, settings passed to Modular will be applied to all parameters.
 
     Args:
         opt_fn (Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer):
-            function that takes in parameters and returns the optimizer, for example :code:`torch.optim.Adam`
-            or :code:`lambda parameters: torch.optim.Adam(parameters, lr=1e-3)`
+            function that takes in parameters and returns the optimizer, for example ``torch.optim.Adam``
+            or ``lambda parameters: torch.optim.Adam(parameters, lr=1e-3)``
         *args:
         **kwargs:
-            Extra args to be passed to opt_fn. The function is called as :code:`opt_fn(parameters, *args, **kwargs)`.
+            Extra args to be passed to opt_fn. The function is called as ``opt_fn(parameters, *args, **kwargs)``.
+        use_param_groups:
+            Whether to pass settings passed to Modular to the wrapped optimizer.
 
-    Example:
-        wrapping pytorch_optimizer.StableAdamW
+            Note that settings to the first parameter are used for all parameters,
+            so if you specified per-parameter settings, they will be ignored.
 
-        .. code-block:: py
+    ### Example:
+    wrapping pytorch_optimizer.StableAdamW
 
-            from pytorch_optimizer import StableAdamW
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Wrap(StableAdamW, lr=1),
-                tz.m.Cautious(),
-                tz.m.LR(1e-2)
-            )
+    ```python
 
+    from pytorch_optimizer import StableAdamW
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Wrap(StableAdamW, lr=1),
+        tz.m.Cautious(),
+        tz.m.LR(1e-2)
+    )
+    ```
 
     """
-    def __init__(self, opt_fn: Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer, *args, **kwargs):
-        super().__init__()
+
+    def __init__(
+        self,
+        opt_fn: Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer,
+        *args,
+        use_param_groups: bool = True,
+        **kwargs,
+    ):
+        defaults = dict(use_param_groups=use_param_groups)
+        super().__init__(defaults=defaults)
+
         self._opt_fn = opt_fn
         self._opt_args = args
         self._opt_kwargs = kwargs
@@ -48,7 +62,7 @@ class Wrap(Module):
             self.optimizer = self._opt_fn
 
     def set_param_groups(self, param_groups):
-        self._custom_param_groups = param_groups
+        self._custom_param_groups = _make_param_groups(param_groups, differentiable=False)
         return super().set_param_groups(param_groups)
 
     @torch.no_grad
@@ -60,6 +74,20 @@ class Wrap(Module):
             assert callable(self._opt_fn)
             param_groups = params if self._custom_param_groups is None else self._custom_param_groups
             self.optimizer = self._opt_fn(param_groups, *self._opt_args, **self._opt_kwargs)
+
+        # set optimizer per-parameter settings
+        if self.defaults["use_param_groups"] and var.modular is not None:
+            for group in self.optimizer.param_groups:
+                first_param = group['params'][0]
+                setting = self.settings[first_param]
+
+                # settings passed in `set_param_groups` are the highest priority
+                # schedulers will override defaults but not settings passed in `set_param_groups`
+                # this is consistent with how Modular does it.
+                if self._custom_param_groups is not None:
+                    setting = {k:v for k,v in setting if k not in self._custom_param_groups[0]}
+
+                group.update(setting)
 
         # set grad to update
         orig_grad = [p.grad for p in params]

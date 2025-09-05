@@ -88,6 +88,8 @@ class Modular(torch.optim.Optimizer):
 
         param_groups = _make_param_groups(params, differentiable=False)
         self._per_parameter_global_settings: dict[torch.Tensor, list[MutableMapping[str, Any]]] = {}
+        """Maps each parameter tensor to a list of per-module global settings.
+        Each element in the list is ChainDict's 2nd map of a module."""
 
         # make sure there is no more than a single learning rate module
         lr_modules = [m for m in self.unrolled_modules if 'lr' in m.defaults]
@@ -138,6 +140,9 @@ class Modular(torch.optim.Optimizer):
     def add_param_group(self, param_group: dict[str, Any]):
         proc_param_group = _make_param_groups([param_group], differentiable=False)[0]
         self.param_groups.append(ChainMap(proc_param_group, self.defaults))
+        # setting param_group[key] = value sets it to first map (the `proc_param_group`).
+        # therefore lr schedulers override defaults, but not settings passed to individual modules
+        # by `set_param_groups`.
 
         for p in proc_param_group['params']:
             # updates global per-parameter setting overrides (medium priority)
