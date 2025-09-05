@@ -370,6 +370,6 @@ class StrongWolfe(LineSearchBase):
             self.global_state['initial_scale'] = self.global_state.get('initial_scale', 1) * 0.5
             finfo = torch.finfo(dir[0].dtype)
             if self.global_state['initial_scale'] < finfo.tiny * 2:
-                self.global_state['initial_scale'] = finfo.max / 2
+                self.global_state['initial_scale'] = init_value * 2
 
         return 0
