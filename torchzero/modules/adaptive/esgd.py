@@ -144,7 +144,7 @@ class ESGD(Module):
             for j in range(n_samples):
                 u = [torch.randn(p.size(), generator=generator, device=p.device, dtype=p.dtype) for p in params]
 
-                Hvp, rgrad = self.Hvp(u, at_x0=True, var=var, rgrad=rgrad, hvp_method=hvp_method,
+                Hvp, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
                                      h=fd_h, normalize=True, retain_graph=j < n_samples-1)
 
                 if D is None: D = Hvp

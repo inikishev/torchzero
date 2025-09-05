@@ -1,23 +1,26 @@
 import math
-
+from collections import deque
 from collections.abc import Callable
 from typing import Literal
 
 import torch
 
 from ...core import Chainable, Module, apply_transform
-from ...utils import TensorList, vec_to_tensors, Distributions
-from ...utils.derivatives import flatten_jacobian
-from .newton import _newton_step
+from ...utils import Distributions, TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import Sketched
+from .newton import _newton_step
 
-def _orthonormal_sketch(m, n, dtype, device, generator):
+def _qr_orthonormalize(A:torch.Tensor):
+    m,n = A.shape
     if m < n:
-        q, _ = torch.linalg.qr(torch.randn(n, m, dtype=dtype, device=device, generator=generator)) # pylint:disable=not-callable
+        q, _ = torch.linalg.qr(A.T) # pylint:disable=not-callable
         return q.T
     else:
-        q, _ = torch.linalg.qr(torch.randn(m, n, dtype=dtype, device=device, generator=generator)) # pylint:disable=not-callable
+        q, _ = torch.linalg.qr(A) # pylint:disable=not-callable
         return q
+
+def _orthonormal_sketch(m, n, dtype, device, generator):
+    return _qr_orthonormalize(torch.randn(m, n, dtype=dtype, device=device, generator=generator))
 
 def _gaussian_sketch(m, n, dtype, device, generator):
     return torch.randn(m, n, dtype=dtype, device=device, generator=generator) / math.sqrt(m)
@@ -28,7 +31,11 @@ class RSN(Module):
     Args:
         sketch_size (int):
             size of the random sketch. This many hessian-vector products will need to be evaluated each step.
-        sketch_type (str, optional): "orthonormal" or "gaussian". Defaults to "orthonormal".
+        sketch_type (str, optional):
+            - "orthonormal" - random orthonormal basis. Orthonormality is necessary to use linear operator based modules such as trust region, but it can be slower to compute.
+            - "gaussian" - random gaussian (not orthonormal) basis.
+            - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt.
+            - "mixed" - random orthonormal basis but with three directions set to gradient, slow EMA and fast EMA (default).
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
             How to compute hessian-matrix product:
@@ -56,15 +63,35 @@ class RSN(Module):
         seed (int | None, optional): seed for random generator. Defaults to None.
         inner (Chainable | None, optional): preconditions output of this module. Defaults to None.
 
+    ### Examples
+
+    RSN with line search
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.RSN(),
+        tz.m.Backtracking()
+    )
+    ```
+
+    RSN with trust region
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquardt(tz.m.RSN()),
+    )
+    ```
+
 
     Reference:
-        [Gower, Robert, et al. "RSN: randomized subspace Newton." Advances in Neural Information Processing Systems 32 (2019).](https://arxiv.org/abs/1905.10874)
+        1. [Gower, Robert, et al. "RSN: randomized subspace Newton." Advances in Neural Information Processing Systems 32 (2019).](https://arxiv.org/abs/1905.10874)
+        2. Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
     """
 
     def __init__(
         self,
         sketch_size: int,
-        sketch_type: Literal["orthonormal", "gaussian",] = "orthonormal",
+        sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "mixed",
         damping:float=0,
         hvp_method: Literal["batched", "autograd", "forward", "central"] = "batched",
         h: float = 1e-2,
@@ -100,19 +127,67 @@ class RSN(Module):
             dtype=params[0].dtype
 
             # sample sketch matrix S: (ndim, sketch_size)
-            sketch_size = self.defaults["sketch_size"]
+            sketch_size = min(self.defaults["sketch_size"], ndim)
             sketch_type = self.defaults["sketch_type"]
+            hvp_method = self.defaults["hvp_method"]
 
             if sketch_type in ('normal', 'gaussian'):
                 S = _gaussian_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
             elif sketch_type == 'orthonormal':
                 S = _orthonormal_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+
+            elif sketch_type == 'common_directions':
+                # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
+                g_list = var.get_grad(create_graph=hvp_method in ("batched", "autograd"))
+                g = torch.cat([t.ravel() for t in g_list])
+
+                # initialize directions deque
+                if "directions" not in self.global_state:
+
+                    g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
+                    if g_norm < torch.finfo(g.dtype).tiny * 2:
+                        g = torch.randn_like(g)
+                        g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
+
+                    self.global_state["directions"] = deque([g / g_norm], maxlen=sketch_size)
+                    S = self.global_state["directions"][0].unsqueeze(1)
+
+                # add new steepest descent direction orthonormal to existing columns
+                else:
+                    S = torch.stack(tuple(self.global_state["directions"]), dim=1)
+                    p = g - S @ (S.T @ g)
+                    p_norm = torch.linalg.vector_norm(p) # pylint:disable=not-callable
+                    if p_norm > torch.finfo(p.dtype).tiny * 2:
+                        p = p / p_norm
+                        self.global_state["directions"].append(p)
+                        S = torch.cat([S, p.unsqueeze(1)], dim=1)
+
+            elif sketch_type == "mixed":
+                g_list = var.get_grad(create_graph=hvp_method in ("batched", "autograd"))
+                g = torch.cat([t.ravel() for t in g_list])
+
+                if "slow_ema" not in self.global_state:
+                    self.global_state["slow_ema"] = torch.randn_like(g) * 1e-2
+                    self.global_state["fast_ema"] = torch.randn_like(g) * 1e-2
+
+                slow_ema = self.global_state["slow_ema"]
+                fast_ema = self.global_state["fast_ema"]
+                slow_ema.lerp_(g, 0.001)
+                fast_ema.lerp_(g, 0.1)
+
+                S = torch.stack([g, slow_ema, fast_ema], dim=1)
+                if sketch_size > 3:
+                    S_random = _gaussian_sketch(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator)
+                    S = torch.cat([S, S_random], dim=1)
+
+                S = _qr_orthonormalize(S)
+
             else:
-                raise ValueError(f'Unknow sketch_type {sketch_type}')
+                raise ValueError(f'Unknown sketch_type {sketch_type}')
 
             # form sketched hessian
-            HS, _ = self.hessian_matrix_product(S, at_x0=True, var=var, rgrad=None, hvp_method=self.defaults["hvp_method"], normalize=True, retain_graph=False, h=self.defaults["h"])
+            HS, _ = var.hessian_matrix_product(S, at_x0=True, rgrad=None, hvp_method=self.defaults["hvp_method"], normalize=True, retain_graph=False, h=self.defaults["h"])
             H_sketched = S.T @ HS
 
             self.global_state["H_sketched"] = H_sketched

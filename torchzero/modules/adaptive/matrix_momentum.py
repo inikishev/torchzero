@@ -74,7 +74,7 @@ class MatrixMomentum(Module):
         if step > 0:
             s = p - p_prev
 
-            Hs, _ = self.Hvp(s, at_x0=True, var=var, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_graph=False)
+            Hs, _ = var.hessian_vector_product(s, at_x0=True, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_graph=False)
             Hs = [t.detach() for t in Hs]
 
             if 'hvp_tfm' in self.children:

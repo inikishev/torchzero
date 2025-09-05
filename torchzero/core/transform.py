@@ -88,7 +88,7 @@ class Transform(Module, ABC):
 
     @final
     @torch.no_grad
-    def transform_update(
+    def update_transform(
         self,
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
@@ -125,7 +125,7 @@ class Transform(Module, ABC):
 
     @final
     @torch.no_grad
-    def transform_apply(
+    def apply_transform(
         self,
         tensors: list[torch.Tensor],
         params: list[torch.Tensor],
@@ -192,7 +192,7 @@ class Transform(Module, ABC):
     ):
         """`params` will be used as keys and need to always point to same tensor objects.`"""
         states, settings = self._get_keyed_states_settings(params)
-        self.transform_update(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
+        self.update_transform(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
 
 
     @final
@@ -206,7 +206,7 @@ class Transform(Module, ABC):
     ):
         """`params` will be used as keys and need to always point to same tensor objects.`"""
         states, settings = self._get_keyed_states_settings(params)
-        return self.transform_apply(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
+        return self.apply_transform(tensors=tensors, params=params, grads=grads, loss=loss, states=states, settings=settings)
 
 
     def pre_step(self, var: Var) -> None:

@@ -136,7 +136,7 @@ class Backtracking(LineSearchBase):
         if adaptive:
             finfo = torch.finfo(var.params[0].dtype)
             if init_scale <= finfo.tiny * 2:
-                self.global_state["init_scale"] = finfo.max / 2
+                self.global_state["init_scale"] = init * 2
             else:
                 self.global_state['init_scale'] = init_scale * beta**maxiter
         return 0

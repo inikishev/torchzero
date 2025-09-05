@@ -142,7 +142,7 @@ class Modular(torch.optim.Optimizer):
         self.param_groups.append(ChainMap(proc_param_group, self.defaults))
         # setting param_group[key] = value sets it to first map (the `proc_param_group`).
         # therefore lr schedulers override defaults, but not settings passed to individual modules
-        # by `set_param_groups`.
+        # by `set_param_groups` .
 
         for p in proc_param_group['params']:
             # updates global per-parameter setting overrides (medium priority)

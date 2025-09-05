@@ -242,4 +242,135 @@ class Var:
             grads = [p.grad for p in self.params if p.grad is not None]
             if len(grads) != 0: torch._foreach_zero_(grads)
 
+
+    # ------------------------------ HELPER METHODS ------------------------------ #
+    @torch.no_grad
+    def hessian_vector_product(
+        self,
+        v: Sequence[torch.Tensor],
+        at_x0: bool,
+        rgrad: Sequence[torch.Tensor] | None,
+        hvp_method: Literal['autograd', 'forward', 'central'],
+        h: float,
+        normalize: bool,
+        retain_graph: bool,
+    ) -> tuple[list[torch.Tensor], Sequence[torch.Tensor] | None]:
+        """
+        Returns ``(Hvp, rgrad)``, where ``rgrad`` is gradient at current parameters,
+        possibly with ``create_graph=True``, or it may be None with ``hvp_method="central"``.
+        Gradient is set to vars automatically if ``at_x0``, you can always access it with ``vars.get_grad()``
+
+        Single sample example:
+
+        ```python
+        Hvp, _ = self.hessian_vector_product(v, at_x0=True, rgrad=None, ..., retain_graph=False)
+        ```
+
+        Multiple samples example:
+
+        ```python
+        D = None
+        rgrad = None
+        for i in range(n_samples):
+            v = [torch.randn_like(p) for p in params]
+            Hvp, rgrad = self.hessian_vector_product(v, at_x0=True, rgrad=rgrad, ..., retain_graph=i < n_samples-1)
+
+            if D is None: D = Hvp
+            else: torch._foreach_add_(D, Hvp)
+
+        if n_samples > 1: torch._foreach_div_(D, n_samples)
+        ```
+
+        Args:
+            v (Sequence[torch.Tensor]): vector in hessian-vector product
+            at_x0 (bool): whether this is being called at original or perturbed parameters.
+            var (Var): Var
+            rgrad (Sequence[torch.Tensor] | None): pass None initially, then pass what this returns.
+            hvp_method (str): hvp method.
+            h (float): finite difference step size
+            normalize (bool): whether to normalize v for finite difference
+            retain_grad (bool): retain grad
+        """
+        # get grad
+        if rgrad is None and hvp_method in ('autograd', 'forward'):
+            if at_x0: rgrad = self.get_grad(create_graph = hvp_method=='autograd')
+            else:
+                if self.closure is None: raise RuntimeError("Closure is required to calculate HVp")
+                with torch.enable_grad():
+                    loss = self.closure()
+                    rgrad = torch.autograd.grad(loss, self.params, create_graph = hvp_method=='autograd')
+
+        if hvp_method == 'autograd':
+            assert rgrad is not None
+            Hvp = hvp(self.params, rgrad, v, retain_graph=retain_graph)
+
+        elif hvp_method == 'forward':
+            assert rgrad is not None
+            loss, Hvp = hvp_fd_forward(self.closure, self.params, v, h=h, g_0=rgrad, normalize=normalize)
+
+        elif hvp_method == 'central':
+            loss, Hvp = hvp_fd_central(self.closure, self.params, v, h=h, normalize=normalize)
+
+        else:
+            raise ValueError(hvp_method)
+
+        return list(Hvp), rgrad
+
+    @torch.no_grad
+    def hessian_matrix_product(
+        self,
+        M: torch.Tensor,
+        at_x0: bool,
+        rgrad: Sequence[torch.Tensor] | None,
+        hvp_method: Literal["batched", 'autograd', 'forward', 'central'],
+        h: float,
+        normalize: bool,
+        retain_graph: bool,
+    ) -> tuple[torch.Tensor, Sequence[torch.Tensor] | None]:
+        """M is (n_dim, n_hvps), computes H @ M - (n_dim, n_hvps)."""
+
+        # get grad
+        if rgrad is None and hvp_method in ('autograd', 'forward', "batched"):
+            if at_x0: rgrad = self.get_grad(create_graph = hvp_method in ('autograd', "batched"))
+            else:
+                if self.closure is None: raise RuntimeError("Closure is required to calculate HVp")
+                with torch.enable_grad():
+                    loss = self.closure()
+                    create_graph = hvp_method in ('autograd', "batched")
+                    rgrad = torch.autograd.grad(loss, self.params, create_graph=create_graph)
+
+        if hvp_method == "batched":
+            assert rgrad is not None
+            with torch.enable_grad():
+                flat_inputs = torch.cat([g.ravel() for g in rgrad])
+                HM_list = torch.autograd.grad(flat_inputs, self.params, grad_outputs=M.T, is_grads_batched=True, retain_graph=retain_graph)
+                HM = flatten_jacobian(HM_list).T
+
+        elif hvp_method == 'autograd':
+            assert rgrad is not None
+            with torch.enable_grad():
+                flat_inputs = torch.cat([g.ravel() for g in rgrad])
+                HV_tensors = [torch.autograd.grad(
+                    flat_inputs, self.params, grad_outputs=col,
+                    retain_graph = retain_graph or (i < M.size(1) - 1)
+                ) for i,col in enumerate(M.unbind(1))]
+                HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+                HM = torch.stack(HM_list, 1)
+
+        elif hvp_method == 'forward':
+            assert rgrad is not None
+            HV_tensors = [hvp_fd_forward(self.closure, self.params, vec_to_tensors(col, self.params), h=h, g_0=rgrad, normalize=normalize)[1] for col in M.unbind(1)]
+            HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+            HM = flatten_jacobian(HM_list)
+
+        elif hvp_method == 'central':
+            HV_tensors = [hvp_fd_central(self.closure, self.params, vec_to_tensors(col, self.params), h=h, normalize=normalize)[1] for col in M.unbind(1)]
+            HM_list = [torch.cat([t.ravel() for t in tensors]) for tensors in HV_tensors]
+            HM = flatten_jacobian(HM_list)
+
+        else:
+            raise ValueError(hvp_method)
+
+        return HM, rgrad
+
 # endregion
