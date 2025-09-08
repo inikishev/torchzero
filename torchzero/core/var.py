@@ -295,7 +295,7 @@ class Var:
         if rgrad is None and hvp_method in ('autograd', 'forward'):
             if at_x0: rgrad = self.get_grad(create_graph = hvp_method=='autograd')
             else:
-                if self.closure is None: raise RuntimeError("Closure is required to calculate HVp")
+                if self.closure is None: raise RuntimeError("Closure is required to calculate Hvp")
                 with torch.enable_grad():
                     loss = self.closure()
                     rgrad = torch.autograd.grad(loss, self.params, create_graph = hvp_method=='autograd')

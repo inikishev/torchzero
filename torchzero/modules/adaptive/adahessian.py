@@ -4,8 +4,7 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Module, Target, Transform, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist
-from ..functional import debiased_step_size
+from ...utils import NumberList, TensorList
 
 def _full_average(hvp: torch.Tensor):
     if hvp.ndim >= 3:  # Conv kernel
@@ -59,16 +58,17 @@ def adahessian(
     # update preconditioner
     if step % update_freq == 0:
         assert D is not None
-        D_exp_avg_sq_.mul_(beta2).addcmul_(D, D, 1-beta2)
+        D_exp_avg_sq_.mul_(beta2).addcmul_(D, D, 1 - beta2)
 
     else:
         assert D is None
 
+    bias_correction1 = 1.0 - (beta1 ** (step + 1))
+    bias_correction2 = 1.0 - (beta2 ** (step + 1))
 
-    denom = D_exp_avg_sq_.sqrt().pow_(hessian_power).add_(eps)
-    num = exp_avg_ * debiased_step_size(step+1, beta1, beta2)
+    denom = (D_exp_avg_sq_ / bias_correction2).pow_(hessian_power / 2).add_(eps)
 
-    return num.div_(denom)
+    return (exp_avg_ / denom).div_(bias_correction1)
 
 
 class AdaHessian(Module):
@@ -191,17 +191,17 @@ class AdaHessian(Module):
 
             rgrad=None
             for i in range(n_samples):
-                u = [_rademacher_like(p, generator=generator) for p in params]
+                z = [_rademacher_like(p, generator=generator) for p in params]
 
-                Hvp, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
+                Hz, rgrad = var.hessian_vector_product(z, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
                                      h=fd_h, normalize=True, retain_graph=i < n_samples-1)
-                Hvp = tuple(Hvp)
+                zHz = tuple(Hz)
+                torch._foreach_mul_(zHz, z)
 
-                if D is None: D = Hvp
-                else: torch._foreach_add_(D, Hvp)
+                if D is None: D = zHz
+                else: torch._foreach_add_(D, zHz, alpha = 1/n_samples)
 
             assert D is not None
-            if n_samples > 1: torch._foreach_div_(D, n_samples)
 
             D = TensorList(D).zipmap_args(_block_average, block_size, averaging)
 

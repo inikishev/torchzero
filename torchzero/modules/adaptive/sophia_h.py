@@ -155,15 +155,15 @@ class SophiaH(Module):
             for i in range(n_samples):
                 u = [torch.randn(p.shape, device=p.device, dtype=p.dtype, generator=generator) for p in params]
 
-                Hvp, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
+                Hu, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
                                      h=fd_h, normalize=True, retain_graph=i < n_samples-1)
-                Hvp = tuple(Hvp)
+                uHu = tuple(Hu)
+                torch._foreach_mul_(uHu, u)
 
-                if h is None: h = Hvp
-                else: torch._foreach_add_(h, Hvp)
+                if h is None: h = uHu
+                else: torch._foreach_add_(h, uHu, alpha=1/n_samples)
 
             assert h is not None
-            if n_samples > 1: torch._foreach_div_(h, n_samples)
 
         update = var.get_update()
         if 'inner' in self.children:
