@@ -873,8 +873,8 @@ SophiaH = Run(
 
 # -------------------------- higher_order ------------------------- #
 HigherOrderNewton = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(trust_method=None)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HigherOrderNewton(2, trust_method=None)),
+    func_opt=lambda p: tz.Modular(p, tz.m.experimental.HigherOrderNewton(trust_method=None)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.experimental.HigherOrderNewton(2, trust_method=None)),
     needs_closure=True,
     func='rosen', steps=1, loss=2e-10, merge_invariant=True,
     sphere_steps=1, sphere_loss=1e-10,
