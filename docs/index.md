@@ -82,6 +82,6 @@ The code above will also work with any other optimizer because all PyTorch optim
 
 To learn more about how to use torchzero check [Basics](<Basics>).
 
-An overview of optimization algorithms in torchzero along with visualizations, explanations and benchmarks is available in the [overview section](<../overview/0. Introduction>).
+An overview of optimization algorithms in torchzero along with visualizations, explanations and benchmarks is available in the [overview section](<overview/0. Introduction>).
 
 If you just want to see what algorithms are implemeted, check [API reference](<API>).
