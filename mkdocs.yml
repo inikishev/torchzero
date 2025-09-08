@@ -3,6 +3,7 @@
 # STEP TWO - MAKE SURE PROJECTS ROOT DIRECTORY IS SELECTED
 # STEP THREE - TYPE IN mkdocs serve
 # STEP FOUR - ...
+# okay so github actions builds this whenever I push to https://inikishev.github.io/torchzero/
 
 # --------------------------------- METADATA --------------------------------- #
 site_name: torchzero
@@ -48,7 +49,7 @@ theme:
     # - navigation.instant.prefetch
     - navigation.sections # makes top level groups into sections
     - navigation.path # adds path to current page
-    - navigation.indexes # a section with children can be a page
+    # - navigation.indexes # a section with children can be a page
     - toc.follow
     - search.suggest
     - search.highlight
@@ -126,10 +127,10 @@ plugins:
           # - scipy.optimize
 
 nav:
-  - Home: API/index.md
-  - About: about.md
+  - Getting started: index.md
   - Overview:
     - Basics: Basics.ipynb
+    - 0. Introduction: overview/0. Introduction.ipynb
     - 1. First order methods: overview/1. First order methods.ipynb
     - 2. Momentum: overview/2. Momentum.ipynb
     - 3. Adaptive methods: overview/3. Adaptive methods.ipynb

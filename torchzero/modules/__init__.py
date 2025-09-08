@@ -2,7 +2,6 @@ from . import experimental
 from .clipping import *
 from .conjugate_gradient import *
 from .grad_approximation import *
-from .higher_order import *
 from .least_squares import *
 from .line_search import *
 from .misc import *

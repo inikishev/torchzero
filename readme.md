@@ -2,15 +2,29 @@
 
 <h1 align='center'>torchzero</h1>
 
-torchzero is a general purpose optimization library with a highly modular design. There are many algorithms implemented in torchzero, including first and second order algorithms, Quasi-Newton methods, conjugate gradient, gradient approximations, line searches, trust regions, etc. The modularity allows, for example, to use Newton or any Quasi-Newton method with any trust region or line search.
+torchzero provides efficient implementations of 300+ optimization algorithms with pytorch optimizer interface, encompassing many classes of unconstrained optimization - convex and non-convex, local and global, derivative free, gradient based and second order, least squares, etc.
 
-> **note:** This project is being actively developed, there may be API changes.
+The algorithms are designed to be as modular as possibe - they can be freely combined, for example all second order-like methods can be combined with any line search or trust region algorithm. Techniques like gradient clipping, weight decay, sharpness-aware minimization, cautious updates, gradient accumulation are their own modules and can be used with anything else.
+
+> **note:** This project is being actively developed, there may be API changes, although at this point I am very happy with the API.
+
+## Installation
+
+```bash
+pip install torchzero
+```
+
+The github version may be a bit more recent and less tested:
+
+```bash
+pip install git+https://github.com/inikishev/torchzero
+```
 
 ## How to use
 
-An overview of the modules available in torchzero is available on the [docs](https://inikishev.github.io/torchzero/API/).
+Each module represents a distinct step in the optimization process. A list of modules implemented in torchzero available on the [wiki](https://inikishev.github.io/torchzero/API/).
 
-Construct a modular optimizer and use like any other pytorch optimizer, although some modules require a closure as detailed in the next section.
+Construct a ``tz.Modular`` optimizer with the desired modules and use as any other pytorch optimizer:
 
 ```py
 optimizer = tz.Modular(
@@ -34,7 +48,7 @@ Here is what happens:
 
 ## Advanced optimization
 
-Certain modules, particularly line searches and gradient approximations require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
+Certain modules such as line searches and trust regions require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
 
 ```python
 model = nn.Sequential(nn.Linear(10, 10), nn.ELU(), nn.Linear(10, 1))
@@ -86,26 +100,16 @@ def closure(backward=True):
         loss.backward()
     return loss
 
-opt = tz.Modular([X], tz.m.NewtonCGSteihaug(hvp_method='forward'))
+opt = tz.Modular([X], tz.m.NewtonCGSteihaug())
 for step in range(24):
     loss = opt.step(closure)
     print(f'{step} - {loss}')
 ```
 
-## Wiki
+## Learn more
 
-More information and examples along with visualizations and explanations of many of the algorithms implemented in torchzero are available on the [wiki](https://inikishev.github.io/torchzero/overview/Basics/)
+To learn more about how to use torchzero check [Basics](<https://inikishev.github.io/torchzero/Basics/>).
 
-## Installation
+An overview of optimization algorithms in torchzero along with visualizations, explanations and benchmarks is available in the [overview section](<https://inikishev.github.io/torchzero/overview/0.%20Introduction/>).
 
-torchzero can be installed from The Python Package Index:
-
-```bash
-pip install torchzero
-```
-
-Alternatively install it directly from this repo:
-
-```bash
-pip install git+https://github.com/inikishev/torchzero
-```
+If you just want to see what algorithms are implemeted, check [API reference](<https://inikishev.github.io/torchzero/API/>).

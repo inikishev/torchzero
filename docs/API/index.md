@@ -10,7 +10,6 @@ There are a lot of modules, so they are vaguely split into sub-packages, althoug
 * [Conjugate gradient](modules/conjugate_gradient.md) - conjugate gradient methods.
 * [Quasi-newton](modules/quasi_newton.md) - quasi-newton methods that estimate the hessian using gradient information.
 * [Second order](modules/second_order.md) - "True" second order methods that use exact second order information.
-* [Higher order](modules/higher_order.md) - third and higher order methods (currently just higher order newton).
 * [Gradient approximation](modules/grad_approximation.md) - modules that estimate the gradient using function values.
 * [Least-squares](modules/least_squares.md) - least-squares methods (Gauss-newton)
 

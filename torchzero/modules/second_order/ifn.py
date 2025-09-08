@@ -26,7 +26,7 @@ class InverseFreeNewton(Module):
         this uses roughly O(N^2) memory.
 
     Reference
-        Massalski, Marcin, and Magdalena Nockowska-Rosiak. "INVERSE-FREE NEWTON'S METHOD." Journal of Applied Analysis & Computation 15.4 (2025): 2238-2257.
+        [Massalski, Marcin, and Magdalena Nockowska-Rosiak. "INVERSE-FREE NEWTON'S METHOD." Journal of Applied Analysis & Computation 15.4 (2025): 2238-2257.](https://www.jaac-online.com/article/doi/10.11948/20240428)
     """
     def __init__(
         self,
@@ -58,14 +58,15 @@ class InverseFreeNewton(Module):
             if 'Y' not in self.global_state:
                 num = H.T
                 denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
+
                 finfo = torch.finfo(H.dtype)
                 self.global_state['Y'] = num.div_(denom.clip(min=finfo.tiny * 2, max=finfo.max / 2))
 
             else:
                 Y = self.global_state['Y']
-                I = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
-                I -= H @ Y
-                self.global_state['Y'] = Y @ I
+                I2 = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
+                I2 -= H @ Y
+                self.global_state['Y'] = Y @ I2
 
 
     def apply(self, var):

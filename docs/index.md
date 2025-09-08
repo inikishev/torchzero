@@ -1,17 +1,87 @@
-<!-- # Welcome to MkDocs
+# Getting started
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+torchzero provides efficient implementations of 300+ optimization algorithms with pytorch optimizer interface, encompassing many classes of unconstrained optimization - convex and non-convex, local and global, derivative free, gradient based and second order, least squares, etc.
 
-## Commands
+The algorithms are designed to be as modular as possibe - they can be freely combined, for example all second order-like methods can be combined with any line search or trust region algorithm. Techniques like gradient clipping, weight decay, sharpness-aware minimization, cautious updates, gradient accumulation are their own modules and can be used with anything else.
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+> **note:** This project is being actively developed, there may be API changes, although at this point I am very happy with the API.
 
-## Project layout
+## Installation
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files. -->
+```bash
+pip install torchzero
+```
+
+The github version may be a bit more recent and less tested:
+
+```bash
+pip install git+https://github.com/inikishev/torchzero
+```
+
+## How to use
+
+Each module represents a distinct step in the optimization process. Construct a ``tz.Modular`` optimizer with the desired modules and use as any other pytorch optimizer:
+
+```py
+optimizer = tz.Modular(
+    model.parameters(),
+    tz.m.ClipValue(1),
+    tz.m.Adam(),
+    tz.m.WeightDecay(1e-2),
+    tz.m.LR(1e-1)
+)
+```
+
+Here is what happens:
+
+1. The gradient is passed to the ``ClipValue(1)`` module, which returns gradient with magnitudes clipped to be no larger than 1.
+
+2. Clipped gradient is passed to ``Adam()``, which updates Adam momentum buffers and returns the Adam update.
+
+3. The Adam update is passed to ``WeightDecay()`` which adds a weight decay penalty to the Adam update. Since we placed it after Adam, the weight decay is decoupled. By moving ``WeightDecay()`` before ``Adam()``, we can get coupled weight decay.
+
+4. Finally the update is passed to ``LR(0.1)``, which multiplies it by the learning rate of 0.1.
+
+## Advanced optimization
+
+Certain modules such as line searches and trust regions require a closure, similar to L-BFGS in PyTorch. Also some modules require closure to accept an additional `backward` argument, refer to example below:
+
+```python
+model = nn.Sequential(nn.Linear(10, 10), nn.ELU(), nn.Linear(10, 1))
+inputs = torch.randn(100,10)
+targets = torch.randn(100, 1)
+
+optimizer = tz.Modular(
+    model.parameters(),
+    tz.m.CubicRegularization(tz.m.Newton()),
+)
+
+for i in range(1, 51):
+
+    def closure(backward=True):
+        preds = model(inputs)
+        loss = F.mse_loss(preds, targets)
+
+        # If backward=True, closure should call
+        # optimizer.zero_grad() and loss.backward()
+        if backward:
+            optimizer.zero_grad()
+            loss.backward()
+
+        return loss
+
+    loss = optimizer.step(closure)
+
+    if i % 10 == 0:
+        print(f"step: {i}, loss: {loss.item():.4f}")
+```
+
+The code above will also work with any other optimizer because all PyTorch optimizers and most custom ones support closure, so there is no need to rewrite training loop.
+
+## Learn more
+
+To learn more about how to use torchzero check [Basics](<../Basics>).
+
+An overview of optimization algorithms in torchzero along with visualizations, explanations and benchmarks is available in the [overview section](<../overview/0. Introduction>).
+
+If you just want to see what algorithms are implemeted, check [API reference](<../API>).

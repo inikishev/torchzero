@@ -4,6 +4,7 @@ from .curveball import CurveBall
 # from dct import DCTProjection
 from .fft import FFTProjection
 from .gradmin import GradMin
+from .higher_order_newton import HigherOrderNewton
 from .l_infinity import InfinityNormTrustRegion
 from .momentum import (
     CoordinateMomentum,
