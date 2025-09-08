@@ -128,8 +128,8 @@ plugins:
 
 nav:
   - Getting started: index.md
+  - Basics: Basics.ipynb
   - Overview:
-    - Basics: Basics.ipynb
     - 0. Introduction: overview/0. Introduction.ipynb
     - 1. First order methods: overview/1. First order methods.ipynb
     - 2. Momentum: overview/2. Momentum.ipynb
