@@ -2,7 +2,7 @@
 
 <h1 align='center'>torchzero</h1>
 
-torchzero provides efficient implementations of 300+ optimization algorithms with pytorch optimizer interface, encompassing many classes of unconstrained optimization - convex and non-convex, local and global, derivative free, gradient based and second order, least squares, etc.
+torchzero provides efficient implementations of a wide range of optimization algorithms with pytorch optimizer interface, encompassing many classes of unconstrained optimization - convex and non-convex, local and global, derivative free, gradient based and second order, least squares, etc.
 
 The algorithms are designed to be as modular as possibe - they can be freely combined, for example all second order-like methods can be combined with any line search or trust region algorithm. Techniques like gradient clipping, weight decay, sharpness-aware minimization, cautious updates, gradient accumulation are their own modules and can be used with anything else.
 
