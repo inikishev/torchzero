@@ -22,7 +22,7 @@ pip install git+https://github.com/inikishev/torchzero
 
 ## How to use
 
-Each module represents a distinct step in the optimization process. A list of modules implemented in torchzero available on the [wiki](https://inikishev.github.io/torchzero/API/).
+Each module represents a distinct step in the optimization process. See list of modules on the [wiki](https://inikishev.github.io/torchzero/API/).
 
 Construct a ``tz.Modular`` optimizer with the desired modules and use as any other pytorch optimizer:
 

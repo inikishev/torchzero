@@ -147,6 +147,8 @@ class Online(Module):
     """
     def __init__(self, *modules: Module,):
         super().__init__()
+        if len(modules) == 0:
+            raise RuntimeError("Online got empty list of modules. To make a module online, wrap it in tz.m.Online, e.g. `tz.m.Online(tz.m.LBFGS())`")
 
         self.set_child('module', modules)
 

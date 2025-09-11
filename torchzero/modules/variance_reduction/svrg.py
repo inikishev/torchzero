@@ -71,7 +71,7 @@ class SVRG(Module):
     ```
     ## Notes
 
-    The SVRG gradient is computed as ``g_b(x) - alpha * g_b(x_0) - g_f(x0.)``, where:
+    The SVRG gradient is computed as ``g_b(x) - alpha * (g_b(x_0) - g_f(x_0))``, where:
     - ``x`` is current parameters
     - ``x_0`` is initial parameters, where full gradient was computed
     - ``g_b`` refers to mini-batch gradient at ``x`` or ``x_0``
