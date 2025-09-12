@@ -142,7 +142,7 @@ nav:
     - 9. Trust region: overview/9. Trust region.ipynb
     - 10. Variance reduction: overview/10. Variance reduction.ipynb
     - 11. Regularization: overview/11. Regularization.ipynb
-    - 12. Zeroth order methods: overview/7. Zeroth order methods.ipynb
+    - 12. Zeroth order methods: overview/12. Zeroth order methods.ipynb
     - Advanced:
       - A1. Preconditioning and whitening: overview/advanced/A1. Preconditioning and whitening.ipynb
 
