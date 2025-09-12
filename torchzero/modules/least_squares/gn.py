@@ -114,16 +114,16 @@ class GaussNewton(Module):
 
         # gauss newton direction
         with torch.enable_grad():
-            f = var.get_loss(backward=False) # n_out
-            assert isinstance(f, torch.Tensor)
-            G_list = jacobian_wrt([f.ravel()], params, batched=batched)
+            r = var.get_loss(backward=False) # n_out
+            assert isinstance(r, torch.Tensor)
+            r_list = jacobian_wrt([r.ravel()], params, batched=batched)
 
-        var.loss = f.pow(2).sum()
+        var.loss = r.pow(2).sum()
 
-        G = self.global_state["G"] = flatten_jacobian(G_list) # (n_out, ndim)
-        Gtf = G.T @ f.detach() # (ndim)
-        self.global_state["Gtf"] = Gtf
-        var.grad = vec_to_tensors(Gtf, var.params)
+        J = self.global_state["J"] = flatten_jacobian(r_list) # (n_out, ndim)
+        Jr = J.T @ r.detach() # (ndim)
+        self.global_state["Jr"] = Jr
+        var.grad = vec_to_tensors(Jr, var.params)
 
         # set closure to calculate sum of squares for line searches etc
         if var.closure is not None:
@@ -144,18 +144,18 @@ class GaussNewton(Module):
     def apply(self, var):
         reg = self.defaults['reg']
 
-        G = self.global_state['G']
-        Gtf = self.global_state['Gtf']
+        J = self.global_state['J']
+        Jr = self.global_state['Jr']
 
-        GtG = G.T @ G # (ndim, ndim)
+        JJ = J.T @ J # (ndim, ndim)
         if reg != 0:
-            GtG.add_(torch.eye(GtG.size(0), device=GtG.device, dtype=GtG.dtype).mul_(reg))
+            JJ.add_(torch.eye(JJ.size(0), device=JJ.device, dtype=JJ.dtype).mul_(reg))
 
-        v = torch.linalg.lstsq(GtG, Gtf).solution # pylint:disable=not-callable
+        v = torch.linalg.lstsq(JJ, Jr).solution # pylint:disable=not-callable
 
         var.update = vec_to_tensors(v, var.params)
         return var
 
     def get_H(self, var):
-        G = self.global_state['G']
-        return linear_operator.AtA(G)
+        J = self.global_state['J']
+        return linear_operator.AtA(J)

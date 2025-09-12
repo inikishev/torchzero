@@ -413,7 +413,7 @@ class ScipyDualAnnealing(Optimizer):
     def step(self, closure: Closure):
         params = self.get_params()
 
-        x0 = params.to_vec().detach().cpu().numpy()
+        x0 = params.to_vec().numpy(force=True)
         lb, ub = self.group_vals('lb', 'ub', cls=list)
         bounds = []
         for p, l, u in zip(params, lb, ub):
@@ -467,6 +467,49 @@ class ScipySHGO(Optimizer):
         res = scipy.optimize.shgo(
             partial(self._objective, params = params, closure = closure),
             bounds=bounds,
+            **self._kwargs
+        )
+
+        params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return res.fun
+
+
+class ScipyBasinHopping(Optimizer):
+    def __init__(
+        self,
+        params,
+        niter: int = 100,
+        T: float = 1,
+        stepsize: float = 0.5,
+        minimizer_kwargs: dict | None = None,
+        take_step: Callable | None = None,
+        accept_test: Callable | None = None,
+        callback: Callable | None = None,
+        interval: int = 50,
+        disp: bool = False,
+        niter_success: int | None = None,
+        rng: int | np.random.Generator | None = None,
+        *,
+        target_accept_rate: float = 0.5,
+        stepwise_factor: float = 0.9
+    ):
+        super().__init__(params)
+
+        kwargs = locals().copy()
+        del kwargs['self'], kwargs['params'], kwargs['__class__']
+        self._kwargs = kwargs
+
+    def _objective(self, x: np.ndarray, params: TensorList, closure):
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        return _ensure_float(closure(False))
+
+    @torch.no_grad
+    def step(self, closure: Closure):
+        params = self.get_params()
+
+        res = scipy.optimize.basinhopping(
+            partial(self._objective, params = params, closure = closure),
+            x0 = params.to_vec().numpy(force=True),
             **self._kwargs
         )
 
