@@ -137,10 +137,12 @@ nav:
     - 4. Second order methods: overview/4. Second order methods.ipynb
     - 5. Quasi-Newton methods: overview/5. Quasi-Newton methods.ipynb
     - 6. Conjugate gradient: overview/6. Conjugate gradient.ipynb
-    - 7. Zeroth order methods: overview/7. Zeroth order methods.ipynb
+    - 7. Least squares: overview/7. Least squares.ipynb
+    - 8. Line search: overview/8. Line search.ipynb
     - 9. Trust region: overview/9. Trust region.ipynb
     - 10. Variance reduction: overview/10. Variance reduction.ipynb
     - 11. Regularization: overview/11. Regularization.ipynb
+    - 12. Zeroth order methods: overview/7. Zeroth order methods.ipynb
     - Advanced:
       - A1. Preconditioning and whitening: overview/advanced/A1. Preconditioning and whitening.ipynb
 
