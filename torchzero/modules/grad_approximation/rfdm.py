@@ -176,7 +176,7 @@ class RandomizedFDM(GradApproximator):
     ```py
     spsa = tz.Modular(
         model.parameters(),
-        tz.m.RandomizedFDM(formula="central", distribution="rademacher"),
+        tz.m.RandomizedFDM(formula="fd_central", distribution="rademacher"),
         tz.m.LR(1e-2)
     )
     ```
@@ -187,7 +187,7 @@ class RandomizedFDM(GradApproximator):
     ```
     rdsa = tz.Modular(
         model.parameters(),
-        tz.m.RandomizedFDM(formula="central", distribution="gaussian"),
+        tz.m.RandomizedFDM(formula="fd_central", distribution="gaussian"),
         tz.m.LR(1e-2)
     )
     ```

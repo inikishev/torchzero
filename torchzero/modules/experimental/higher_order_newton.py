@@ -225,7 +225,7 @@ class HigherOrderNewton(Module):
         rho_bad = settings['rho_bad']
 
         # ------------------------ calculate grad and hessian ------------------------ #
-        loss, *derivatives = var.derivatives(order=order, vectorize=vectorize, at_x0=True)
+        loss, *derivatives = var.derivatives(order=order, batched=vectorize, at_x0=True)
 
         x0 = torch.cat([p.ravel() for p in params])
 

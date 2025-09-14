@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import NumberList, TensorList
 from ..functional import initial_step_size
 
@@ -22,17 +22,17 @@ class MatrixMomentum(Module):
     Args:
         mu (float, optional): this has a similar role to (1 - beta) in normal momentum. Defaults to 0.1.
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            Determines how hessian-vector products are computed.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        h (float, optional): finite difference step size if hvp_method is set to finite difference. Defaults to 1e-3.
+            - ``"batched_autograd"`` - uses autograd with batched hessian-vector products. If a single hessian-vector is evaluated, equivalent to ``"autograd"``. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd hessian-vector products. If multiple hessian-vector products are evaluated, uses a for-loop. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            Defaults to ``"autograd"``.
+        h (float, optional):
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         hvp_tfm (Chainable | None, optional): optional module applied to hessian-vector products. Defaults to None.
 
     Reference:
@@ -43,7 +43,7 @@ class MatrixMomentum(Module):
         self,
         lr:float,
         mu=0.1,
-        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
+        hvp_method: HVPMethod = "autograd",
         h: float = 1e-3,
         adaptive:bool = False,
         adapt_freq: int | None = None,

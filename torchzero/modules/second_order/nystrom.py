@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve
@@ -11,35 +11,28 @@ from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
 
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
+    Notes:
+        - This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
-    .. note::
-        In most cases NystromSketchAndSolve should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        - In most cases NystromSketchAndSolve should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
-    .. note::
-        If this is unstable, increase the :code:`reg` parameter and tune the rank.
-
-    .. note:
-        :code:`tz.m.NystromPCG` usually outperforms this.
+        - If this is unstable, increase the ``reg`` parameter and tune the rank.
 
     Args:
         rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
         reg (float, optional): regularization parameter. Defaults to 1e-3.
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            Determines how Hessian-vector products are computed.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+            - ``"batched_autograd"`` - uses autograd with batched hessian-vector products to compute the preconditioner. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd hessian-vector products, uses a for loop to compute the preconditioner. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            Defaults to ``"autograd"``.
+        h (float, optional):
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         seed (int | None, optional): seed for random generator. Defaults to None.
 
@@ -61,13 +54,14 @@ class NystromSketchAndSolve(Module):
         self,
         rank: int,
         reg: float = 1e-3,
-        hvp_method: Literal["batched", "autograd",  "forward", "central"] = "batched",
+        hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
-        defaults = dict(rank=rank, reg=reg, hvp_method=hvp_method, h=h, seed=seed)
-        super().__init__(defaults,)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
+        super().__init__(defaults)
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -113,13 +107,12 @@ class NystromPCG(Module):
     This tends to outperform NewtonCG but requires tuning sketch size.
     An adaptive version exists in https://arxiv.org/abs/2110.02820, I might implement it too at some point.
 
-    .. note::
-        This module requires the a closure passed to the optimizer step,
+    Notes:
+        - This module requires the a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients for calculating HVPs.
         The closure must accept a ``backward`` argument (refer to documentation).
 
-    .. note::
-        In most cases NystromPCG should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        - In most cases NystromPCG should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
     Args:
         sketch_size (int):
@@ -134,31 +127,31 @@ class NystromPCG(Module):
         tol (float, optional): relative tolerance for conjugate gradient solver. Defaults to 1e-4.
         reg (float, optional): regularization parameter. Defaults to 1e-8.
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            Determines how Hessian-vector products are computed.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+            - ``"batched_autograd"`` - uses autograd with batched hessian-vector products to compute the preconditioner. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd hessian-vector products, uses a for loop to compute the preconditioner. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            Defaults to ``"autograd"``.
+        h (float, optional):
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         seed (int | None, optional): seed for random generator. Defaults to None.
 
     Examples:
 
-        NystromPCG with backtracking line search
+    NystromPCG with backtracking line search
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NystromPCG(10),
-                tz.m.Backtracking()
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NystromPCG(10),
+        tz.m.Backtracking()
+    )
+    ```
 
     Reference:
         Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
@@ -170,13 +163,15 @@ class NystromPCG(Module):
         maxiter=None,
         tol=1e-8,
         reg: float = 1e-6,
-        hvp_method: Literal["batched", "autograd", "forward", "central", ] = "batched",
+        hvp_method: HVPMethod = "batched_autograd",
         h=1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
-        defaults = dict(sketch_size=sketch_size, reg=reg, maxiter=maxiter, tol=tol, hvp_method=hvp_method, h=h, seed=seed)
-        super().__init__(defaults,)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
+        super().__init__(defaults)
+
 
         if inner is not None:
             self.set_child('inner', inner)
@@ -186,7 +181,7 @@ class NystromPCG(Module):
         params = TensorList(var.params)
 
         closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if closure is None: raise RuntimeError('NystromPCG requires closure')
 
         settings = self.settings[params[0]]
         sketch_size = settings['sketch_size']

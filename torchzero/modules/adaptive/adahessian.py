@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, Transform, apply_transform
+from ...core import Chainable, Module, Target, Transform, apply_transform, HVPMethod
 from ...utils import NumberList, TensorList, Distributions
 
 def _full_average(hvp: torch.Tensor):
@@ -79,8 +79,6 @@ class AdaHessian(Module):
     Notes:
         - In most cases AdaHessian should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply AdaHessian preconditioning to another module's output.
 
-        - If you are using gradient estimators or reformulations, set ``hvp_method`` to "forward" or "central".
-
         - This module requires a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
@@ -97,17 +95,17 @@ class AdaHessian(Module):
         eps (float, optional):
             division stability epsilon. Defaults to 1e-8.
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            Determines how hessian-vector products are computed.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        fd_h (float, optional): finite difference step size if ``hvp_method`` is "forward" or "central". Defaults to 1e-3.
+            - ``"batched_autograd"`` - uses autograd with batched hessian-vector products. If a single hessian-vector is evaluated, equivalent to ``"autograd"``. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd hessian-vector products. If multiple hessian-vector products are evaluated, uses a for-loop. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            Defaults to ``"autograd"``.
+        h (float, optional):
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         n_samples (int, optional):
             number of hessian-vector products with random vectors to evaluate each time when updating
             the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.
@@ -152,7 +150,7 @@ class AdaHessian(Module):
         eps: float = 1e-8,
         hessian_power: float = 1,
         distribution: Distributions = 'rademacher',
-        hvp_method: Literal['autograd', 'batched', 'forward', 'central'] = 'autograd',
+        hvp_method: HVPMethod = 'autograd',
         h: float = 1e-3,
         n_samples = 1,
         zHz: bool = True,

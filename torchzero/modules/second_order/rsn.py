@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import Distributions, TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import Sketched
 from .newton import _newton_step
@@ -93,7 +93,7 @@ class RSN(Module):
         sketch_size: int,
         sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "mixed",
         damping:float=0,
-        hvp_method: Literal["batched", "autograd", "forward", "central"] = "batched",
+        hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-2,
         use_lstsq: bool = True,
         update_freq: int = 1,
@@ -102,7 +102,8 @@ class RSN(Module):
         seed: int | None = None,
         inner: Chainable | None = None,
     ):
-        defaults = dict(sketch_size=sketch_size, sketch_type=sketch_type,seed=seed,hvp_method=hvp_method, h=h, damping=damping, use_lstsq=use_lstsq, H_tfm=H_tfm, eigval_fn=eigval_fn, update_freq=update_freq)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
         if inner is not None:
@@ -187,7 +188,7 @@ class RSN(Module):
                 raise ValueError(f'Unknown sketch_type {sketch_type}')
 
             # form sketched hessian
-            HS, _ = var.hessian_matrix_product(S, at_x0=True, rgrad=None, hvp_method=self.defaults["hvp_method"],retain_graph=False, h=self.defaults["h"])
+            HS, _ = var.hessian_matrix_product(S, rgrad=None, at_x0=True, hvp_method=self.defaults["hvp_method"], h=self.defaults["h"])
             H_sketched = S.T @ HS
 
             self.global_state["H_sketched"] = H_sketched

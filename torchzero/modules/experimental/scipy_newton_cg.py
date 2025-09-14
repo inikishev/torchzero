@@ -14,7 +14,7 @@ class ScipyNewtonCG(Module):
     def __init__(
         self,
         solver = gcrotmk,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: Literal["fd_forward", "fd_central", "autograd"] = "autograd",
         h: float = 1e-3,
         warm_start=False,
         inner: Chainable | None = None,

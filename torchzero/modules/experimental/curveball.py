@@ -36,7 +36,7 @@ class CurveBall(Module):
         self,
         precond_lr: float=1e-3,
         momentum: float=0.9,
-        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
+        hvp_method: Literal["autograd", "fd_forward", "central"] = "autograd",
         h: float = 1e-3,
         reg: float = 1,
         inner: Chainable | None = None,

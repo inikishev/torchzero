@@ -598,15 +598,15 @@ ScaleModulesByCosineSimilarity = Run(
 
 # ------------------------- momentum/matrix_momentum ------------------------- #
 MatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='forward'),),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='forward')),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_forward'),),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward')),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.01,
 )
 MatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='central')),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='central')),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_central')),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central')),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.01,
@@ -620,15 +620,15 @@ MatrixMomentum_forward = Run(
 )
 
 AdaptiveMatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='forward', adaptive=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='forward', adaptive=True)),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 AdaptiveMatrixMomentum_central = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='central', adaptive=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='central', adaptive=True)),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
@@ -642,15 +642,15 @@ AdaptiveMatrixMomentum_autograd = Run(
 )
 
 StochasticAdaptiveMatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='forward', adaptive=True, adapt_freq=1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='forward', adaptive=True, adapt_freq=1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 StochasticAdaptiveMatrixMomentum_central = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='central', adaptive=True, adapt_freq=1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='central', adaptive=True, adapt_freq=1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,

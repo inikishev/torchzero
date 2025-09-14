@@ -281,7 +281,7 @@ class RandomHvp(Module):
         distribution: Distributions = "normal",
         update_freq: int = 1,
         zHz: bool = False,
-        hvp_method: Literal["autograd", "forward", "central"] = "autograd",
+        hvp_method: Literal["autograd", "fd_forward", "central"] = "autograd",
         h=1e-3,
         seed: int | None = None
     ):

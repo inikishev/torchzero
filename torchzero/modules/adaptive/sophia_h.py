@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, Transform, apply_transform
+from ...core import Chainable, Module, Target, Transform, apply_transform, HVPMethod
 from ...utils import Distributions, NumberList, TensorList, as_tensorlist
 
 
@@ -40,16 +40,10 @@ class SophiaH(Module):
 
     This is similar to Adam, but the second momentum is replaced by an exponential moving average of randomized hessian diagonal estimates, and the update is agressively clipped.
 
-    .. note::
-        In most cases SophiaH should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply SophiaH preconditioning to another module's output.
+    Notes:
+        - In most cases SophiaH should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply SophiaH preconditioning to another module's output.
 
-    .. note::
-        If you are using gradient estimators or reformulations, set :code:`hvp_method` to "forward" or "central".
-
-    .. note::
-        This module requires the a closure passed to the optimizer step,
-        as it needs to re-evaluate the loss and gradients for calculating HVPs.
-        The closure must accept a ``backward`` argument (refer to documentation).
+        - This module requires the a closure passed to the optimizer step, as it needs to re-evaluate the loss and gradients for calculating HVPs. The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
         beta1 (float, optional): first momentum. Defaults to 0.96.
@@ -63,46 +57,48 @@ class SophiaH(Module):
         eps (float, optional):
             clips hessian diagonal esimate to be no less than this value. Defaults to 1e-12.
         hvp_method (str, optional):
-            Determines how Hessian-vector products are evaluated.
+            Determines how Hessian-vector products are computed.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
-        fd_h (float, optional): finite difference step size if :code:`hvp_method` is "forward" or "central". Defaults to 1e-3.
+            - ``"batched_autograd"`` - uses autograd with batched hessian-vector products. If a single hessian-vector is evaluated, equivalent to ``"autograd"``. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd hessian-vector products. If multiple hessian-vector products are evaluated, uses a for-loop. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            Defaults to ``"autograd"``.
+        h (float, optional):
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         n_samples (int, optional):
             number of hessian-vector products with random vectors to evaluate each time when updating
             the preconditioner. Larger values may lead to better hessian diagonal estimate. Defaults to 1.
         seed (int | None, optional): seed for random vectors. Defaults to None.
         inner (Chainable | None, optional): preconditioning is applied to the output of this module. Defaults to None.
 
-    Examples:
-        Using SophiaH:
+    ### Examples:
 
-        .. code-block:: python
+    Using SophiaH:
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SophiaH(),
-                tz.m.LR(0.1)
-            )
+    ```python
 
-        SophiaH preconditioner can be applied to any other module by passing it to the :code:`inner` argument.
-        Turn off SophiaH's first momentum to get just the preconditioning. Here is an example of applying
-        SophiaH preconditioning to nesterov momentum (:code:`tz.m.NAG`):
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SophiaH(),
+        tz.m.LR(0.1)
+    )
+    ```
 
-        .. code-block:: python
+    SophiaH preconditioner can be applied to any other module by passing it to the ``inner`` argument.
+    Turn off SophiaH's first momentum to get just the preconditioning. Here is an example of applying
+    SophiaH preconditioning to nesterov momentum (``tz.m.NAG``):
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SophiaH(beta1=0, inner=tz.m.NAG(0.96)),
-                tz.m.LR(0.1)
-            )
+    ```python
 
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SophiaH(beta1=0, inner=tz.m.NAG(0.96)),
+        tz.m.LR(0.1)
+    )
+    ```
     """
     def __init__(
         self,
@@ -112,7 +108,7 @@ class SophiaH(Module):
         precond_scale: float = 1,
         clip: float = 1,
         eps: float = 1e-12,
-        hvp_method: Literal['batched', 'autograd', 'forward', 'central'] = 'autograd',
+        hvp_method: HVPMethod = 'autograd',
         distribution: Distributions = 'gaussian',
         h: float = 1e-3,
         n_samples = 1,

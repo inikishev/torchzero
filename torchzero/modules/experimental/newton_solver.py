@@ -3,7 +3,7 @@ from typing import Any, Literal, overload
 
 import torch
 
-from ...core import Chainable, Modular, Module, apply_transform
+from ...core import Chainable, Modular, Module, apply_transform, HVPMethod
 from ...utils import TensorList, as_tensorlist
 from ...utils.derivatives import hvp_fd_forward, hvp_fd_central
 from ..quasi_newton import LBFGS
@@ -19,13 +19,14 @@ class NewtonSolver(Module):
         tol:float | None=1e-3,
         reg: float = 0,
         warm_start=True,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: HVPMethod = "autograd",
         reset_solver: bool = False,
         h: float= 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(tol=tol, h=h,reset_solver=reset_solver, maxiter=maxiter, maxiter1=maxiter1, reg=reg, warm_start=warm_start, solver=solver, hvp_method=hvp_method)
-        super().__init__(defaults,)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
+        super().__init__(defaults)
 
         if inner is not None:
             self.set_child('inner', inner)

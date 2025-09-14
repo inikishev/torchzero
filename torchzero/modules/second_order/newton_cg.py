@@ -4,7 +4,7 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import TensorList, as_tensorlist, tofloat
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import cg, find_within_trust_radius, minres
@@ -38,17 +38,14 @@ class NewtonCG(Module):
         hvp_method (str, optional):
             Determines how Hessian-vector products are evaluated.
 
-            - ``"autograd"``: Use PyTorch's autograd to calculate exact HVPs.
-              This requires creating a graph for the gradient.
-            - ``"forward"``: Use a forward finite difference formula to
-              approximate the HVP. This requires one extra gradient evaluation.
-            - ``"central"``: Use a central finite difference formula for a
-              more accurate HVP approximation. This requires two extra
-              gradient evaluations.
-            Defaults to "autograd".
+            - ``"autograd"`` - uses autograd hessian-vector products. If multiple hessian-vector products are evaluated, uses a for-loop.
+            - ``"fd_forward"`` - uses gradient finite difference approximation with a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"fd_central"`` - uses gradient finite difference approximation with a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+
+            For NewtonCG ``"batched_autograd"`` is equivalent to ``"autograd"``. Defaults to ``"autograd"``.
         h (float, optional):
-            The step size for finite differences if :code:`hvp_method` is
-            ``"forward"`` or ``"central"``. Defaults to 1e-3.
+            The step size for finite difference if ``hvp_method`` is
+            ``"fd_forward"`` or ``"fd_central"``. Defaults to 1e-3.
         warm_start (bool, optional):
             If ``True``, the conjugate gradient solver is initialized with the
             solution from the previous optimization step. This can accelerate
@@ -83,7 +80,7 @@ class NewtonCG(Module):
         maxiter: int | None = None,
         tol: float = 1e-8,
         reg: float = 1e-8,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: HVPMethod = "autograd",
         solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
         h: float = 1e-3, # tuned 1e-4 or 1e-3
         miniter:int = 1,
@@ -197,7 +194,7 @@ class NewtonCGSteihaug(Module):
             whether to terminate CG/MINRES whenever negative curvature is detected. Defaults to False.
 
         hvp_method (str, optional):
-            either "forward" to use forward formula which requires one backward pass per Hvp, or "central" to use a more accurate central formula which requires two backward passes. "forward" is usually accurate enough. Defaults to "forward".
+            either ``"fd_forward"`` to use forward formula which requires one backward pass per hessian-vector product, or ``"fd_central"`` to use a more accurate central formula which requires two backward passes. ``"fd_forward"`` is usually accurate enough. Defaults to ``"fd_forward"``.
         h (float, optional): finite difference step size. Defaults to 1e-3.
 
         inner (Chainable | None, optional):
@@ -239,7 +236,7 @@ class NewtonCGSteihaug(Module):
         npc_terminate: bool = False,
 
         # hvp settings
-        hvp_method: Literal["forward", "central"] = "central",
+        hvp_method: Literal["fd_forward", "fd_central"] = "fd_central",
         h: float = 1e-3, # tuned 1e-4 or 1e-3
 
         # inner

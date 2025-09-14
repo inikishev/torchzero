@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Var, apply_transform
+from ...core import Chainable, Module, Var, apply_transform, HessianMethod
 from ...utils import vec_to_tensors
 from ...utils.linalg.linear_operator import Dense, DenseWithInverse
 
@@ -100,7 +100,7 @@ class Newton(Module):
     ``g`` can be output of another module, if it is specifed in ``inner`` argument.
 
     Note:
-        In most cases Newton should be the first module in the chain because it relies on autograd. Use the :code:`inner` argument if you wish to apply Newton preconditioning to another module's output.
+        In most cases Newton should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
     Note:
         This module requires the a closure passed to the optimizer step,
@@ -130,9 +130,18 @@ class Newton(Module):
             optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
             If this is specified, eigendecomposition will be used to invert the hessian.
         hessian_method (str):
-            how to calculate hessian. Defaults to "autograd".
-        vectorize (bool, optional):
-            whether to enable vectorized hessian. Defaults to True.
+            Determines how hessian is computed.
+
+            - ``"batched_autograd"`` - uses autograd to compute ``ndim`` batched hessian-vector products. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd to compute ``ndim`` hessian-vector products using for loop. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"functional_revrev"`` - uses ``torch.autograd.functional`` with "reverse-over-reverse" strategy and a for-loop. This is generally equivalent to ``"autograd"``.
+            - ``"functional_fwdrev"`` - uses ``torch.autograd.functional`` with vectorized "forward-over-reverse" strategy. Faster than ``"functional_fwdrev"`` but uses more memory (``"batched_autograd"`` seems to be faster)
+            - ``"func"`` - uses ``torch.func.hessian`` which uses "forward-over-reverse" strategy. This method is the fastest and is recommended, however it is more restrictive and fails with some operators which is why it isn't the default.
+            - ``"gfd_forward"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"gfd_central"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+            - ``"fd"`` - uses function values to estimate gradient and hessian via finite difference. This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
+
+            Defaults to ``"batched_autograd"``.
         h (float, optional):
             finite difference step size for "fd_forward" and "fd_central".
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
@@ -212,8 +221,7 @@ class Newton(Module):
         update_freq: int = 1,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
-        hessian_method: Literal["autograd", "func", "autograd.functional", 'fd_forward', 'fd_central'] = "autograd",
-        vectorize: bool = True,
+        hessian_method: HessianMethod = "autograd",
         h: float = 1e-3,
         inner: Chainable | None = None,
     ):
@@ -230,9 +238,9 @@ class Newton(Module):
         self.global_state['step'] = step + 1
 
         if step % self.defaults['update_freq'] == 0:
+
             _, _, self.global_state['H'] = var.hessian(
                 hessian_method=self.defaults['hessian_method'],
-                vectorize=self.defaults['vectorize'],
                 h=self.defaults['h'],
                 at_x0=True
             )
