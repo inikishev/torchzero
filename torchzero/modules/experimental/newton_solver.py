@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Modular, Module, apply_transform
 from ...utils import TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_forward, hvp_fd_central
+from ...utils.derivatives import hvp_fd_forward, hvp_fd_central
 from ..quasi_newton import LBFGS
 
 
@@ -44,46 +44,16 @@ class NewtonSolver(Module):
         maxiter = settings['maxiter']
         maxiter1 = settings['maxiter1']
         tol = settings['tol']
-        reg = settings['reg']
         hvp_method = settings['hvp_method']
         warm_start = settings['warm_start']
         h = settings['h']
         reset_solver = settings['reset_solver']
 
         self._num_hvps_last_step = 0
+
         # ---------------------- Hessian vector product function --------------------- #
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
-
-            def H_mm(x):
-                self._num_hvps_last_step += 1
-                with torch.enable_grad():
-                    Hvp = TensorList(hvp(params, grad, x, retain_graph=True))
-                if reg != 0: Hvp = Hvp + (x*reg)
-                return Hvp
-
-        else:
-
-            with torch.enable_grad():
-                grad = var.get_grad()
-
-            if hvp_method == 'forward':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    Hvp = TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
-                    if reg != 0: Hvp = Hvp + (x*reg)
-                    return Hvp
-
-            elif hvp_method == 'central':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    Hvp =  TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
-                    if reg != 0: Hvp = Hvp + (x*reg)
-                    return Hvp
-
-            else:
-                raise ValueError(hvp_method)
-
+        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        grad = var.get_grad()
 
         # -------------------------------- inner step -------------------------------- #
         b = as_tensorlist(grad)
@@ -112,7 +82,7 @@ class NewtonSolver(Module):
                 solver = self.global_state['solver']
 
         def lstsq_closure(backward=True):
-            Hx = H_mm(x).detach()
+            Hx = H_mv(x).detach()
             # loss = (Hx-b).pow(2).global_mean()
             # if backward:
             #     solver.zero_grad()
@@ -122,7 +92,7 @@ class NewtonSolver(Module):
             loss = residual.pow(2).global_mean()
             if backward:
                 with torch.no_grad():
-                    H_residual = H_mm(residual)
+                    H_residual = H_mv(residual)
                     n = residual.global_numel()
                     x.set_grad_((2.0 / n) * H_residual)
 

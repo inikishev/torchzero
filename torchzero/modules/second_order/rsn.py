@@ -187,7 +187,7 @@ class RSN(Module):
                 raise ValueError(f'Unknown sketch_type {sketch_type}')
 
             # form sketched hessian
-            HS, _ = var.hessian_matrix_product(S, at_x0=True, rgrad=None, hvp_method=self.defaults["hvp_method"], normalize=True, retain_graph=False, h=self.defaults["h"])
+            HS, _ = var.hessian_matrix_product(S, at_x0=True, rgrad=None, hvp_method=self.defaults["hvp_method"],retain_graph=False, h=self.defaults["h"])
             H_sketched = S.T @ HS
 
             self.global_state["H_sketched"] = H_sketched

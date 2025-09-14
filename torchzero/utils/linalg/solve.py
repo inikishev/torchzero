@@ -16,30 +16,36 @@ from .. import (
 )
 
 
-def _make_A_mm_reg(A_mm: Callable, reg):
-    def A_mm_reg(x): # A_mm with regularization
-        Ax = A_mm(x)
+def _make_A_mv_reg(A_mv: Callable, reg):
+    def A_mv_reg(x): # A_mm with regularization
+        Ax = A_mv(x)
         if not generic_eq(reg, 0): Ax += x*reg
         return Ax
-    return A_mm_reg
+    return A_mv_reg
 
 def _identity(x): return x
 
 
 # https://arxiv.org/pdf/2110.02820
 def nystrom_approximation(
-    A_mm: Callable[[torch.Tensor], torch.Tensor],
+    A_mv: Callable[[torch.Tensor], torch.Tensor],
     ndim: int,
     rank: int,
     device,
     dtype = torch.float32,
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     omega = torch.randn((ndim, rank), device=device, dtype=dtype, generator=generator) # Gaussian test matrix
     omega, _ = torch.linalg.qr(omega) # Thin QR decomposition # pylint:disable=not-callable
 
     # Y = AΩ
-    Y = torch.stack([A_mm(col) for col in omega.unbind(-1)], -1) # rank matvecs
+    if A_mm is None:
+        Y = torch.stack([A_mv(col) for col in omega.unbind(-1)], -1) # rank matvecs
+
+    else:
+        Y = A_mm(omega)
+
     v = torch.finfo(dtype).eps * torch.linalg.matrix_norm(Y, ord='fro') # Compute shift # pylint:disable=not-callable
     Yv = Y + v*omega # Shift for stability
     C = torch.linalg.cholesky_ex(omega.mT @ Yv)[0] # pylint:disable=not-callable
@@ -49,18 +55,20 @@ def nystrom_approximation(
     return U, lambd
 
 def nystrom_sketch_and_solve(
-    A_mm: Callable[[torch.Tensor], torch.Tensor],
+    A_mv: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     rank: int,
     reg: float = 1e-3,
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator=None,
 ) -> torch.Tensor:
     U, lambd = nystrom_approximation(
-        A_mm=A_mm,
+        A_mv=A_mv,
         ndim=b.size(-1),
         rank=rank,
         device=b.device,
         dtype=b.dtype,
+        A_mm=A_mm,
         generator=generator,
     )
     b = b.unsqueeze(-1)
@@ -74,29 +82,33 @@ def nystrom_sketch_and_solve(
     return (term1 + term2).squeeze(-1)
 
 def nystrom_pcg(
-    A_mm: Callable[[torch.Tensor], torch.Tensor],
+    A_mv: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     sketch_size: int,
     reg: float = 1e-6,
     x0_: torch.Tensor | None = None,
     tol: float | None = 1e-4,
     maxiter: int | None = None,
+    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator=None,
 ) -> torch.Tensor:
+
     U, lambd = nystrom_approximation(
-        A_mm=A_mm,
+        A_mv=A_mv,
         ndim=b.size(-1),
         rank=sketch_size,
         device=b.device,
         dtype=b.dtype,
+        A_mm=A_mm,
         generator=generator,
     )
+
     lambd += reg
     eps = torch.finfo(b.dtype).tiny * 2
     if tol is None: tol = eps
 
-    def A_mm_reg(x): # A_mm with regularization
-        Ax = A_mm(x)
+    def A_mv_reg(x): # A_mm with regularization
+        Ax = A_mv(x)
         if reg != 0: Ax += x*reg
         return Ax
 
@@ -104,7 +116,7 @@ def nystrom_pcg(
     if x0_ is None: x0_ = torch.zeros_like(b)
 
     x = x0_
-    residual = b - A_mm_reg(x)
+    residual = b - A_mv_reg(x)
     # z0 = P⁻¹ r0
     term1 = lambd[...,-1] * U * (1/lambd.unsqueeze(-2)) @ U.mT
     term2 = torch.eye(U.size(-2), device=U.device,dtype=U.dtype) - U@U.mT
@@ -116,7 +128,7 @@ def nystrom_pcg(
     if init_norm < tol: return x
     k = 0
     while True:
-        Ap = A_mm_reg(p)
+        Ap = A_mv_reg(p)
         rz = residual.dot(z)
         step_size = rz / p.dot(Ap)
         x += step_size * p
@@ -138,7 +150,7 @@ def _safe_clip(x: torch.Tensor):
     if x.abs() < eps: return x.new_full(x.size(), eps).copysign(x)
     return x
 
-def _trust_tau(x,d,trust_radius):
+def _trust_tau(x, d, trust_radius):
     xx = x.dot(x)
     xd = x.dot(d)
     dd = _safe_clip(d.dot(d))
@@ -153,7 +165,7 @@ class CG:
     """Conjugate gradient method.
 
     Args:
-        A_mm (Callable[[torch.Tensor], torch.Tensor] | torch.Tensor): Callable that returns matvec ``Ax``.
+        A_mv (Callable[[torch.Tensor], torch.Tensor] | torch.Tensor): Callable that returns matvec ``Ax``.
         b (torch.Tensor): right hand side
         x0 (torch.Tensor | None, optional): initial guess, defaults to zeros. Defaults to None.
         tol (float | None, optional): tolerance for convergence. Defaults to 1e-8.
@@ -174,7 +186,7 @@ class CG:
     """
     def __init__(
         self,
-        A_mm: Callable,
+        A_mv: Callable,
         b: torch.Tensor | TensorList,
         x0: torch.Tensor | TensorList | None = None,
         tol: float | None = 1e-4,
@@ -187,7 +199,7 @@ class CG:
         P_mm: Callable | None = None,
 ):
         # --------------------------------- set attrs -------------------------------- #
-        self.A_mm = _make_A_mm_reg(A_mm, reg)
+        self.A_mv = _make_A_mv_reg(A_mv, reg)
         self.b = b
         if tol is None: tol = generic_finfo_tiny(b) * 2
         self.tol = tol
@@ -214,7 +226,7 @@ class CG:
             self.r = b
         else:
             self.x = x0
-            self.r = b - A_mm(self.x)
+            self.r = b - A_mv(self.x)
 
         self.z = self.P_mm(self.r)
         self.d = self.z
@@ -229,7 +241,7 @@ class CG:
         if self.iter >= self.maxiter:
             return x, True
 
-        Ad = self.A_mm(d)
+        Ad = self.A_mv(d)
         dAd = d.dot(Ad)
 
         # check negative curvature
@@ -306,7 +318,7 @@ class _TensorListSolution(NamedTuple):
 
 @overload
 def cg(
-    A_mm: Callable[[torch.Tensor], torch.Tensor],
+    A_mv: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
     x0: torch.Tensor | None = None,
     tol: float | None = 1e-8,
@@ -320,7 +332,7 @@ def cg(
 ) -> _TensorSolution: ...
 @overload
 def cg(
-    A_mm: Callable[[TensorList], TensorList],
+    A_mv: Callable[[TensorList], TensorList],
     b: TensorList,
     x0: TensorList | None = None,
     tol: float | None = 1e-8,
@@ -333,7 +345,7 @@ def cg(
     P_mm: Callable[[TensorList], TensorList] | None = None
 ) -> _TensorListSolution: ...
 def cg(
-    A_mm: Callable,
+    A_mv: Callable,
     b: torch.Tensor | TensorList,
     x0: torch.Tensor | TensorList | None = None,
     tol: float | None = 1e-8,
@@ -346,7 +358,7 @@ def cg(
     P_mm: Callable | None = None
 ):
     solver = CG(
-        A_mm=A_mm,
+        A_mv=A_mv,
         b=b,
         x0=x0,
         tol=tol,
@@ -370,7 +382,7 @@ def cg(
 # Liu, Yang, and Fred Roosta. "MINRES: From negative curvature detection to monotonicity properties." SIAM Journal on Optimization 32.4 (2022): 2636-2661.
 @overload
 def minres(
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
+    A_mv: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
     b: torch.Tensor,
     x0: torch.Tensor | None = None,
     tol: float | None = 1e-4,
@@ -381,7 +393,7 @@ def minres(
 ) -> torch.Tensor: ...
 @overload
 def minres(
-    A_mm: Callable[[TensorList], TensorList],
+    A_mv: Callable[[TensorList], TensorList],
     b: TensorList,
     x0: TensorList | None = None,
     tol: float | None = 1e-4,
@@ -391,7 +403,7 @@ def minres(
     trust_radius: float | None = None,
 ) -> TensorList: ...
 def minres(
-    A_mm,
+    A_mv,
     b,
     x0: torch.Tensor | TensorList | None = None,
     tol: float | None = 1e-4,
@@ -400,7 +412,7 @@ def minres(
     npc_terminate: bool=True,
     trust_radius: float | None = None, #trust region is experimental
 ):
-    A_mm_reg = _make_A_mm_reg(A_mm, reg)
+    A_mv_reg = _make_A_mv_reg(A_mv, reg)
     eps = math.sqrt(generic_finfo_tiny(b) * 2)
     if tol is None: tol = eps
 
@@ -409,7 +421,7 @@ def minres(
         R = b
         x0 = generic_zeros_like(b)
     else:
-        R = b - A_mm_reg(x0)
+        R = b - A_mv_reg(x0)
 
     X: Any = x0
     beta = b_norm = generic_vector_norm(b)
@@ -429,7 +441,7 @@ def minres(
 
     for _ in range(maxiter):
 
-        P = A_mm_reg(V)
+        P = A_mv_reg(V)
         alpha = V.dot(P)
         P -= beta*V_prev
         P -= alpha*V

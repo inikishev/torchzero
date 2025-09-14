@@ -1,14 +1,15 @@
-import warnings
-import math
-from typing import Literal, cast
+
 from operator import itemgetter
+from typing import Literal, cast
+
 import torch
 
 from ...core import Chainable, Module, apply_transform
 from ...utils import TensorList, as_tensorlist, tofloat
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import cg, minres, find_within_trust_radius
+from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
+from ...utils.linalg.solve import cg, find_within_trust_radius, minres
 from ..trust_region.trust_region import default_radius
+
 
 class NewtonCG(Module):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
@@ -115,33 +116,10 @@ class NewtonCG(Module):
         warm_start = settings['warm_start']
 
         self._num_hvps_last_step = 0
+
         # ---------------------- Hessian vector product function --------------------- #
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
-
-            def H_mm(x):
-                self._num_hvps_last_step += 1
-                with torch.enable_grad():
-                    return TensorList(hvp(params, grad, x, retain_graph=True))
-
-        else:
-
-            with torch.enable_grad():
-                grad = var.get_grad()
-
-            if hvp_method == 'forward':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
-
-            elif hvp_method == 'central':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
-
-            else:
-                raise ValueError(hvp_method)
-
+        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        grad = var.get_grad()
 
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
@@ -154,13 +132,13 @@ class NewtonCG(Module):
         if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
 
         if solver == 'cg':
-            d, _ = cg(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, miniter=self.defaults["miniter"],reg=reg)
+            d, _ = cg(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, miniter=self.defaults["miniter"],reg=reg)
 
         elif solver == 'minres':
-            d = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
+            d = minres(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
 
         elif solver == 'minres_npc':
-            d = minres(A_mm=H_mm, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+            d = minres(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
 
         else:
             raise ValueError(f"Unknown solver {solver}")
@@ -297,31 +275,9 @@ class NewtonCGSteihaug(Module):
         self._num_hvps_last_step = 0
 
         # ---------------------- Hessian vector product function --------------------- #
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
+        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        grad = var.get_grad()
 
-            def H_mm(x):
-                self._num_hvps_last_step += 1
-                with torch.enable_grad():
-                    return TensorList(hvp(params, grad, x, retain_graph=True))
-
-        else:
-
-            with torch.enable_grad():
-                grad = var.get_grad()
-
-            if hvp_method == 'forward':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    return TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
-
-            elif hvp_method == 'central':
-                def H_mm(x):
-                    self._num_hvps_last_step += 1
-                    return TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
-
-            else:
-                raise ValueError(hvp_method)
 
 
         # -------------------------------- inner step -------------------------------- #
@@ -360,7 +316,7 @@ class NewtonCGSteihaug(Module):
             if d is None:
                 if solver == 'cg':
                     d, solution = cg(
-                        A_mm=H_mm,
+                        A_mv=H_mv,
                         b=b,
                         tol=tol,
                         maxiter=maxiter,
@@ -372,7 +328,7 @@ class NewtonCGSteihaug(Module):
                     )
 
                 elif solver == 'minres':
-                    d = minres(A_mm=H_mm, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=npc_terminate)
+                    d = minres(A_mv=H_mv, b=b, trust_radius=trust_radius, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=npc_terminate)
 
                 else:
                     raise ValueError(f"unknown solver {solver}")
@@ -383,7 +339,7 @@ class NewtonCGSteihaug(Module):
                 closure=closure,
                 f=tofloat(var.get_loss(False)),
                 g=b,
-                H=H_mm,
+                H=H_mv,
                 d=d,
                 trust_radius=trust_radius,
                 eta=eta,

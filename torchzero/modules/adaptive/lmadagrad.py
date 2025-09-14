@@ -120,7 +120,8 @@ class LMAdagrad(TensorwiseTransform):
         inner: Chainable | None = None,
     ):
         # history is still updated each step so Precondition's update_freq has different meaning
-        defaults = dict(history_size=history_size, update_freq=update_freq, damping=damping, rdamping=rdamping, true_damping=true_damping, order=order, U_beta=U_beta, L_beta=L_beta)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner'], defaults['interval'], defaults['concat_params']
         super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
 
     @torch.no_grad

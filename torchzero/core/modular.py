@@ -1,27 +1,16 @@
 
 import warnings
-from abc import ABC, abstractmethod
-from collections import ChainMap, defaultdict
-from collections.abc import Callable, Iterable, MutableMapping, Sequence
-from operator import itemgetter
-from typing import TYPE_CHECKING, Any, Literal, cast, final, overload
+from collections import ChainMap
+from collections.abc import MutableMapping
+from typing import Any
 
 import torch
 
-from ..utils import (
-    Init,
-    ListLike,
-    Params,
-    _make_param_groups,
-    get_state_vals,
-    vec_to_tensors,
-)
-from ..utils.derivatives import flatten_jacobian, hvp, hvp_fd_central, hvp_fd_forward
-from ..utils.linalg.linear_operator import LinearOperator
-from ..utils.python_tools import flatten
+from ..utils import Params, _make_param_groups
+from .functional import step
 from .module import Chainable, Module
 from .var import Var
-from .functional import step
+
 
 class _EvalCounterClosure:
     """keeps track of how many times closure has been evaluated, and sets closure return"""

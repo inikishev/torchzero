@@ -261,7 +261,7 @@ def jvp_fd_central(
     params: Iterable[torch.Tensor],
     tangent: Iterable[torch.Tensor],
     h=1e-3,
-    normalize=False,
+    normalize=True,
 ) -> tuple[torch.Tensor | None, torch.Tensor]:
     """Jacobian vector product using central finite difference formula.
 
@@ -310,7 +310,7 @@ def jvp_fd_forward(
     tangent: Iterable[torch.Tensor],
     h=1e-3,
     v_0=None,
-    normalize=False,
+    normalize=True,
 ) -> tuple[torch.Tensor | None, torch.Tensor]:
     """Jacobian vector product using forward finite difference formula.
     Loss at initial point can be specified in the `v_0` argument.
@@ -357,52 +357,18 @@ def jvp_fd_forward(
     if normalize: res = res * tangent_norm
     return v_0, res
 
-def hvp(
-    params: Iterable[torch.Tensor],
-    grads: Iterable[torch.Tensor],
-    vec: Iterable[torch.Tensor],
-    retain_graph=None,
-    create_graph=False,
-    allow_unused=None,
-):
-    """Hessian-vector product
-
-    Example:
-    ```python
-    model = nn.Linear(4, 2)
-    X = torch.randn(10, 4)
-    y = torch.randn(10, 2)
-
-    y_hat = model(X)
-    loss = F.mse_loss(y_hat, y)
-    loss.backward(create_graph=True)
-
-    grads = [p.grad for p in model.parameters()]
-    vec = [torch.randn_like(p) for p in model.parameters()]
-
-    # list of tensors, same layout as model.parameters()
-    hvp(model.parameters(), grads, vec=vec)
-    ```
-    """
-    params = list(params)
-    g = list(grads)
-    vec = list(vec)
-
-    with torch.enable_grad():
-        return torch.autograd.grad(g, params, vec, create_graph=create_graph, retain_graph=retain_graph, allow_unused=allow_unused)
-
 
 @torch.no_grad
 def hvp_fd_central(
     closure,
     params: Iterable[torch.Tensor],
-    vec: Iterable[torch.Tensor],
+    x: Iterable[torch.Tensor],
     h=1e-3,
-    normalize=False,
+    normalize=True,
 ) -> tuple[torch.Tensor | None, list[torch.Tensor]]:
-    """Hessian-vector product using central finite difference formula.
+    """Returns ``(loss_approx, Hx)``.
 
-    Please note that this will clear :code:`grad` attributes in params.
+    Please note that this will clear ``grad`` attributes in params.
 
     Example:
     ```python
@@ -424,48 +390,48 @@ def hvp_fd_central(
     ```
     """
     params = list(params)
-    vec = list(vec)
+    x = list(x)
 
     vec_norm = None
     if normalize:
-        vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in vec])) # pylint:disable=not-callable
+        vec_norm = torch.linalg.vector_norm(torch.cat([t.view(-1) for t in x])) # pylint:disable=not-callable
         if vec_norm == 0: return None, [torch.zeros_like(p) for p in params]
-        vec = torch._foreach_div(vec, vec_norm)
+        x = torch._foreach_div(x, vec_norm)
 
-    vec_h = torch._foreach_mul(vec, h)
-    torch._foreach_add_(params, vec_h)
+    xh = torch._foreach_mul(x, h)
+    torch._foreach_add_(params, xh)
     with torch.enable_grad(): loss = closure()
     g_plus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
-    torch._foreach_sub_(params, vec_h)
-    torch._foreach_sub_(params, vec_h)
+    torch._foreach_sub_(params, xh)
+    torch._foreach_sub_(params, xh)
     with torch.enable_grad(): loss = closure()
     g_minus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
-    torch._foreach_add_(params, vec_h)
+    torch._foreach_add_(params, xh)
     for p in params: p.grad = None
 
-    hvp_ = g_plus
-    torch._foreach_sub_(hvp_, g_minus)
-    torch._foreach_div_(hvp_, 2*h)
+    hx = g_plus
+    torch._foreach_sub_(hx, g_minus)
+    torch._foreach_div_(hx, 2*h)
 
-    if normalize: torch._foreach_mul_(hvp_, vec_norm)
-    return loss, hvp_
+    if normalize: torch._foreach_mul_(hx, vec_norm)
+    return loss, hx
 
 @torch.no_grad
 def hvp_fd_forward(
     closure,
     params: Iterable[torch.Tensor],
-    vec: Iterable[torch.Tensor],
+    x: Iterable[torch.Tensor],
     h=1e-3,
     g_0=None,
-    normalize=False,
+    normalize=True,
 ) -> tuple[torch.Tensor | None, list[torch.Tensor]]:
-    """Hessian-vector product using forward finite difference formula.
+    """Returns ``(loss_approx, Hx)``.
 
-    Gradient at initial point can be specified in the `g_0` argument.
+    Gradient at initial point can be specified in the ``g_0`` argument.
 
-    Please note that this will clear :code:`grad` attributes in params.
+    Please note that this will clear ``grad`` attributes in params.
 
     Example:
     ```python
@@ -492,16 +458,16 @@ def hvp_fd_forward(
     """
 
     params = list(params)
-    vec = list(vec)
+    x = list(x)
     loss = None
 
     vec_norm = None
     if normalize:
-        vec_norm = torch.linalg.vector_norm(torch.cat([t.ravel() for t in vec])) # pylint:disable=not-callable
+        vec_norm = torch.linalg.vector_norm(torch.cat([t.ravel() for t in x])) # pylint:disable=not-callable
         if vec_norm == 0: return None, [torch.zeros_like(p) for p in params]
-        vec = torch._foreach_div(vec, vec_norm)
+        x = torch._foreach_div(x, vec_norm)
 
-    vec_h = torch._foreach_mul(vec, h)
+    xh = torch._foreach_mul(x, h)
 
     if g_0 is None:
         with torch.enable_grad(): loss = closure()
@@ -509,18 +475,18 @@ def hvp_fd_forward(
     else:
         g_0 = list(g_0)
 
-    torch._foreach_add_(params, vec_h)
+    torch._foreach_add_(params, xh)
     with torch.enable_grad():
         l = closure()
         if loss is None: loss = l
     g_plus = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
-    torch._foreach_sub_(params, vec_h)
+    torch._foreach_sub_(params, xh)
     for p in params: p.grad = None
 
-    hvp_ = g_plus
-    torch._foreach_sub_(hvp_, g_0)
-    torch._foreach_div_(hvp_, h)
+    hx = g_plus
+    torch._foreach_sub_(hx, g_0)
+    torch._foreach_div_(hx, h)
 
-    if normalize: torch._foreach_mul_(hvp_, vec_norm)
-    return loss, hvp_
+    if normalize: torch._foreach_mul_(hx, vec_norm)
+    return loss, hx

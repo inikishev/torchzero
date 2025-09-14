@@ -210,7 +210,7 @@ class HigherOrderNewton(Module):
         closure = var.closure
         if closure is None: raise RuntimeError('HigherOrderNewton requires closure')
 
-        settings = self.settings[params[0]]
+        settings = self.defaults
         order = settings['order']
         nplus = settings['nplus']
         nminus = settings['nminus']
@@ -225,25 +225,7 @@ class HigherOrderNewton(Module):
         rho_bad = settings['rho_bad']
 
         # ------------------------ calculate grad and hessian ------------------------ #
-        with torch.enable_grad():
-            loss = var.loss = var.loss_approx = closure(False)
-
-            g_list = torch.autograd.grad(loss, params, create_graph=True)
-            var.grad = list(g_list)
-
-            g = torch.cat([t.ravel() for t in g_list])
-            n = g.numel()
-            derivatives = [g]
-            T = g # current derivatives tensor
-
-            # get all derivative up to order
-            for o in range(2, order + 1):
-                is_last = o == order
-                T_list = jacobian_wrt([T], params, create_graph=not is_last, batched=vectorize)
-                with torch.no_grad() if is_last else nullcontext():
-                    # the shape is (ndim, ) * order
-                    T = flatten_jacobian(T_list).view(n, n, *T.shape[1:])
-                    derivatives.append(T)
+        loss, *derivatives = var.derivatives(order=order, vectorize=vectorize, at_x0=True)
 
         x0 = torch.cat([p.ravel() for p in params])
 
@@ -301,7 +283,8 @@ class HigherOrderNewton(Module):
                 vec_to_tensors_(x0, params)
                 reduction = loss - loss_star
 
-                rho = reduction / (max(pred_reduction, 1e-8))
+                rho = reduction / (max(pred_reduction, finfo.tiny * 2)) # pyright:ignore[reportArgumentType]
+
                 # failed step
                 if rho < rho_bad:
                     self.global_state['trust_region'] = trust_value * nminus

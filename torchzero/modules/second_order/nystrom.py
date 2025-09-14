@@ -1,13 +1,12 @@
-from collections.abc import Callable
-from typing import Literal, overload
-import warnings
+from typing import Literal
+
 import torch
 
-from ...utils import TensorList, as_tensorlist, generic_zeros_like, generic_vector_norm, generic_numel, vec_to_tensors
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
+from ...core import Chainable, Module, apply_transform
+from ...utils import TensorList, vec_to_tensors
+from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
+from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve
 
-from ...core import Chainable, apply_transform, Module
-from ...utils.linalg.solve import nystrom_sketch_and_solve, nystrom_pcg
 
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
@@ -62,7 +61,7 @@ class NystromSketchAndSolve(Module):
         self,
         rank: int,
         reg: float = 1e-3,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: Literal["batched", "autograd",  "forward", "central"] = "batched",
         h: float = 1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
@@ -94,32 +93,8 @@ class NystromSketchAndSolve(Module):
             generator = self.global_state['generator']
 
         # ---------------------- Hessian vector product function --------------------- #
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
-
-            def H_mm(x):
-                with torch.enable_grad():
-                    Hvp = hvp(params, grad, params.from_vec(x), retain_graph=True)
-                    return torch.cat([t.ravel() for t in Hvp])
-
-        else:
-
-            with torch.enable_grad():
-                grad = var.get_grad()
-
-            if hvp_method == 'forward':
-                def H_mm(x):
-                    Hvp = hvp_fd_forward(closure, params, params.from_vec(x), h=h, g_0=grad, normalize=True)[1]
-                    return torch.cat([t.ravel() for t in Hvp])
-
-            elif hvp_method == 'central':
-                def H_mm(x):
-                    Hvp = hvp_fd_central(closure, params, params.from_vec(x), h=h, normalize=True)[1]
-                    return torch.cat([t.ravel() for t in Hvp])
-
-            else:
-                raise ValueError(hvp_method)
-
+        _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        grad = var.get_grad()
 
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
@@ -127,7 +102,7 @@ class NystromSketchAndSolve(Module):
             b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_sketch_and_solve(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
+        x = nystrom_sketch_and_solve(A_mv=H_mv, A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
         var.update = vec_to_tensors(x, reference=params)
         return var
 
@@ -195,7 +170,7 @@ class NystromPCG(Module):
         maxiter=None,
         tol=1e-8,
         reg: float = 1e-6,
-        hvp_method: Literal["forward", "central", "autograd"] = "autograd",
+        hvp_method: Literal["batched", "autograd", "forward", "central", ] = "batched",
         h=1e-3,
         inner: Chainable | None = None,
         seed: int | None = None,
@@ -231,32 +206,8 @@ class NystromPCG(Module):
 
 
         # ---------------------- Hessian vector product function --------------------- #
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
-
-            def H_mm(x):
-                with torch.enable_grad():
-                    Hvp = hvp(params, grad, params.from_vec(x), retain_graph=True)
-                    return torch.cat([t.ravel() for t in Hvp])
-
-        else:
-
-            with torch.enable_grad():
-                grad = var.get_grad()
-
-            if hvp_method == 'forward':
-                def H_mm(x):
-                    Hvp = hvp_fd_forward(closure, params, params.from_vec(x), h=h, g_0=grad, normalize=True)[1]
-                    return torch.cat([t.ravel() for t in Hvp])
-
-            elif hvp_method == 'central':
-                def H_mm(x):
-                    Hvp = hvp_fd_central(closure, params, params.from_vec(x), h=h, normalize=True)[1]
-                    return torch.cat([t.ravel() for t in Hvp])
-
-            else:
-                raise ValueError(hvp_method)
-
+        _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        grad = var.get_grad()
 
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
@@ -264,7 +215,7 @@ class NystromPCG(Module):
             b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_pcg(A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)
+        x = nystrom_pcg(A_mv=H_mv, A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)
         var.update = vec_to_tensors(x, reference=params)
         return var
 

@@ -6,7 +6,7 @@ import torch
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
 from ..functional import safe_clip
-from .newton import _get_H, _get_loss_grad_and_hessian, _newton_step
+from .newton import _get_H, _newton_step
 
 @torch.no_grad
 def inm(f:torch.Tensor, J:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
@@ -37,14 +37,17 @@ class INM(Module):
         damping: float = 0,
         use_lstsq: bool = False,
         update_freq: int = 1,
-        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
-        vectorize: bool = True,
-        inner: Chainable | None = None,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
+        vectorize: bool = True,
+        h: float = 1e-3,
+        inner: Chainable | None = None,
     ):
-        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, update_freq=update_freq)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
+
 
         if inner is not None:
             self.set_child("inner", inner)
@@ -57,9 +60,13 @@ class INM(Module):
         self.global_state['step'] = step + 1
 
         if step % update_freq == 0:
-            _, f_list, J = _get_loss_grad_and_hessian(
-                var, self.defaults['hessian_method'], self.defaults['vectorize']
+            _, f_list, J = var.hessian(
+                hessian_method=self.defaults['hessian_method'],
+                vectorize=self.defaults['vectorize'],
+                h=self.defaults['h'],
+                at_x0=True
             )
+            if f_list is None: f_list = var.get_grad()
 
             f = torch.cat([t.ravel() for t in f_list])
             J = _eigval_fn(J, self.defaults["eigval_fn"])

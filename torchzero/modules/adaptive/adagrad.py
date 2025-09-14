@@ -83,8 +83,8 @@ class Adagrad(Transform):
         decay: float | None = None,
         inner: Chainable | None = None,
     ):
-        defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
-                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide, beta=beta, decay=decay)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults=defaults, uses_grad=False)
 
         if inner is not None:

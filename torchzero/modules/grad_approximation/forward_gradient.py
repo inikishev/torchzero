@@ -74,10 +74,10 @@ class ForwardGradient(RandomizedFDM):
                     loss, d = jvp(partial(closure, False), params=params, tangent=prt)
 
             elif jvp_method == 'forward':
-                loss, d = jvp_fd_forward(partial(closure, False), params=params, tangent=prt, v_0=loss, normalize=True, h=h)
+                loss, d = jvp_fd_forward(partial(closure, False), params=params, tangent=prt, v_0=loss, h=h)
 
             elif jvp_method == 'central':
-                loss_approx, d = jvp_fd_central(partial(closure, False), params=params, tangent=prt, normalize=True, h=h)
+                loss_approx, d = jvp_fd_central(partial(closure, False), params=params, tangent=prt, h=h)
 
             else: raise ValueError(jvp_method)
 

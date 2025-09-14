@@ -273,46 +273,44 @@ class HpuEstimate(Transform):
         return [self.state[p]['y'] for p in params]
 
 class RandomHvp(Module):
-    """Returns a hessian-vector product with a random vector"""
+    """Returns a hessian-vector product with a random vector, optionally times vector"""
 
     def __init__(
         self,
         n_samples: int = 1,
         distribution: Distributions = "normal",
         update_freq: int = 1,
+        zHz: bool = False,
         hvp_method: Literal["autograd", "forward", "central"] = "autograd",
         h=1e-3,
+        seed: int | None = None
     ):
-        defaults = dict(n_samples=n_samples, distribution=distribution, hvp_method=hvp_method, h=h, update_freq=update_freq)
+        defaults = locals().copy()
+        del defaults['self']
         super().__init__(defaults)
 
     @torch.no_grad
     def step(self, var):
         params = TensorList(var.params)
-        settings = self.settings[params[0]]
-        n_samples = settings['n_samples']
-        distribution = settings['distribution']
-        hvp_method = settings['hvp_method']
-        h = settings['h']
-        update_freq = settings['update_freq']
 
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         D = None
+        update_freq = self.defaults['update_freq']
         if step % update_freq == 0:
 
-            rgrad = None
-            for i in range(n_samples):
-                u = params.sample_like(distribution=distribution, variance=1)
+            D, _ = var.hutchinson_hessian(
+                rgrad = None,
+                at_x0 = True,
+                n_samples = self.defaults['n_samples'],
+                distribution = self.defaults['distribution'],
+                hvp_method = self.defaults['hvp_method'],
+                h = self.defaults['h'],
+                zHz = self.defaults["zHz"],
+                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+            )
 
-                Hvp, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
-                                    h=h, normalize=True, retain_graph=i < n_samples-1)
-
-                if D is None: D = Hvp
-                else: torch._foreach_add_(D, Hvp)
-
-            if n_samples > 1: torch._foreach_div_(D, n_samples)
             if update_freq != 1:
                 assert D is not None
                 D_buf = self.get_state(params, "D", cls=TensorList)

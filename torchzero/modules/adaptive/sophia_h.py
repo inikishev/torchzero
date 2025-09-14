@@ -1,14 +1,17 @@
-from typing import Literal
 from collections.abc import Callable
+from typing import Literal
+
 import torch
 
-from ...core import Module, Target, Transform, Chainable, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist
+from ...core import Chainable, Module, Target, Transform, apply_transform
+from ...utils import Distributions, NumberList, TensorList, as_tensorlist
+
+
 def sophia_H(
     tensors: TensorList,
-    h: TensorList | None,
+    D: TensorList | None,
     exp_avg_: TensorList,
-    h_exp_avg_: TensorList,
+    D_exp_avg_: TensorList,
     beta1: float | NumberList,
     beta2: float | NumberList,
     update_freq: int,
@@ -22,13 +25,13 @@ def sophia_H(
 
     # update preconditioner
     if step % update_freq == 0:
-        assert h is not None
-        h_exp_avg_.lerp_(h, 1-beta2)
+        assert D is not None
+        D_exp_avg_.lerp_(D, 1-beta2)
 
     else:
-        assert h is None
+        assert D is None
 
-    denom = (h_exp_avg_ * precond_scale).clip_(min=eps)
+    denom = (D_exp_avg_ * precond_scale).clip_(min=eps)
     return (exp_avg_ / denom).clip_(-clip, clip)
 
 
@@ -109,13 +112,16 @@ class SophiaH(Module):
         precond_scale: float = 1,
         clip: float = 1,
         eps: float = 1e-12,
-        hvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
-        fd_h: float = 1e-3,
+        hvp_method: Literal['batched', 'autograd', 'forward', 'central'] = 'autograd',
+        distribution: Distributions = 'gaussian',
+        h: float = 1e-3,
         n_samples = 1,
+        zHz: bool = True,
         seed: int | None = None,
         inner: Chainable | None = None
     ):
-        defaults = dict(beta1=beta1, beta2=beta2, update_freq=update_freq, precond_scale=precond_scale, clip=clip, eps=eps, hvp_method=hvp_method, n_samples=n_samples, fd_h=fd_h, seed=seed)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
         if inner is not None:
@@ -124,23 +130,11 @@ class SophiaH(Module):
     @torch.no_grad
     def step(self, var):
         params = var.params
-        settings = self.settings[params[0]]
-        hvp_method = settings['hvp_method']
-        fd_h = settings['fd_h']
-        update_freq = settings['update_freq']
-        n_samples = settings['n_samples']
-
-        seed = settings['seed']
-        generator = None
-        if seed is not None:
-            if 'generator' not in self.global_state:
-                self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
-            generator = self.global_state['generator']
 
         beta1, beta2, precond_scale, clip, eps = self.get_settings(params,
             'beta1', 'beta2', 'precond_scale', 'clip', 'eps', cls=NumberList)
 
-        exp_avg, h_exp_avg = self.get_state(params, 'exp_avg', 'h_exp_avg', cls=TensorList)
+        exp_avg, D_exp_avg = self.get_state(params, 'exp_avg', 'D_exp_avg', cls=TensorList)
 
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
@@ -148,22 +142,21 @@ class SophiaH(Module):
         closure = var.closure
         assert closure is not None
 
-        h = None
+        D = None
+        update_freq = self.defaults['update_freq']
         if step % update_freq == 0:
 
-            rgrad=None
-            for i in range(n_samples):
-                u = [torch.randn(p.shape, device=p.device, dtype=p.dtype, generator=generator) for p in params]
+            D, _ = var.hutchinson_hessian(
+                rgrad = None,
+                at_x0 = True,
+                n_samples = self.defaults['n_samples'],
+                distribution = self.defaults['distribution'],
+                hvp_method = self.defaults['hvp_method'],
+                h = self.defaults['h'],
+                zHz = self.defaults["zHz"],
+                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+            )
 
-                Hu, rgrad = var.hessian_vector_product(u, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
-                                     h=fd_h, normalize=True, retain_graph=i < n_samples-1)
-                uHu = tuple(Hu)
-                torch._foreach_mul_(uHu, u)
-
-                if h is None: h = uHu
-                else: torch._foreach_add_(h, uHu, alpha=1/n_samples)
-
-            assert h is not None
 
         update = var.get_update()
         if 'inner' in self.children:
@@ -171,9 +164,9 @@ class SophiaH(Module):
 
         var.update = sophia_H(
             tensors=TensorList(update),
-            h=TensorList(h) if h is not None else None,
+            D=TensorList(D) if D is not None else None,
             exp_avg_=exp_avg,
-            h_exp_avg_=h_exp_avg,
+            D_exp_avg_=D_exp_avg,
             beta1=beta1,
             beta2=beta2,
             update_freq=update_freq,

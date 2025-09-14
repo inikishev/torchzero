@@ -1,10 +1,9 @@
 from typing import Literal
-from collections.abc import Callable
+
 import torch
 
-from ...core import Module, apply_transform, Chainable
-from ...utils import NumberList, TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
+from ...core import Chainable, Module, apply_transform
+from ...utils import NumberList, TensorList
 from ..functional import initial_step_size
 
 
@@ -74,7 +73,7 @@ class MatrixMomentum(Module):
         if step > 0:
             s = p - p_prev
 
-            Hs, _ = var.hessian_vector_product(s, at_x0=True, rgrad=None, hvp_method=hvp_method, h=h, normalize=True, retain_graph=False)
+            Hs, _ = var.hessian_vector_product(s, at_x0=True, rgrad=None, hvp_method=hvp_method, h=h, retain_graph=False)
             Hs = [t.detach() for t in Hs]
 
             if 'hvp_tfm' in self.children:

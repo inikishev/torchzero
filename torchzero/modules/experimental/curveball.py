@@ -1,20 +1,20 @@
 from typing import Literal
-from collections.abc import Callable
+
 import torch
 
-from ...core import Module, Target, Transform, Chainable, apply_transform
-from ...utils import NumberList, TensorList, as_tensorlist
-from ...utils.derivatives import hvp, hvp_fd_forward, hvp_fd_central
+from ...core import Chainable, Module, apply_transform
+from ...utils import NumberList, TensorList
+
 
 def curveball(
     tensors: TensorList,
     z_: TensorList,
-    Hz: TensorList,
+    Hzz: TensorList,
     momentum: float | NumberList,
     precond_lr: float | NumberList,
 ):
     """returns z_, clone it!!! (no just negate it)"""
-    delta = Hz + tensors
+    delta = Hzz + tensors
     z_.mul_(momentum).sub_(delta.mul_(precond_lr)) # z ← ρz − βΔ
     return z_
 
@@ -62,28 +62,16 @@ class CurveBall(Module):
 
         z, Hz = self.get_state(params, 'z', 'Hz', cls=TensorList)
 
-        if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
-            Hvp = hvp(params, grad, z)
+        Hz, _ = var.hessian_vector_product(z, rgrad=None, at_x0=True, hvp_method=hvp_method, h=h)
 
-        elif hvp_method == 'forward':
-            loss, Hvp = hvp_fd_forward(closure, params, z, h=h, g_0=var.get_grad(), normalize=True)
-
-        elif hvp_method == 'central':
-            loss, Hvp = hvp_fd_central(closure, params, z, h=h, normalize=True)
-
-        else:
-            raise ValueError(hvp_method)
-
-
-        Hz.set_(Hvp + z*reg)
-
+        Hz = TensorList(Hz)
+        Hzz = Hz.add_(z * reg)
 
         update = var.get_update()
         if 'inner' in self.children:
             update = apply_transform(self.children['inner'], update, params, grads=var.grad, var=var)
 
-        z = curveball(TensorList(update), z, Hz, momentum=momentum, precond_lr=precond_lr)
+        z = curveball(TensorList(update), z, Hzz, momentum=momentum, precond_lr=precond_lr)
         var.update = z.neg()
 
         return var

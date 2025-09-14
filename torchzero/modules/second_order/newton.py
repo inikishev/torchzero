@@ -1,21 +1,12 @@
-import warnings
 from collections.abc import Callable
-from functools import partial
 from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, Var
-from ...utils import TensorList, vec_to_tensors
-from ...utils.derivatives import (
-    flatten_jacobian,
-    hessian_mat,
-    hvp,
-    hvp_fd_central,
-    hvp_fd_forward,
-    jacobian_and_hessian_wrt,
-)
-from ...utils.linalg.linear_operator import DenseWithInverse, Dense
+from ...core import Chainable, Module, Var, apply_transform
+from ...utils import vec_to_tensors
+from ...utils.linalg.linear_operator import Dense, DenseWithInverse
+
 
 def _lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
@@ -48,38 +39,6 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
 
     except torch.linalg.LinAlgError:
         return None
-
-
-def _get_loss_grad_and_hessian(var: Var, hessian_method:str, vectorize:bool):
-    """returns (loss, g_list, H). Also sets var.loss and var.grad.
-    If hessian_method isn't 'autograd', loss is not set and returned as None"""
-    closure = var.closure
-    if closure is None:
-        raise RuntimeError("Second order methods requires a closure to be provided to the `step` method.")
-
-    params = var.params
-
-    # ------------------------ calculate grad and hessian ------------------------ #
-    loss = None
-    if hessian_method == 'autograd':
-        with torch.enable_grad():
-            loss = var.loss = var.loss_approx = closure(False)
-            g_list, H_list = jacobian_and_hessian_wrt([loss], params, batched=vectorize)
-            g_list = [t[0] for t in g_list] # remove leading dim from loss
-            var.grad = g_list
-            H = flatten_jacobian(H_list)
-
-    elif hessian_method in ('func', 'autograd.functional'):
-        strat = 'forward-mode' if vectorize else 'reverse-mode'
-        with torch.enable_grad():
-            g_list = var.get_grad(retain_graph=True)
-            H = hessian_mat(partial(closure, backward=False), params,
-                            method=hessian_method, vectorize=vectorize, outer_jacobian_strategy=strat) # pyright:ignore[reportAssignmentType]
-
-    else:
-        raise ValueError(hessian_method)
-
-    return loss, g_list, H
 
 def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None) -> torch.Tensor:
     """returns the update tensor, then do vec_to_tensor(update, params)"""
@@ -158,10 +117,6 @@ class Newton(Module):
             when hessian is not invertible. If False, tries cholesky, if it fails tries LU, and then least squares.
             If ``eigval_fn`` is specified, eigendecomposition will always be used to solve the linear system and this
             argument will be ignored.
-        hessian_method (str):
-            how to calculate hessian. Defaults to "autograd".
-        vectorize (bool, optional):
-            whether to enable vectorized hessian. Defaults to True.
         H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
@@ -174,6 +129,12 @@ class Newton(Module):
         eigval_fn (Callable | None, optional):
             optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
             If this is specified, eigendecomposition will be used to invert the hessian.
+        hessian_method (str):
+            how to calculate hessian. Defaults to "autograd".
+        vectorize (bool, optional):
+            whether to enable vectorized hessian. Defaults to True.
+        h (float, optional):
+            finite difference step size for "fd_forward" and "fd_central".
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
 
     # See also
@@ -249,13 +210,15 @@ class Newton(Module):
         damping: float = 0,
         use_lstsq: bool = False,
         update_freq: int = 1,
-        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
-        vectorize: bool = True,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        hessian_method: Literal["autograd", "func", "autograd.functional", 'fd_forward', 'fd_central'] = "autograd",
+        vectorize: bool = True,
+        h: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(damping=damping, hessian_method=hessian_method, use_lstsq=use_lstsq, vectorize=vectorize, H_tfm=H_tfm, eigval_fn=eigval_fn, update_freq=update_freq)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
         if inner is not None:
@@ -267,8 +230,11 @@ class Newton(Module):
         self.global_state['step'] = step + 1
 
         if step % self.defaults['update_freq'] == 0:
-            loss, g_list, self.global_state['H'] = _get_loss_grad_and_hessian(
-                var, self.defaults['hessian_method'], self.defaults['vectorize']
+            _, _, self.global_state['H'] = var.hessian(
+                hessian_method=self.defaults['hessian_method'],
+                vectorize=self.defaults['vectorize'],
+                h=self.defaults['h'],
+                at_x0=True
             )
 
     @torch.no_grad

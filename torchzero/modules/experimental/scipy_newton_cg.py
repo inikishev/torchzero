@@ -5,7 +5,7 @@ from scipy.sparse.linalg import LinearOperator, gcrotmk
 
 from ...core import Chainable, Module, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, generic_vector_norm, vec_to_tensors
-from ...utils.derivatives import hvp, hvp_fd_central, hvp_fd_forward
+from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import cg, minres
 
 
@@ -54,7 +54,7 @@ class ScipyNewtonCG(Module):
                 self._num_hvps_last_step += 1
                 x = vec_to_tensors(torch.as_tensor(x_np, device=device, dtype=dtype), grad)
                 with torch.enable_grad():
-                    Hvp = TensorList(hvp(params, grad, x, retain_graph=True))
+                    Hvp = TensorList(torch.autograd.grad(grad, params, x, retain_graph=True))
                 return torch.cat([t.ravel() for t in Hvp]).numpy(force=True)
 
         else:
@@ -66,14 +66,14 @@ class ScipyNewtonCG(Module):
                 def H_mm(x_np):
                     self._num_hvps_last_step += 1
                     x = vec_to_tensors(torch.as_tensor(x_np, device=device, dtype=dtype), grad)
-                    Hvp = TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad, normalize=True)[1])
+                    Hvp = TensorList(hvp_fd_forward(closure, params, x, h=h, g_0=grad)[1])
                     return torch.cat([t.ravel() for t in Hvp]).numpy(force=True)
 
             elif hvp_method == 'central':
                 def H_mm(x_np):
                     self._num_hvps_last_step += 1
                     x = vec_to_tensors(torch.as_tensor(x_np, device=device, dtype=dtype), grad)
-                    Hvp = TensorList(hvp_fd_central(closure, params, x, h=h, normalize=True)[1])
+                    Hvp = TensorList(hvp_fd_central(closure, params, x, h=h)[1])
                     return torch.cat([t.ravel() for t in Hvp]).numpy(force=True)
 
             else:

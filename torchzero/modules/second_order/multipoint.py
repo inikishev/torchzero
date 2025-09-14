@@ -28,49 +28,14 @@ class HigherOrderMethodBase(Module, ABC):
     @torch.no_grad
     def step(self, var):
         params = TensorList(var.params)
-        x0 = params.clone()
+
         closure = var.closure
         if closure is None: raise RuntimeError('MultipointNewton requires closure')
         vectorize = self._vectorize
 
         def evaluate(x, order) -> tuple[torch.Tensor, ...]:
             """order=0 - returns (loss,), order=1 - returns (loss, grad), order=2 - returns (loss, grad, hessian), etc."""
-            params.from_vec_(x)
-
-            if order == 0:
-                loss = closure(False)
-                params.copy_(x0)
-                return (loss, )
-
-            if order == 1:
-                with torch.enable_grad():
-                    loss = closure()
-                grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-                params.copy_(x0)
-                return loss, torch.cat([g.ravel() for g in grad])
-
-            with torch.enable_grad():
-                loss = var.loss = var.loss_approx = closure(False)
-
-                g_list = torch.autograd.grad(loss, params, create_graph=True)
-                var.grad = list(g_list)
-
-                g = torch.cat([t.ravel() for t in g_list])
-                n = g.numel()
-                ret = [loss, g]
-                T = g # current derivatives tensor
-
-                # get all derivative up to order
-                for o in range(2, order + 1):
-                    is_last = o == order
-                    T_list = jacobian_wrt([T], params, create_graph=not is_last, batched=vectorize)
-                    with torch.no_grad() if is_last else nullcontext():
-                        # the shape is (ndim, ) * order
-                        T = flatten_jacobian(T_list).view(n, n, *T.shape[1:])
-                        ret.append(T)
-
-            params.copy_(x0)
-            return tuple(ret)
+            return var.derivatives_at(x, order, vectorize)
 
         x = torch.cat([p.ravel() for p in params])
         dir = self.one_iteration(x, evaluate, var)

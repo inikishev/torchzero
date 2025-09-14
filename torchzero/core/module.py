@@ -2,8 +2,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, MutableMapping, Sequence
-from operator import itemgetter
-from typing import Any, Literal, cast, final, overload
+from typing import Any, overload
 
 import torch
 
@@ -15,9 +14,7 @@ from ..utils import (
     get_state_vals,
     vec_to_tensors,
 )
-from ..utils.derivatives import flatten_jacobian, hvp, hvp_fd_central, hvp_fd_forward
 from ..utils.linalg.linear_operator import LinearOperator
-from ..utils.python_tools import flatten
 from .var import Var
 
 

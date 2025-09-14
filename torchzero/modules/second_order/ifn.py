@@ -8,7 +8,6 @@ import torch
 from ...core import Chainable, Module, apply_transform, Var
 from ...utils import TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import DenseWithInverse, Dense
-from .newton import _get_H, _get_loss_grad_and_hessian, _newton_step
 
 
 class InverseFreeNewton(Module):
@@ -31,11 +30,13 @@ class InverseFreeNewton(Module):
     def __init__(
         self,
         update_freq: int = 1,
-        hessian_method: Literal["autograd", "func", "autograd.functional"] = "autograd",
+        hessian_method: Literal["autograd", "func", "autograd.functional", "fd_forward", "fd_central"] = "autograd",
         vectorize: bool = True,
+        h: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = dict(hessian_method=hessian_method, vectorize=vectorize, update_freq=update_freq)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
         if inner is not None:
@@ -49,9 +50,13 @@ class InverseFreeNewton(Module):
         self.global_state['step'] = step + 1
 
         if step % update_freq == 0:
-            loss, g_list, H = _get_loss_grad_and_hessian(
-                var, self.defaults['hessian_method'], self.defaults['vectorize']
+            _, _, H = var.hessian(
+                hessian_method=self.defaults['hessian_method'],
+                vectorize=self.defaults['vectorize'],
+                h=self.defaults['h'],
+                at_x0=True
             )
+
             self.global_state["H"] = H
 
             # inverse free part

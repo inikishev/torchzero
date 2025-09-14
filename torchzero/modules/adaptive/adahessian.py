@@ -4,7 +4,7 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Module, Target, Transform, apply_transform
-from ...utils import NumberList, TensorList
+from ...utils import NumberList, TensorList, Distributions
 
 def _full_average(hvp: torch.Tensor):
     if hvp.ndim >= 3:  # Conv kernel
@@ -151,13 +151,16 @@ class AdaHessian(Module):
         update_freq: int = 1,
         eps: float = 1e-8,
         hessian_power: float = 1,
-        hvp_method: Literal['autograd', 'forward', 'central'] = 'autograd',
-        fd_h: float = 1e-3,
+        distribution: Distributions = 'rademacher',
+        hvp_method: Literal['autograd', 'batched', 'forward', 'central'] = 'autograd',
+        h: float = 1e-3,
         n_samples = 1,
+        zHz: bool = True,
         seed: int | None = None,
         inner: Chainable | None = None
     ):
-        defaults = dict(beta1=beta1, beta2=beta2, update_freq=update_freq, averaging=averaging, block_size=block_size, eps=eps, hessian_power=hessian_power, hvp_method=hvp_method, n_samples=n_samples, fd_h=fd_h, seed=seed)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
         if inner is not None:
@@ -166,14 +169,6 @@ class AdaHessian(Module):
     @torch.no_grad
     def step(self, var):
         params = var.params
-        settings = self.settings[params[0]]
-        hvp_method = settings['hvp_method']
-        fd_h = settings['fd_h']
-        update_freq = settings['update_freq']
-        n_samples = settings['n_samples']
-
-        seed = settings['seed']
-        generator = self.get_generator(params[0].device, seed)
 
         beta1, beta2, eps, averaging, block_size, hessian_power = self.get_settings(params,
             'beta1', 'beta2', 'eps', 'averaging', 'block_size', "hessian_power", cls=NumberList)
@@ -187,21 +182,19 @@ class AdaHessian(Module):
         assert closure is not None
 
         D = None
+        update_freq = self.defaults['update_freq']
         if step % update_freq == 0:
 
-            rgrad=None
-            for i in range(n_samples):
-                z = [_rademacher_like(p, generator=generator) for p in params]
-
-                Hz, rgrad = var.hessian_vector_product(z, at_x0=True, rgrad=rgrad, hvp_method=hvp_method,
-                                     h=fd_h, normalize=True, retain_graph=i < n_samples-1)
-                zHz = tuple(Hz)
-                torch._foreach_mul_(zHz, z)
-
-                if D is None: D = zHz
-                else: torch._foreach_add_(D, zHz, alpha = 1/n_samples)
-
-            assert D is not None
+            D, _ = var.hutchinson_hessian(
+                rgrad = None,
+                at_x0 = True,
+                n_samples = self.defaults['n_samples'],
+                distribution = self.defaults['distribution'],
+                hvp_method = self.defaults['hvp_method'],
+                h = self.defaults['h'],
+                zHz = self.defaults["zHz"],
+                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+            )
 
             D = TensorList(D).zipmap_args(_block_average, block_size, averaging)
 
@@ -221,4 +214,5 @@ class AdaHessian(Module):
             hessian_power=hessian_power,
             step=step,
         )
+
         return var

@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 from abc import abstractmethod
 import torch
-from ..modules.higher_order.multipoint import sixth_order_im1, sixth_order_p6, _solve
+from ..modules.second_order.multipoint import sixth_order_3p, sixth_order_5p, two_point_newton, sixth_order_3pm2, _solve
 
 def make_evaluate(f: Callable[[torch.Tensor], torch.Tensor]):
     def evaluate(x, order) -> tuple[torch.Tensor, ...]:
@@ -53,7 +53,7 @@ class Newton(RootBase):
     def one_iteration(self, x, evaluate): return newton(x, evaluate, self.lstsq)
 
 
-class SixthOrderP6(RootBase):
+class SixthOrder3P(RootBase):
     """sixth-order iterative method
 
     Abro, Hameer Akhtar, and Muhammad Mujtaba Shaikh. "A new time-efficient and convergent nonlinear solver." Applied Mathematics and Computation 355 (2019): 516-536.
@@ -62,4 +62,4 @@ class SixthOrderP6(RootBase):
     def one_iteration(self, x, evaluate):
         def f(x): return evaluate(x, 0)[0]
         def f_j(x): return evaluate(x, 1)
-        return sixth_order_p6(x, f, f_j, self.lstsq)
+        return sixth_order_3p(x, f, f_j, self.lstsq)
