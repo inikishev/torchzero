@@ -103,6 +103,7 @@ Determines how hessian is computed.
 Defaults to ``"batched_autograd"``.
 """
 
+
 # region Vars
 # ----------------------------------- var ----------------------------------- #
 class Var:
@@ -345,7 +346,7 @@ class Var:
         retain_graph: bool = False,
     ) -> tuple[list[torch.Tensor], Sequence[torch.Tensor] | None]:
         """
-        Returns ``(Hvp, rgrad)``, where ``rgrad`` is gradient at current parameters but it may be None.
+        Returns ``(Hz, rgrad)``, where ``rgrad`` is gradient at current parameters but it may be None.
 
         Gradient is set to vars automatically if ``at_x0`` and can be accessed with ``vars.get_grad()``.
 
@@ -542,18 +543,19 @@ class Var:
                 # compute
                 Hz, rgrad = self.hessian_vector_product(
                     z=z,
-                    at_x0=at_x0,
                     rgrad=rgrad,
+                    at_x0=at_x0,
                     hvp_method=hvp_method,
                     h=h,
-                    retain_graph=i < n_samples - 1,
+                    retain_graph=(i < n_samples - 1) or retain_graph,
                 )
 
                 # add
-                if zHz: torch._foreach_mul(Hz, tuple(z))
+                if zHz: torch._foreach_mul_(Hz, tuple(z))
 
                 if D is None: D = Hz
                 else: torch._foreach_add_(D, Hz)
+
 
             assert D is not None
             if n_samples > 1: torch._foreach_div_(D, n_samples)

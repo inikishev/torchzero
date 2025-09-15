@@ -346,6 +346,10 @@ class TensorList(list[torch.Tensor | Any]):
     def global_all(self): return builtins.all(self.all())
     def global_numel(self) -> int: return builtins.sum(self.numel())
 
+    def global_allclose(self, other: _TensorSeq, rtol: float = 0.00001, atol: float = 1e-8, equal_nan: bool = False) -> bool:
+        bools = self.zipmap_args(torch.allclose, other, rtol, atol, equal_nan)
+        return all(bools)
+
     def empty_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.empty_like(i, **kwargs) for i in self)
     def zeros_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.zeros_like(i, **kwargs) for i in self)
     def ones_like(self, **kwargs: Unpack[_NewTensorKwargs]): return self.__class__(torch.ones_like(i, **kwargs) for i in self)
