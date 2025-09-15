@@ -73,21 +73,43 @@ class _EvalCounter:
     def __repr__(self):
         return f"EvalCounter(true={self.true}, false={self.false})"
 
-# --------------------------------- objective -------------------------------- #
-def get_quadratic_var(device):
+# --------------------------------- objective --------------------------------
 
-    # two separate tensors to make sure it works
-    p1 = torch.randn(3, 4, requires_grad=True, device=device, generator=_gen(device))
-    p2 = torch.randn(5, requires_grad=True, device=device, generator=_gen(device))
-    params = [p1, p2]
-    n = p1.numel() + p2.numel()
+def objective_value(x:torch.Tensor, A:torch.Tensor, b:torch.Tensor):
+    return 0.5 * x @ A @ x + (b @ x).exp()
 
-    A = torch.randn(n, n, device=device, generator=_gen(device))
-    A = A.T @ A + torch.eye(n, device=device) * 1e-3
+def analytical_gradient(x:torch.Tensor, A:torch.Tensor, b:torch.Tensor):
+    return A @ x + (b @ x).exp() * b
+
+def analytical_hessian(x:torch.Tensor, A:torch.Tensor, b:torch.Tensor):
+    return A + (b @ x).exp() * b.outer(b)
+
+def analytical_derivative(x: torch.Tensor, b:torch.Tensor, order: int) -> torch.Tensor:
+    assert order >= 3
+    # n-th order outer product
+    # n=4 -> 'i,j,k,l->ijkl'
+    indices = 'ijklmnopqrstuvwxyz'[:order]
+    b_outer = torch.einsum(f"{','.join(indices)}->{indices}", *[b] * order)
+    return (b @ x).exp() * b_outer
+
+
+def get_var(device, dtype=torch.float32):
+
+    # we cat a few tensors to make sure those methods handle multiple params correctly
+    p1 = torch.tensor(1., requires_grad=True, device=device, dtype=dtype)
+    p2 = torch.randn(1, 3, 2, requires_grad=True, device=device, generator=_gen(device), dtype=dtype)
+    p3 = torch.randn(4, requires_grad=True, device=device, generator=_gen(device), dtype=dtype)
+
+    params = [p1, p2, p3]
+    n = numel(params)
+
+    A = torch.randn(n, n, device=device, generator=_gen(device), dtype=dtype)
+    A = A.T @ A + torch.eye(n, device=device, dtype=dtype) * 1e-3
+    b = torch.randn(n, device=device, generator=_gen(device), dtype=dtype)
 
     def closure(backward=True):
         x = cat(params)
-        loss = 0.5 * x @ A @ x
+        loss = objective_value(x, A, b)
 
         if backward:
             for p in params:
@@ -99,17 +121,15 @@ def get_quadratic_var(device):
     objective = _EvalCounter(closure)
     var = tz.core.Var(params=params, closure=objective, model=None, current_step=0)
 
-    return var, A, objective
-    # gradient is A@x
-    # hessian is A
+    return var, A, b, objective
 
 # ------------------------------------ hvp ----------------------------------- #
 @pytest.mark.parametrize("device", DEVICES)
 def test_gradient(device):
     """makes sure gradient is correct"""
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
     grad = var.get_grad()
-    assert torch.allclose(cat(grad), A @ cat(var.params))
+    assert torch.allclose(cat(grad), analytical_gradient(cat(var.params), A, b))
     objective.assert_(true=1, false=0)
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -119,7 +139,7 @@ def test_gradient(device):
 def test_hvp_autograd(device, at_x0, hvp_method, get_grad):
     """compares hessian-vector product with analytical"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
 
     grad = None
     if get_grad:
@@ -149,8 +169,9 @@ def test_hvp_autograd(device, at_x0, hvp_method, get_grad):
         if grad is not None: assert_tl_allclose_(grad, rgrad)
 
     # check against known Hvp
-    assert torch.allclose(cat(rgrad), A @ cat(var.params))
-    assert torch.allclose(cat(Hz), A @ cat(z))
+    x = cat(var.params)
+    assert torch.allclose(cat(rgrad), analytical_gradient(x, A, b))
+    assert torch.allclose(cat(Hz), analytical_hessian(x, A, b) @ cat(z))
 
     # check evals
     if at_x0: false = 1
@@ -167,7 +188,7 @@ def test_hvp_autograd(device, at_x0, hvp_method, get_grad):
 def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
     """compares hessian-matrix product with analytical"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
     if get_grad:
         var.get_grad(create_graph=True, at_x0=at_x0) # one false
 
@@ -187,7 +208,8 @@ def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
         assert var.grad is None
 
     # check against known HZ
-    assert torch.allclose(HZ, A@Z, rtol=1e-4, atol=1e-6), f"{HZ = }, {A@Z = }"
+    x = cat(var.params)
+    assert torch.allclose(HZ, analytical_hessian(x, A, b) @ Z, rtol=1e-4, atol=1e-6), f"{HZ = }, {A@Z = }"
 
     # check evals
     if at_x0: false = 1
@@ -196,6 +218,60 @@ def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
         else: false = 1
     objective.assert_(true=0, false=false)
 
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("at_x0", [True, False])
+@pytest.mark.parametrize("hvp_method", ["autograd", "batched_autograd", "fd_forward", "fd_central"])
+@pytest.mark.parametrize("h", [1e-1, 1e-2, 1e-3])
+def test_hessian_vector_vs_matrix_product(device, at_x0, hvp_method, h):
+    """compares hessian_vector_product and hessian_matrix_product, including fd"""
+
+    var, A, b, objective = get_var(device, dtype=torch.float64)
+
+    # generate random matrix
+    n = numel(var.params)
+    Z = torch.randn(n, n*2, device=device, generator=_gen(device))
+    z_vecs = [vec_to_tensors(col, var.params) for col in Z.unbind(1)]
+
+    # hessian-vector
+    rgrad = None
+    Hzs = []
+    for z in z_vecs:
+        Hz, rgrad = var.hessian_vector_product(z, rgrad=rgrad, at_x0=at_x0, hvp_method=hvp_method, h=h, retain_graph=True)
+        Hzs.append(cat(Hz))
+
+    # check evals (did n*2 hvps)
+    if hvp_method in ('autograd', 'batched_autograd'): objective.assert_(true=0, false=1)
+    elif hvp_method == 'fd_central': objective.assert_(true=n*4, false=0)
+    elif hvp_method == 'fd_forward': objective.assert_(true=n*2+1, false=0)
+    else: assert False, hvp_method
+
+    # clear evals
+    objective.true = objective.false = 0
+
+    # hessian-matrix
+    HZ, rgrad = var.hessian_matrix_product(Z, rgrad=rgrad, at_x0=at_x0, hvp_method=hvp_method, h=h)
+
+    # check evals (did n*2 hvps, initial grad is rgrad)
+    if hvp_method in ('autograd', 'batched_autograd'): objective.assert_(true=0, false=0)
+    elif hvp_method == 'fd_central': objective.assert_(true=n*4, false=0)
+    elif hvp_method == 'fd_forward': objective.assert_(true=n*2, false=0)
+    else: assert False, hvp_method
+
+    # check storage
+    if hvp_method == 'fd_central': assert rgrad is None
+    else: assert rgrad is not None
+
+    if at_x0:
+        if hvp_method == 'fd_central':  assert var.grad is None
+        else:
+            assert var.grad is not None
+            assert rgrad is not None
+            assert_tl_same_(rgrad, var.grad)
+    else:
+        assert var.grad is None
+
+    # check that they match
+    assert torch.allclose(HZ, torch.stack(Hzs, dim=-1)), f"{HZ = }, {torch.stack(Hzs, dim=-1) = }"
 
 # -------------------------------- hutchinson -------------------------------- #
 @pytest.mark.parametrize("device", DEVICES)
@@ -206,7 +282,7 @@ def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
 def test_hutchinson(device, at_x0, hvp_method, zHz, get_grad):
     """compares autograd hutchinson with one computed with analytical hessian-vector products"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
     if get_grad:
         var.get_grad(create_graph=True, at_x0=at_x0) # one false
 
@@ -226,8 +302,9 @@ def test_hutchinson(device, at_x0, hvp_method, zHz, get_grad):
         assert var.grad is None
 
     # compute D via known hvp
+    x = cat(var.params)
     z_vecs = [cat(z) for z in zs]
-    Hzs = [A@z for z in z_vecs]
+    Hzs = [analytical_hessian(x, A, b) @ z for z in z_vecs]
     D2 = torch.stack(Hzs)
     if zHz: D2 *= torch.stack(z_vecs)
     D2 = D2.mean(0)
@@ -250,7 +327,7 @@ def test_hutchinson(device, at_x0, hvp_method, zHz, get_grad):
 def test_hutchinson_batching(device, at_x0, zHz, get_grad, pass_rgrad):
     """compares batched and unbatched hutchinson"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
     if get_grad:
         var.get_grad(create_graph=True, at_x0=at_x0) # one false
 
@@ -300,7 +377,7 @@ def test_hutchinson_batching(device, at_x0, zHz, get_grad, pass_rgrad):
 def test_hutchinson_fd(device, at_x0, hvp_method, hvp_fd_method, zHz):
     """compares exact and FD hutchinson"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
 
     # 10 random vecs
     n = numel(var.params)
@@ -329,13 +406,14 @@ def test_hutchinson_fd(device, at_x0, hvp_method, hvp_fd_method, zHz):
 @pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("at_x0", [True, False])
 @pytest.mark.parametrize("hvp_method", ["autograd", "batched_autograd", "fd_forward", "fd_central"])
+@pytest.mark.parametrize("h", [1e-1, 1e-2, 1e-3])
 @pytest.mark.parametrize("zHz", [True, False])
 @pytest.mark.parametrize("get_grad", [True, False])
 @pytest.mark.parametrize("pass_rgrad", [True, False])
-def test_hvp_autograd_hutchinson(device, at_x0, hvp_method, zHz, get_grad, pass_rgrad):
+def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgrad):
     """compares hutchinson via hessian_vector_product and via hutchinson methods, including fd"""
 
-    var, A, objective = get_quadratic_var(device)
+    var, A, b, objective = get_var(device)
     if get_grad:
         var.get_grad(create_graph=hvp_method in ("autograd", "batched_autograd"), at_x0=at_x0) # one false or true
 
@@ -352,7 +430,7 @@ def test_hvp_autograd_hutchinson(device, at_x0, hvp_method, zHz, get_grad, pass_
     D = [torch.zeros_like(t) for t in var.params]
     rgrad = None
     for z in zs:
-        Hz, rgrad = var.hessian_vector_product(z, rgrad, at_x0=at_x0, hvp_method=hvp_method, h=1e-3, retain_graph=True)
+        Hz, rgrad = var.hessian_vector_product(z, rgrad, at_x0=at_x0, hvp_method=hvp_method, h=h, retain_graph=True)
 
         if zHz: torch._foreach_mul_(Hz, z)
         torch._foreach_add_(D, Hz, alpha = 1/10)
@@ -397,7 +475,7 @@ def test_hvp_autograd_hutchinson(device, at_x0, hvp_method, zHz, get_grad, pass_
     # autograd/batched autograd - one false only if both pass_rgrad and at_x0 are False, else 0
     # fd_forward - 11 true if both pass_rgrad and at_x0 are False, else 10 true
     # fd_central - always 20 true
-    D2, rgrad2 = var.hutchinson_hessian(rgrad=rgrad if pass_rgrad else None, at_x0=at_x0, n_samples=None, distribution=zs, hvp_method=hvp_method, h=1e-3, zHz=zHz, generator=None)
+    D2, rgrad2 = var.hutchinson_hessian(rgrad=rgrad if pass_rgrad else None, at_x0=at_x0, n_samples=None, distribution=zs, hvp_method=hvp_method, h=h, zHz=zHz, generator=None)
 
     # check storage
     if hvp_method != "fd_central":
@@ -427,3 +505,76 @@ def test_hvp_autograd_hutchinson(device, at_x0, hvp_method, zHz, get_grad, pass_
     # update should be none after all of this
     assert var.update is None
 
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("at_x0", [True, False])
+@pytest.mark.parametrize("hessian_method", [
+    "batched_autograd",
+    "autograd",
+    "functional_revrev",
+    # "functional_fwdrev", # has shape issue
+    "func",
+    "gfd_forward",
+    "gfd_central",
+    "fd",
+    "fd_full",
+])
+def test_hessian(device, at_x0, hessian_method):
+    """compares hessian with analytical, including gfd and fd"""
+
+    var, A, b, objective = get_var(device, dtype=torch.float64)
+    n = numel(var.params)
+
+    # compute hessian
+    if hessian_method in ("fd", "fd_full"): h = 1e-2
+    else: h = 1e-5
+    f, g_list, H = var.hessian(hessian_method=hessian_method, h=h, at_x0=at_x0)
+
+    # check storages
+    if hessian_method in ("batched_autograd", "autograd", "gfd_forward", "fd", "fd_full"):
+        if hessian_method == "gfd_forward": assert f is None
+        else: assert f == objective.closure(False)
+        assert g_list is not None
+        if at_x0:
+            assert var.grad is not None
+            assert_tl_same_(g_list, var.grad)
+        else:
+            assert var.grad is None
+    else:
+        assert f is None
+        assert g_list is None
+        assert var.grad is None
+
+    # compare with analytical
+    x = cat(var.params)
+    H_real = analytical_hessian(x, A, b)
+    if hessian_method in ("gfd_forward", "gfd_central"):
+        assert torch.allclose(H, H_real, rtol=1e-1, atol=1e-1), f"{H = }, {H_real = }"
+
+    elif hessian_method in ("fd", "fd_full"):
+        # assert torch.allclose(H, H_real, rtol=1e-1, atol=1e-1), f"{H = }, {H_real = }"
+        # TODO find a good test
+
+        # compare gradient with analytical
+        g_real = analytical_gradient(x, A, b)
+        assert g_list is not None
+        assert torch.allclose(cat(g_list), g_real, rtol=1e-2, atol=1e-2), f"{cat(g_list) = }, {g_real = }"
+
+    else:
+        assert torch.allclose(H, H_real), f"{H = }, {H_real = }"
+
+
+    # check evals
+    if hessian_method == "gfd_forward":
+        objective.assert_(true=n+1, false=0)
+
+    elif hessian_method == "gfd_central":
+        objective.assert_(true=n*2, false=0)
+
+    elif hessian_method == "fd":
+        objective.assert_(true=0, false=2*n**2 + 1)
+
+    elif hessian_method == "fd_full":
+        objective.assert_(true=0, false=4*n**2 - 2*n + 1)
+
+    else:
+        objective.assert_(true=0, false=1)

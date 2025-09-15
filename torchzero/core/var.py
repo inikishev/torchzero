@@ -15,6 +15,7 @@ from ..utils.derivatives import (
     hvp_fd_forward,
     jacobian_and_hessian_wrt,
     jacobian_wrt,
+    hessian_fd,
 )
 
 if TYPE_CHECKING:
@@ -87,6 +88,7 @@ HessianMethod = Literal[
     "gfd_forward",
     "gfd_central",
     "fd",
+    "fd_full",
 ]
 """
 Determines how hessian is computed.
@@ -98,7 +100,8 @@ Determines how hessian is computed.
 - ``"func"`` - uses ``torch.func.hessian`` which uses "forward-over-reverse" strategy. This method is the fastest and is recommended, however it is more restrictive and fails with some operators which is why it isn't the default.
 - ``"gfd_forward"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
 - ``"gfd_central"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a more accurate central formula which requires two gradient evaluations per hessian-vector product.
-- ``"fd"`` - uses function values to estimate gradient and hessian via finite difference. This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
+- ``"fd"`` - uses function values to estimate gradient and hessian via finite difference. Only computes upper triangle of the hessian, requires ``2n^2 + 1`` function evaluations. This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
+- ``"fd_full"`` - uses function values to estimate gradient and hessian via finite difference. Computes both upper and lower triangles and averages them, requires ``4n^2 - 2n + 1`` function evaluations This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
 
 Defaults to ``"batched_autograd"``.
 """
@@ -610,16 +613,16 @@ class Var:
         params = self.params
         numel = sum(p.numel() for p in params)
 
-        loss = None
+        f = None
         g_list = None
 
         # autograd hessian
         if hessian_method in ("batched_autograd", "autograd"):
             with torch.enable_grad():
-                loss = self.get_loss(False, at_x0=at_x0)
+                f = self.get_loss(False, at_x0=at_x0)
 
                 batched = hessian_method == "batched_autograd"
-                g_list, H_list = jacobian_and_hessian_wrt([loss.ravel()], params, batched=batched)
+                g_list, H_list = jacobian_and_hessian_wrt([f.ravel()], params, batched=batched)
                 g_list = [t[0] for t in g_list] # remove leading dim from loss
 
             H = flatten_jacobian(H_list)
@@ -647,28 +650,29 @@ class Var:
         # gradient finite difference
         elif hessian_method in ('gfd_forward', 'gfd_central'):
 
-            if hessian_method == 'gfd_central': hvp_method = 'fd_forward'
-            else: hvp_method = 'fd_central'
+            if hessian_method == 'gfd_central': hvp_method = 'fd_central'
+            else: hvp_method = 'fd_forward'
 
             I = torch.eye(numel, device=params[0].device, dtype=params[0].dtype)
             H, g_list = self.hessian_matrix_product(I, rgrad=None, at_x0=at_x0, hvp_method=hvp_method, h=h)
 
         # function value finite difference
-        elif hessian_method == 'fd':
-            raise NotImplementedError()
+        elif hessian_method in ('fd', "fd_full"):
+            full = hessian_method == "fd_full"
+            f, g_list, H = hessian_fd(partial(closure, False), params=params, eps=h, full=full)
 
         else:
             raise ValueError(hessian_method)
 
         # set var attributes if at x0
         if at_x0:
-            if loss is not None and self.loss is None:
-                self.loss = self.loss_approx = loss
+            if f is not None and self.loss is None:
+                self.loss = self.loss_approx = f
 
             if g_list is not None and self.grad is None:
                 self.grad = list(g_list)
 
-        return loss, g_list, H
+        return f, g_list, H
 
     def derivatives(self, order: int, batched: bool, at_x0: bool):
         """

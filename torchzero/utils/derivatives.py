@@ -4,6 +4,7 @@ import torch
 import torch.autograd.forward_ad as fwAD
 
 from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
+from .tensorlist import TensorList
 
 def _jacobian(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
     flat_outputs = torch.cat([i.reshape(-1) for i in outputs])
@@ -490,3 +491,60 @@ def hvp_fd_forward(
 
     if normalize: torch._foreach_mul_(hx, vec_norm)
     return loss, hx
+
+@torch.no_grad
+def hessian_fd(fn, params: Sequence[torch.Tensor], eps: float = 1e-4, full: bool = True):
+    """returns ``f(x), g(x), H(x)``, where ``g(x)`` is a tensor list.
+
+    Number of evals for full is: 4n^2 - 2n + 1
+
+    Number of evals for upper is: 2n^2 + 1.
+    """
+    params = TensorList(params)
+    p_0 = params.clone()
+    n = sum(t.numel() for t in params)
+    device = params[0].device; dtype = params[0].dtype
+    fx = fn()
+    g = params.zeros_like()
+    H = torch.zeros((n, n), device=device, dtype=dtype)
+
+    for i in range(n):
+        for j in (range(n) if full else range(i, n)):
+            if i == j:
+                params.flat_set_lambda_(i, lambda x: x + eps)
+                f_plus = fn()
+
+                params.flat_set_lambda_(i, lambda x: x - 2 * eps)
+                f_minus = fn()
+
+                # params.flat_set_lambda_(i, lambda x: x + eps)
+                g.flat_set_(i, (f_plus - f_minus) / (2*eps))
+                H[i, i] = (f_plus - 2 * fx + f_minus) / (eps ** 2)
+
+            else:
+                params.flat_set_lambda_(i, lambda x: x + eps)
+                params.flat_set_lambda_(j, lambda x: x + eps)
+                f_pp = fn()
+
+                params.flat_set_lambda_(i, lambda x: x - 2 * eps)
+                f_np = fn()
+
+                params.flat_set_lambda_(j, lambda x: x - 2 * eps)
+                f_nn = fn()
+
+                params.flat_set_lambda_(i, lambda x: x + 2 * eps)
+                f_pn = fn()
+
+                # params.flat_set_lambda_(i, lambda x: x - eps)
+                # params.flat_set_lambda_(j, lambda x: x + eps)
+
+                H[i, j] = (f_pp - f_np - f_pn + f_nn) / (4 * eps ** 2)
+                if not full: H[j, i] = H[i, j]
+
+            params.copy_(p_0) # otherwise inaccuracy builds up
+
+    if full:
+        H = H + H.T
+        H /= 2
+
+    return fx, g, H
