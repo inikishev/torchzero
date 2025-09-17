@@ -127,7 +127,7 @@ class GaussNewton(Module):
         # if there are more residuals, solve (J^T J)x = J^T r, so we need Jr
         # otherwise solve (J J^T)z = r and set x = J^T z, so we need r
         nresiduals, ndim = J.shape
-        if nresiduals > ndim:
+        if nresiduals >= ndim or "inner" in self.children:
             self.global_state["Jr"] = Jr
 
         else:
