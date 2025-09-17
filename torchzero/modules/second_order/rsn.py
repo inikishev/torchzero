@@ -15,9 +15,9 @@ def _qr_orthonormalize(A:torch.Tensor):
     if m < n:
         q, _ = torch.linalg.qr(A.T) # pylint:disable=not-callable
         return q.T
-    else:
-        q, _ = torch.linalg.qr(A) # pylint:disable=not-callable
-        return q
+
+    q, _ = torch.linalg.qr(A) # pylint:disable=not-callable
+    return q
 
 def _orthonormal_sketch(m, n, dtype, device, generator):
     return _qr_orthonormalize(torch.randn(m, n, dtype=dtype, device=device, generator=generator))
@@ -148,7 +148,7 @@ class SubspaceNewton(Module):
 
             elif sketch_type == 'common_directions':
                 # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
-                g_list = var.get_grad(create_graph=hvp_method in ("batched", "autograd"))
+                g_list = var.get_grad(create_graph=hvp_method in ("batched_autograd", "autograd"))
                 g = torch.cat([t.ravel() for t in g_list])
 
                 # initialize directions deque
@@ -173,7 +173,7 @@ class SubspaceNewton(Module):
                         S = torch.cat([S, p.unsqueeze(1)], dim=1)
 
             elif sketch_type == "mixed":
-                g_list = var.get_grad(create_graph=hvp_method in ("batched", "autograd"))
+                g_list = var.get_grad(create_graph=hvp_method in ("batched_autograd", "autograd"))
                 g = torch.cat([t.ravel() for t in g_list])
 
                 # initialize state
