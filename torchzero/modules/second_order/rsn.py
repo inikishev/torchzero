@@ -25,17 +25,22 @@ def _orthonormal_sketch(m, n, dtype, device, generator):
 def _gaussian_sketch(m, n, dtype, device, generator):
     return torch.randn(m, n, dtype=dtype, device=device, generator=generator) / math.sqrt(m)
 
-class RSN(Module):
-    """Randomized Subspace Newton. Performs a Newton step in a random subspace.
+def _rademacher_sketch(m, n, dtype, device, generator):
+    rademacher = torch.bernoulli(torch.full((m,n), 0.5), generator = generator).mul_(2).sub_(1)
+    return rademacher.mul_(1 / math.sqrt(m))
+
+class SubspaceNewton(Module):
+    """Subspace Newton. Performs a Newton step in a subspace (random or spanned by past gradients).
 
     Args:
         sketch_size (int):
             size of the random sketch. This many hessian-vector products will need to be evaluated each step.
         sketch_type (str, optional):
             - "orthonormal" - random orthonormal basis. Orthonormality is necessary to use linear operator based modules such as trust region, but it can be slower to compute.
+            - "rademacher" - approximately orthonormal scaled random rademacher basis.
             - "gaussian" - random gaussian (not orthonormal) basis.
             - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt.
-            - "mixed" - random orthonormal basis but with three directions set to gradient, slow EMA and fast EMA (default).
+            - "mixed" - random orthonormal basis but with four directions set to gradient, slow and fast gradient EMAs, and previous update direction (default).
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
             How to compute hessian-matrix product:
@@ -135,6 +140,9 @@ class RSN(Module):
             if sketch_type in ('normal', 'gaussian'):
                 S = _gaussian_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
+            elif sketch_type == "rademacher":
+                S = _rademacher_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+
             elif sketch_type == 'orthonormal':
                 S = _orthonormal_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
@@ -168,17 +176,26 @@ class RSN(Module):
                 g_list = var.get_grad(create_graph=hvp_method in ("batched", "autograd"))
                 g = torch.cat([t.ravel() for t in g_list])
 
+                # initialize state
                 if "slow_ema" not in self.global_state:
                     self.global_state["slow_ema"] = torch.randn_like(g) * 1e-2
                     self.global_state["fast_ema"] = torch.randn_like(g) * 1e-2
+                    self.global_state["p_prev"] = torch.randn_like(g)
 
+                # previous update direction
+                p_cur = torch.cat([t.ravel() for t in params])
+                prev_dir = p_cur - self.global_state["p_prev"]
+                self.global_state["p_prev"] = p_cur
+
+                # EMAs
                 slow_ema = self.global_state["slow_ema"]
                 fast_ema = self.global_state["fast_ema"]
                 slow_ema.lerp_(g, 0.001)
                 fast_ema.lerp_(g, 0.1)
 
-                S = torch.stack([g, slow_ema, fast_ema], dim=1)
-                if sketch_size > 3:
+                # form and orthogonalize sketching matrix
+                S = torch.stack([g, slow_ema, fast_ema, prev_dir], dim=1)
+                if sketch_size > 4:
                     S_random = _gaussian_sketch(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator)
                     S = torch.cat([S, S_random], dim=1)
 

@@ -25,7 +25,7 @@ def _eigval_fn(J: torch.Tensor, fn) -> torch.Tensor:
     L, Q = torch.linalg.eigh(J) # pylint:disable=not-callable
     return (Q * L.unsqueeze(-2)) @ Q.mH
 
-class INM(Module):
+class ImprovedNewton(Module):
     """Improved Newton's Method (INM).
 
     Reference:
