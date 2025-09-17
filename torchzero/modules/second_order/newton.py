@@ -17,10 +17,9 @@ def _lu_solve(H: torch.Tensor, g: torch.Tensor):
         return None
 
 def _cholesky_solve(H: torch.Tensor, g: torch.Tensor):
-    x, info = torch.linalg.cholesky_ex(H) # pylint:disable=not-callable
+    L, info = torch.linalg.cholesky_ex(H) # pylint:disable=not-callable
     if info == 0:
-        g.unsqueeze_(1)
-        return torch.cholesky_solve(g, x)
+        return torch.cholesky_solve(g.unsqueeze(-1), L).squeeze(-1)
     return None
 
 def _least_squares_solve(H: torch.Tensor, g: torch.Tensor):

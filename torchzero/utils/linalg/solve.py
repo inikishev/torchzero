@@ -1,3 +1,4 @@
+# pylint: disable = non-ascii-name
 # pyright: reportArgumentType=false
 import math
 from collections import deque
@@ -36,49 +37,41 @@ def nystrom_approximation(
     A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
     generator = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    omega = torch.randn((ndim, rank), device=device, dtype=dtype, generator=generator) # Gaussian test matrix
-    omega, _ = torch.linalg.qr(omega) # Thin QR decomposition # pylint:disable=not-callable
+    """Computes Nyström approximation to positive-semidefinite A factored as Q L Q^T (truncatd eigenvalue decomp),
+    returns (L, Q). A is (n,n), then Q is (n, rank); L is a vector - diagonal of (rank, rank)"""
+    Ω = torch.randn((ndim, rank), device=device, dtype=dtype, generator=generator) # Gaussian test matrix
+    Ω, _ = torch.linalg.qr(Ω) # Thin QR decomposition # pylint:disable=not-callable
 
     # Y = AΩ
     if A_mm is None:
-        Y = torch.stack([A_mv(col) for col in omega.unbind(-1)], -1) # rank matvecs
+        Y = torch.stack([A_mv(col) for col in Ω.unbind(-1)], -1) # rank matvecs
 
     else:
-        Y = A_mm(omega)
+        Y = A_mm(Ω)
 
     v = torch.finfo(dtype).eps * torch.linalg.matrix_norm(Y, ord='fro') # Compute shift # pylint:disable=not-callable
-    Yv = Y + v*omega # Shift for stability
-    C = torch.linalg.cholesky_ex(omega.mT @ Yv)[0] # pylint:disable=not-callable
+    Yv = Y + v*Ω # Shift for stability
+    C = torch.linalg.cholesky_ex(Ω.mT @ Yv)[0] # pylint:disable=not-callable
     B = torch.linalg.solve_triangular(C, Yv.mT, upper=False, unitriangular=False).mT # pylint:disable=not-callable
-    U, S, _ = torch.linalg.svd(B, full_matrices=False) # pylint:disable=not-callable
-    lambd = (S.pow(2) - v).clip(min=0) #Remove shift, compute eigs
-    return U, lambd
+    Q, S, _ = torch.linalg.svd(B, full_matrices=False) # pylint:disable=not-callable
+    L = (S.pow(2) - v).clip(min=0) #Remove shift, compute eigs
+    return L, Q
 
 def nystrom_sketch_and_solve(
-    A_mv: Callable[[torch.Tensor], torch.Tensor],
+    L: torch.Tensor,
+    Q: torch.Tensor,
     b: torch.Tensor,
-    rank: int,
     reg: float = 1e-3,
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    generator=None,
 ) -> torch.Tensor:
-    U, lambd = nystrom_approximation(
-        A_mv=A_mv,
-        ndim=b.size(-1),
-        rank=rank,
-        device=b.device,
-        dtype=b.dtype,
-        A_mm=A_mm,
-        generator=generator,
-    )
+
     b = b.unsqueeze(-1)
-    lambd += reg
+    L += reg
     # x = (A + μI)⁻¹ b
     # (A + μI)⁻¹ = U(Λ + μI)⁻¹Uᵀ + (1/μ)(b - UUᵀ)
     # x = U(Λ + μI)⁻¹Uᵀb + (1/μ)(b - UUᵀb)
-    Uᵀb = U.T @ b
-    term1 = U @ ((1/lambd).unsqueeze(-1) * Uᵀb)
-    term2 = (1.0 / reg) * (b - U @ Uᵀb)
+    Uᵀb = Q.T @ b
+    term1 = Q @ ((1/L).unsqueeze(-1) * Uᵀb)
+    term2 = (1.0 / reg) * (b - Q @ Uᵀb)
     return (term1 + term2).squeeze(-1)
 
 def nystrom_pcg(
@@ -93,7 +86,7 @@ def nystrom_pcg(
     generator=None,
 ) -> torch.Tensor:
 
-    U, lambd = nystrom_approximation(
+    L, Q = nystrom_approximation(
         A_mv=A_mv,
         ndim=b.size(-1),
         rank=sketch_size,
@@ -103,7 +96,7 @@ def nystrom_pcg(
         generator=generator,
     )
 
-    lambd += reg
+    L += reg
     eps = torch.finfo(b.dtype).tiny * 2
     if tol is None: tol = eps
 
@@ -118,8 +111,8 @@ def nystrom_pcg(
     x = x0_
     residual = b - A_mv_reg(x)
     # z0 = P⁻¹ r0
-    term1 = lambd[...,-1] * U * (1/lambd.unsqueeze(-2)) @ U.mT
-    term2 = torch.eye(U.size(-2), device=U.device,dtype=U.dtype) - U@U.mT
+    term1 = L[...,-1] * Q * (1/L.unsqueeze(-2)) @ Q.mT
+    term2 = torch.eye(Q.size(-2), device=Q.device,dtype=Q.dtype) - Q@Q.mT
     P_inv = term1 + term2
     z = P_inv @ residual
     p = z.clone() # search direction

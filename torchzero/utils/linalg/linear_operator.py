@@ -25,11 +25,17 @@ class LinearOperator(ABC):
     def rmatvec(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement rmatvec")
 
-    def matmat(self, x: torch.Tensor) -> "LinearOperator":
-        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement matmul")
+    def matmat(self, X: torch.Tensor) -> "LinearOperator":
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement matmat")
+
+    def rmatmat(self, X: torch.Tensor) -> "LinearOperator":
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement rmatmat")
 
     def solve(self, b: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement solve")
+
+    def solve_plus_diag(self, b: torch.Tensor, diag: int | float | torch.Tensor) -> torch.Tensor:
+        return self.add_diagonal(diag).solve(b)
 
     def solve_bounded(self, b: torch.Tensor, bound:float, ord:float=2) -> torch.Tensor:
         """solve with a norm bound on x"""
@@ -129,8 +135,8 @@ class Dense(LinearOperator):
     def matvec(self, x): return self.A.mv(x)
     def rmatvec(self, x): return self.A.mH.mv(x)
 
-    def matmat(self, x): return Dense(self.A.mm(x))
-    def rmatmat(self, x): return Dense(self.A.mH.mm(x))
+    def matmat(self, X): return Dense(self.A.mm(X))
+    def rmatmat(self, X): return Dense(self.A.mH.mm(X))
 
     def solve(self, b): return _solve(self.A, b)
 
@@ -146,6 +152,12 @@ class Dense(LinearOperator):
     def is_dense(self): return True
     def transpose(self): return Dense(self.A.mH)
 
+class SPD(Dense):
+    def solve(self, b: torch.Tensor):
+        L, info = torch.linalg.cholesky_ex(self.A) # pylint:disable=not-callable
+        return torch.cholesky_solve(b.unsqueeze(-1), L).squeeze(-1)
+
+
 class DenseInverse(LinearOperator):
     """Represents inverse of a dense matrix A."""
     def __init__(self, A_inv: torch.Tensor):
@@ -156,8 +168,8 @@ class DenseInverse(LinearOperator):
     def matvec(self, x): return _solve(self.A_inv, x) # pylint:disable=not-callable
     def rmatvec(self, x): return _solve(self.A_inv.mH, x) # pylint:disable=not-callable
 
-    def matmat(self, x): return Dense(_solve(self.A_inv, x)) # pylint:disable=not-callable
-    def rmatmat(self, x): return Dense(_solve(self.A_inv.mH, x)) # pylint:disable=not-callable
+    def matmat(self, X): return Dense(_solve(self.A_inv, X)) # pylint:disable=not-callable
+    def rmatmat(self, X): return Dense(_solve(self.A_inv.mH, X)) # pylint:disable=not-callable
 
     def solve(self, b): return self.A_inv.mv(b)
 
@@ -190,8 +202,8 @@ class Diagonal(LinearOperator):
     def matvec(self, x): return self.A * x
     def rmatvec(self, x): return self.A * x
 
-    def matmat(self, x): return Dense(x * self.A.unsqueeze(-1))
-    def rmatmat(self, x): return Dense(x * self.A.unsqueeze(-1))
+    def matmat(self, X): return Dense(X * self.A.unsqueeze(-1))
+    def rmatmat(self, X): return Dense(X * self.A.unsqueeze(-1))
 
     def solve(self, b): return b/self.A
 
@@ -221,8 +233,8 @@ class ScaledIdentity(LinearOperator):
     def matvec(self, x): return x * self.s
     def rmatvec(self, x): return x * self.s
 
-    def matmat(self, x): return Dense(x * self.s)
-    def rmatmat(self, x): return Dense(x * self.s)
+    def matmat(self, X): return Dense(X * self.s)
+    def rmatmat(self, X): return Dense(X * self.s)
 
     def solve(self, b): return b / self.s
     def solve_bounded(self, b, bound, ord = 2):
@@ -263,6 +275,7 @@ class ScaledIdentity(LinearOperator):
     def is_dense(self): return False
     def transpose(self): return ScaledIdentity(self.s, shape=self.shape, device=self.device, dtype=self.dtype)
 
+
 class AtA(LinearOperator):
     def __init__(self, A: torch.Tensor):
         self.A = A
@@ -270,8 +283,8 @@ class AtA(LinearOperator):
     def matvec(self, x): return self.A.mH.mv(self.A.mv(x))
     def rmatvec(self, x): return self.matvec(x)
 
-    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, x])) # pylint:disable=not-callable
-    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, x])) # pylint:disable=not-callable
+    def matmat(self, X): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, X])) # pylint:disable=not-callable
+    def rmatmat(self, X): return Dense(torch.linalg.multi_dot([self.A.mH, self.A, X])) # pylint:disable=not-callable
 
     def is_dense(self): return False
     def to_tensor(self): return self.A.mH @ self.A
@@ -283,7 +296,27 @@ class AtA(LinearOperator):
         return Dense(self.to_tensor() + torch.diag_embed(x))
 
     def solve(self, b):
-        return Dense(self.to_tensor()).solve(b)
+        *_, n, m = self.A.shape
+        if n >= m: return Dense(self.to_tensor()).solve(b)
+
+        A = self.A
+        C = A @ A.mH # (n, n), SPD
+        L, info = torch.linalg.cholesky_ex(C) # pylint:disable=not-callable
+        z = torch.cholesky_solve((A @ b).unsqueeze(-1), L).squeeze(-1)
+        return A.mH @ z
+
+    def solve_plus_diag(self, b, diag):
+        *_, n, m = self.A.shape
+        if (n >= m) or (isinstance(diag, torch.Tensor) and diag.numel() > 1):
+            return Dense(self.to_tensor()).solve_plus_diag(b, diag)
+
+        A = self.A
+        I = torch.eye(A.size(-2), device=A.device, dtype=A.dtype)
+
+        C = (A @ A.mH).add_(I.mul_(diag)) # (n, n), SPD
+        L, info = torch.linalg.cholesky_ex(C + I.mul_(diag)) # pylint:disable=not-callable
+        z = torch.cholesky_solve((A @ b).unsqueeze(-1), L).squeeze(-1)
+        return (1 / diag) * (b - A.mH @ z)
 
     def inv(self):
         return Dense(self.to_tensor()).inv()
@@ -295,39 +328,9 @@ class AtA(LinearOperator):
         n = self.A.size(1)
         return (n,n)
 
-class AAT(LinearOperator):
+class AAt(AtA):
     def __init__(self, A: torch.Tensor):
-        self.A = A
-        self.device = self.A.device; self.dtype = self.A.dtype
-
-    def matvec(self, x): return self.A.mv(self.A.mH.mv(x))
-    def rmatvec(self, x): return self.matvec(x)
-
-    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.A, self.A.mH, x])) # pylint:disable=not-callable
-    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.A, self.A.mH, x])) # pylint:disable=not-callable
-
-    def is_dense(self): return False
-    def to_tensor(self): return self.A @ self.A.mH
-    def transpose(self): return AAT(self.A)
-
-    def add_diagonal(self, x):
-        if isinstance(x, torch.Tensor) and x.numel() <= 1: x = x.item()
-        if isinstance(x, (int,float)): x = torch.full((self.shape[0],), fill_value=x, device=self.A.device, dtype=self.A.dtype)
-        return Dense(self.to_tensor() + torch.diag_embed(x))
-
-    def solve(self, b):
-        return Dense(self.to_tensor()).solve(b)
-
-    def inv(self):
-        return Dense(self.to_tensor()).inv()
-
-    def diagonal(self):
-        return self.A.pow(2).sum(0)
-
-    def size(self):
-        n = self.A.size(1)
-        return (n,n)
-
+        super().__init__(A.mH)
 
 class Sketched(LinearOperator):
     """A projected by sketching matrix S, representing the operator S @ A_proj @ S.T.
@@ -338,7 +341,6 @@ class Sketched(LinearOperator):
         self.S = S
         self.A_proj = A_proj
         self.device = self.A_proj.device; self.dtype = self.A_proj.dtype
-
 
     def matvec(self, x):
         x_proj = self.S.T @ x
@@ -351,8 +353,8 @@ class Sketched(LinearOperator):
         return self.S @ ATx_proj
 
 
-    def matmat(self, x): return Dense(torch.linalg.multi_dot([self.S, self.A_proj, self.S.T, x])) # pylint:disable=not-callable
-    def rmatmat(self, x): return Dense(torch.linalg.multi_dot([self.S, self.A_proj.mH, self.S.T, x])) # pylint:disable=not-callable
+    def matmat(self, X): return Dense(torch.linalg.multi_dot([self.S, self.A_proj, self.S.T, X])) # pylint:disable=not-callable
+    def rmatmat(self, X): return Dense(torch.linalg.multi_dot([self.S, self.A_proj.mH, self.S.T, X])) # pylint:disable=not-callable
 
 
     def is_dense(self): return False
@@ -375,3 +377,43 @@ class Sketched(LinearOperator):
         n = self.S.size(0)
         return (n,n)
 
+
+class Eigendecomposition(LinearOperator):
+    """A represented as Q L Q^H. If A is (n,n), then Q is (n, rank); L is a vector - diagonal of (rank, rank)"""
+    def __init__(self, L: torch.Tensor, Q: torch.Tensor):
+        self.L = L
+        self.Q = Q
+        self.device = self.L.device; self.dtype = self.L.dtype
+
+    def matvec(self, x):
+        return self.Q @ ((self.Q.mH @ x) * self.L)
+
+    def rmatvec(self, x):
+        return self.matvec(x)
+
+    def matmat(self, X):
+        return Dense(self.Q @ (self.L[:, None] * (self.Q.mH @ X)))
+
+    def rmatmat(self, X):
+        return self.matmat(X)
+
+    def is_dense(self): return False
+    def to_tensor(self): return self.Q @ self.L.diag_embed() @ self.Q.mH
+    def transpose(self): return Eigendecomposition(L=self.L, Q=self.Q)
+
+    def add_diagonal(self, x):
+        """this doesn't correspond to adding diagonal to A, however it still works for LM etc."""
+        if isinstance(x, torch.Tensor) and x.numel() >= 1:
+            raise RuntimeError("Can't add non-scalar diagonal to eigendecomposition")
+
+        return Eigendecomposition(L=self.L + x, Q = self.Q)
+
+    def solve(self, b):
+        return self.Q @ ((self.Q.mH @ b) / self.L)
+
+    def inv(self):
+        return Eigendecomposition(L=1 / self.L, Q = self.Q)
+
+    def size(self):
+        n = self.Q.size(0)
+        return (n,n)

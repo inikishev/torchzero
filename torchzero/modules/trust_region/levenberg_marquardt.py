@@ -118,11 +118,11 @@ class LevenbergMarquardt(TrustRegionBase):
 
         reg = 1/radius
         if y == 0:
-            return H.add_diagonal(reg).solve(g)
+            return H.solve_plus_diag(g, reg) # pyright:ignore[reportAttributeAccessIssue]
 
         diag = H.diagonal()
         diag = torch.where(diag < torch.finfo(diag.dtype).tiny * 2, 1, diag)
         if y != 1: diag = (diag*y) + (1-y)
-        return H.add_diagonal(diag*reg).solve(g)
+        return H.solve_plus_diag(g, diag*reg)
 
 

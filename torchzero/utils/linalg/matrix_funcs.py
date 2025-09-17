@@ -3,21 +3,19 @@ from collections.abc import Callable
 
 import torch
 
-def eigvals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
+def matrix_power_eigh(A: torch.Tensor, power:float, abs:bool=False):
+    """this is faster than SVD but only for positive semi-definite symmetric matrices
+    (covariance matrices are always SPD)"""
     L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
-    L = fn(L)
-    return  (Q * L.unsqueeze(-2)) @ Q.mH
+    if abs: L.abs_()
+    if power % 2 != 0: L.clip_(min = torch.finfo(A.dtype).tiny * 2)
+    return (Q * L.pow_(power).unsqueeze(-2)) @ Q.mH
 
-def singular_vals_func(A: torch.Tensor, fn: Callable[[torch.Tensor], torch.Tensor]) -> torch.Tensor:
-    U, S, V = torch.linalg.svd(A) # pylint:disable=not-callable
-    S = fn(S)
-    return (U * S.unsqueeze(-2)) @ V.mT
-
-def matrix_power_eigh(A: torch.Tensor, pow:float):
-    L, Q = torch.linalg.eigh(A) # pylint:disable=not-callable
-    if pow % 2 != 0: L.clip_(min = torch.finfo(A.dtype).tiny * 2)
-    return (Q * L.pow(pow).unsqueeze(-2)) @ Q.mH
-
+def matrix_power_svd(A: torch.Tensor, power: float) -> torch.Tensor:
+    """for any symmetric matrix"""
+    U, S, Vh = torch.linalg.svd(A, full_matrices=False) # pylint:disable=not-callable
+    if power % 2 != 0: S.clip_(min = torch.finfo(A.dtype).tiny * 2)
+    return (U * S.pow_(power).unsqueeze(-2)) @ Vh
 
 def inv_sqrt_2x2(A: torch.Tensor, force_pd: bool=False) -> torch.Tensor:
     """Inverse square root of a possibly batched 2x2 matrix using a general formula for 2x2 matrices so that this is way faster than torch linalg. I tried doing a hierarchical 2x2 preconditioning but it didn't work well."""
@@ -33,7 +31,8 @@ def inv_sqrt_2x2(A: torch.Tensor, force_pd: bool=False) -> torch.Tensor:
 
     if force_pd:
         # add smallest eigenvalue magnitude to diagonal to force PD
-        # could also abs or clip eigenvalues bc there is a formula for eigenvectors
+        # actually that is a very stupid way of doing it
+        # should abs and clip eigenvalues bc there is a formula for eigenvectors
         term1 = trace/2
         term2 = (trace.pow(2).div_(4).sub_(det)).clamp_(min=eps).sqrt_()
         y1 = term1 + term2

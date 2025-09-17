@@ -58,7 +58,7 @@ def ls_cubic_solver(f, g:torch.Tensor, H:LinearOperator, M: float, loss_at_param
     for _ in range(it_max):
         r_try = (r_min + r_max) / 2
         lam = r_try * M
-        s_lam = H.add_diagonal(lam).solve(g).neg()
+        s_lam = H.solve_plus_diag(g, lam).neg()
         # s_lam = -torch.linalg.solve(B + lam*id_matrix, g)
         solver_it += 1
         crit = conv_criterion(s_lam, r_try)

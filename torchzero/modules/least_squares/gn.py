@@ -1,9 +1,10 @@
 import torch
-from ...core import Module
+from ...core import Module, Chainable, apply_transform
 
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors
 from ...utils.linalg import linear_operator
+
 class SumOfSquares(Module):
     """Sets loss to be the sum of squares of values returned by the closure.
 
@@ -41,7 +42,6 @@ class SumOfSquares(Module):
             var.loss_approx = var.loss_approx.pow(2).sum()
 
         return var
-
 
 class GaussNewton(Module):
     """Gauss-newton method.
@@ -101,8 +101,9 @@ class GaussNewton(Module):
             print(f'{losses.mean() = }')
     ```
     """
-    def __init__(self, reg:float = 1e-8, batched:bool=True, ):
+    def __init__(self, reg:float = 1e-8, batched:bool=True, inner: Chainable | None = None):
         super().__init__(defaults=dict(batched=batched, reg=reg))
+        if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
     def update(self, var):
@@ -114,15 +115,24 @@ class GaussNewton(Module):
 
         # gauss newton direction
         with torch.enable_grad():
-            r = var.get_loss(backward=False) # n_out
+            r = var.get_loss(backward=False) # nresiduals
             assert isinstance(r, torch.Tensor)
-            r_list = jacobian_wrt([r.ravel()], params, batched=batched)
+            J_list = jacobian_wrt([r.ravel()], params, batched=batched)
 
         var.loss = r.pow(2).sum()
 
-        J = self.global_state["J"] = flatten_jacobian(r_list) # (n_out, ndim)
+        J = self.global_state["J"] = flatten_jacobian(J_list) # (nresiduals, ndim)
         Jr = J.T @ r.detach() # (ndim)
-        self.global_state["Jr"] = Jr
+
+        # if there are more residuals, solve (J^T J)x = J^T r, so we need Jr
+        # otherwise solve (J J^T)z = r and set x = J^T z, so we need r
+        nresiduals, ndim = J.shape
+        if nresiduals > ndim:
+            self.global_state["Jr"] = Jr
+
+        else:
+            self.global_state["r"] = r
+
         var.grad = vec_to_tensors(Jr, var.params)
 
         # set closure to calculate sum of squares for line searches etc
@@ -145,16 +155,53 @@ class GaussNewton(Module):
         reg = self.defaults['reg']
 
         J = self.global_state['J']
-        Jr = self.global_state['Jr']
+        nresiduals, ndim = J.shape
+        if nresiduals >= ndim or "inner" in self.children:
+            # (J^T J)v = J^T r
+            Jr = self.global_state['Jr']
 
-        JJ = J.T @ J # (ndim, ndim)
-        if reg != 0:
-            JJ.add_(torch.eye(JJ.size(0), device=JJ.device, dtype=JJ.dtype).mul_(reg))
+            # inner step
+            if "inner" in self.children:
 
-        v = torch.linalg.lstsq(JJ, Jr).solution # pylint:disable=not-callable
+                # var.grad is set to unflattened Jr
+                assert var.grad is not None
+                Jr_list = apply_transform(self.children["inner"], tensors=[g.clone() for g in var.grad],
+                                          params=var.params, grads=var.grad, loss=var.loss, var=var)
+                Jr = torch.cat([t.ravel() for t in Jr_list])
 
-        var.update = vec_to_tensors(v, var.params)
-        return var
+            JJ = J.T @ J # (ndim, ndim)
+            if reg != 0:
+                JJ.add_(torch.eye(JJ.size(0), device=JJ.device, dtype=JJ.dtype).mul_(reg))
+
+            if nresiduals>= ndim:
+                v, info = torch.linalg.solve_ex(JJ, Jr) # pylint:disable=not-callable
+            else:
+                v = torch.linalg.lstsq(JJ, Jr).solution # pylint:disable=not-callable
+
+            var.update = vec_to_tensors(v, var.params)
+            return var
+
+        else:
+            # solve (J J^T)z = r and set v = J^T z
+            # derivation
+            # we need (J^T J)v = J^T r
+            # suppose z is solution to (G G^T)z = r, and v = J^T z
+            # if v = J^T z, then (J^T J)v = (J^T J) (J^T z) = J^T (J J^T) z = J^T r
+            # therefore with our presuppositions (J^T J)v = J^T r
+
+            # also this gives a minimum norm solution
+
+            r = self.global_state['r']
+
+            JJT = J @ J.T # (nresiduals, nresiduals)
+            if reg != 0:
+                JJT.add_(torch.eye(JJT.size(0), device=JJT.device, dtype=JJT.dtype).mul_(reg))
+
+            z, info = torch.linalg.solve_ex(JJT, r) # pylint:disable=not-callable
+            v = J.T @ z
+
+            var.update = vec_to_tensors(v, var.params)
+            return var
 
     def get_H(self, var):
         J = self.global_state['J']

@@ -5,8 +5,8 @@ import torch
 from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve
-
+from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation
+from ...utils.linalg.linear_operator import Eigendecomposition
 
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
@@ -56,6 +56,7 @@ class NystromSketchAndSolve(Module):
         reg: float = 1e-3,
         hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-3,
+        update_freq: int = 1,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -67,39 +68,60 @@ class NystromSketchAndSolve(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
-        params = TensorList(var.params)
+    def update(self, var):
+        update_freq = self.defaults["update_freq"]
+        step = self.global_state.get("step", 0)
+        self.global_state["step"] = step + 1
 
-        closure = var.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
+        if step % update_freq == 0:
+            params = TensorList(var.params)
 
-        settings = self.settings[params[0]]
-        rank = settings['rank']
-        reg = settings['reg']
-        hvp_method = settings['hvp_method']
-        h = settings['h']
+            closure = var.closure
+            if closure is None: raise RuntimeError('NewtonCG requires closure')
 
-        seed = settings['seed']
-        generator = None
-        if seed is not None:
-            if 'generator' not in self.global_state:
-                self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
-            generator = self.global_state['generator']
+            rank = self.defaults['rank']
+            hvp_method = self.defaults['hvp_method']
+            h = self.defaults['h']
 
-        # ---------------------- Hessian vector product function --------------------- #
-        _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+            seed = self.defaults['seed']
+            generator = self.get_generator(params[0].device, seed=seed)
+
+            # ---------------------- Hessian vector product function --------------------- #
+            _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+
+            # ---------------------------------- sketch ---------------------------------- #
+            ndim = sum(t.numel() for t in var.params)
+            device = params[0].device
+            dtype = params[0].dtype
+
+            L, Q = nystrom_approximation(A_mv=H_mv, A_mm=H_mm, ndim=ndim, rank=rank,
+                                        dtype=dtype, device=device, generator=generator)
+
+            self.global_state["L"] = L
+            self.global_state["Q"] = Q
+
+    def apply(self, var):
         grad = var.get_grad()
+        reg = self.defaults['reg']
 
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
+            b = apply_transform(self.children['inner'], b, params=var.params, grads=grad, var=var)
 
-        # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_sketch_and_solve(A_mv=H_mv, A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), rank=rank, reg=reg, generator=generator)
-        var.update = vec_to_tensors(x, reference=params)
+        # ----------------------------------- solve ---------------------------------- #
+        L = self.global_state["L"]
+        Q = self.global_state["Q"]
+        x = nystrom_sketch_and_solve(L=L, Q=Q, b=torch.cat([t.ravel() for t in b]), reg=reg)
+
+        # -------------------------------- set update -------------------------------- #
+        var.update = vec_to_tensors(x, reference=var.params)
         return var
 
+    def get_H(self, var=...):
+        L = self.global_state["L"]
+        Q = self.global_state["Q"]
+        return Eigendecomposition(L, Q)
 
 
 class NystromPCG(Module):

@@ -341,7 +341,7 @@ class FullMatrixAdagrad(TensorwiseTransform):
         try:
             if sqrt:
                 if "B" not in state or step % precond_freq == 0:
-                    B = state["B"] = matrix_power_eigh(GG, -1/2)
+                    B = state["B"] = matrix_power_eigh(GG, -1/2, abs=True)
                 else:
                     B = state["B"]
 

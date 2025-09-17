@@ -1,9 +1,8 @@
 from . import linear_operator
 from .matrix_funcs import (
-    eigvals_func,
     inv_sqrt_2x2,
     matrix_power_eigh,
-    singular_vals_func,
+    matrix_power_svd,
     x_inv,
 )
 from .orthogonalize import gram_schmidt

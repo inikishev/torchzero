@@ -27,9 +27,9 @@ class NaturalGradient(Module):
             with a vector that isn't strictly per-sample gradients, but rather for example different losses.
         gn_grad (bool, optional):
             if True, uses Gauss-Newton G^T @ f as the gradient, which is effectively sum weighted by value
-            and is equivalent to squaring the values. This way you can solve least-squares
-            objectives with a NGD-like algorithm. If False, uses sum of per-sample gradients.
-            This has an effect when ``sqrt=True``, and affects the ``grad`` attribute.
+            and is equivalent to squaring the values. That makes the kernel trick solver incorrect, but for
+            some reason it still works. If False, uses sum of per-sample gradients.
+            This has an effect when ``sqrt=False``, and affects the ``grad`` attribute.
             Defaults to False.
         batched (bool, optional): whether to use vmapping. Defaults to True.
 
@@ -157,6 +157,9 @@ class NaturalGradient(Module):
             var.update = vec_to_tensors(v, params)
             return var
 
+        # we need (G^T G)v = g
+        # where g = G^T
+        # so we need to solve (G^T G)v = G^T
         GGT = G @ G.H # (n_samples, n_samples)
 
         if reg != 0:
