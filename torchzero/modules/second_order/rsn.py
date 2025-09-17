@@ -44,12 +44,12 @@ class SubspaceNewton(Module):
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
             How to compute hessian-matrix product:
-            - "batched" - uses batched autograd
+            - "batched_autograd" - uses batched autograd
             - "autograd" - uses unbatched autograd
             - "forward" - uses finite difference with forward formula, performing 1 backward pass per Hvp.
             - "central" - uses finite difference with a more accurate central formula, performing 2 backward passes per Hvp.
 
-            . Defaults to "batched".
+            . Defaults to "batched_autograd".
         h (float, optional): finite difference step size. Defaults to 1e-2.
         use_lstsq (bool, optional): whether to use least squares to solve ``Hx=g``. Defaults to False.
         update_freq (int, optional): frequency of updating the hessian. Defaults to 1.

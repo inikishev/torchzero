@@ -8,6 +8,7 @@ from typing import cast, final
 import torch
 
 from ..torch_tools import tofloat, tonumpy, totensor
+from .solve import nystrom_sketch_and_solve
 
 if find_spec('scipy') is not None:
     from scipy.sparse.linalg import LinearOperator as _ScipyLinearOperator
@@ -404,12 +405,16 @@ class Eigendecomposition(LinearOperator):
     def add_diagonal(self, x):
         """this doesn't correspond to adding diagonal to A, however it still works for LM etc."""
         if isinstance(x, torch.Tensor) and x.numel() >= 1:
-            raise RuntimeError("Can't add non-scalar diagonal to eigendecomposition")
+            raise RuntimeError("Eigendecomposition linear operator doesn't support add_diagonal with a vector diag")
 
         return Eigendecomposition(L=self.L + x, Q = self.Q)
 
     def solve(self, b):
         return self.Q @ ((self.Q.mH @ b) / self.L)
+
+    def solve_plus_diag(self, b, diag):
+        if isinstance(diag, torch.Tensor) and diag.numel() > 1: return super().solve_plus_diag(b, diag)
+        return nystrom_sketch_and_solve(L=self.L, Q=self.Q, b=b, reg=float(diag))
 
     def inv(self):
         return Eigendecomposition(L=1 / self.L, Q = self.Q)

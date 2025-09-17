@@ -67,11 +67,11 @@ def nystrom_sketch_and_solve(
     b = b.unsqueeze(-1)
     L += reg
     # x = (A + μI)⁻¹ b
-    # (A + μI)⁻¹ = U(Λ + μI)⁻¹Uᵀ + (1/μ)(b - UUᵀ)
-    # x = U(Λ + μI)⁻¹Uᵀb + (1/μ)(b - UUᵀb)
-    Uᵀb = Q.T @ b
-    term1 = Q @ ((1/L).unsqueeze(-1) * Uᵀb)
-    term2 = (1.0 / reg) * (b - Q @ Uᵀb)
+    # (A + μI)⁻¹ = Q(L + μI)⁻¹Qᵀ + (1/μ)(b - QQᵀ)
+    # x = Q(L + μI)⁻¹Qᵀb + (1/μ)(b - QQᵀb)
+    Qᵀb = Q.T @ b
+    term1 = Q @ ((1/L).unsqueeze(-1) * Qᵀb)
+    term2 = (1.0 / reg) * (b - Q @ Qᵀb)
     return (term1 + term2).squeeze(-1)
 
 def nystrom_pcg(
