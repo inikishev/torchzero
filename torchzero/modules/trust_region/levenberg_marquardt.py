@@ -32,38 +32,31 @@ class LevenbergMarquardt(TrustRegionBase):
         max_attempts (max_attempts, optional):
             maximum number of trust region size size reductions per step. A zero update vector is returned when
             this limit is exceeded. Defaults to 10.
+        adaptive (bool, optional):
+            if True, trust radius is multiplied by square root of gradient norm.
         fallback (bool, optional):
             if ``True``, when ``hess_module`` maintains hessian inverse which can't be inverted efficiently, it will
             be inverted anyway. When ``False`` (default), a ``RuntimeError`` will be raised instead.
         inner (Chainable | None, optional): preconditioning is applied to output of thise module. Defaults to None.
 
-    Examples:
-        Gauss-Newton with Levenberg-Marquardt trust-region
+    ### Examples:
 
-        .. code-block:: python
+    Gauss-Newton with Levenberg-Marquardt trust-region
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LevenbergMarquardt(tz.m.GaussNewton()),
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquardt(tz.m.GaussNewton()),
+    )
+    ```
 
-        LM-SR1
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False)),
-            )
-
-        First order trust region (hessian is assumed to be identity)
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LevenbergMarquardt(tz.m.Identity()),
-            )
+    LM-SR1
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False)),
+    )
+    ```
 
     """
     def __init__(
@@ -78,11 +71,12 @@ class LevenbergMarquardt(TrustRegionBase):
         max_attempts: int = 10,
         radius_strategy: _RadiusStrategy | _RADIUS_KEYS = 'default',
         y: float = 0,
+        adaptive: bool = False,
         fallback: bool = False,
         update_freq: int = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(y=y, fallback=fallback)
+        defaults = dict(y=y, fallback=fallback, adaptive=adaptive)
         super().__init__(
             defaults=defaults,
             hess_module=hess_module,
@@ -103,6 +97,7 @@ class LevenbergMarquardt(TrustRegionBase):
 
     def trust_solve(self, f, g, H, radius, params, closure, settings):
         y = settings['y']
+        adaptive = settings["adaptive"]
 
         if isinstance(H, linear_operator.DenseInverse):
             if settings['fallback']:
@@ -117,6 +112,8 @@ class LevenbergMarquardt(TrustRegionBase):
                 )
 
         reg = 1/radius
+        if adaptive: reg = reg * torch.linalg.vector_norm(g).sqrt()
+
         if y == 0:
             return H.solve_plus_diag(g, reg) # pyright:ignore[reportAttributeAccessIssue]
 
