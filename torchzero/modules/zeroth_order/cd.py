@@ -34,7 +34,7 @@ class CD(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
         if closure is None:
             raise RuntimeError("CD requires closure")

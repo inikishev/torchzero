@@ -35,7 +35,7 @@ class NewtonSolver(Module):
         self._num_hvps_last_step = 0
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = TensorList(var.params)
         closure = var.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')

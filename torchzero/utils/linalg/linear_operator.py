@@ -381,9 +381,10 @@ class Sketched(LinearOperator):
 
 class Eigendecomposition(LinearOperator):
     """A represented as Q L Q^H. If A is (n,n), then Q is (n, rank); L is a vector - diagonal of (rank, rank)"""
-    def __init__(self, L: torch.Tensor, Q: torch.Tensor):
+    def __init__(self, L: torch.Tensor, Q: torch.Tensor, use_nystrom: bool = True):
         self.L = L
         self.Q = Q
+        self.use_nystrom = use_nystrom
         self.device = self.L.device; self.dtype = self.L.dtype
 
     def matvec(self, x):
@@ -404,7 +405,7 @@ class Eigendecomposition(LinearOperator):
 
     def add_diagonal(self, x):
         """this doesn't correspond to adding diagonal to A, however it still works for LM etc."""
-        if isinstance(x, torch.Tensor) and x.numel() >= 1:
+        if isinstance(x, torch.Tensor) and x.numel() > 1:
             raise RuntimeError("Eigendecomposition linear operator doesn't support add_diagonal with a vector diag")
 
         return Eigendecomposition(L=self.L + x, Q = self.Q)
@@ -414,6 +415,7 @@ class Eigendecomposition(LinearOperator):
 
     def solve_plus_diag(self, b, diag):
         if isinstance(diag, torch.Tensor) and diag.numel() > 1: return super().solve_plus_diag(b, diag)
+        if not self.use_nystrom: return super().solve_plus_diag(b, diag)
         return nystrom_sketch_and_solve(L=self.L, Q=self.Q, b=b, reg=float(diag))
 
     def inv(self):

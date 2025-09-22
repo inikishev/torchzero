@@ -192,7 +192,10 @@ class Modular(torch.optim.Optimizer):
 
         # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        var = Var(params=params, closure=_EvalCounterClosure(self, closure), model=self.model, current_step=self.current_step, modular=self, loss=loss, storage=kwargs)
+        var = Var(
+            params=params, closure=_EvalCounterClosure(self, closure), model=self.model,
+            current_step=self.current_step, modular=self, loss=loss, storage=kwargs
+        )
 
         # if closure is None, assume backward has been called and gather grads
         if closure is None:
@@ -202,7 +205,14 @@ class Modular(torch.optim.Optimizer):
         if len(self.modules) == 0: raise RuntimeError("There are no modules in this `Modular` optimizer")
 
         # step
-        var = step(var, self.modules)
+        for i, module in enumerate(self.modules):
+            if i!=0: var = var.clone(clone_update=False)
+
+            ret = module.update(var)
+            var = module.apply(var, ret)
+
+            if var.stop: break
+
 
         # apply update
         if not var.skip_update:

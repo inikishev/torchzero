@@ -250,7 +250,7 @@ class Transform(Module, ABC):
         self.post_step(var)
         return var
 
-    def step(self, var: Var) -> Var:
+    def apply(self, var: Var) -> Var:
 
         # var may change, therefore current params and grads have to be extracted and passed explicitly
         if self._target in ('update', 'update_difference'): var.get_update() # this sets loss
@@ -434,7 +434,7 @@ def apply_transform(
     if isinstance(tfm, Module):
         cvar = var.clone(clone_update=False)
         cvar.update = tensors
-        cvar = tfm.step(cvar)
+        cvar = tfm.apply(cvar)
         var.update_attrs_from_clone_(cvar)
         assert cvar.update is not None
         return cvar.update

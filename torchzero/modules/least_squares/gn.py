@@ -17,7 +17,7 @@ class SumOfSquares(Module):
         super().__init__()
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
 
         if closure is not None:

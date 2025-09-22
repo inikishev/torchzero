@@ -1,3 +1,4 @@
+from importlib.util import find_spec
 # pylint:disable=deprecated-method
 from typing import Any
 from collections.abc import Sequence
@@ -505,9 +506,7 @@ def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgr
     # update should be none after all of this
     assert var.update is None
 
-@pytest.mark.parametrize("device", DEVICES)
-@pytest.mark.parametrize("at_x0", [True, False])
-@pytest.mark.parametrize("hessian_method", [
+_HESSIAN_METHODS = [
     "batched_autograd",
     "autograd",
     "functional_revrev",
@@ -517,7 +516,12 @@ def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgr
     "gfd_central",
     "fd",
     "fd_full",
-])
+]
+if find_spec("thoad") is not None: _HESSIAN_METHODS.append("thoad")
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("at_x0", [True, False])
+@pytest.mark.parametrize("hessian_method", _HESSIAN_METHODS)
 def test_hessian(device, at_x0, hessian_method):
     """compares hessian with analytical, including gfd and fd"""
 

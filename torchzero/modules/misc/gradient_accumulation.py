@@ -106,7 +106,7 @@ class GradientAccumulation(Module):
 
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         accumulator = self.get_state(var.params, 'accumulator')
         settings = self.defaults
         n = settings['n']; mean = settings['mean']; stop = settings['stop']

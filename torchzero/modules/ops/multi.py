@@ -34,14 +34,14 @@ class MultiOperationBase(Module, ABC):
         raise NotImplementedError
 
     @torch.no_grad
-    def step(self, var: Var) -> Var:
+    def apply(self, var: Var) -> Var:
         # pass cloned update to all module operands
         processed_operands: dict[str, Any | list[torch.Tensor]] = self.operands.copy()
 
         for k,v in self.operands.items():
             if k in self.children:
                 v: Module
-                updated_var = v.step(var.clone(clone_update=True))
+                updated_var = v.apply(var.clone(clone_update=True))
                 processed_operands[k] = updated_var.get_update()
                 var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 

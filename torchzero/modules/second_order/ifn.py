@@ -19,7 +19,7 @@ class InverseFreeNewton(Module):
     def __init__(
         self,
         update_freq: int = 1,
-        hessian_method: HessianMethod = "autograd",
+        hessian_method: HessianMethod = "batched_autograd",
         h: float = 1e-3,
         inner: Chainable | None = None,
     ):

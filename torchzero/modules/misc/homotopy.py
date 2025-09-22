@@ -13,7 +13,7 @@ class HomotopyBase(Module):
         """transform the loss"""
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         if var.loss is not None:
             var.loss = self.loss_transform(var.loss)
 

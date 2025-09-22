@@ -165,7 +165,7 @@ class AdaHessian(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
 
         beta1, beta2, eps, averaging, block_size, hessian_power = self.get_settings(params,

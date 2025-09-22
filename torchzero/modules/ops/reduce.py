@@ -31,14 +31,14 @@ class ReduceOperationBase(Module, ABC):
         raise NotImplementedError
 
     @torch.no_grad
-    def step(self, var: Var) -> Var:
+    def apply(self, var: Var) -> Var:
         # pass cloned update to all module operands
         processed_operands: list[Any | list[torch.Tensor]] = self.operands.copy()
 
         for i, v in enumerate(self.operands):
             if f'operand_{i}' in self.children:
                 v: Module
-                updated_var = v.step(var.clone(clone_update=True))
+                updated_var = v.apply(var.clone(clone_update=True))
                 processed_operands[i] = updated_var.get_update()
                 var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 

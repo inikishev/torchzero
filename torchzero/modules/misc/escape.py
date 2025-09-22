@@ -15,7 +15,7 @@ class EscapeAnnealing(Module):
 
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
         if closure is None: raise RuntimeError("Escape requries closure")
 

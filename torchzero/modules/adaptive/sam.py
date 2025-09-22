@@ -56,7 +56,7 @@ class SAM(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
 
         params = var.params
         closure = var.closure
@@ -136,7 +136,7 @@ class ASAM(SAM):
     This implementation modifies the closure to return loss and calculate gradients
     of the SAM objective. All modules after this will use the modified objective.
 
-    .. note::
+    Note:
         This module requires a closure passed to the optimizer step,
         as it needs to re-evaluate the loss and gradients at two points on each step.
 

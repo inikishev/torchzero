@@ -39,7 +39,7 @@ class ImprovedNewton(Module):
         update_freq: int = 1,
         H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
-        hessian_method: HessianMethod = "autograd",
+        hessian_method: HessianMethod = "batched_autograd",
         h: float = 1e-3,
         inner: Chainable | None = None,
     ):

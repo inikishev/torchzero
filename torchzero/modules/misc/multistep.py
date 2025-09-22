@@ -68,7 +68,7 @@ class Multistep(Module):
         self.set_child('module', module)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         return _sequential_step(self, var, sequential=False)
 
 class Sequential(Module):
@@ -81,7 +81,7 @@ class Sequential(Module):
         self.set_children_sequence(modules)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         return _sequential_step(self, var, sequential=True)
 
 
@@ -94,7 +94,7 @@ class NegateOnLossIncrease(Module):
         super().__init__(defaults=defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
         if closure is None: raise RuntimeError('NegateOnLossIncrease requires closure')
         backtrack = self.defaults['backtrack']

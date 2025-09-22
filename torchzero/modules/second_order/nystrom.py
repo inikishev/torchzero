@@ -6,7 +6,7 @@ from ...core import Chainable, Module, apply_transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation
-from ...utils.linalg.linear_operator import Eigendecomposition
+from ...utils.linalg.linear_operator import Eigendecomposition, ScaledIdentity
 
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
@@ -36,19 +36,31 @@ class NystromSketchAndSolve(Module):
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
         seed (int | None, optional): seed for random generator. Defaults to None.
 
+
     Examples:
-        NystromSketchAndSolve with backtracking line search
+    NystromSketchAndSolve with backtracking line search
 
-        .. code-block:: python
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.NystromSketchAndSolve(100),
+        tz.m.Backtracking()
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.NystromSketchAndSolve(10),
-                tz.m.Backtracking()
-            )
+    Trust region NystromSketchAndSolve
 
-    Reference:
-        Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752. https://arxiv.org/abs/2110.02820
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LevenbergMarquadt(tz.m.NystromSketchAndSolve(100)),
+    )
+    ```
+
+    References:
+    - [Frangella, Z., Rathore, P., Zhao, S., & Udell, M. (2024). SketchySGD: Reliable Stochastic Optimization via Randomized Curvature Estimates. SIAM Journal on Mathematics of Data Science, 6(4), 1173-1204.](https://arxiv.org/pdf/2211.08597)
+    - [Frangella, Z., Tropp, J. A., & Udell, M. (2023). Randomized nyström preconditioning. SIAM Journal on Matrix Analysis and Applications, 44(2), 718-752](https://arxiv.org/abs/2110.02820)
+
     """
     def __init__(
         self,
@@ -94,11 +106,14 @@ class NystromSketchAndSolve(Module):
             device = params[0].device
             dtype = params[0].dtype
 
-            L, Q = nystrom_approximation(A_mv=H_mv, A_mm=H_mm, ndim=ndim, rank=rank,
-                                        dtype=dtype, device=device, generator=generator)
+            try:
+                L, Q = nystrom_approximation(A_mv=H_mv, A_mm=H_mm, ndim=ndim, rank=rank,
+                                            dtype=dtype, device=device, generator=generator)
 
-            self.global_state["L"] = L
-            self.global_state["Q"] = Q
+                self.global_state["L"] = L
+                self.global_state["Q"] = Q
+            except torch.linalg.LinAlgError:
+                pass
 
     def apply(self, var):
         grad = var.get_grad()
@@ -110,6 +125,10 @@ class NystromSketchAndSolve(Module):
             b = apply_transform(self.children['inner'], b, params=var.params, grads=grad, var=var)
 
         # ----------------------------------- solve ---------------------------------- #
+        if "L" not in self.global_state:
+            var.update = None
+            return var
+
         L = self.global_state["L"]
         Q = self.global_state["Q"]
         x = nystrom_sketch_and_solve(L=L, Q=Q, b=torch.cat([t.ravel() for t in b]), reg=reg)
@@ -119,6 +138,9 @@ class NystromSketchAndSolve(Module):
         return var
 
     def get_H(self, var=...):
+        if "L" not in self.global_state:
+            return ScaledIdentity()
+
         L = self.global_state["L"]
         Q = self.global_state["Q"]
         return Eigendecomposition(L, Q)
@@ -199,7 +221,7 @@ class NystromPCG(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = TensorList(var.params)
 
         closure = var.closure

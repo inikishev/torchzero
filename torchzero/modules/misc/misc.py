@@ -56,7 +56,7 @@ class LastGradDifference(Module):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         grad = var.get_grad()
         prev_grad = self.get_state(var.params, 'prev_grad') # initialized to 0
         difference = torch._foreach_sub(grad, prev_grad)
@@ -70,7 +70,7 @@ class LastParamDifference(Module):
         super().__init__({})
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
         prev_params = self.get_state(var.params, 'prev_params') # initialized to 0
         difference = torch._foreach_sub(params, prev_params)
@@ -202,7 +202,7 @@ class FillLoss(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         alpha = self.get_settings(var.params, 'alpha')
         loss = var.get_loss(backward=self.defaults['backward'])
         var.update = [torch.full_like(p, loss*a) for p,a in zip(var.params, alpha)]
@@ -215,7 +215,7 @@ class MulByLoss(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
         loss = var.get_loss(backward=self.defaults['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
@@ -229,7 +229,7 @@ class DivByLoss(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         alpha, min_value = self.get_settings(var.params, 'alpha', 'min_value')
         loss = var.get_loss(backward=self.defaults['backward'])
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
@@ -290,7 +290,7 @@ class RandomHvp(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = TensorList(var.params)
 
         step = self.global_state.get('step', 0)
@@ -368,7 +368,7 @@ class SaveBest(Module):
         super().__init__()
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         loss = tofloat(var.get_loss(False))
         lowest_loss = self.global_state.get('lowest_loss', float("inf"))
 

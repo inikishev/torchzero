@@ -138,14 +138,14 @@ class IntermoduleCautious(Module):
         self.set_child('compare', compare)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.step(var.clone(clone_update=True))
+        main_var = main.apply(var.clone(clone_update=True))
         var.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.step(var.clone(clone_update=True))
+        compare_var = compare.apply(var.clone(clone_update=True))
         var.update_attrs_from_clone_(compare_var)
 
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.defaults)
@@ -231,14 +231,14 @@ class ScaleModulesByCosineSimilarity(Module):
         self.set_child('compare', compare)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.step(var.clone(clone_update=True))
+        main_var = main.apply(var.clone(clone_update=True))
         var.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.step(var.clone(clone_update=True))
+        compare_var = compare.apply(var.clone(clone_update=True))
         var.update_attrs_from_clone_(compare_var)
 
         m = TensorList(main_var.get_update())

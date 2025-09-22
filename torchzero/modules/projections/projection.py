@@ -150,7 +150,7 @@ class ProjectionBase(Module, ABC):
         """
 
     @torch.no_grad
-    def step(self, var: Var):
+    def apply(self, var: Var):
         params = var.params
         settings = [self.settings[p] for p in params]
 
@@ -266,7 +266,7 @@ class ProjectionBase(Module, ABC):
 
         # ----------------------------------- step ----------------------------------- #
         projected_var.params = projected_params
-        projected_var = self.children['modules'].step(projected_var)
+        projected_var = self.children['modules'].apply(projected_var)
 
         # empty fake params storage
         # this doesn't affect update/grad because it is a different python object, set_ changes storage on an object

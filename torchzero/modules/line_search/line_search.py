@@ -229,7 +229,7 @@ class LineSearchBase(Module, ABC):
         """Finds the step size to use"""
 
     @torch.no_grad
-    def step(self, var: Var) -> Var:
+    def apply(self, var: Var) -> Var:
         self._reset()
 
         params = var.params

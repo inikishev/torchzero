@@ -1,19 +1,21 @@
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from contextlib import nullcontext
-from abc import ABC, abstractmethod
+
 import numpy as np
 import torch
 
-from ...core import Chainable, Module, apply_transform, Var
+from ...core import Chainable, DerivativesMethod, Module, Var, apply_transform
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,
     jacobian_wrt,
 )
 
+
 class HigherOrderMethodBase(Module, ABC):
-    def __init__(self, defaults: dict | None = None, vectorize: bool = True):
-        self._vectorize = vectorize
+    def __init__(self, defaults: dict | None = None, derivatives_method: DerivativesMethod = 'batched_autograd'):
+        self._derivatives_method: DerivativesMethod = derivatives_method
         super().__init__(defaults)
 
     @abstractmethod
@@ -26,16 +28,16 @@ class HigherOrderMethodBase(Module, ABC):
         """"""
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = TensorList(var.params)
 
         closure = var.closure
         if closure is None: raise RuntimeError('MultipointNewton requires closure')
-        vectorize = self._vectorize
+        derivatives_method = self._derivatives_method
 
         def evaluate(x, order) -> tuple[torch.Tensor, ...]:
             """order=0 - returns (loss,), order=1 - returns (loss, grad), order=2 - returns (loss, grad, hessian), etc."""
-            return var.derivatives_at(x, order, vectorize)
+            return var.derivatives_at(x, order,method=derivatives_method)
 
         x = torch.cat([p.ravel() for p in params])
         dir = self.one_iteration(x, evaluate, var)
@@ -71,9 +73,9 @@ class SixthOrder3P(HigherOrderMethodBase):
 
     Abro, Hameer Akhtar, and Muhammad Mujtaba Shaikh. "A new time-efficient and convergent nonlinear solver." Applied Mathematics and Computation 355 (2019): 516-536.
     """
-    def __init__(self, lstsq: bool=False, vectorize: bool = True):
+    def __init__(self, lstsq: bool=False, derivatives_method: DerivativesMethod = 'batched_autograd'):
         defaults=dict(lstsq=lstsq)
-        super().__init__(defaults=defaults, vectorize=vectorize)
+        super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
     def one_iteration(self, x, evaluate, var):
         settings = self.defaults
@@ -138,9 +140,9 @@ def sixth_order_5p(x:torch.Tensor, f_j, lstsq:bool=False):
 
 class SixthOrder5P(HigherOrderMethodBase):
     """Argyros, Ioannis K., et al. "Extended convergence for two sixth order methods under the same weak conditions." Foundations 3.1 (2023): 127-139."""
-    def __init__(self, lstsq: bool=False, vectorize: bool = True):
+    def __init__(self, lstsq: bool=False, derivatives_method: DerivativesMethod = 'batched_autograd'):
         defaults=dict(lstsq=lstsq)
-        super().__init__(defaults=defaults, vectorize=vectorize)
+        super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
     def one_iteration(self, x, evaluate, var):
         settings = self.defaults
@@ -161,9 +163,9 @@ class TwoPointNewton(HigherOrderMethodBase):
     """two-point Newton method with frozen derivative with third order convergence.
 
     Sharma, Janak Raj, and Deepak Kumar. "A fast and efficient composite Newton–Chebyshev method for systems of nonlinear equations." Journal of Complexity 49 (2018): 56-73."""
-    def __init__(self, lstsq: bool=False, vectorize: bool = True):
+    def __init__(self, lstsq: bool=False, derivatives_method: DerivativesMethod = 'batched_autograd'):
         defaults=dict(lstsq=lstsq)
-        super().__init__(defaults=defaults, vectorize=vectorize)
+        super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
     def one_iteration(self, x, evaluate, var):
         settings = self.defaults
@@ -189,9 +191,9 @@ def sixth_order_3pm2(x:torch.Tensor, f, f_j, lstsq:bool=False):
 
 class SixthOrder3PM2(HigherOrderMethodBase):
     """Wang, Xiaofeng, and Yang Li. "An efficient sixth-order Newton-type method for solving nonlinear systems." Algorithms 10.2 (2017): 45."""
-    def __init__(self, lstsq: bool=False, vectorize: bool = True):
+    def __init__(self, lstsq: bool=False, derivatives_method: DerivativesMethod = 'batched_autograd'):
         defaults=dict(lstsq=lstsq)
-        super().__init__(defaults=defaults, vectorize=vectorize)
+        super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
     def one_iteration(self, x, evaluate, var):
         settings = self.defaults

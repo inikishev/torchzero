@@ -2,13 +2,13 @@ import torch
 
 from ...core import Chainable, Module, Target, Transform
 from ...core.reformulation import Reformulation
-from ...utils import Distributions, NumberList, TensorList
+from ...utils import Distributions, Metrics, NumberList, TensorList, evaluate_metric
 
 
 class Dropout(Transform):
     """Applies dropout to the update.
 
-    For each weight the update to that weight has :code:`p` probability to be set to 0.
+    For each weight the update to that weight has ``p`` probability to be set to 0.
     This can be used to implement gradient dropout or update dropout depending on placement.
 
     Args:
@@ -18,28 +18,29 @@ class Dropout(Transform):
         target (Target, optional): what to set on var, refer to documentation. Defaults to 'update'.
 
 
-    Examples:
-        Gradient dropout.
+    ### Examples:
 
-        .. code-block:: python
+    Gradient dropout.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Dropout(0.5),
-                tz.m.Adam(),
-                tz.m.LR(1e-3)
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Dropout(0.5),
+        tz.m.Adam(),
+        tz.m.LR(1e-3)
+    )
+    ```
 
-        Update dropout.
+    Update dropout.
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Adam(),
-                tz.m.Dropout(0.5),
-                tz.m.LR(1e-3)
-            )
+    ``python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.Dropout(0.5),
+        tz.m.LR(1e-3)
+    )
+    ```
 
     """
     def __init__(self, p: float = 0.5, graft: bool=False, target: Target = 'update'):
@@ -67,19 +68,17 @@ class WeightDropout(Module):
     """
     Changes the closure so that it evaluates loss and gradients with random weights replaced with 0.
 
-    Dropout can be disabled for a parameter by setting :code:`use_dropout=False` in corresponding parameter group.
+    Dropout can be disabled for a parameter by setting ``use_dropout=False`` in corresponding parameter group.
 
     Args:
         p (float, optional): probability that any weight is replaced with 0. Defaults to 0.5.
-        graft (bool, optional):
-            if True, parameters after dropout are rescaled to have the same norm as before dropout. Defaults to False.
     """
-    def __init__(self, p: float = 0.5, graft: bool = True):
-        defaults = dict(p=p, graft=graft, use_dropout=True)
+    def __init__(self, p: float = 0.5):
+        defaults = dict(p=p, use_dropout=True)
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
         params = TensorList(var.params)
@@ -87,12 +86,13 @@ class WeightDropout(Module):
 
         # create masks
         mask = []
-        for p, m in zip(params, mask):
+        for p in params:
             prob = self.settings[p]['p']
             use_dropout = self.settings[p]['use_dropout']
             if use_dropout: mask.append(_bernoulli_like(p, prob))
             else: mask.append(torch.ones_like(p))
 
+        # create a closure that evaluates masked parameters
         @torch.no_grad
         def dropout_closure(backward=True):
             orig_params = params.clone()
@@ -112,7 +112,7 @@ class PerturbWeights(Module):
     """
     Changes the closure so that it evaluates loss and gradients at weights perturbed by a random perturbation.
 
-    Can be disabled for a parameter by setting :code:`perturb=False` in corresponding parameter group.
+    Can be disabled for a parameter by setting ``perturb=False`` in corresponding parameter group.
 
     Args:
         alpha (float, optional): multiplier for perturbation magnitude. Defaults to 0.1.
@@ -120,12 +120,19 @@ class PerturbWeights(Module):
         distribution (bool, optional):
             distribution of the random perturbation. Defaults to False.
     """
-    def __init__(self, alpha: float = 0.1, relative:bool=True, distribution:Distributions = 'normal'):
-        defaults = dict(alpha=alpha, relative=relative, distribution=distribution, perturb=True)
+
+    def __init__(
+        self,
+        alpha: float = 0.1,
+        relative: bool = True,
+        distribution: Distributions = "normal",
+        metric: Metrics = "mad",
+    ):
+        defaults = dict(alpha=alpha, relative=relative, distribution=distribution, metric=metric, perturb=True)
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         closure = var.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
         params = TensorList(var.params)
@@ -140,7 +147,7 @@ class PerturbWeights(Module):
 
             alpha = settings['alpha']
             if settings['relative']:
-                alpha *= p.abs().mean()
+                alpha *= evaluate_metric(p, settings["metric"])
 
             distribution = self.settings[p]['distribution'].lower()
             if distribution in ('normal', 'gaussian'):

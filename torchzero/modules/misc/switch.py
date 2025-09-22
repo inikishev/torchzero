@@ -44,13 +44,13 @@ class Alternate(Module):
         self.global_state['steps_to_next'] = steps[0] if isinstance(steps, list) else steps
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         # get current module
         current_module_idx = self.global_state.setdefault('current_module_idx', 0)
         module = self.children[f'module_{current_module_idx}']
 
         # step
-        var = module.step(var.clone(clone_update=False))
+        var = module.apply(var.clone(clone_update=False))
 
         # number of steps until next module
         steps = self.defaults['steps']

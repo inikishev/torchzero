@@ -27,9 +27,9 @@ class Chain(Module):
             if var.stop: break
         return var
 
-    def step(self, var):
+    def apply(self, var):
         for i in range(len(self.children)):
-            var = self.children[f'module_{i}'].step(var)
+            var = self.children[f'module_{i}'].apply(var)
             if var.stop: break
         return var
 

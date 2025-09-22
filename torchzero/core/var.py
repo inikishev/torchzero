@@ -17,6 +17,7 @@ from ..utils.derivatives import (
     jacobian_wrt,
     hessian_fd,
 )
+from ..utils.thoad_tools import thoad_derivatives, thoad_single_tensor, lazy_thoad
 
 if TYPE_CHECKING:
     from .modular import Modular
@@ -89,6 +90,7 @@ HessianMethod = Literal[
     "gfd_central",
     "fd",
     "fd_full",
+    "thoad",
 ]
 """
 Determines how hessian is computed.
@@ -102,10 +104,15 @@ Determines how hessian is computed.
 - ``"gfd_central"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a more accurate central formula which requires two gradient evaluations per hessian-vector product.
 - ``"fd"`` - uses function values to estimate gradient and hessian via finite difference. Only computes upper triangle of the hessian, requires ``2n^2 + 1`` function evaluations. This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
 - ``"fd_full"`` - uses function values to estimate gradient and hessian via finite difference. Computes both upper and lower triangles and averages them, requires ``4n^2 - 2n + 1`` function evaluations This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
+- ``"thoad"`` - uses [thoad](https://github.com/mntsx/thoad) library (experimental).
 
 Defaults to ``"batched_autograd"``.
 """
 
+DerivativesMethod = Literal["autograd", "batched_autograd", "thoad"]
+"""
+Determines how higher order derivatives are computed.
+"""
 
 # region Vars
 # ----------------------------------- var ----------------------------------- #
@@ -291,7 +298,10 @@ class Var:
         Setting ``parent`` is only if clone's parameters are something different,
         while clone's closure referes to the same objective but with a "view" on parameters.
         """
-        copy = Var(params = self.params, closure=self.closure, model=self.model, current_step=self.current_step, parent=parent)
+        copy = Var(
+            params=self.params, closure=self.closure, model=self.model, current_step=self.current_step,
+            parent=parent, modular=self.modular, loss=self.loss, storage=self.storage
+        )
 
         if clone_update and self.update is not None:
             copy.update = [u.clone() for u in self.update]
@@ -299,16 +309,12 @@ class Var:
             copy.update = self.update
 
         copy.grad = self.grad
-        copy.loss = self.loss
         copy.loss_approx = self.loss_approx
-        copy.closure = self.closure
         copy.post_step_hooks = self.post_step_hooks
         copy.stop = self.stop
         copy.skip_update = self.skip_update
 
-        copy.modular = self.modular
         copy.attrs = self.attrs
-        copy.storage = self.storage
         copy.should_terminate = self.should_terminate
 
         return copy
@@ -647,6 +653,16 @@ class Var:
                                 method=method, vectorize=vectorize,
                                 outer_jacobian_strategy=outer_jacobian_strategy)
 
+        # thoad
+        elif hessian_method == "thoad":
+            with torch.enable_grad():
+                f = self.get_loss(False, at_x0=at_x0)
+                ctrl = lazy_thoad.backward(f, 2, crossings=True)
+
+            g_list = [p.hgrad[0].squeeze(0) for p in params] # pyright:ignore[reportAttributeAccessIssue]
+            H = thoad_single_tensor(ctrl, params, 2)
+
+
         # gradient finite difference
         elif hessian_method in ('gfd_forward', 'gfd_central'):
 
@@ -674,7 +690,7 @@ class Var:
 
         return f, g_list, H
 
-    def derivatives(self, order: int, batched: bool, at_x0: bool):
+    def derivatives(self, order: int, at_x0: bool, method:DerivativesMethod="batched_autograd"):
         """
         returns a tuple of tensors of function value and derivatives up to ``order``
 
@@ -704,28 +720,45 @@ class Var:
 
             return f, g
 
-        # recursively compute derivatives up to order
-        with torch.enable_grad():
-            f, g_list = self.get_loss_grad(at_x0=at_x0, create_graph=True)
-            g = torch.cat([t.ravel() for t in g_list])
+        if method in ("autograd", "batched_autograd"):
+            batched = method == "batched_autograd"
 
-            n = g.numel()
-            ret = [f, g]
-            T = g # current derivatives tensor
+            # recursively compute derivatives up to order
+            with torch.enable_grad():
+                f, g_list = self.get_loss_grad(at_x0=at_x0, create_graph=True)
+                g = torch.cat([t.ravel() for t in g_list])
 
-            # get all derivative up to order
-            for o in range(2, order + 1):
-                is_last = o == order
-                T_list = jacobian_wrt([T], self.params, create_graph=not is_last, batched=batched)
-                with torch.no_grad() if is_last else nullcontext():
+                n = g.numel()
+                ret = [f, g]
+                T = g # current derivatives tensor
 
-                    # the shape is (ndim, ) * order
-                    T = flatten_jacobian(T_list).view(n, n, *T.shape[1:])
-                    ret.append(T)
+                # get all derivative up to order
+                for o in range(2, order + 1):
+                    is_last = o == order
+                    T_list = jacobian_wrt([T], self.params, create_graph=not is_last, batched=batched)
+                    with torch.no_grad() if is_last else nullcontext():
 
-        return tuple(ret)
+                        # the shape is (ndim, ) * order
+                        T = flatten_jacobian(T_list).view(n, n, *T.shape[1:])
+                        ret.append(T)
 
-    def derivatives_at(self, x: torch.Tensor | Sequence[torch.Tensor], order: int, batched: bool):
+            return tuple(ret)
+
+        if method == "thoad":
+            with torch.enable_grad():
+                f = self.get_loss(False, at_x0=at_x0)
+                ctrl = lazy_thoad.backward(f, order, crossings=True)
+
+                return tuple([f, *thoad_derivatives(ctrl, self.params, order=order)])
+
+        raise ValueError(method)
+
+    def derivatives_at(
+        self,
+        x: torch.Tensor | Sequence[torch.Tensor],
+        order: int,
+        method:DerivativesMethod="batched_autograd"
+    ):
         """
         returns a tuple of tensors of function value and derivatives up to ``order`` at ``x``,
         then sets original parameters.
@@ -750,7 +783,7 @@ class Var:
         for p, x_i in zip(self.params, x):
             set_storage_(p, x_i)
 
-        ret = self.derivatives(order=order, batched=batched, at_x0=False)
+        ret = self.derivatives(order=order, at_x0=False, method=method)
 
         # set params to x0
         for p, x0_i in zip(self.params, x0):

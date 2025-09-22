@@ -75,7 +75,7 @@ class GradApproximator(Module, ABC):
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         self.pre_step(var)
 
         if var.closure is None: raise RuntimeError("Gradient approximation requires closure")

@@ -66,7 +66,7 @@ class Wrap(Module):
         return super().set_param_groups(param_groups)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
 
         # initialize opt on 1st step

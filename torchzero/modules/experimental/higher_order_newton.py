@@ -10,7 +10,7 @@ import numpy as np
 import scipy.optimize
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, apply_transform, DerivativesMethod
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,
@@ -195,17 +195,17 @@ class HigherOrderNewton(Module):
         max_attempts = 10,
         boundary_tol: float = 1e-2,
         de_iters: int | None = None,
-        vectorize: bool = True,
+        derivatives_method: DerivativesMethod = "batched_autograd",
     ):
         if init is None:
             if trust_method == 'bounds': init = 1
             else: init = 0.1
 
-        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, vectorize=vectorize, de_iters=de_iters, max_attempts=max_attempts, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad)
+        defaults = dict(order=order, trust_method=trust_method, nplus=nplus, nminus=nminus, eta=eta, init=init, de_iters=de_iters, max_attempts=max_attempts, boundary_tol=boundary_tol, rho_good=rho_good, rho_bad=rho_bad, derivatives_method=derivatives_method)
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = TensorList(var.params)
         closure = var.closure
         if closure is None: raise RuntimeError('HigherOrderNewton requires closure')
@@ -219,13 +219,12 @@ class HigherOrderNewton(Module):
         trust_method = settings['trust_method']
         de_iters = settings['de_iters']
         max_attempts = settings['max_attempts']
-        vectorize = settings['vectorize']
         boundary_tol = settings['boundary_tol']
         rho_good = settings['rho_good']
         rho_bad = settings['rho_bad']
 
         # ------------------------ calculate grad and hessian ------------------------ #
-        loss, *derivatives = var.derivatives(order=order, batched=vectorize, at_x0=True)
+        loss, *derivatives = var.derivatives(order=order, at_x0=True, method=self.defaults["derivatives_method"])
 
         x0 = torch.cat([p.ravel() for p in params])
 

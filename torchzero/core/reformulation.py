@@ -27,7 +27,7 @@ class Reformulation(Module, ABC):
         """This runs once before each step, whereas `closure` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
 
-    def step(self, var):
+    def apply(self, var):
         ret = self.pre_step(var) # pylint:disable = assignment-from-no-return
         if isinstance(ret, Var): var = ret
 
@@ -53,7 +53,7 @@ class Reformulation(Module, ABC):
 
             # step with child
             modules = self.children['modules']
-            modified_var = modules.step(modified_var)
+            modified_var = modules.apply(modified_var)
 
             # modified_var.loss and grad refers to loss and grad of a modified objective
             # so we only take the update

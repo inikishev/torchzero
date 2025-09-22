@@ -52,7 +52,7 @@ class Module(ABC):
         """A dictionary of child modules."""
 
         self._overridden_keys = set()
-        """tracks keys overridden with `set_param_groups`, only used to not give a warning"""
+        """tracks keys overridden with ``set_param_groups``, only used to not give a warning"""
 
 
     def set_param_groups(self, param_groups: Params):
@@ -245,27 +245,47 @@ class Module(ABC):
         # extra info
         self._extra_unpack(state_dict['extra'])
 
-    # ---------------------------- OVERRIDABLE METHODS --------------------------- #
-    def step(self, var: Var) -> Var:
-        """performs a step, returns new ``var`` but may update it in-place."""
-        self.update(var)
-        return self.apply(var)
+    def get_generator(self, device: torch.types.Device, seed: int | None):
+        """If ``seed=None``, returns ``None``.
 
+        Otherwise, if generator on this device and with this seed hasn't been created,
+        creates it and stores in global state.
+
+        Returns ``torch.Generator``."""
+        if seed is None: return None
+
+        if device is None: device_obj = torch.get_default_device()
+        else: device_obj = torch.device(device)
+        key = f"__generator-{seed}-{device_obj.type}:{device_obj.index}"
+
+        if key not in self.global_state:
+            self.global_state[key] = torch.Generator(device).manual_seed(seed)
+
+        return self.global_state[key]
+
+    # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     def update(self, var:Var) -> Any:
         """Updates the internal state of this module. This should not modify ``var.update``.
 
-        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ``tz.m.Online`` or trust regions. Alternatively, simply override the ``step`` method.
-        """
-
-    def apply(self, var: Var) -> Var:
-        """Applies this module to ``var.get_update()``.
-        This should not modify the internal state of this module if possible.
+        Return of this method is passed to ``apply``.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ``tz.m.Online`` or trust regions. Alternatively, simply override the ``step`` method.
+        such as ``tz.m.Online`` or trust regions. Alternatively, define all logic within the ``apply`` method.
         """
-        return self.step(var)
+
+    def apply(self, var: Var, ret: Any) -> Var:
+        """Applies this module to ``var.get_update()``. If ``update`` method is defined, ``apply`` shouldn't
+        modify internal state of this module if possible.
+
+        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
+        such as ``tz.m.Online`` or trust regions. Alternatively, define all logic within the ``apply`` method.
+
+        Args:
+            var (Var): ``Var`` object
+            ret (Any): return of ``update`` method.
+        """
+        # if apply is empty, it should be defined explicitly.
+        raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `apply`.")
 
     def get_H(self, var: Var) -> LinearOperator | None:
         """returns a ``LinearOperator`` corresponding to hessian or hessian approximation.
@@ -313,12 +333,5 @@ class Module(ABC):
         """``_extra_pack`` return will be passed to this method when loading state_dict.
         This method is called after loading the rest of the state dict"""
 
-    def get_generator(self, device: torch.types.Device, seed: int | None):
-        if seed is None: return None
-
-        if 'generator' not in self.global_state:
-            self.global_state['generator'] = torch.Generator(device).manual_seed(seed)
-
-        return self.global_state['generator']
 
 Chainable = Module | Sequence[Module]

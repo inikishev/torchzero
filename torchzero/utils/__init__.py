@@ -6,6 +6,7 @@ from .compile import (
     enable_compilation,
     set_compilation,
 )
+from .metrics import evaluate_metric
 from .numberlist import NumberList
 from .optimizer import (
     Init,

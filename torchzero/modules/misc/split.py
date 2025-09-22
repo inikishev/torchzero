@@ -28,7 +28,7 @@ def _split(
     split_var.grad = split_grad
     split_var.update = split_update
 
-    split_var = module.step(split_var)
+    split_var = module.apply(split_var)
 
     # those should be set due to var being parent
     if split_var.grad is not None:
@@ -101,7 +101,7 @@ class Split(Module):
         if true is not None: self.set_child('true', true)
         if false is not None: self.set_child('false', false)
 
-    def step(self, var):
+    def apply(self, var):
 
         params = var.params
         filter = _make_filter(self.settings[params[0]]['filter'])

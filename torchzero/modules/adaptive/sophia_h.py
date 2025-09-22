@@ -124,7 +124,7 @@ class SophiaH(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
 
         beta1, beta2, precond_scale, clip, eps = self.get_settings(params,

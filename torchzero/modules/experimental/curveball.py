@@ -47,7 +47,7 @@ class CurveBall(Module):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
 
         params = var.params
         settings = self.settings[params[0]]

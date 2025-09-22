@@ -84,7 +84,7 @@ class SVRG(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
         closure = var.closure
         assert closure is not None

@@ -9,7 +9,9 @@ from ...utils import TensorList
 from ..termination import TerminationCriteriaBase
 
 def _reset_except_self(optimizer, var, self: Module):
-    for m in optimizer.unrolled_modules: m.reset()
+    for m in optimizer.unrolled_modules:
+        if m is not self:
+            m.reset()
 
 class RestartStrategyBase(Module, ABC):
     """Base class for restart strategies.
@@ -52,10 +54,10 @@ class RestartStrategyBase(Module, ABC):
         return modules.apply(var.clone(clone_update=False))
 
     @final
-    def step(self, var):
+    def apply(self, var):
         modules = self._reset_on_condition(var)
         if modules is None: return var
-        return modules.step(var.clone(clone_update=False))
+        return modules.apply(var.clone(clone_update=False))
 
 
 

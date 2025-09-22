@@ -108,7 +108,7 @@ class ESGD(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def step(self, var):
+    def apply(self, var):
         params = var.params
 
         damping = self.get_settings(params, 'damping', cls=NumberList)
