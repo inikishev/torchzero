@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, Var
+from ...core import Chainable, Module, Objective
 from ...utils import set_storage_, vec_to_tensors
 
 
@@ -150,7 +150,7 @@ class ProjectionBase(Module, ABC):
         """
 
     @torch.no_grad
-    def apply(self, var: Var):
+    def apply(self, var: Objective):
         params = var.params
         settings = [self.settings[p] for p in params]
 
@@ -159,7 +159,7 @@ class ProjectionBase(Module, ABC):
             return list(self.project(
                 tensors=tensors,
                 params=params,
-                grads=var.grad,
+                grads=var.grads,
                 loss=var.loss,
                 states=states,
                 settings=settings,
@@ -179,9 +179,9 @@ class ProjectionBase(Module, ABC):
         # but if it has already been computed, it should be projected
         if self._project_params and closure is not None:
 
-            if self._project_update and var.update is not None:
+            if self._project_update and var.updates is not None:
                 # project update only if it already exists
-                projected_var.update = _project(var.update, current='update')
+                projected_var.updates = _project(var.updates, current='update')
 
             else:
                 # update will be set to gradients on var.get_grad()
@@ -189,32 +189,32 @@ class ProjectionBase(Module, ABC):
                 update_is_grad = True
 
             # project grad only if it already exists
-            if self._project_grad and var.grad is not None:
-                projected_var.grad = _project(var.grad, current='grads')
+            if self._project_grad and var.grads is not None:
+                projected_var.grads = _project(var.grads, current='grads')
 
         # otherwise update/grad needs to be calculated and projected here
         else:
             if self._project_update:
-                if var.update is None:
+                if var.updates is None:
                     # update is None, meaning it will be set to `grad`.
                     # we can project grad and use it for update
-                    grad = var.get_grad()
-                    projected_var.grad = _project(grad, current='grads')
-                    projected_var.update = [g.clone() for g in projected_var.grad]
-                    del var.update
+                    grad = var.get_grads()
+                    projected_var.grads = _project(grad, current='grads')
+                    projected_var.updates = [g.clone() for g in projected_var.grads]
+                    del var.updates
                     update_is_grad = True
 
                 else:
                     # update exists so it needs to be projected
-                    update = var.get_update()
-                    projected_var.update = _project(update, current='update')
-                    del update, var.update
+                    update = var.get_updates()
+                    projected_var.updates = _project(update, current='update')
+                    del update, var.updates
 
-            if self._project_grad and projected_var.grad is None:
+            if self._project_grad and projected_var.grads is None:
                 # projected_vars.grad may have been projected simultaneously with update
                 # but if that didn't happen, it is projected here
-                grad = var.get_grad()
-                projected_var.grad = _project(grad, current='grads')
+                grad = var.get_grads()
+                projected_var.grads = _project(grad, current='grads')
 
 
         original_params = None
@@ -225,7 +225,7 @@ class ProjectionBase(Module, ABC):
         else:
             # make fake params for correct shapes and state storage
             # they reuse update or grad storage for memory efficiency
-            projected_params = projected_var.update if projected_var.update is not None else projected_var.grad
+            projected_params = projected_var.updates if projected_var.updates is not None else projected_var.grads
             assert projected_params is not None
 
         if self._projected_params is None:
@@ -245,7 +245,7 @@ class ProjectionBase(Module, ABC):
             return list(self.unproject(
                 projected_tensors=projected_tensors,
                 params=params,
-                grads=var.grad,
+                grads=var.grads,
                 loss=var.loss,
                 states=states,
                 settings=settings,
@@ -278,12 +278,12 @@ class ProjectionBase(Module, ABC):
         unprojected_var = projected_var.clone(clone_update=False)
         unprojected_var.closure = var.closure
         unprojected_var.params = var.params
-        unprojected_var.grad = var.grad # this may also be set by projected_var since it has var as parent
+        unprojected_var.grads = var.grads # this may also be set by projected_var since it has var as parent
 
         if self._project_update:
-            assert projected_var.update is not None
-            unprojected_var.update = _unproject(projected_var.update, current='grads' if update_is_grad else 'update')
-            del projected_var.update
+            assert projected_var.updates is not None
+            unprojected_var.updates = _unproject(projected_var.updates, current='grads' if update_is_grad else 'update')
+            del projected_var.updates
 
         del projected_var
 

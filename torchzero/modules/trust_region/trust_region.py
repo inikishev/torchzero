@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol, cast, final, overload
 
 import torch
 
-from ...core import Chainable, Module, Var, apply_transform
+from ...core import Chainable, Module, Objective, apply_transform
 from ...utils import TensorList, safe_dict_update_, tofloat, vec_to_tensors, generic_finfo, generic_vector_norm
 from ...utils.linalg.linear_operator import LinearOperator
 
@@ -256,11 +256,11 @@ class TrustRegionBase(Module, ABC):
         """Solve Hx=g with a trust region penalty/bound defined by `radius`"""
         ... # pylint:disable=unnecessary-ellipsis
 
-    def trust_region_update(self, var: Var, H: LinearOperator | None) -> None:
+    def trust_region_update(self, var: Objective, H: LinearOperator | None) -> None:
         """updates the state of this module after H or B have been updated, if necessary"""
 
-    def trust_region_apply(self, var: Var, tensors:list[torch.Tensor], H: LinearOperator | None) -> Var:
-        """Solves the trust region subproblem and outputs ``Var`` with the solution direction."""
+    def trust_region_apply(self, var: Objective, tensors:list[torch.Tensor], H: LinearOperator | None) -> Objective:
+        """Solves the trust region subproblem and outputs ``Objective`` with the solution direction."""
         assert H is not None
 
         params = TensorList(var.params)
@@ -313,8 +313,8 @@ class TrustRegionBase(Module, ABC):
             )
 
         assert d is not None
-        if success: var.update = vec_to_tensors(d, params)
-        else: var.update = params.zeros_like()
+        if success: var.updates = vec_to_tensors(d, params)
+        else: var.updates = params.zeros_like()
 
         return var
 

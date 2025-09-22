@@ -4,7 +4,7 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Module, Transform, Var, apply_transform
+from ...core import Chainable, Module, Transform, Objective, apply_transform
 from ...utils import NumberList, TensorList, as_tensorlist, generic_finfo_tiny, unpack_states, vec_to_tensors_
 from ...utils.linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size

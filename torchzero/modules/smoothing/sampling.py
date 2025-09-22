@@ -7,14 +7,14 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Modular, Module, Var
+from ...core import Chainable, Modular, Module, Objective
 from ...core.reformulation import Reformulation
 from ...utils import Distributions, NumberList, TensorList
 from ..termination import TerminationCriteriaBase, make_termination_criteria
 
 
-def _reset_except_self(optimizer: Modular, var: Var, self: Module):
-    for m in optimizer.unrolled_modules:
+def _reset_except_self(optimizer: Modular, var: Objective, self: Module):
+    for m in optimizer.flat_modules:
         if m is not self:
             m.reset()
 

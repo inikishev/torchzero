@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, Var, maybe_chain
+from ...core import Chainable, Module, Target, Objective, maybe_chain
 from ...utils import TensorList, tensorlist, Metrics
 
 
@@ -29,12 +29,12 @@ class MultiOperationBase(Module, ABC):
             raise ValueError('At least one operand must be a module')
 
     @abstractmethod
-    def transform(self, var: Var, **operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, **operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
         """applies the operation to operands"""
         raise NotImplementedError
 
     @torch.no_grad
-    def apply(self, var: Var) -> Var:
+    def apply(self, var: Objective) -> Objective:
         # pass cloned update to all module operands
         processed_operands: dict[str, Any | list[torch.Tensor]] = self.operands.copy()
 
@@ -42,11 +42,11 @@ class MultiOperationBase(Module, ABC):
             if k in self.children:
                 v: Module
                 updated_var = v.apply(var.clone(clone_update=True))
-                processed_operands[k] = updated_var.get_update()
+                processed_operands[k] = updated_var.get_updates()
                 var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 
         transformed = self.transform(var, **processed_operands)
-        var.update = transformed
+        var.updates = transformed
         return var
 
 
@@ -58,7 +58,7 @@ class SubModules(MultiOperationBase):
         super().__init__(defaults, input=input, other=other)
 
     @torch.no_grad
-    def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
         alpha = self.defaults['alpha']
 
         if isinstance(input, (int,float)):
@@ -77,7 +77,7 @@ class DivModules(MultiOperationBase):
         else: super().__init__(defaults, input=input, other=other)
 
     @torch.no_grad
-    def transform(self, var: Var, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, input: float | list[torch.Tensor], other: float | list[torch.Tensor]) -> list[torch.Tensor]:
         if isinstance(input, (int,float)):
             assert isinstance(other, list)
             return input / TensorList(other)
@@ -93,7 +93,7 @@ class PowModules(MultiOperationBase):
         super().__init__(defaults, input=input, exponent=exponent)
 
     @torch.no_grad
-    def transform(self, var: Var, input: float | list[torch.Tensor], exponent: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, input: float | list[torch.Tensor], exponent: float | list[torch.Tensor]) -> list[torch.Tensor]:
         if isinstance(input, (int,float)):
             assert isinstance(exponent, list)
             return input ** TensorList(exponent)
@@ -111,7 +111,7 @@ class LerpModules(MultiOperationBase):
         super().__init__(defaults, input=input, end=end)
 
     @torch.no_grad
-    def transform(self, var: Var, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, input: list[torch.Tensor], end: list[torch.Tensor]) -> list[torch.Tensor]:
         torch._foreach_lerp_(input, end, weight=self.defaults['weight'])
         return input
 
@@ -122,7 +122,7 @@ class ClipModules(MultiOperationBase):
         super().__init__(defaults, input=input, min=min, max=max)
 
     @torch.no_grad
-    def transform(self, var: Var, input: list[torch.Tensor], min: float | list[torch.Tensor], max: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, input: list[torch.Tensor], min: float | list[torch.Tensor], max: float | list[torch.Tensor]) -> list[torch.Tensor]:
         return TensorList(input).clamp_(min=min, max=max)
 
 

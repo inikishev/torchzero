@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Module, Var
+from ...core import Module, Objective
 
 GradTarget = Literal['update', 'grad', 'closure']
 _Scalar = torch.Tensor | float
@@ -70,7 +70,7 @@ class GradApproximator(Module, ABC):
     def approximate(self, closure: Callable, params: list[torch.Tensor], loss: torch.Tensor | None) -> tuple[Iterable[torch.Tensor], torch.Tensor | None, torch.Tensor | None]:
         """Returns a tuple: ``(grad, loss, loss_approx)``, make sure this resets parameters to their original values!"""
 
-    def pre_step(self, var: Var) -> None:
+    def pre_step(self, var: Objective) -> None:
         """This runs once before each step, whereas `approximate` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
 

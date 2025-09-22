@@ -8,7 +8,7 @@ from typing import Any, Literal
 import numpy as np
 import torch
 
-from ...core import Module, Target, Var
+from ...core import Module, Target, Objective
 from ...utils import tofloat, set_storage_
 from ..functional import clip_by_finfo
 
@@ -139,7 +139,7 @@ class LineSearchBase(Module, ABC):
         for c, n in zip(params, new_params):
             set_storage_(c, n)
 
-    def _loss(self, step_size: float, var: Var, closure, params: list[torch.Tensor],
+    def _loss(self, step_size: float, var: Objective, closure, params: list[torch.Tensor],
               update: list[torch.Tensor], backward:bool=False) -> float:
 
         # if step_size is 0, we might already know the loss
@@ -165,16 +165,16 @@ class LineSearchBase(Module, ABC):
         # if evaluated loss at step size 0, set it to var.loss
         if step_size == 0:
             var.loss = loss
-            if backward: var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+            if backward: var.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
         return tofloat(loss)
 
-    def _loss_derivative_gradient(self, step_size: float, var: Var, closure,
+    def _loss_derivative_gradient(self, step_size: float, var: Objective, closure,
                          params: list[torch.Tensor], update: list[torch.Tensor]):
         # if step_size is 0, we might already know the derivative
-        if (var.grad is not None) and (step_size == 0):
+        if (var.grads is not None) and (step_size == 0):
             loss = self._loss(step_size=step_size,var=var,closure=closure,params=params,update=update,backward=False)
-            derivative = - sum(t.sum() for t in torch._foreach_mul(var.grad, update))
+            derivative = - sum(t.sum() for t in torch._foreach_mul(var.grads, update))
 
         else:
             # loss with a backward pass sets params.grad
@@ -184,57 +184,57 @@ class LineSearchBase(Module, ABC):
             derivative = - sum(t.sum() for t in torch._foreach_mul([p.grad if p.grad is not None
                                                                     else torch.zeros_like(p) for p in params], update))
 
-        assert var.grad is not None
-        return loss, tofloat(derivative), var.grad
+        assert var.grads is not None
+        return loss, tofloat(derivative), var.grads
 
-    def _loss_derivative(self, step_size: float, var: Var, closure,
+    def _loss_derivative(self, step_size: float, var: Objective, closure,
                          params: list[torch.Tensor], update: list[torch.Tensor]):
         return self._loss_derivative_gradient(step_size=step_size, var=var,closure=closure,params=params,update=update)[:2]
 
-    def evaluate_f(self, step_size: float, var: Var, backward:bool=False):
+    def evaluate_f(self, step_size: float, var: Objective, backward:bool=False):
         """evaluate function value at alpha `step_size`."""
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return self._loss(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update(),backward=backward)
+        return self._loss(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_updates(),backward=backward)
 
-    def evaluate_f_d(self, step_size: float, var: Var):
+    def evaluate_f_d(self, step_size: float, var: Objective):
         """evaluate function value and directional derivative in the direction of the update at step size `step_size`."""
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return self._loss_derivative(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update())
+        return self._loss_derivative(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_updates())
 
-    def evaluate_f_d_g(self, step_size: float, var: Var):
+    def evaluate_f_d_g(self, step_size: float, var: Objective):
         """evaluate function value, directional derivative, and gradient list at step size `step_size`."""
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return self._loss_derivative_gradient(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_update())
+        return self._loss_derivative_gradient(step_size=step_size, var=var, closure=closure, params=var.params,update=var.get_updates())
 
-    def make_objective(self, var: Var, backward:bool=False):
+    def make_objective(self, var: Objective, backward:bool=False):
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return partial(self._loss, var=var, closure=closure, params=var.params, update=var.get_update(), backward=backward)
+        return partial(self._loss, var=var, closure=closure, params=var.params, update=var.get_updates(), backward=backward)
 
-    def make_objective_with_derivative(self, var: Var):
+    def make_objective_with_derivative(self, var: Objective):
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return partial(self._loss_derivative, var=var, closure=closure, params=var.params, update=var.get_update())
+        return partial(self._loss_derivative, var=var, closure=closure, params=var.params, update=var.get_updates())
 
-    def make_objective_with_derivative_and_gradient(self, var: Var):
+    def make_objective_with_derivative_and_gradient(self, var: Objective):
         closure = var.closure
         if closure is None: raise RuntimeError('line search requires closure')
-        return partial(self._loss_derivative_gradient, var=var, closure=closure, params=var.params, update=var.get_update())
+        return partial(self._loss_derivative_gradient, var=var, closure=closure, params=var.params, update=var.get_updates())
 
     @abstractmethod
-    def search(self, update: list[torch.Tensor], var: Var) -> float:
+    def search(self, update: list[torch.Tensor], var: Objective) -> float:
         """Finds the step size to use"""
 
     @torch.no_grad
-    def apply(self, var: Var) -> Var:
+    def apply(self, var: Objective) -> Objective:
         self._reset()
 
         params = var.params
         self._initial_params = [p.clone() for p in params]
-        update = var.get_update()
+        update = var.get_updates()
 
         try:
             step_size = self.search(update=update, var=var)
@@ -255,7 +255,7 @@ class LineSearchBase(Module, ABC):
 
         # revert parameters and multiply update by step size
         self.set_step_size_(0, params=params, update=update)
-        torch._foreach_mul_(var.update, step_size)
+        torch._foreach_mul_(var.updates, step_size)
         return var
 
 

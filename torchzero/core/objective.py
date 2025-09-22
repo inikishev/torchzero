@@ -1,6 +1,6 @@
 
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Sequence, Iterable
 from contextlib import nullcontext
 from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -21,9 +21,10 @@ from ..utils.thoad_tools import thoad_derivatives, thoad_single_tensor, lazy_tho
 
 if TYPE_CHECKING:
     from .modular import Modular
+    from .module import Module
 
 def _closure_backward(closure, params, backward, retain_graph, create_graph):
-    """Calls closure with specified backward, retain_graph and create_graph,
+    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``,
 
     Returns loss and sets ``param.grad`` attributes.
     """
@@ -37,7 +38,7 @@ def _closure_backward(closure, params, backward, retain_graph, create_graph):
         for p in params: p.grad = None
 
         # loss
-        loss = closure(False)
+        loss = closure(False).ravel()
 
         # grad
         grad = torch.autograd.grad(
@@ -54,6 +55,10 @@ def _closure_backward(closure, params, backward, retain_graph, create_graph):
         return loss
 
 def _closure_loss_grad(closure, params, retain_graph, create_graph) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``,
+
+    Returns ``(loss, grad)``. Unlike ``_closure_backward``, this won't always set ``p.grad``.
+    """
     if closure is None: raise RuntimeError("closure is None")
 
     # use torch.autograd.grad
@@ -114,58 +119,74 @@ DerivativesMethod = Literal["autograd", "batched_autograd", "thoad"]
 Determines how higher order derivatives are computed.
 """
 
-# region Vars
-# ----------------------------------- var ----------------------------------- #
-class Var:
+class Objective:
     """
     Holds parameters, gradient, update, objective function (closure) if supplied, loss, and some other info.
-    Modules take in a ``Var`` object, modify and it is passed to the next module.
+    Modules take in a ``Objective`` object, modify and it is passed to the next module.
+
+    Args:
+        params (Iterable[torch.Tensor]): iterable of parameters that are being optimized.
+        closure (Callable | None, optional): callable that re-evaluates loss. Defaults to None.
+        loss (torch.Tensor | None, optional): loss at ``params``. Defaults to None.
+        model (torch.nn.Module | None, optional):
+            ``torch.nn.Module`` object, needed for a few modules that require access to the model. Defaults to None.
+        current_step (int, optional):
+            number of times ``Modular.step()`` has been called, starting at 0. Defaults to 0.
+        parent (Objective | None, optional):
+            parent ``Objective`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
+            Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
+            e.g. when projecting. Defaults to None.
+        modular (Modular | None, optional):
+            Top-level ``Modular`` optimizer. Defaults to None.
+        storage (dict | None, optional):
+            additional kwargs passed to ``step`` to control some module-specific behavior. Defaults to None.
 
     """
     def __init__(
         self,
-        params: list[torch.Tensor],
-        closure: Callable | None,
-        model: torch.nn.Module | None,
-        current_step: int,
-        parent: "Var | None" = None,
-        modular: "Modular | None" = None,
+        params: Iterable[torch.Tensor],
+        closure: Callable | None = None,
         loss: torch.Tensor | None = None,
+        model: torch.nn.Module | None = None,
+        current_step: int = 0,
+        parent: "Objective | None" = None,
+        modular: "Modular | None" = None,
         storage: dict | None = None,
     ):
-        self.params: list[torch.Tensor] = params
-        """List of all parameters with requires_grad = True."""
+        self.params: list[torch.Tensor] = list(params)
+        """List of all parameters with ``requires_grad = True``."""
 
         self.closure = closure
         """A closure that reevaluates the model and returns the loss, None if it wasn't specified"""
 
         self.model = model
-        """torch.nn.Module object of the model, None if it wasn't specified."""
+        """``torch.nn.Module`` object of the model, ``None`` if it wasn't specified."""
 
         self.current_step: int = current_step
         """global current step, starts at 0. This may not correspond to module current step,
         for example a module may step every 10 global steps."""
 
-        self.parent: "Var | None" = parent
-        """parent ``Var`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
+        self.parent: "Objective | None" = parent
+        """parent ``Objective`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
         Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
         e.g. when projecting."""
 
         self.modular: "Modular | None" = modular
-        """Modular optimizer object that created this ``Var``."""
+        """Top-level ``Modular`` optimizer, ``None`` if it wasn't specified."""
 
-        self.update: list[torch.Tensor] | None = None
+        self.updates: list[torch.Tensor] | None = None
         """
         current update. Update is assumed to be a transformed gradient, therefore it is subtracted.
 
         If closure is None, this is initially set to cloned gradient. Otherwise this is set to None.
 
-        At the end ``var.get_update()`` is subtracted from parameters. Therefore if ``var.update`` is ``None``,
-        gradient will be used and calculated if needed.
+        At the end ``objective.get_update()`` is subtracted from parameters.
+        Therefore if ``objective.update`` is ``None``, gradient will be used and calculated if needed.
         """
 
-        self.grad: list[torch.Tensor] | None = None
-        """gradient with current parameters. If closure is not ``None``, this is set to ``None`` and can be calculated if needed."""
+        self.grads: list[torch.Tensor] | None = None
+        """gradient with current parameters. If closure is not ``None``,
+        this is set to ``None`` and can be calculated if needed."""
 
         self.loss: torch.Tensor | Any | None = loss
         """loss with current parameters."""
@@ -174,7 +195,7 @@ class Var:
         """loss at a point near current point. This can be useful as some modules only calculate loss at perturbed points,
         whereas some other modules require loss strictly at current point."""
 
-        self.post_step_hooks: list[Callable[[Modular, Var]]] = []
+        self.post_step_hooks: "list[Callable[[Objective, tuple[Module, ...]], None]]" = []
         """list of functions to be called after optimizer step.
 
         This attribute should always be modified in-place (using ``append`` or ``extend``).
@@ -182,7 +203,7 @@ class Var:
         The signature is:
 
         ```python
-        def hook(optimizer: Modular, var: Vars): ...
+        def hook(objective: Objective, modules: tuple[Module]): ...
         ```
         """
 
@@ -197,18 +218,26 @@ class Var:
         # """Storage for any other data, such as hessian estimates, etc."""
 
         self.attrs: dict = {}
-        """attributes, Modular.attrs is updated with this after each step. This attribute should always be modified in-place"""
+        """attributes, ``Modular.attrs`` is updated with this after each step.
+        This attribute should always be modified in-place"""
 
         if storage is None: storage = {}
         self.storage: dict = storage
-        """additional kwargs passed to closure will end up in this dict. This attribute should always be modified in-place"""
+        """additional kwargs passed to ``step`` to control some module-specific behavior.
+        This attribute should always be modified in-place"""
 
         self.should_terminate: bool | None = None
-        """termination criteria, Modular.should_terminate is set to this after each step if not None"""
+        """termination criteria, ``Modular.should_terminate`` is set to this after each step if not ``None``"""
+
+        self.temp: Any = cast(Any, None)
+        """temporary storage, ``Module.update`` can set this and ``Module.apply`` access via ``objective.poptemp()``.
+        This doesn't get cloned."""
 
     def get_loss(self, backward: bool, retain_graph = None, create_graph: bool = False, at_x0:bool=True) -> torch.Tensor:
-        """Returns the loss at current parameters, computing it if it hasn't been computed already and assigning ``var.loss``.
-        Do not call this at perturbed parameters. Backward always sets grads to None before recomputing."""
+        """Returns the loss at current parameters, computing it if it hasn't been computed already
+        and assigning ``objective.loss``.Do not call this at perturbed parameters.
+        Backward always sets grads to None before recomputing.
+        """
 
         if not at_x0:
             if self.closure is None: raise RuntimeError("closure is None")
@@ -231,13 +260,13 @@ class Var:
 
                 # next time closure() is called, it will set grad to None.
                 # zero_grad(set_to_none=False) shouldn't be used (I should add a warning)
-                self.grad = [p.grad if p.grad  is not None else torch.zeros_like(p) for p in self.params]
+                self.grads = [p.grad if p.grad  is not None else torch.zeros_like(p) for p in self.params]
             else:
                 self.loss = self.loss_approx = self.closure(False)
 
         # if self.loss was not None, above branch wasn't executed because loss has already been evaluated, but without backward since self.grad is None.
         # and now it is requested to be evaluated with backward.
-        if backward and self.grad is None:
+        if backward and self.grads is None:
             warnings.warn('get_loss was called with backward=False, and then with backward=True so it had to be re-evaluated, so the closure was evaluated twice where it could have been evaluated once.')
             if self.closure is None: raise RuntimeError("closure is None")
 
@@ -245,70 +274,72 @@ class Var:
                 self.loss = self.loss_approx = _closure_backward(
                     closure=self.closure, params=self.params, backward=backward, retain_graph=retain_graph, create_graph=create_graph
                 )
-            self.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
+            self.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
 
         # set parent grad
         if self.parent is not None:
             # the way projections/split work, they make a new closure which evaluates original
-            # closure and projects the gradient, and set it as their var.closure.
+            # closure and projects the gradient, and set it as their objective.closure.
             # then on `get_loss(backward=True)` it is called, so it also sets original parameters gradient.
-            # and we set it to parent var here.
+            # and we set it to parent objective here.
             if self.parent.loss is None: self.parent.loss = self.loss
-            if self.parent.grad is None and backward:
+            if self.parent.grads is None and backward:
                 if all(p.grad is None for p in self.parent.params):
                     warnings.warn("Parent grad is None after backward.")
-                self.parent.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.parent.params]
+                self.parent.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.parent.params]
 
         return self.loss # type:ignore
 
-    def get_grad(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> list[torch.Tensor]:
+    def get_grads(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> list[torch.Tensor]:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
-        ``var.grad`` and potentially ``var.loss``. Do not call this at perturbed parameters."""
+        ``objective.grad`` and potentially ``objective.loss``. Do not call this at perturbed parameters."""
 
         if not at_x0:
             _, grad = _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)
             return grad
 
         # gradient at x0
-        if self.grad is None:
+        if self.grads is None:
             if self.closure is None: raise RuntimeError("closure is None")
             self.get_loss(backward=True, retain_graph=retain_graph, create_graph=create_graph) # evaluate and set self.loss and self.grad
 
-        assert self.grad is not None
-        return self.grad
+        assert self.grads is not None
+        return self.grads
 
-    def get_loss_grad(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    def get_loss_grads(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> tuple[torch.Tensor, list[torch.Tensor]]:
         if not at_x0:
             return _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)
 
-        grad = self.get_grad(retain_graph=retain_graph, create_graph=create_graph)
+        grad = self.get_grads(retain_graph=retain_graph, create_graph=create_graph)
         loss = self.get_loss(False)
         return loss, grad
 
-    def get_update(self) -> list[torch.Tensor]:
-        """Returns the update. If update is None, it is initialized by cloning the gradients and assigning to ``var.update``.
-        Computing the gradients may assign ``var.grad`` and ``var.loss`` if they haven't been computed.
-        Do not call this at perturbed parameters."""
-        if self.update is None: self.update = [g.clone() for g in self.get_grad()]
-        return self.update
+    def get_updates(self) -> list[torch.Tensor]:
+        """Returns the update. If update is None, it is initialized by cloning the gradients
+        and assigning to ``objective.update``. Computing the gradients may assign ``objective.grad``
+        and ``objective.loss`` if they haven't been computed. Do not call this at perturbed parameters."""
+        if self.updates is None: self.updates = [g.clone() for g in self.get_grads()]
+        return self.updates
 
-    def clone(self, clone_update: bool, parent: "Var | None" = None):
-        """Creates a shallow copy of the Vars object, update can optionally be deep-copied (via ``torch.clone``).
+    def clone(self, clone_update: bool, parent: "Objective | None" = None):
+        """Creates a shallow copy of this ``Objective``, update can optionally be deep-copied (via ``torch.clone``).
+
+        This copies over all attributes except ``temp``.
 
         Setting ``parent`` is only if clone's parameters are something different,
         while clone's closure referes to the same objective but with a "view" on parameters.
         """
-        copy = Var(
+        copy = Objective(
             params=self.params, closure=self.closure, model=self.model, current_step=self.current_step,
             parent=parent, modular=self.modular, loss=self.loss, storage=self.storage
         )
 
-        if clone_update and self.update is not None:
-            copy.update = [u.clone() for u in self.update]
+        if clone_update and self.updates is not None:
+            copy.updates = [u.clone() for u in self.updates]
         else:
-            copy.update = self.update
+            copy.updates = self.updates
 
-        copy.grad = self.grad
+        copy.grads = self.grads
         copy.loss_approx = self.loss_approx
         copy.post_step_hooks = self.post_step_hooks
         copy.stop = self.stop
@@ -319,22 +350,24 @@ class Var:
 
         return copy
 
-    def update_attrs_from_clone_(self, var: "Var"):
-        """Updates attributes of this `Vars` instance from a cloned instance.
-        Typically called after a child module has processed a cloned `Vars`
+    def update_attrs_from_clone_(self, objective: "Objective"):
+        """Updates attributes of this ``Objective`` instance from a cloned instance.
+        Typically called after a child module has processed a cloned ``Objective``
         object. This propagates any newly computed loss or gradient values
-        from the child's context back to the parent `Vars` if the parent
+        from the child's context back to the parent ``Objective`` if the parent
         didn't have them computed already.
 
         Also, as long as ``post_step_hooks`` and ``attrs`` are modified in-place,
         if the child updates them, the update will affect the parent too.
         """
-        if self.loss is None: self.loss = var.loss
-        if self.loss_approx is None: self.loss_approx = var.loss_approx
-        if self.grad is None: self.grad = var.grad
+        if self.loss is None: self.loss = objective.loss
+        if self.loss_approx is None: self.loss_approx = objective.loss_approx
+        if self.grads is None: self.grads = objective.grads
 
-        if var.should_terminate is not None: self.should_terminate = var.should_terminate
+        if objective.should_terminate is not None: self.should_terminate = objective.should_terminate
+        if objective.skip_update: self.skip_update = objective.skip_update
 
+    @torch.no_grad
     def zero_grad(self, set_to_none=True):
         if set_to_none:
             for p in self.params: p.grad = None
@@ -342,6 +375,15 @@ class Var:
             grads = [p.grad for p in self.params if p.grad is not None]
             if len(grads) != 0: torch._foreach_zero_(grads)
 
+    def poptemp(self):
+        temp = self.temp
+        self.temp = None
+        return temp
+
+    @torch.no_grad
+    def update_parameters(self):
+        if self.skip_update: return
+        torch._foreach_sub_(self.params, self.get_updates())
 
     # ------------------------------ HELPER METHODS ------------------------------ #
     @torch.no_grad
@@ -357,7 +399,7 @@ class Var:
         """
         Returns ``(Hz, rgrad)``, where ``rgrad`` is gradient at current parameters but it may be None.
 
-        Gradient is set to vars automatically if ``at_x0`` and can be accessed with ``vars.get_grad()``.
+        Gradient is set to ``objective`` automatically if ``at_x0`` and can be accessed with ``objective.get_grad()``.
 
         Single hessian vector product example:
 
@@ -385,12 +427,12 @@ class Var:
         """
         if hvp_method in ('batched_autograd', "autograd"):
             with torch.enable_grad():
-                if rgrad is None: rgrad = self.get_grad(create_graph=True, at_x0=at_x0)
+                if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
                 Hz = torch.autograd.grad(rgrad, self.params, z, retain_graph=retain_graph)
 
         # loss returned by fd hvp is not guaranteed to be at x0 so we don't use/return it
         elif hvp_method == 'fd_forward':
-            if rgrad is None: rgrad = self.get_grad(at_x0=at_x0)
+            if rgrad is None: rgrad = self.get_grads(at_x0=at_x0)
             _, Hz = hvp_fd_forward(self.closure, self.params, z, h=h, g_0=rgrad)
 
         elif hvp_method == 'fd_central':
@@ -415,7 +457,7 @@ class Var:
 
         Returns ``(HZ, rgrad)`` where ``rgrad`` is gradient at current parameters but it may be None.
 
-        Gradient is set to vars automatically if ``at_x0`` and can be accessed with ``vars.get_grad()``.
+        Gradient is set to ``objective`` automatically if ``at_x0`` and can be accessed with ``objective.get_grad()``.
 
         Unlike ``hessian_vector_product`` this returns a single matrix, not a per-parameter list.
 
@@ -430,7 +472,7 @@ class Var:
         """
         # compute
         if hvp_method == "batched_autograd":
-            if rgrad is None: rgrad = self.get_grad(create_graph=True, at_x0=at_x0)
+            if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
             with torch.enable_grad():
                 flat_inputs = torch.cat([g.ravel() for g in rgrad])
                 HZ_list = torch.autograd.grad(
@@ -444,7 +486,7 @@ class Var:
             HZ = flatten_jacobian(HZ_list).T
 
         elif hvp_method == 'autograd':
-            if rgrad is None: rgrad = self.get_grad(create_graph=True, at_x0=at_x0)
+            if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
             with torch.enable_grad():
                 flat_inputs = torch.cat([g.ravel() for g in rgrad])
                 HZ_tensors = [
@@ -461,7 +503,7 @@ class Var:
             HZ = torch.stack(HZ_list, 1)
 
         elif hvp_method == 'fd_forward':
-            if rgrad is None: rgrad = self.get_grad(at_x0=at_x0)
+            if rgrad is None: rgrad = self.get_grads(at_x0=at_x0)
             HZ_tensors = [
                 hvp_fd_forward(
                     self.closure,
@@ -506,7 +548,7 @@ class Var:
         """
         Returns ``(D, rgrad)``, where ``rgrad`` is gradient at current parameters but it may be None.
 
-        Gradient is set to vars automatically if ``at_x0`` and can be accessed with ``vars.get_grad()``.
+        Gradient is set to ``objective`` automatically if ``at_x0`` and can be accessed with ``objective.get_grad()``.
 
         Args:
             rgrad (Sequence[torch.Tensor] | None): pass None initially, then pass what this returns.
@@ -602,7 +644,7 @@ class Var:
         h: float,
         at_x0: bool,
     ) -> tuple[torch.Tensor | None, Sequence[torch.Tensor] | None, torch.Tensor]:
-        """returns ``(f, g_list, H)``. Also sets ``var.loss`` and ``var.grad`` if ``at_x0``.
+        """returns ``(f, g_list, H)``. Also sets ``objective.loss`` and ``objective.grad`` if ``at_x0``.
 
         ``f`` and ``g_list`` may be None if they aren't computed with ``hessian_method``.
 
@@ -680,13 +722,13 @@ class Var:
         else:
             raise ValueError(hessian_method)
 
-        # set var attributes if at x0
+        # set objective attributes if at x0
         if at_x0:
             if f is not None and self.loss is None:
                 self.loss = self.loss_approx = f
 
-            if g_list is not None and self.grad is None:
-                self.grad = list(g_list)
+            if g_list is not None and self.grads is None:
+                self.grads = list(g_list)
 
         return f, g_list, H
 
@@ -715,7 +757,7 @@ class Var:
 
         # loss and grad
         if order == 1:
-            f, g_list = self.get_loss_grad(at_x0=at_x0)
+            f, g_list = self.get_loss_grads(at_x0=at_x0)
             g = torch.cat([t.ravel() for t in g_list])
 
             return f, g
@@ -725,7 +767,7 @@ class Var:
 
             # recursively compute derivatives up to order
             with torch.enable_grad():
-                f, g_list = self.get_loss_grad(at_x0=at_x0, create_graph=True)
+                f, g_list = self.get_loss_grads(at_x0=at_x0, create_graph=True)
                 g = torch.cat([t.ravel() for t in g_list])
 
                 n = g.numel()
@@ -795,13 +837,13 @@ class Var:
     def list_Hvp_function(self, hvp_method: HVPMethod, h: float, at_x0:bool):
         """returns ``(grad, H_mv)`` where ``H_mv`` is a callable that accepts and returns lists of tensors.
 
-        ``grad`` may be None, and this sets ``var.grad`` if ``at_x0`` so at x0 just use ``var.get_grad()``.
+        ``grad`` may be None, and this sets ``objective.grad`` if ``at_x0`` so at x0 just use ``objective.get_grad()``.
         """
         params = TensorList(self.params)
         closure = self.closure
 
         if hvp_method in ('batched_autograd', 'autograd'):
-            grad = self.get_grad(create_graph=True, at_x0=at_x0)
+            grad = self.get_grads(create_graph=True, at_x0=at_x0)
 
             def H_mv(x: torch.Tensor | Sequence[torch.Tensor]):
                 if isinstance(x, torch.Tensor): x = params.from_vec(x)
@@ -811,7 +853,7 @@ class Var:
         else:
 
             if hvp_method == 'fd_forward':
-                grad = self.get_grad(at_x0=at_x0)
+                grad = self.get_grads(at_x0=at_x0)
                 def H_mv(x: torch.Tensor | Sequence[torch.Tensor]):
                     if isinstance(x, torch.Tensor): x = params.from_vec(x)
                     _, Hx = hvp_fd_forward(closure, params, x, h=h, g_0=grad)
@@ -833,7 +875,7 @@ class Var:
     def tensor_Hvp_function(self, hvp_method: HVPMethod, h: float, at_x0:bool):
         """returns ``(grad, H_mv, H_mm)``, where ``H_mv`` and ``H_mm`` accept and return single tensors.
 
-        ``grad`` may be None, and this sets ``var.grad`` if ``at_x0`` so at x0 just use ``var.get_grad()``.
+        ``grad`` may be None, and this sets ``objective.grad`` if ``at_x0`` so at x0 just use ``objective.get_grad()``.
         """
         if hvp_method in ('fd_forward', "fd_central", "autograd"):
             grad, list_H_mv = self.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=at_x0)
@@ -852,7 +894,7 @@ class Var:
             raise RuntimeError(f"Unknown hvp_method `{hvp_method}`")
 
         params = TensorList(self.params)
-        grad = self.get_grad(create_graph=True, at_x0=at_x0)
+        grad = self.get_grads(create_graph=True, at_x0=at_x0)
 
         def H_mv_batched(x: torch.Tensor):
             with torch.enable_grad():

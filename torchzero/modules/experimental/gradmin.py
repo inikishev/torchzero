@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Var, Chainable
+from ...core import Module, Objective, Chainable
 from ...utils import NumberList, TensorList
 from ...utils.derivatives import jacobian_wrt
 from ..grad_approximation import GradApproximator, GradTarget

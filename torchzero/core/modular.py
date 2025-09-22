@@ -7,9 +7,9 @@ from typing import Any
 import torch
 
 from ..utils import Params, _make_param_groups
-from .functional import step
 from .module import Chainable, Module
-from .var import Var
+from .objective import Objective
+from .functional import step
 
 
 class _EvalCounterClosure:
@@ -33,15 +33,15 @@ class _EvalCounterClosure:
         return v
 
 
-def unroll_modules(*modules: Chainable) -> list[Module]:
+def flatten_modules(*modules: Chainable) -> list[Module]:
     unrolled = []
 
     for m in modules:
         if isinstance(m, Module):
             unrolled.append(m)
-            unrolled.extend(unroll_modules(list(m.children.values())))
+            unrolled.extend(flatten_modules(list(m.children.values())))
         else:
-            unrolled.extend(unroll_modules(*m))
+            unrolled.extend(flatten_modules(*m))
 
     return unrolled
 
@@ -72,7 +72,7 @@ class Modular(torch.optim.Optimizer):
         self.modules = modules
         """Top-level modules providedduring initialization."""
 
-        self.unrolled_modules = unroll_modules(self.modules)
+        self.flat_modules = flatten_modules(self.modules)
         """A flattened list of all modules including all children."""
 
         param_groups = _make_param_groups(params, differentiable=False)
@@ -81,7 +81,7 @@ class Modular(torch.optim.Optimizer):
         Each element in the list is ChainDict's 2nd map of a module."""
 
         # make sure there is no more than a single learning rate module
-        lr_modules = [m for m in self.unrolled_modules if 'lr' in m.defaults]
+        lr_modules = [m for m in self.flat_modules if 'lr' in m.defaults]
         if len(lr_modules) > 1:
             warnings.warn(f'multiple learning rate modules detected: {lr_modules}. This may lead to componding of learning rate multiplication with per-parameter learning rates and schedulers.')
 
@@ -89,13 +89,13 @@ class Modular(torch.optim.Optimizer):
         for group in param_groups:
             for k in group:
                 if k in ('params', 'lr'): continue
-                modules_with_k = [m for m in self.unrolled_modules if k in m.defaults and k not in m._overridden_keys]
+                modules_with_k = [m for m in self.flat_modules if k in m.defaults and k not in m._overridden_keys]
                 if len(modules_with_k) > 1:
                     warnings.warn(f'`params` has a `{k}` key, and multiple modules have that key: {modules_with_k}. If you intended to only set `{k}` to one of them, use `module.set_param_groups(params)`')
 
         # defaults for schedulers
         defaults = {}
-        for m in self.unrolled_modules: defaults.update(m.defaults)
+        for m in self.flat_modules: defaults.update(m.defaults)
         super().__init__(param_groups, defaults=defaults)
 
         # note - this is what super().__init__(param_groups, defaults=defaults) does:
@@ -135,7 +135,7 @@ class Modular(torch.optim.Optimizer):
 
         for p in proc_param_group['params']:
             # updates global per-parameter setting overrides (medium priority)
-            self._per_parameter_global_settings[p] = [m.settings[p].maps[1] for m in self.unrolled_modules]
+            self._per_parameter_global_settings[p] = [m.settings[p].maps[1] for m in self.flat_modules]
 
     def state_dict(self):
         all_params = [p for g in self.param_groups for p in g['params']]
@@ -152,7 +152,7 @@ class Modular(torch.optim.Optimizer):
             "params": all_params,
             "groups": groups,
             "defaults": self.defaults,
-            "modules": {i: m.state_dict() for i, m in enumerate(self.unrolled_modules)}
+            "modules": {i: m.state_dict() for i, m in enumerate(self.flat_modules)}
         }
         return state_dict
 
@@ -172,7 +172,7 @@ class Modular(torch.optim.Optimizer):
             self.add_param_group(group)
 
         id_to_tensor = {state_dict['idx_to_id'][i]: p for i,p in enumerate(state_dict['params'])}
-        for m, sd in zip(self.unrolled_modules, state_dict['modules'].values()):
+        for m, sd in zip(self.flat_modules, state_dict['modules'].values()):
             m._load_state_dict(sd, id_to_tensor)
 
 
@@ -192,43 +192,26 @@ class Modular(torch.optim.Optimizer):
 
         # create var
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
-        var = Var(
+        objective = Objective(
             params=params, closure=_EvalCounterClosure(self, closure), model=self.model,
             current_step=self.current_step, modular=self, loss=loss, storage=kwargs
         )
 
-        # if closure is None, assume backward has been called and gather grads
-        if closure is None:
-            var.grad = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
-            self.num_evaluations += 1
+        # step with all modules and apply hooks
+        objective = step(objective, self.modules)
 
-        if len(self.modules) == 0: raise RuntimeError("There are no modules in this `Modular` optimizer")
-
-        # step
-        for i, module in enumerate(self.modules):
-            if i!=0: var = var.clone(clone_update=False)
-
-            ret = module.update(var)
-            var = module.apply(var, ret)
-
-            if var.stop: break
-
-
-        # apply update
-        if not var.skip_update:
-            with torch.no_grad():
-                torch._foreach_sub_(params, var.get_update())
+        # apply update to parameters unless `objective.skip_update = True`
+        objective.update_parameters()
 
         # update attributes
-        self.attrs.update(var.attrs)
-        if var.should_terminate is not None: self.should_terminate = var.should_terminate
-
-        # hooks
-        for hook in var.post_step_hooks:
-            hook(self, var)
+        self.attrs.update(objective.attrs)
+        if objective.should_terminate is not None:
+            self.should_terminate = objective.should_terminate
 
         self.current_step += 1
-        #return var.loss if var.loss is not None else var.loss_approx
+
+        # return the first closure evaluation return
+        # could return loss if it was passed but that's pointless
         return self._closure_return
 
     def __repr__(self):

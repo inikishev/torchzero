@@ -284,8 +284,8 @@ class StrongWolfe(LineSearchBase):
             'init_value', 'init', 'c1', 'c2', 'a_max', 'maxiter', 'maxzoom',
             'maxeval', 'interpolation', 'adaptive', 'plus_minus', 'fallback', 'tol_change')(self.defaults)
 
-        dir = as_tensorlist(var.get_update())
-        grad_list = var.get_grad()
+        dir = as_tensorlist(var.get_updates())
+        grad_list = var.get_grads()
 
         g_0 = -sum(t.sum() for t in torch._foreach_mul(grad_list, dir))
         f_0 = var.get_loss(False)

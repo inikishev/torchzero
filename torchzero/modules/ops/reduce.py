@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import torch
 
-from ...core import Chainable, Module, Target, Var, maybe_chain
+from ...core import Chainable, Module, Target, Objective, maybe_chain
 
 
 class ReduceOperationBase(Module, ABC):
@@ -26,12 +26,12 @@ class ReduceOperationBase(Module, ABC):
             raise ValueError('At least one operand must be a module')
 
     @abstractmethod
-    def transform(self, var: Var, *operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *operands: Any | list[torch.Tensor]) -> list[torch.Tensor]:
         """applies the operation to operands"""
         raise NotImplementedError
 
     @torch.no_grad
-    def apply(self, var: Var) -> Var:
+    def apply(self, var: Objective) -> Objective:
         # pass cloned update to all module operands
         processed_operands: list[Any | list[torch.Tensor]] = self.operands.copy()
 
@@ -39,11 +39,11 @@ class ReduceOperationBase(Module, ABC):
             if f'operand_{i}' in self.children:
                 v: Module
                 updated_var = v.apply(var.clone(clone_update=True))
-                processed_operands[i] = updated_var.get_update()
+                processed_operands[i] = updated_var.get_updates()
                 var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 
         transformed = self.transform(var, *processed_operands)
-        var.update = transformed
+        var.updates = transformed
         return var
 
 class Sum(ReduceOperationBase):
@@ -53,7 +53,7 @@ class Sum(ReduceOperationBase):
         super().__init__({}, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
         sum = cast(list, sorted_inputs[0])
         if len(sorted_inputs) > 1:
@@ -79,7 +79,7 @@ class WeightedSum(ReduceOperationBase):
         super().__init__(defaults=defaults, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
         weights = self.defaults['weights']
         sum = cast(list, sorted_inputs[0])
@@ -103,7 +103,7 @@ class Median(ReduceOperationBase):
         super().__init__({}, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         res = []
         lists = [i for i in inputs if isinstance(i, list)]
         floats = [i for i in inputs if isinstance(i, (int,float))]
@@ -117,7 +117,7 @@ class Prod(ReduceOperationBase):
         super().__init__({}, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
         prod = cast(list, sorted_inputs[0])
         if len(sorted_inputs) > 1:
@@ -132,7 +132,7 @@ class MaximumModules(ReduceOperationBase):
         super().__init__({}, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
         maximum = cast(list, sorted_inputs[0])
         if len(sorted_inputs) > 1:
@@ -147,7 +147,7 @@ class MinimumModules(ReduceOperationBase):
         super().__init__({}, *inputs)
 
     @torch.no_grad
-    def transform(self, var: Var, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
+    def transform(self, var: Objective, *inputs: float | list[torch.Tensor]) -> list[torch.Tensor]:
         sorted_inputs = sorted(inputs, key=lambda x: isinstance(x, float))
         minimum = cast(list, sorted_inputs[0])
         if len(sorted_inputs) > 1:

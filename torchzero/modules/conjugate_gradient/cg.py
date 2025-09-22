@@ -8,7 +8,7 @@ from ...core import (
     Modular,
     Module,
     Transform,
-    Var,
+    Objective,
     apply_transform,
 )
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states

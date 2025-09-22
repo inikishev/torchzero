@@ -150,8 +150,8 @@ class IntermoduleCautious(Module):
 
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.defaults)
         var.update = cautious_(
-            TensorList(main_var.get_update()),
-            TensorList(compare_var.get_update()),
+            TensorList(main_var.get_updates()),
+            TensorList(compare_var.get_updates()),
             normalize=normalize,
             mode=mode,
             eps=eps,
@@ -241,8 +241,8 @@ class ScaleModulesByCosineSimilarity(Module):
         compare_var = compare.apply(var.clone(clone_update=True))
         var.update_attrs_from_clone_(compare_var)
 
-        m = TensorList(main_var.get_update())
-        c = TensorList(compare_var.get_update())
+        m = TensorList(main_var.get_updates())
+        c = TensorList(compare_var.get_updates())
         eps = self.defaults['eps']
 
         cos_sim = m.dot(c) / (m.global_vector_norm() * c.global_vector_norm()).clip(min=eps)

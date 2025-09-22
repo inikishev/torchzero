@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform, Chainable, Var, apply_transform
+from ...core import Module, Target, Transform, Chainable, Objective, apply_transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 

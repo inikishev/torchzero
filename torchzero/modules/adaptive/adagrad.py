@@ -8,7 +8,7 @@ from ...core import (
     Target,
     TensorwiseTransform,
     Transform,
-    Var,
+    Objective,
     apply_transform,
 )
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states

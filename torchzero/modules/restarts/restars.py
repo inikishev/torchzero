@@ -4,7 +4,7 @@ from typing import final, Literal, cast
 
 import torch
 
-from ...core import Chainable, Module, Var
+from ...core import Chainable, Module, Objective
 from ...utils import TensorList
 from ..termination import TerminationCriteriaBase
 
@@ -26,7 +26,7 @@ class RestartStrategyBase(Module, ABC):
             self.set_child('modules', modules)
 
     @abstractmethod
-    def should_reset(self, var: Var) -> bool:
+    def should_reset(self, var: Objective) -> bool:
         """returns whether reset should occur"""
 
     def _reset_on_condition(self, var):
@@ -172,7 +172,7 @@ class PowellRestart(RestartStrategyBase):
         super().__init__(defaults, modules)
 
     def should_reset(self, var):
-        g = TensorList(var.get_grad())
+        g = TensorList(var.get_grads())
         cond1 = self.defaults['cond1']; cond2 = self.defaults['cond2']
 
         # -------------------------------- initialize -------------------------------- #
@@ -194,7 +194,7 @@ class PowellRestart(RestartStrategyBase):
 
         # ------------------------------- 2nd condition ------------------------------ #
         if (cond2 is not None) and (not reset):
-            d_g = TensorList(var.get_update()).dot(g)
+            d_g = TensorList(var.get_updates()).dot(g)
             if (-1-cond2) * g_g < d_g < (-1 + cond2) * g_g:
                 reset = True
 
@@ -240,8 +240,8 @@ class BirginMartinezRestart(Module):
         var = module.apply(var.clone(clone_update=False))
 
         cond = self.defaults['cond']
-        g = TensorList(var.get_grad())
-        d = TensorList(var.get_update())
+        g = TensorList(var.get_grads())
+        d = TensorList(var.get_updates())
         d_g = d.dot(g)
         d_norm = d.global_vector_norm()
         g_norm = g.global_vector_norm()
@@ -249,7 +249,7 @@ class BirginMartinezRestart(Module):
         # d in our case is same direction as g so it has a minus sign
         if -d_g > -cond * d_norm * g_norm:
             module.reset()
-            var.update = g.clone()
+            var.updates = g.clone()
             return var
 
         return var

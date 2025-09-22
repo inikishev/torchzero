@@ -120,7 +120,7 @@ def get_var(device, dtype=torch.float32):
         return loss
 
     objective = _EvalCounter(closure)
-    var = tz.core.Var(params=params, closure=objective, model=None, current_step=0)
+    var = tz.core.Objective(params=params, closure=objective, model=None, current_step=0)
 
     return var, A, b, objective
 
@@ -129,7 +129,7 @@ def get_var(device, dtype=torch.float32):
 def test_gradient(device):
     """makes sure gradient is correct"""
     var, A, b, objective = get_var(device)
-    grad = var.get_grad()
+    grad = var.get_grads()
     assert torch.allclose(cat(grad), analytical_gradient(cat(var.params), A, b))
     objective.assert_(true=1, false=0)
 
@@ -144,7 +144,7 @@ def test_hvp_autograd(device, at_x0, hvp_method, get_grad):
 
     grad = None
     if get_grad:
-        grad = var.get_grad(create_graph=True, at_x0=at_x0) # one false (one closure call with backward=False)
+        grad = var.get_grads(create_graph=True, at_x0=at_x0) # one false (one closure call with backward=False)
 
     # generate random z
     n = numel(var.params)
@@ -162,11 +162,11 @@ def test_hvp_autograd(device, at_x0, hvp_method, get_grad):
     # check storage
     assert rgrad is not None
     if at_x0:
-        assert var.grad is not None
-        assert_tl_same_(var.grad, rgrad)
+        assert var.grads is not None
+        assert_tl_same_(var.grads, rgrad)
         if grad is not None: assert_tl_same_(grad, rgrad)
     else:
-        assert var.grad is None
+        assert var.grads is None
         if grad is not None: assert_tl_allclose_(grad, rgrad)
 
     # check against known Hvp
@@ -191,7 +191,7 @@ def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
 
     var, A, b, objective = get_var(device)
     if get_grad:
-        var.get_grad(create_graph=True, at_x0=at_x0) # one false
+        var.get_grads(create_graph=True, at_x0=at_x0) # one false
 
     # generate random matrix
     n = numel(var.params)
@@ -203,10 +203,10 @@ def test_hessian_matrix_product(device, at_x0, hvp_method, get_grad):
     # check storage
     assert rgrad is not None
     if at_x0:
-        assert var.grad is not None
-        assert_tl_same_(rgrad, var.grad)
+        assert var.grads is not None
+        assert_tl_same_(rgrad, var.grads)
     else:
-        assert var.grad is None
+        assert var.grads is None
 
     # check against known HZ
     x = cat(var.params)
@@ -263,13 +263,13 @@ def test_hessian_vector_vs_matrix_product(device, at_x0, hvp_method, h):
     else: assert rgrad is not None
 
     if at_x0:
-        if hvp_method == 'fd_central':  assert var.grad is None
+        if hvp_method == 'fd_central':  assert var.grads is None
         else:
-            assert var.grad is not None
+            assert var.grads is not None
             assert rgrad is not None
-            assert_tl_same_(rgrad, var.grad)
+            assert_tl_same_(rgrad, var.grads)
     else:
-        assert var.grad is None
+        assert var.grads is None
 
     # check that they match
     assert torch.allclose(HZ, torch.stack(Hzs, dim=-1)), f"{HZ = }, {torch.stack(Hzs, dim=-1) = }"
@@ -285,7 +285,7 @@ def test_hutchinson(device, at_x0, hvp_method, zHz, get_grad):
 
     var, A, b, objective = get_var(device)
     if get_grad:
-        var.get_grad(create_graph=True, at_x0=at_x0) # one false
+        var.get_grads(create_graph=True, at_x0=at_x0) # one false
 
     # 10 random vecs
     n = numel(var.params)
@@ -297,10 +297,10 @@ def test_hutchinson(device, at_x0, hvp_method, zHz, get_grad):
     # check storage
     assert rgrad is not None
     if at_x0:
-        assert var.grad is not None
-        if at_x0: assert_tl_same_(var.grad, rgrad)
+        assert var.grads is not None
+        if at_x0: assert_tl_same_(var.grads, rgrad)
     else:
-        assert var.grad is None
+        assert var.grads is None
 
     # compute D via known hvp
     x = cat(var.params)
@@ -330,7 +330,7 @@ def test_hutchinson_batching(device, at_x0, zHz, get_grad, pass_rgrad):
 
     var, A, b, objective = get_var(device)
     if get_grad:
-        var.get_grad(create_graph=True, at_x0=at_x0) # one false
+        var.get_grads(create_graph=True, at_x0=at_x0) # one false
 
     # 10 random vecs
     n = numel(var.params)
@@ -356,10 +356,10 @@ def test_hutchinson_batching(device, at_x0, zHz, get_grad, pass_rgrad):
     assert rgrad is not None
     assert rgrad2 is not None
     if at_x0:
-        assert var.grad is not None
-        assert_tl_same_(var.grad, rgrad2)
+        assert var.grads is not None
+        assert_tl_same_(var.grads, rgrad2)
     else:
-        assert var.grad is None
+        assert var.grads is None
     if at_x0 or pass_rgrad: assert_tl_same_(rgrad, rgrad2)
 
     # make sure Ds match
@@ -416,7 +416,7 @@ def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgr
 
     var, A, b, objective = get_var(device)
     if get_grad:
-        var.get_grad(create_graph=hvp_method in ("autograd", "batched_autograd"), at_x0=at_x0) # one false or true
+        var.get_grads(create_graph=hvp_method in ("autograd", "batched_autograd"), at_x0=at_x0) # one false or true
 
     # generate 10 vecs
     n = numel(var.params)
@@ -437,16 +437,16 @@ def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgr
         torch._foreach_add_(D, Hz, alpha = 1/10)
 
     # check storage
-    if not at_x0: assert var.grad is None
+    if not at_x0: assert var.grads is None
     else:
         if hvp_method == 'fd_central':
             assert rgrad is None
-            if get_grad: assert var.grad is not None
+            if get_grad: assert var.grads is not None
 
         else:
-            assert var.grad is not None
+            assert var.grads is not None
             assert rgrad is not None
-            assert_tl_same_(var.grad, rgrad)
+            assert_tl_same_(var.grads, rgrad)
 
     # check number of evals
     if hvp_method in ('autograd',  'batched_autograd'):
@@ -504,7 +504,7 @@ def test_hvp_vs_hutchinson(device, at_x0, hvp_method, h, zHz, get_grad, pass_rgr
         assert False, hvp_method
 
     # update should be none after all of this
-    assert var.update is None
+    assert var.updates is None
 
 _HESSIAN_METHODS = [
     "batched_autograd",
@@ -539,14 +539,14 @@ def test_hessian(device, at_x0, hessian_method):
         else: assert f == objective.closure(False)
         assert g_list is not None
         if at_x0:
-            assert var.grad is not None
-            assert_tl_same_(g_list, var.grad)
+            assert var.grads is not None
+            assert_tl_same_(g_list, var.grads)
         else:
-            assert var.grad is None
+            assert var.grads is None
     else:
         assert f is None
         assert g_list is None
-        assert var.grad is None
+        assert var.grads is None
 
     # compare with analytical
     x = cat(var.params)

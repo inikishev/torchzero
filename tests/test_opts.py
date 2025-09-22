@@ -51,7 +51,7 @@ def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, step
     losses = []
     for i in range(steps):
         if clear and i == steps//2:
-            for m in opt.unrolled_modules: m.reset() # clear on middle step to see if there are any issues with it
+            for m in opt.flat_modules: m.reset() # clear on middle step to see if there are any issues with it
 
         if use_closure:
             def closure(backward=True):

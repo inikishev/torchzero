@@ -5,7 +5,7 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 
-from ...core import Chainable, DerivativesMethod, Module, Var, apply_transform
+from ...core import Chainable, DerivativesMethod, Module, Objective, apply_transform
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,
@@ -23,7 +23,7 @@ class HigherOrderMethodBase(Module, ABC):
         self,
         x: torch.Tensor,
         evaluate: Callable[[torch.Tensor, int], tuple[torch.Tensor, ...]],
-        var: Var,
+        var: Objective,
     ) -> torch.Tensor:
         """"""
 

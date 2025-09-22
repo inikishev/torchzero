@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, Var
+from ...core import Chainable, Module, Objective
 from .projection import ProjectionBase
 
 # TODO

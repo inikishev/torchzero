@@ -6,7 +6,7 @@ from typing import Any
 
 import torch
 
-from ...core import Chainable, Module, Target, Var, maybe_chain
+from ...core import Chainable, Module, Target, Objective, maybe_chain
 from ...utils import TensorList, tensorlist
 
 
@@ -25,12 +25,12 @@ class BinaryOperationBase(Module, ABC):
                 self.operands[k] = v
 
     @abstractmethod
-    def transform(self, var: Var, update: list[torch.Tensor], **operands: Any | list[torch.Tensor]) -> Iterable[torch.Tensor]:
+    def transform(self, var: Objective, update: list[torch.Tensor], **operands: Any | list[torch.Tensor]) -> Iterable[torch.Tensor]:
         """applies the operation to operands"""
         raise NotImplementedError
 
     @torch.no_grad
-    def apply(self, var: Var) -> Var:
+    def apply(self, var: Objective) -> Objective:
         # pass cloned update to all module operands
         processed_operands: dict[str, Any | list[torch.Tensor]] = self.operands.copy()
 
@@ -38,11 +38,11 @@ class BinaryOperationBase(Module, ABC):
             if k in self.children:
                 v: Module
                 updated_var = v.apply(var.clone(clone_update=True))
-                processed_operands[k] = updated_var.get_update()
+                processed_operands[k] = updated_var.get_updates()
                 var.update_attrs_from_clone_(updated_var) # update loss, grad, etc if this module calculated them
 
-        transformed = self.transform(var, update=var.get_update(), **processed_operands)
-        var.update = list(transformed)
+        transformed = self.transform(var, update=var.get_updates(), **processed_operands)
+        var.updates = list(transformed)
         return var
 
 

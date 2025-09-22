@@ -4,49 +4,49 @@ from typing import cast
 
 import torch
 
-from ...core import Chainable, Module, Var
+from ...core import Chainable, Module, Objective
 
 
 def _split(
     module: Module,
     idxs,
     params,
-    var: Var,
+    var: Objective,
 ):
     split_params = [p for i,p in enumerate(params) if i in idxs]
 
     split_grad = None
-    if var.grad is not None:
-        split_grad = [g for i,g in enumerate(var.grad) if i in idxs]
+    if var.grads is not None:
+        split_grad = [g for i,g in enumerate(var.grads) if i in idxs]
 
     split_update = None
-    if var.update is not None:
-        split_update = [u for i,u in enumerate(var.update) if i in idxs]
+    if var.updates is not None:
+        split_update = [u for i,u in enumerate(var.updates) if i in idxs]
 
     split_var = var.clone(clone_update=False, parent=var)
     split_var.params = split_params
-    split_var.grad = split_grad
-    split_var.update = split_update
+    split_var.grads = split_grad
+    split_var.updates = split_update
 
     split_var = module.apply(split_var)
 
     # those should be set due to var being parent
-    if split_var.grad is not None:
-        assert var.grad is not None
+    if split_var.grads is not None:
+        assert var.grads is not None
 
     if split_var.loss is not None:
         assert var.loss is not None
 
-    if split_var.update is not None:
+    if split_var.updates is not None:
 
         # make sure update is set, it will be filled with ``true`` and ``false`` tensors
-        if var.update is None:
-            if var.grad is None: var.update = [cast(torch.Tensor, None) for _ in var.params]
-            else: var.update = [g.clone() for g in var.grad]
+        if var.updates is None:
+            if var.grads is None: var.updates = [cast(torch.Tensor, None) for _ in var.params]
+            else: var.updates = [g.clone() for g in var.grads]
 
         # set all tensors from this split
-        for idx, u in zip(idxs, split_var.update):
-            var.update[idx] = u
+        for idx, u in zip(idxs, split_var.updates):
+            var.updates[idx] = u
 
     return var
 

@@ -5,7 +5,7 @@ from typing import cast
 
 import torch
 
-from ...core import Module, Var
+from ...core import Module, Objective
 from ...utils import Metrics, TensorList, safe_dict_update_, tofloat
 
 
@@ -16,10 +16,10 @@ class TerminationCriteriaBase(Module):
         super().__init__(defaults)
 
     @abstractmethod
-    def termination_criteria(self, var: Var) -> bool:
+    def termination_criteria(self, var: Objective) -> bool:
         ...
 
-    def should_terminate(self, var: Var) -> bool:
+    def should_terminate(self, var: Objective) -> bool:
         n_bad = self.global_state.get('_n_bad', 0)
         n = self.defaults['_n']
 
@@ -91,7 +91,7 @@ class TerminateByGradientNorm(TerminationCriteriaBase):
     def termination_criteria(self, var):
         tol = self.defaults['tol']
         ord = self.defaults['ord']
-        return TensorList(var.get_grad()).global_metric(ord) <= tol
+        return TensorList(var.get_grads()).global_metric(ord) <= tol
 
 
 class TerminateByUpdateNorm(TerminationCriteriaBase):
@@ -151,7 +151,7 @@ class TerminateAny(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def termination_criteria(self, var: Var) -> bool:
+    def termination_criteria(self, var: Objective) -> bool:
         for c in self.get_children_sequence():
             if cast(TerminationCriteriaBase, c).termination_criteria(var): return True
 
@@ -163,7 +163,7 @@ class TerminateAll(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def termination_criteria(self, var: Var) -> bool:
+    def termination_criteria(self, var: Objective) -> bool:
         for c in self.get_children_sequence():
             if not cast(TerminationCriteriaBase, c).termination_criteria(var): return False
 

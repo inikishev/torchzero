@@ -2,10 +2,10 @@ from collections.abc import Iterable
 
 import torch
 
-from ...core import Chainable, Module, Var
+from ...core import Chainable, Module, Objective
 from ...utils import TensorList
 
-def _sequential_step(self: Module, var: Var, sequential: bool):
+def _sequential_step(self: Module, var: Objective, sequential: bool):
     params = var.params
     steps = self.settings[params[0]]['steps']
 
@@ -30,10 +30,10 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
                 # if new_var.last_module_lrs is not None:
                 #     torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
-                torch._foreach_sub_(params, new_var.get_update())
+                torch._foreach_sub_(params, new_var.get_updates())
 
             # create new var since we are at a new point, that means grad, update and loss will be None
-            new_var = Var(params=new_var.params, closure=new_var.closure,
+            new_var = Objective(params=new_var.params, closure=new_var.closure,
                             model=new_var.model, current_step=new_var.current_step + 1)
 
             # step
@@ -44,7 +44,7 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
             # if new_var.last_module_lrs is not None:
             #     torch._foreach_mul_(new_var.get_update(), new_var.last_module_lrs)
 
-            torch._foreach_sub_(params, new_var.get_update())
+            torch._foreach_sub_(params, new_var.get_updates())
 
     # if last module, update is applied so return new var
     # if params_before_steps is None:
@@ -53,7 +53,7 @@ def _sequential_step(self: Module, var: Var, sequential: bool):
     #     return new_var
 
     # otherwise use parameter difference as update
-    var.update = list(torch._foreach_sub(params_before_steps, params))
+    var.updates = list(torch._foreach_sub(params_before_steps, params))
     for p, bef in zip(params, params_before_steps):
         p.set_(bef) # pyright:ignore[reportArgumentType]
     return var
@@ -176,7 +176,7 @@ class Online(Module):
             return
 
         # restore previous params and update
-        var_prev = Var(params=params, closure=closure, model=var.model, current_step=var.current_step)
+        var_prev = Objective(params=params, closure=closure, model=var.model, current_step=var.current_step)
         params.set_(p_prev)
         module.reset_for_online()
         module.update(var_prev)

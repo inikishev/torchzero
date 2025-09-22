@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Var
+from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Objective
 from ...utils import (
     Distributions,
     Metrics,

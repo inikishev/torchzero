@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, Var, HessianMethod
+from ...core import Chainable, Module, apply_transform, Objective, HessianMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import DenseWithInverse, Dense
 

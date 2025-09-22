@@ -117,7 +117,7 @@ class Backtracking(LineSearchBase):
 
         # # directional derivative
         if c == 0: d = 0
-        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), var.get_update()))
+        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grads(), var.get_updates()))
 
         # scale init
         init_scale = self.global_state.get('init_scale', 1)
@@ -199,7 +199,7 @@ class AdaptiveBacktracking(LineSearchBase):
 
         # directional derivative (0 if c = 0 because it is not needed)
         if c == 0: d = 0
-        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grad(), update))
+        else: d = -sum(t.sum() for t in torch._foreach_mul(var.get_grads(), update))
 
         # scale beta
         beta = beta * self.global_state['beta_scale']

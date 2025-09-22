@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Var, apply_transform, HessianMethod
+from ...core import Chainable, Module, Objective, apply_transform, HessianMethod
 from ...utils import vec_to_tensors
 from ...utils.linalg.linear_operator import Dense, DenseWithInverse
 
@@ -39,7 +39,7 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
     except torch.linalg.LinAlgError:
         return None
 
-def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None) -> torch.Tensor:
+def _newton_step(var: Objective, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None) -> torch.Tensor:
     """returns the update tensor, then do vec_to_tensor(update, params)"""
     params = var.params
 
@@ -47,9 +47,9 @@ def _newton_step(var: Var, H: torch.Tensor, damping:float, inner: Module | None,
         H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
 
     # -------------------------------- inner step -------------------------------- #
-    update = var.get_update()
+    update = var.get_updates()
     if inner is not None:
-        update = apply_transform(inner, update, params=params, grads=var.grad, loss=var.loss, var=var)
+        update = apply_transform(inner, update, params=params, grads=var.grads, loss=var.loss, var=var)
 
     g = torch.cat([t.ravel() for t in update])
     if g_proj is not None: g = g_proj(g)

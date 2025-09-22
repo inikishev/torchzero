@@ -1,8 +1,9 @@
+from operator import itemgetter
 import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
-from collections.abc import Callable, Iterable, MutableMapping, Sequence
-from typing import Any, overload
+from collections.abc import Callable, Iterable, MutableMapping, Sequence, Mapping
+from typing import Any, overload, final
 
 import torch
 
@@ -15,7 +16,7 @@ from ..utils import (
     vec_to_tensors,
 )
 from ..utils.linalg.linear_operator import LinearOperator
-from .var import Var
+from .objective import Objective
 
 
 class Module(ABC):
@@ -103,7 +104,7 @@ class Module(ABC):
 
     def get_settings(self, params: Sequence[torch.Tensor], key: str | list[str] | tuple[str,...], key2: str | None = None,
                      *keys: str, cls: type[ListLike] = list) -> ListLike | list[ListLike]:
-        # if isinstance(params, Vars): params = params.params
+        # if isinstance(params, Objective): params = params.params
         return get_state_vals(self.settings, params, key, key2, *keys, must_exist=True, cls=cls) # pyright:ignore[reportArgumentType]
 
 
@@ -173,11 +174,11 @@ class Module(ABC):
             - if state_keys has multiple keys and keys has a single key, return cls.
             - if state_keys has multiple keys and keys has multiple keys, return list of cls.
         """
-        # if isinstance(params, Vars): params = params.params
+        # if isinstance(params, Objective): params = params.params
         return get_state_vals(self.state, params, key, key2, *keys, must_exist=must_exist, init=init, cls=cls) # pyright:ignore[reportArgumentType]
 
     # def first_setting(self, *keys:str, params:Sequence[torch.Tensor]):
-    #     # if isinstance(params, Vars): params = params.params
+    #     # if isinstance(params, Objective): params = params.params
     #     return itemgetter(*keys)(self.settings[params[0]])
 
     def clear_state_keys(self, *keys:str):
@@ -263,38 +264,49 @@ class Module(ABC):
 
         return self.global_state[key]
 
+    def increment_counter(self, key="step", start=0):
+        value = self.global_state.get(key, start)
+        self.global_state["key"] = value + 1
+        return value
+
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
-    def update(self, var:Var) -> Any:
-        """Updates the internal state of this module. This should not modify ``var.update``.
-
-        Return of this method is passed to ``apply``.
+    def update(self, objective:Objective) -> None:
+        """Updates internal state of this module. This should not modify ``objective.update``.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
         such as ``tz.m.Online`` or trust regions. Alternatively, define all logic within the ``apply`` method.
-        """
 
-    def apply(self, var: Var, ret: Any) -> Var:
-        """Applies this module to ``var.get_update()``. If ``update`` method is defined, ``apply`` shouldn't
-        modify internal state of this module if possible.
-
-        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
-        such as ``tz.m.Online`` or trust regions. Alternatively, define all logic within the ``apply`` method.
+        ``update`` is guaranteed to be called at least once before ``apply``.
 
         Args:
-            var (Var): ``Var`` object
-            ret (Any): return of ``update`` method.
+            objective (Objective): ``Objective`` object
+        """
+
+    @abstractmethod
+    def apply(self, objective: Objective) -> Objective:
+        """Updates ``objective`` using the internal state of this module.
+
+        If ``update`` method is defined, ``apply`` shouldn't modify the internal state of this module if possible.
+
+        Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
+        such as ``tz.m.Online`` or trust regions. Alternatively, define all logic within the ``apply`` method.
+
+        ``update`` is guaranteed to be called at least once before ``apply``.
+
+        Args:
+            objective (Objective): ``Objective`` object
         """
         # if apply is empty, it should be defined explicitly.
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `apply`.")
 
-    def get_H(self, var: Var) -> LinearOperator | None:
+    def get_H(self, objective: Objective) -> LinearOperator | None:
         """returns a ``LinearOperator`` corresponding to hessian or hessian approximation.
         The hessian approximation is assumed to be for all parameters concatenated to a vector."""
         # if this method is not defined it searches in children
         # this should be overwritten to return None if child params are different from this modules params
         H = None
         for k,v in self.children.items():
-            H_v = v.get_H(var)
+            H_v = v.get_H(objective)
 
             if (H is not None) and (H_v is not None):
                 raise RuntimeError(f"Two children of {self} have a hessian, second one is {k}={v}")
@@ -324,13 +336,13 @@ class Module(ABC):
         """
         for c in self.children.values(): c.reset_for_online()
 
-    def _extra_pack(self):
-        """extra information to store in state_dict of this optimizer.
-        Will be passed to ``_extra_unpack`` when loading the state_dict."""
+    def _extra_pack(self) -> dict:
+        """extra information to store in ``state_dict`` of this optimizer.
+        Will be passed to ``_extra_unpack`` when loading the ``state_dict``."""
         return {}
 
-    def _extra_unpack(self, x):
-        """``_extra_pack`` return will be passed to this method when loading state_dict.
+    def _extra_unpack(self, d: dict):
+        """``_extra_pack`` return will be passed to this method when loading ``state_dict``.
         This method is called after loading the rest of the state dict"""
 
 
