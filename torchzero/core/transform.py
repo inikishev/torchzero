@@ -8,7 +8,7 @@ import torch
 
 from .chain import Chainable
 from .module import Module
-from ..utils import vec_to_tensors_, vec_to_tensors
+from ..utils import vec_to_tensors_, vec_to_tensors, safe_dict_update_
 from .objective import Objective
 
 
@@ -20,7 +20,12 @@ class Transform(Module):
 
     To use, subclass this and override ``update_states`` and ``apply_states``.
     """
-    def __init__(self, defaults: dict[str, Any] | None = None, inner: Chainable | None = None):
+    def __init__(self, defaults: dict[str, Any] | None = None, update_freq: int = 1, inner: Chainable | None = None):
+
+        # store update_freq in defaults so that it is scheduleable
+        if defaults is None: defaults = {}
+        safe_dict_update_(defaults, {"update_freq": update_freq})
+
         super().__init__(defaults)
 
         if inner is not None:
@@ -36,9 +41,12 @@ class Transform(Module):
 
     @final
     def update(self, objective:Objective):
-        states = itemgetter(objective.params)(self.state)
-        settings = itemgetter(objective.params)(self.settings)
-        self.update_states(objective=objective, states=states, settings=settings)
+        step = self.increment_counter("__step", 0)
+
+        if step % self.defaults["update_freq"] == 0:
+            states = itemgetter(objective.params)(self.state)
+            settings = itemgetter(objective.params)(self.settings)
+            self.update_states(objective=objective, states=states, settings=settings)
 
     @final
     def apply(self, objective: Objective):
@@ -55,10 +63,12 @@ class Transform(Module):
         settings = itemgetter(objective.params)(self.settings)
         return self.apply_states(objective=objective, states=states, settings=settings)
 
-
 class TensorTransform(Transform):
     """``TensorTransform`` is a ``Transform`` that doesn't use ``Objective``, instead it operates
     on lists of tensors directly.
+
+    This has a ``concat_params`` setting which is used in quite a few modules, for example it is optional
+    in all full-matrix method like Quasi-Newton or full-matrix Adagrad.
 
     To use, subclass this and override one of ``single_tensor_update`` or ``multi_tensor_update``,
     and one of ``single_tensor_apply`` or ``multi_tensor_apply``.
@@ -72,9 +82,8 @@ class TensorTransform(Transform):
         uses_loss: bool = False,
         inner: Chainable | None = None,
     ):
-        super().__init__(defaults, inner=inner)
+        super().__init__(defaults, update_freq=update_freq, inner=inner)
 
-        self._update_freq = update_freq
         self._concat_params = concat_params
         self._uses_grad = uses_grad
         self._uses_loss = uses_loss
@@ -168,31 +177,28 @@ class TensorTransform(Transform):
     def update_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
         """Updates ``states``. This should not modify ``objective.update``. Loss can be accessed by ``objective.get_loss()``."""
 
-        step = self.increment_counter("__step", 0)
-        if step % self._update_freq == 0:
+        grads, loss = self._get_grads_loss(objective)
 
-            grads, loss = self._get_grads_loss(objective)
+        if self._concat_params:
+            cat_updates, cat_params, cat_grads = self._get_cat_updates_params_grads(objective, grads)
+            self.multi_tensor_update(
+                tensors=cat_updates,
+                params=cat_params,
+                grads=cat_grads,
+                loss=loss,
+                states=[states[0]],
+                settings=[settings[0]]
+            )
 
-            if self._concat_params:
-                cat_updates, cat_params, cat_grads = self._get_cat_updates_params_grads(objective, grads)
-                self.multi_tensor_update(
-                    tensors=cat_updates,
-                    params=cat_params,
-                    grads=cat_grads,
-                    loss=loss,
-                    states=[states[0]],
-                    settings=[settings[0]]
-                )
-
-            else:
-                self.multi_tensor_update(
-                    tensors=objective.get_updates(),
-                    params=objective.params,
-                    grads=grads,
-                    loss=loss,
-                    states=states,
-                    settings=settings
-                )
+        else:
+            self.multi_tensor_update(
+                tensors=objective.get_updates(),
+                params=objective.params,
+                grads=grads,
+                loss=loss,
+                states=states,
+                settings=settings
+            )
 
     @final
     def apply_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> Objective:
@@ -227,17 +233,15 @@ class TensorTransform(Transform):
         return objective
 
 
-    # make sure _update_freq and _concat_params are saved in `state_dict`
+    # make sure _concat_params, _uses_grad and _uses_loss are saved in `state_dict`
     def _extra_pack(self):
         return {
-            "__update_freq": self._update_freq,
             "__concat_params": self._concat_params,
             "__uses_grad": self._uses_grad,
             "__uses_loss": self._uses_loss,
         }
 
     def _extra_unpack(self, d):
-        self._update_freq = d["__update_freq"]
         self._concat_params = d["__concat_params"]
         self._uses_grad = d["__uses_grad"]
         self._uses_loss = d["__uses_loss"]
