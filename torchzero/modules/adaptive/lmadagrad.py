@@ -3,7 +3,7 @@ from typing import Literal, Any
 import warnings
 
 import torch
-from ...core import Chainable, TensorwiseTransform
+from ...core import Chainable, TensorTransform
 
 def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping):
     if isinstance(history, torch.Tensor):
@@ -44,7 +44,7 @@ def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
         if state_[key] is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
 
-class LMAdagrad(TensorwiseTransform):
+class LMAdagrad(TensorTransform):
     """
     Limited-memory full matrix Adagrad.
 

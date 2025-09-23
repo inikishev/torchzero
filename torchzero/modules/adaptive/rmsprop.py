@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform, Chainable, Objective, apply_transform
+from ...core import Module,  Transform, Chainable, Objective, step
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 
@@ -35,7 +35,7 @@ def rmsprop_(
 
     if inner is not None:
         assert params is not None
-        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
+        tensors_ = TensorList(step(inner, tensors_, params=params, grads=grads))
 
     return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
 

@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import as_tensorlist
 
 def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
@@ -32,7 +32,7 @@ class OrthoGrad(Transform):
         renormalize (bool, optional): whether to graft projected gradient to original gradient norm. Defaults to True.
         target (Target, optional): what to set on var. Defaults to 'update'.
     """
-    def __init__(self, eps: float = 1e-8, renormalize=True, target: Target = 'update'):
+    def __init__(self, eps: float = 1e-8, renormalize=True, target: _RemoveThis = 'update'):
         defaults = dict(eps=eps, renormalize=renormalize)
         super().__init__(defaults, uses_grad=False, target=target)
 

@@ -3,7 +3,7 @@ import warnings
 
 import torch
 
-from ...core import Chainable, Transform, apply_transform
+from ...core import Chainable, Transform, step
 from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
 
 @torch.no_grad

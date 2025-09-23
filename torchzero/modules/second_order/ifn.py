@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, Objective, HessianMethod
+from ...core import Chainable, Module, step, Objective, HessianMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import DenseWithInverse, Dense
 
@@ -68,7 +68,7 @@ class InverseFreeNewton(Module):
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=params, grads=var.grad, var=var)
+            update = step(self.children['inner'], update, params=params, grads=var.grad, var=var)
 
         g = torch.cat([t.ravel() for t in update])
 

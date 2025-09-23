@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, HVPMethod
+from ...core import Chainable, Module, step, HVPMethod
 from ...utils import Distributions, TensorList, vec_to_tensors
 from ...utils.linalg.linear_operator import Sketched
 from .newton import _newton_step

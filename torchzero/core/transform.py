@@ -8,14 +8,15 @@ import torch
 
 from .chain import Chainable
 from .module import Module
-from ..utils import vec_to_tensors_, vec_to_tensors, safe_dict_update_
+from ..utils import vec_to_tensors_, vec_to_tensors, safe_dict_update_, unpack_states
+from ..utils.optimizer import _make_initial_state_value
 from .objective import Objective
 
 
 class Transform(Module):
-    """``Transform`` is a ``Module`` with no children except optional ``inner``.
+    """``Transform`` is a ``Module`` with only optional children.
 
-    ``Transform`` if more flexible in that as long as ``inner=None``, it can use a custom list of states
+    ``Transform`` if more flexible in that as long as there are no children, it can use a custom list of states
     and settings instead of ``self.state`` and ``self.setting``.
 
     To use, subclass this and override ``update_states`` and ``apply_states``.
@@ -28,6 +29,7 @@ class Transform(Module):
 
         super().__init__(defaults)
 
+        self._objective = None
         if inner is not None:
             self.set_child("inner", inner)
 
@@ -61,7 +63,32 @@ class Transform(Module):
         # apply and return
         states = itemgetter(objective.params)(self.state)
         settings = itemgetter(objective.params)(self.settings)
+
         return self.apply_states(objective=objective, states=states, settings=settings)
+
+    def lerp_(
+        self, states: list[dict[str, Any]], key: str, tensors: list[torch.Tensor],
+        weight: float | Sequence[float], init: Any = torch.zeros_like
+    ):
+        buff = unpack_states(states, tensors, key, init=init)
+        torch._foreach_lerp_(buff, tensors, weight=weight)
+        return buff
+
+    def accumulate_(
+        self, states: list[dict[str, Any]], key: str, tensors: list[torch.Tensor],
+        beta: float | None = None, init: Any = torch.zeros_like
+    ):
+
+        if beta is None:
+            buff = unpack_states(states, tensors, key, init=init)
+            torch._foreach_add_(buff, tensors)
+            return buff
+
+        else:
+            return self.lerp_(states=states, key=key, tensors=tensors, weight=(1-beta), init=init)
+
+
+
 
 class TensorTransform(Transform):
     """``TensorTransform`` is a ``Transform`` that doesn't use ``Objective``, instead it operates
@@ -88,6 +115,24 @@ class TensorTransform(Transform):
         self._uses_grad = uses_grad
         self._uses_loss = uses_loss
 
+    # ------------------------------- single tensor ------------------------------ #
+    def single_tensor_initialize(
+        self,
+        tensor: torch.Tensor,
+        param: torch.Tensor,
+        grad: torch.Tensor | None,
+        loss: torch.Tensor | None,
+        state: dict[str, Any],
+        setting: Mapping[str, Any],
+    ) -> None:
+        """initialize ``state`` before first ``update``.
+
+        for copying:
+        ```python
+        def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        ```
+        """
+
     def single_tensor_update(
         self,
         tensor: torch.Tensor,
@@ -97,7 +142,13 @@ class TensorTransform(Transform):
         state: dict[str, Any],
         setting: Mapping[str, Any],
     ) -> None:
-        """Updates ``state``. This should not modify ``tensor``."""
+        """Updates ``state``. This should not modify ``tensor``.
+
+        for copying:
+        ```python
+        def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+        ```
+        """
 
     def single_tensor_apply(
         self,
@@ -108,8 +159,38 @@ class TensorTransform(Transform):
         state: dict[str, Any],
         setting: Mapping[str, Any],
     ) -> torch.Tensor:
-        """Updates ``tensor`` and returns it. This shouldn't modify ``state`` if possible."""
+        """Updates ``tensor`` and returns it. This shouldn't modify ``state`` if possible.
+
+        for copying:
+        ```python
+        def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
+        ```
+        """
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `single_tensor_apply`.")
+
+    # ------------------------------- multi tensor ------------------------------- #
+    def multi_tensor_initialize(
+        self,
+        tensors: list[torch.Tensor],
+        params: list[torch.Tensor],
+        grads: list[torch.Tensor] | None,
+        loss: torch.Tensor | None,
+        states: list[dict[str, Any]],
+        settings: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """initialize ``states`` before first ``update``.
+        By default calls ``single_tensor_initialize`` on all tensors.
+
+        for copying:
+        ```python
+        def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
+        ```
+        """
+        if grads is None:
+            grads = cast(list, [None] * len(tensors))
+
+        for tensor, param, grad, state, setting in zip(tensors, params, grads, states, settings):
+            self.single_tensor_initialize(tensor=tensor, param=param, grad=grad, loss=loss, state=state, setting=setting)
 
     def multi_tensor_update(
         self,
@@ -121,7 +202,13 @@ class TensorTransform(Transform):
         settings: Sequence[Mapping[str, Any]],
     ) -> None:
         """Updates ``states``. This should not modify ``tensor``.
-        By default calls ``single_tensor_update`` on all tensors."""
+        By default calls ``single_tensor_update`` on all tensors.
+
+        for copying:
+        ```python
+        def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
+        ```
+        """
 
         if grads is None:
             grads = cast(list, [None] * len(tensors))
@@ -139,7 +226,13 @@ class TensorTransform(Transform):
         settings: Sequence[Mapping[str, Any]],
     ) -> list[torch.Tensor]:
         """Updates ``tensors`` and returns it. This shouldn't modify ``state`` if possible.
-         By default calls ``single_tensor_apply`` on all tensors."""
+         By default calls ``single_tensor_apply`` on all tensors.
+
+        for copying:
+        ```python
+        def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        ```
+         """
 
         if grads is None:
             grads = cast(list, [None] * len(tensors))
@@ -162,6 +255,7 @@ class TensorTransform(Transform):
 
         return grads, loss
 
+    @torch.no_grad
     def _get_cat_updates_params_grads(self, objective: Objective, grads: list[torch.Tensor] | None):
         assert self._concat_params
 
@@ -173,62 +267,76 @@ class TensorTransform(Transform):
 
         return cat_updates, cat_params, cat_grads
 
+    def _gather_tensors(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]):
+        """returns everything for ``multi_tensor_*``. Concatenates if ```self._concat_params``.
+        evaluates grads and loss if ``self._uses_grad`` and ``self._uses_loss``"""
+
+        # evaluate grads and loss if `self._uses_grad` and `self._uses_loss`
+        grads, loss = self._get_grads_loss(objective)
+
+        # gather all things
+        # concatenate everything to a vec if `self._concat_params`
+        if self._concat_params:
+            tensors, params, grads = self._get_cat_updates_params_grads(objective, grads)
+            states = [states[0]]; settings = [settings[0]]
+
+        # or take original values
+        else:
+            tensors=objective.get_updates()
+            params = objective.params
+
+        return tensors, params, grads, loss, states, settings
+
     @final
     def update_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
         """Updates ``states``. This should not modify ``objective.update``. Loss can be accessed by ``objective.get_loss()``."""
+        tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
 
-        grads, loss = self._get_grads_loss(objective)
-
-        if self._concat_params:
-            cat_updates, cat_params, cat_grads = self._get_cat_updates_params_grads(objective, grads)
-            self.multi_tensor_update(
-                tensors=cat_updates,
-                params=cat_params,
-                grads=cat_grads,
-                loss=loss,
-                states=[states[0]],
-                settings=[settings[0]]
-            )
-
-        else:
-            self.multi_tensor_update(
-                tensors=objective.get_updates(),
-                params=objective.params,
+        # initialize before the first update
+        num_updates = self.increment_counter("__num_updates", 0)
+        if num_updates == 0:
+            self.multi_tensor_initialize(
+                tensors=tensors,
+                params=params,
                 grads=grads,
                 loss=loss,
                 states=states,
                 settings=settings
             )
+
+        # update
+        self.multi_tensor_update(
+            tensors=tensors,
+            params=params,
+            grads=grads,
+            loss=loss,
+            states=states,
+            settings=settings
+        )
 
     @final
     def apply_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> Objective:
         """Updates ``objective`` using ``states`` and returns it."""
-        # here objective might've been modified by `inner`
-        # or within some functional logic
-        # we have to re-cat
-        grads, loss = self._get_grads_loss(objective)
+        tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
+        # note: _gather tensors will re-cat again if `_concat_params`, this is necessary because objective
+        # may have been modified in functional logic, there is no way to know if that happened
 
+        # apply
+        ret = self.multi_tensor_apply(
+            tensors=tensors,
+            params=params,
+            grads=grads,
+            loss=loss,
+            states=states,
+            settings=settings
+        )
+
+        # uncat if needed and set objective.updates and return objective
         if self._concat_params:
-            cat_updates, cat_params, cat_grads = self._get_cat_updates_params_grads(objective, grads)
-            cat_updates = self.multi_tensor_apply(
-                tensors=cat_updates,
-                params=cat_params,
-                grads=cat_grads,
-                loss=loss,
-                states=[states[0]],
-                settings=[settings[0]]
-            )
-            objective.updates = vec_to_tensors(cat_updates[0], objective.params)
+            objective.updates = vec_to_tensors(ret[0], objective.params)
 
         else:
-            objective.updates = self.multi_tensor_apply(
-                tensors=objective.get_updates(),
-                params=objective.params,
-                grads=grads,
-                loss=loss,
-                states=states,
-                settings=settings
-            )
+            objective.updates = ret
 
         return objective
 

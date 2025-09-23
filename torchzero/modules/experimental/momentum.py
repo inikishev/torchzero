@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import ema_, ema_sq_, sqrt_ema_sq_
 from ..momentum.momentum import nag_
@@ -44,7 +44,7 @@ def precentered_ema_sq_(
 
 class PrecenteredEMASquared(Transform):
     """Maintains un-squared EMA, the updates are centered by it before being fed into squared EMA."""
-    def __init__(self, beta1:float=0.99, beta2=0.99, min_step: int = 2, amsgrad=False, pow:float=2, target: Target = 'update'):
+    def __init__(self, beta1:float=0.99, beta2=0.99, min_step: int = 2, amsgrad=False, pow:float=2, target: _RemoveThis = 'update'):
         defaults = dict(beta1=beta1,beta2=beta2,pow=pow,amsgrad=amsgrad, min_step=min_step)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -149,7 +149,7 @@ class CoordinateMomentum(Transform):
         p (float, optional): _description_. Defaults to 0.1.
         target (Target, optional): _description_. Defaults to 'update'.
     """
-    def __init__(self, p: float = 0.1, target: Target = 'update'):
+    def __init__(self, p: float = 0.1, target: _RemoveThis = 'update'):
         defaults = dict(p=p)
         super().__init__(defaults, uses_grad=False, target=target)
 

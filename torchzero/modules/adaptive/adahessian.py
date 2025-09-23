@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, Transform, apply_transform, HVPMethod
+from ...core import Chainable, Module,  Transform, step, HVPMethod
 from ...utils import NumberList, TensorList, Distributions
 
 def _full_average(hvp: torch.Tensor):
@@ -198,7 +198,7 @@ class AdaHessian(Module):
 
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
+            update = step(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
 
         var.update = adahessian(
             tensors=TensorList(update),

@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol, cast, final, overload
 
 import torch
 
-from ...core import Chainable, Module, Objective, apply_transform
+from ...core import Chainable, Module, Objective, step
 from ...utils import TensorList, safe_dict_update_, tofloat, vec_to_tensors, generic_finfo, generic_vector_norm
 from ...utils.linalg.linear_operator import LinearOperator
 
@@ -343,7 +343,7 @@ class TrustRegionBase(Module, ABC):
         # -------------------------------- inner step -------------------------------- #
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params=var.params, grads=var.grad, var=var)
+            update = step(self.children['inner'], update, params=var.params, grads=var.grad, var=var)
 
         # ----------------------------------- apply ---------------------------------- #
         return self.trust_region_apply(var=var, tensors=update, H=H)

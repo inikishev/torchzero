@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import TensorList, unpack_states, unpack_dicts
 
 class ReduceOutwardLR(Transform):
@@ -11,7 +11,7 @@ class ReduceOutwardLR(Transform):
     .. warning::
         This sounded good but after testing turns out it sucks.
     """
-    def __init__(self, mul = 0.5, use_grad=False, invert=False, target: Target = 'update'):
+    def __init__(self, mul = 0.5, use_grad=False, invert=False, target: _RemoveThis = 'update'):
         defaults = dict(mul=mul, use_grad=use_grad, invert=invert)
         super().__init__(defaults, uses_grad=use_grad, target=target)
 

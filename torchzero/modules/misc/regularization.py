@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Chainable, Module, Target, Transform
+from ...core import Chainable, Module,  Transform
 from ...core.reformulation import Reformulation
 from ...utils import Distributions, Metrics, NumberList, TensorList, evaluate_metric
 
@@ -43,7 +43,7 @@ class Dropout(Transform):
     ```
 
     """
-    def __init__(self, p: float = 0.5, graft: bool=False, target: Target = 'update'):
+    def __init__(self, p: float = 0.5, graft: bool=False, target: _RemoveThis = 'update'):
         defaults = dict(p=p, graft=graft)
         super().__init__(defaults, uses_grad=False, target=target)
 

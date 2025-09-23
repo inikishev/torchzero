@@ -1,5 +1,5 @@
 import torch
-from ...core import Module, Chainable, apply_transform
+from ...core import Module, Chainable, step
 
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors
@@ -165,7 +165,7 @@ class GaussNewton(Module):
 
                 # var.grad is set to unflattened Jr
                 assert var.grad is not None
-                Jr_list = apply_transform(self.children["inner"], tensors=[g.clone() for g in var.grad],
+                Jr_list = step(self.children["inner"], tensors=[g.clone() for g in var.grad],
                                           params=var.params, grads=var.grad, loss=var.loss, var=var)
                 Jr = torch.cat([t.ravel() for t in Jr_list])
 

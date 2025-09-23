@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, TensorwiseTransform, Transform, Objective
+from ...core import Chainable, Module,  TensorTransform, Transform, Objective
 from ...utils import (
     Distributions,
     Metrics,
@@ -19,9 +19,9 @@ from ...utils import (
 )
 
 
-class Previous(TensorwiseTransform):
+class Previous(TensorTransform):
     """Maintains an update from n steps back, for example if n=1, returns previous update"""
-    def __init__(self, n=1, target: Target = 'update'):
+    def __init__(self, n=1, target: _RemoveThis = 'update'):
         defaults = dict(n=n)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
@@ -40,7 +40,7 @@ class Previous(TensorwiseTransform):
 
 class LastDifference(Transform):
     """Outputs difference between past two updates."""
-    def __init__(self,target: Target = 'update'):
+    def __init__(self,target: _RemoveThis = 'update'):
         super().__init__({}, target=target)
 
     @torch.no_grad
@@ -82,7 +82,7 @@ class LastParamDifference(Module):
 
 class LastProduct(Transform):
     """Outputs difference between past two updates."""
-    def __init__(self,target: Target = 'update'):
+    def __init__(self,target: _RemoveThis = 'update'):
         super().__init__({}, uses_grad=False, target=target)
 
     @torch.no_grad
@@ -94,7 +94,7 @@ class LastProduct(Transform):
 
 class LastRatio(Transform):
     """Outputs ratio between past two updates, the numerator is determined by :code:`numerator` argument."""
-    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', target: Target = 'update'):
+    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', target: _RemoveThis = 'update'):
         defaults = dict(numerator=numerator)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -109,7 +109,7 @@ class LastRatio(Transform):
 
 class LastAbsoluteRatio(Transform):
     """Outputs ratio between absolute values of past two updates the numerator is determined by :code:`numerator` argument."""
-    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8, target: Target = 'update'):
+    def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8, target: _RemoveThis = 'update'):
         defaults = dict(numerator=numerator, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -129,7 +129,7 @@ class LastAbsoluteRatio(Transform):
 
 class GradSign(Transform):
     """Copies gradient sign to update."""
-    def __init__(self, target: Target = 'update'):
+    def __init__(self, target: _RemoveThis = 'update'):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
@@ -139,7 +139,7 @@ class GradSign(Transform):
 
 class UpdateSign(Transform):
     """Outputs gradient with sign copied from the update."""
-    def __init__(self, target: Target = 'update'):
+    def __init__(self, target: _RemoveThis = 'update'):
         super().__init__({}, uses_grad=True, target=target)
 
     @torch.no_grad
@@ -149,7 +149,7 @@ class UpdateSign(Transform):
 
 class GraftToGrad(Transform):
     """Grafts update to the gradient, that is update is rescaled to have the same norm as the gradient."""
-    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: _RemoveThis = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
 
@@ -161,7 +161,7 @@ class GraftToGrad(Transform):
 
 class GraftGradToUpdate(Transform):
     """Outputs gradient grafted to update, that is gradient rescaled to have the same norm as the update."""
-    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6, target: _RemoveThis = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=True, target=target)
 
@@ -174,7 +174,7 @@ class GraftGradToUpdate(Transform):
 
 class GraftToParams(Transform):
     """Grafts update to the parameters, that is update is rescaled to have the same norm as the parameters, but no smaller than :code:`eps`."""
-    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-4, target: Target = 'update'):
+    def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-4, target: _RemoveThis = 'update'):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -185,7 +185,7 @@ class GraftToParams(Transform):
 
 class Relative(Transform):
     """Multiplies update by absolute parameter values to make it relative to their magnitude, :code:`min_value` is minimum allowed value to avoid getting stuck at 0."""
-    def __init__(self, min_value:float = 1e-4, target: Target = 'update'):
+    def __init__(self, min_value:float = 1e-4, target: _RemoveThis = 'update'):
         defaults = dict(min_value=min_value)
         super().__init__(defaults, uses_grad=False, target=target)
 

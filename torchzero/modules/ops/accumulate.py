@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import TensorList, unpack_states
 
 class AccumulateSum(Transform):
@@ -10,7 +10,7 @@ class AccumulateSum(Transform):
         decay (float, optional): decays the accumulator. Defaults to 0.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, decay: float = 0, target: Target = 'update',):
+    def __init__(self, decay: float = 0, target: _RemoveThis = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -27,7 +27,7 @@ class AccumulateMean(Transform):
         decay (float, optional): decays the accumulator. Defaults to 0.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, decay: float = 0, target: Target = 'update',):
+    def __init__(self, decay: float = 0, target: _RemoveThis = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -45,7 +45,7 @@ class AccumulateProduct(Transform):
         decay (float, optional): decays the accumulator. Defaults to 0.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, decay: float = 0, target: Target = 'update',):
+    def __init__(self, decay: float = 0, target: _RemoveThis = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -62,7 +62,7 @@ class AccumulateMaximum(Transform):
         decay (float, optional): decays the accumulator. Defaults to 0.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, decay: float = 0, target: Target = 'update',):
+    def __init__(self, decay: float = 0, target: _RemoveThis = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -79,7 +79,7 @@ class AccumulateMinimum(Transform):
         decay (float, optional): decays the accumulator. Defaults to 0.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, decay: float = 0, target: Target = 'update',):
+    def __init__(self, decay: float = 0, target: _RemoveThis = 'update',):
         defaults = dict(decay=decay)
         super().__init__(defaults, uses_grad=False, target=target)
 

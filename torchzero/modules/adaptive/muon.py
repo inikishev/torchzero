@@ -6,7 +6,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Modular, TensorwiseTransform, Target, Transform
+from ...core import Modular, TensorTransform,  Transform
 from ...utils import enable_compilation
 
 
@@ -146,7 +146,7 @@ def orthogonalize_grads_(
 
 
 
-class Orthogonalize(TensorwiseTransform):
+class Orthogonalize(TensorTransform):
     """Uses Newton-Schulz iteration or SVD to compute the zeroth power / orthogonalization of update along first 2 dims.
 
     To disable orthogonalization for a parameter, put it into a parameter group with "orthogonalize" = False.
@@ -191,7 +191,7 @@ class Orthogonalize(TensorwiseTransform):
         Keller Jordan, Yuchen Jin, Vlado Boza, You Jiacheng, Franz Cesista, Laker Newhouse, Jeremy Bernstein - Muon: An optimizer for hidden layers in neural networks (2024) https://github.com/KellerJordan/Muon
     """
     def __init__(self, ns_steps=5, adjust_lr=False, dual_norm_correction=False,
-                 method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:Target='update'):
+                 method: Literal['newton-schulz', 'svd'] = 'newton-schulz', target:_RemoveThis='update'):
         defaults = dict(orthogonalize=True, ns_steps=ns_steps, dual_norm_correction=dual_norm_correction, adjust_lr=adjust_lr, method=method.lower())
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
@@ -217,10 +217,10 @@ class Orthogonalize(TensorwiseTransform):
         return tensor
 
 
-class DualNormCorrection(TensorwiseTransform):
+class DualNormCorrection(TensorTransform):
     """Dual norm correction for dualizer based optimizers (https://github.com/leloykun/adaptive-muon).
     Orthogonalize already has this built in with the `dual_norm_correction` setting."""
-    def __init__(self, target: Target='update'):
+    def __init__(self, target: _RemoveThis='update'):
         super().__init__({}, uses_grad=True, target=target)
 
     def apply_tensor(self, tensor, param, grad, loss, state, setting):
@@ -233,7 +233,7 @@ class DualNormCorrection(TensorwiseTransform):
 class MuonAdjustLR(Transform):
     """LR adjustment for Muon from "Muon is Scalable for LLM Training" (https://github.com/MoonshotAI/Moonlight/tree/master).
     Orthogonalize already has this built in with the `adjust_lr` setting, however you might want to move this to be later in the chain."""
-    def __init__(self, alpha: float = 1, target: Target='update'):
+    def __init__(self, alpha: float = 1, target: _RemoveThis='update'):
         defaults = dict(alpha=alpha)
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 

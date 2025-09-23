@@ -5,7 +5,7 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 
-from ...core import Chainable, DerivativesMethod, Module, Objective, apply_transform
+from ...core import Chainable, DerivativesMethod, Module, Objective, step
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,

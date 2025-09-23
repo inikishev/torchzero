@@ -25,19 +25,23 @@ if TYPE_CHECKING:
 
 def _closure_backward(closure, params, backward, retain_graph, create_graph):
     """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``,
+    within ``torch.enable_grad()`` or ``torch.no_grad()`` context depending on ``backward``.
 
     Returns loss and sets ``param.grad`` attributes.
     """
-    if not backward: return closure(False)
+    if not backward:
+        with torch.no_grad():
+            return closure(False)
 
-    with torch.enable_grad():
-        if not (retain_graph or create_graph):
+    if not (retain_graph or create_graph):
+        with torch.enable_grad():
             return closure()
 
-        # zero grad (because closure called with backward=False)
-        for p in params: p.grad = None
+    # zero grad (because closure called with backward=False)
+    for p in params: p.grad = None
 
-        # loss
+    # loss
+    with torch.enable_grad():
         loss = closure(False).ravel()
 
         # grad
@@ -50,28 +54,30 @@ def _closure_backward(closure, params, backward, retain_graph, create_graph):
             materialize_grads=True,
         )
 
-        # set p.grad
-        for p,g in zip(params,grad): p.grad = g
-        return loss
+    # set p.grad
+    for p,g in zip(params,grad): p.grad = g
+    return loss
+
 
 def _closure_loss_grad(closure, params, retain_graph, create_graph) -> tuple[torch.Tensor, list[torch.Tensor]]:
-    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``,
+    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``
+    within ``torch.enable_grad()``context.
 
     Returns ``(loss, grad)``. Unlike ``_closure_backward``, this won't always set ``p.grad``.
     """
     if closure is None: raise RuntimeError("closure is None")
 
     # use torch.autograd.grad
-    with torch.enable_grad():
-        if retain_graph or create_graph:
+    if retain_graph or create_graph:
+        with torch.enable_grad():
             loss = closure(False).ravel()
             return loss, list(
                 torch.autograd.grad(loss, params, retain_graph=retain_graph, create_graph=create_graph, allow_unused=True, materialize_grads=True)
             )
 
-        # use backward
-        loss = closure()
-        return loss, [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
+    # use backward
+    with torch.enable_grad(): loss = closure()
+    return loss, [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
 HVPMethod = Literal["batched_autograd", "autograd", "fd_forward", "fd_central"]
 """
@@ -239,30 +245,34 @@ class Objective:
         Backward always sets grads to None before recomputing.
         """
 
+        # at non-x0 point just call closure and return
         if not at_x0:
             if self.closure is None: raise RuntimeError("closure is None")
             return _closure_backward(
                 self.closure, self.params, backward=backward, retain_graph=retain_graph, create_graph=create_graph,
             )
 
+        # at x0 set self.loss and self.grads
         if self.loss is None:
 
             if self.closure is None: raise RuntimeError("closure is None")
-            if backward:
-                with torch.enable_grad():
-                    self.loss = self.loss_approx = _closure_backward(
-                        closure=self.closure, params=self.params, backward=True, retain_graph=retain_graph, create_graph=create_graph
-                    )
 
-                # initializing to zeros_like is equivalent to using zero_grad with set_to_none = False.
-                # it is technically a more correct approach for when some parameters conditionally receive gradients
-                # and in this case it shouldn't be slower.
+            # backward
+            if backward:
+                self.loss = self.loss_approx = _closure_backward(
+                    closure=self.closure, params=self.params, backward=True, retain_graph=retain_graph, create_graph=create_graph
+                )
 
                 # next time closure() is called, it will set grad to None.
                 # zero_grad(set_to_none=False) shouldn't be used (I should add a warning)
+                # because otherwise it will zero self.grads in-place
                 self.grads = [p.grad if p.grad  is not None else torch.zeros_like(p) for p in self.params]
+
+            # no backward
             else:
-                self.loss = self.loss_approx = self.closure(False)
+                self.loss = self.loss_approx = _closure_backward(
+                    closure=self.closure, params=self.params, backward=False, retain_graph=False, create_graph=False
+                )
 
         # if self.loss was not None, above branch wasn't executed because loss has already been evaluated, but without backward since self.grad is None.
         # and now it is requested to be evaluated with backward.
@@ -270,10 +280,9 @@ class Objective:
             warnings.warn('get_loss was called with backward=False, and then with backward=True so it had to be re-evaluated, so the closure was evaluated twice where it could have been evaluated once.')
             if self.closure is None: raise RuntimeError("closure is None")
 
-            with torch.enable_grad():
-                self.loss = self.loss_approx = _closure_backward(
-                    closure=self.closure, params=self.params, backward=backward, retain_graph=retain_graph, create_graph=create_graph
-                )
+            self.loss = self.loss_approx = _closure_backward(
+                closure=self.closure, params=self.params, backward=backward, retain_graph=retain_graph, create_graph=create_graph
+            )
             self.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
 
         # set parent grad
@@ -294,11 +303,12 @@ class Objective:
         """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
         ``objective.grad`` and potentially ``objective.loss``. Do not call this at perturbed parameters."""
 
+        # at non-x0 point just call closure and return grads
         if not at_x0:
-            _, grad = _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)
-            return grad
+            _, grads = _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)
+            return grads
 
-        # gradient at x0
+        # at x0 get_loss sets self.loss and self.grads
         if self.grads is None:
             if self.closure is None: raise RuntimeError("closure is None")
             self.get_loss(backward=True, retain_graph=retain_graph, create_graph=create_graph) # evaluate and set self.loss and self.grad
@@ -306,10 +316,14 @@ class Objective:
         assert self.grads is not None
         return self.grads
 
+
     def get_loss_grads(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """returns ``(loss, grads)``. Useful when you need both not at x0."""
+        # at non-x0 point just call closure and return (loss, grads)
         if not at_x0:
             return _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)
 
+        # at x0 get_grads sets self.loss and self.grads, then get_loss returns self.loss.
         grad = self.get_grads(retain_graph=retain_graph, create_graph=create_graph)
         loss = self.get_loss(False)
         return loss, grad
@@ -357,6 +371,8 @@ class Objective:
         from the child's context back to the parent ``Objective`` if the parent
         didn't have them computed already.
 
+        This copies over ``loss``, ``loss_approx``, ``grads``, ``should_terminate`` and ``skip_update``.
+
         Also, as long as ``post_step_hooks`` and ``attrs`` are modified in-place,
         if the child updates them, the update will affect the parent too.
         """
@@ -369,6 +385,7 @@ class Objective:
 
     @torch.no_grad
     def zero_grad(self, set_to_none=True):
+        """In most cases not call with ``set_to_none=False``, as that will zero ``self.grads`` in-place."""
         if set_to_none:
             for p in self.params: p.grad = None
         else:
@@ -376,14 +393,23 @@ class Objective:
             if len(grads) != 0: torch._foreach_zero_(grads)
 
     def poptemp(self):
+        """to pass information from ``update`` to ``apply``."""
         temp = self.temp
         self.temp = None
         return temp
 
     @torch.no_grad
     def update_parameters(self):
+        """subtracts ``self.get_updates()`` from parameters, unless ``self.skip_update = True``, then does nothing."""
         if self.skip_update: return
         torch._foreach_sub_(self.params, self.get_updates())
+
+    def apply_post_step_hooks(self, modules: "Sequence[Module]"):
+        """Runs hooks that a few modules use. This should be called **after** updating parameters."""
+        modules = tuple(modules)
+        for hook in self.post_step_hooks:
+            hook(self, modules)
+
 
     # ------------------------------ HELPER METHODS ------------------------------ #
     @torch.no_grad
@@ -472,8 +498,8 @@ class Objective:
         """
         # compute
         if hvp_method == "batched_autograd":
-            if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
             with torch.enable_grad():
+                if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
                 flat_inputs = torch.cat([g.ravel() for g in rgrad])
                 HZ_list = torch.autograd.grad(
                     flat_inputs,
@@ -486,8 +512,8 @@ class Objective:
             HZ = flatten_jacobian(HZ_list).T
 
         elif hvp_method == 'autograd':
-            if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
             with torch.enable_grad():
+                if rgrad is None: rgrad = self.get_grads(create_graph=True, at_x0=at_x0)
                 flat_inputs = torch.cat([g.ravel() for g in rgrad])
                 HZ_tensors = [
                     torch.autograd.grad(
@@ -532,6 +558,7 @@ class Objective:
 
         return HZ, rgrad
 
+    @torch.no_grad
     def hutchinson_hessian(
         self,
         rgrad: Sequence[torch.Tensor] | None,
@@ -638,6 +665,7 @@ class Objective:
         D_vec = HZ.mean(-1)
         return vec_to_tensors(D_vec, params), rgrad
 
+    @torch.no_grad
     def hessian(
         self,
         hessian_method: HessianMethod,
@@ -677,20 +705,20 @@ class Objective:
 
         # functional autograd hessian
         elif hessian_method in ('func', 'functional_revrev', 'functional_fwdrev'):
-            with torch.enable_grad():
-                if hessian_method == 'functional_fwdrev':
-                    method = "autograd.functional"
-                    outer_jacobian_strategy = "forward-mode"
-                    vectorize=True
-                elif hessian_method == 'functional_revrev':
-                    method = "autograd.functional"
-                    outer_jacobian_strategy = "reverse-mode"
-                    vectorize=False
-                else:
-                    method = 'func'
-                    outer_jacobian_strategy = "forward-mode" # unused
-                    vectorize=True # unused
+            if hessian_method == 'functional_fwdrev':
+                method = "autograd.functional"
+                outer_jacobian_strategy = "forward-mode"
+                vectorize=True
+            elif hessian_method == 'functional_revrev':
+                method = "autograd.functional"
+                outer_jacobian_strategy = "reverse-mode"
+                vectorize=False
+            else:
+                method = 'func'
+                outer_jacobian_strategy = "forward-mode" # unused
+                vectorize=True # unused
 
+            with torch.enable_grad():
                 H = hessian_mat(partial(closure, backward=False), params,
                                 method=method, vectorize=vectorize,
                                 outer_jacobian_strategy=outer_jacobian_strategy)
@@ -732,6 +760,7 @@ class Objective:
 
         return f, g_list, H
 
+    @torch.no_grad
     def derivatives(self, order: int, at_x0: bool, method:DerivativesMethod="batched_autograd"):
         """
         returns a tuple of tensors of function value and derivatives up to ``order``
@@ -795,6 +824,7 @@ class Objective:
 
         raise ValueError(method)
 
+    @torch.no_grad
     def derivatives_at(
         self,
         x: torch.Tensor | Sequence[torch.Tensor],

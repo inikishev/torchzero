@@ -7,7 +7,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, step
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     flatten_jacobian,

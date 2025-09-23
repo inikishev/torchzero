@@ -1,5 +1,5 @@
 import torch
-from ...core import Module, Chainable, apply_transform
+from ...core import Module, Chainable, step
 
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors, TensorList

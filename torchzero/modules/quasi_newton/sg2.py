@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Module, Chainable, apply_transform
+from ...core import Module, Chainable, step
 from ...utils import TensorList, vec_to_tensors
 from ..second_order.newton import _newton_step, _get_H
 

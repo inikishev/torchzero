@@ -2,36 +2,33 @@ from collections.abc import Iterable
 
 from ..utils.python_tools import flatten
 from .module import Module, Chainable
-
+from .functional import _chain_step
 
 class Chain(Module):
-    """Chain of modules, mostly used internally"""
+    """Chain modules, mostly used internally"""
     def __init__(self, *modules: Module | Iterable[Module]):
         super().__init__()
         flat_modules: list[Module] = flatten(modules)
         for i, module in enumerate(flat_modules):
             self.set_child(f'module_{i}', module)
 
-    def update(self, var):
-        # note here that `update` and `apply` shouldn't be used directly
-        # as it will update all modules, and then apply all modules
-        # it is used in specific cases like Chain as trust region hessian module
-        for i in range(len(self.children)):
-            self.children[f'module_{i}'].update(var)
-            if var.stop: break
-        return var
+    def update(self, objective):
+        if len(self.children) > 1:
+            raise RuntimeError("can't call `update` on Chain with more than one child, as `update` and `apply` have to be called sequentially. Use the `step` method instead of update-apply.")
 
-    def apply(self, var):
-        for i in range(len(self.children)):
-            var = self.children[f'module_{i}'].apply(var)
-            if var.stop: break
-        return var
+        if len(self.children) == 0: return
+        return self.children['module_0'].update(objective)
 
-    def apply(self, var):
-        for i in range(len(self.children)):
-            var = self.children[f'module_{i}'].apply(var)
-            if var.stop: break
-        return var
+    def apply(self, objective):
+        if len(self.children) > 1:
+            raise RuntimeError("can't call `update` on Chain with more than one child, as `update` and `apply` have to be called sequentially. Use the `step` method instead of update-apply.")
+
+        if len(self.children) == 0: return objective
+        return self.children['module_0'].apply(objective)
+
+    def step(self, objective):
+        children = [self.children[f'module_{i}'] for i in range(len(self.children))]
+        return _chain_step(objective, children)
 
     def __repr__(self):
         s = self.__class__.__name__
@@ -41,7 +38,7 @@ class Chain(Module):
         return s
 
 def maybe_chain(*modules: Chainable) -> Module:
-    """Returns a single module directly if only one is provided, otherwise wraps them in a :code:`Chain`."""
+    """Returns a single module directly if only one is provided, otherwise wraps them in a ``Chain``."""
     flat_modules: list[Module] = flatten(modules)
     if len(flat_modules) == 1:
         return flat_modules[0]

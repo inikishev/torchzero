@@ -1,21 +1,17 @@
-from operator import itemgetter
 import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
-from collections.abc import Callable, Iterable, MutableMapping, Sequence, Mapping
-from typing import Any, overload, final
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
+from operator import itemgetter
+from typing import Any, final, overload
 
 import torch
 
-from ..utils import (
-    Init,
-    ListLike,
-    Params,
-    _make_param_groups,
-    get_state_vals,
-    vec_to_tensors,
-)
+from ..utils import vec_to_tensors
 from ..utils.linalg.linear_operator import LinearOperator
+from ..utils.optimizer import Init, ListLike, get_state_vals
+from ..utils.params import Params, _make_param_groups
+from .functional import step_tensors
 from .objective import Objective
 
 
@@ -69,7 +65,12 @@ class Module(ABC):
                 self.settings[param].maps[0].update(settings) # set module-specific per-parameter settings
         return self
 
-    def set_child(self, key: str, module: "Module | Sequence[Module]"):
+    def set_child(self, key: str, module: "Module | Sequence[Module] | None"):
+        if key in self.children:
+            warnings.warn(f"set_child overwriting child `{key}`")
+
+        if module is None: return
+
         from .chain import maybe_chain
         self.children[key] = maybe_chain(module)
 
@@ -82,6 +83,49 @@ class Module(ABC):
 
     def get_children_sequence(self, prefix = 'module_'):
         return [self.children[f'{prefix}{i}'] for i in range(len(self.children)) if f'{prefix}{i}' in self.children]
+
+    def step_with_child(self, key: str, objective: "Objective", must_exist: bool = True) -> Objective:
+        child = self.children.get(key, None)
+
+        if child is None:
+            if must_exist: raise KeyError(f"child `{key}` doesn't exist")
+            return objective
+
+        return child.step(objective)
+
+    def step_tensors_with_child(
+        self,
+        key: str,
+        tensors: Sequence[torch.Tensor],
+        clone: bool,
+        params: Iterable[torch.Tensor] | None = None,
+        grads: Sequence[torch.Tensor] | None = None,
+        loss: torch.Tensor | None = None,
+        closure: Callable | None = None,
+        must_exist: bool = True
+    ) -> list[torch.Tensor]:
+        """Steps with child module. Can be used to apply transforms to any internal buffers.
+
+        Args:
+            key (str): Child module key.
+            tensors (Sequence[torch.Tensor]): tensors to pass to child module.
+            clone (bool):
+                If ``key`` exists, whether to clone ``tensors`` to avoid modifying buffers in-place.
+                If ``key`` doesn't exist, ``tensors`` are always returned without cloning
+            params (Iterable[torch.Tensor] | None, optional): pass None if ``tensors`` have different shape. Defaults to None.
+            grads (Sequence[torch.Tensor] | None, optional): grads. Defaults to None.
+            loss (torch.Tensor | None, optional): loss. Defaults to None.
+            closure (Callable | None, optional): closure. Defaults to None.
+            must_exist (bool, optional): if True, if ``key`` doesn't exist, raises ``KeyError``. Defaults to True.
+        """
+        child = self.children.get(key, None)
+
+        if child is None:
+            if must_exist: raise KeyError(f"child `{key}` doesn't exist")
+            return list(tensors)
+
+        if clone: tensors = [t.clone() for t in tensors]
+        return step_tensors(modules=child, tensors=tensors, params=params, grads=grads, loss=loss, closure=closure)
 
     def __repr__(self):
         s = self.__class__.__name__
@@ -264,7 +308,7 @@ class Module(ABC):
 
         return self.global_state[key]
 
-    def increment_counter(self, key="step", start=0):
+    def increment_counter(self, key: str, start: int):
         value = self.global_state.get(key, start)
         self.global_state["key"] = value + 1
         return value
@@ -298,6 +342,11 @@ class Module(ABC):
         """
         # if apply is empty, it should be defined explicitly.
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `apply`.")
+
+    def step(self, objective: Objective) -> Objective:
+        """Perform a step with this module. Calls ``update``, then ``apply``."""
+        self.update(objective)
+        return self.apply(objective)
 
     def get_H(self, objective: Objective) -> LinearOperator | None:
         """returns a ``LinearOperator`` corresponding to hessian or hessian approximation.

@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Module, TensorwiseTransform, Transform
+from ...core import Chainable, Module, TensorTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states, safe_dict_update_
 from ...utils.linalg import linear_operator
 from ..functional import initial_step_size, safe_clip
@@ -17,7 +17,7 @@ def _maybe_lerp_(state, key, value: torch.Tensor, beta: float | None):
     elif state[key].shape != value.shape: state[key] = value
     else: state[key].lerp_(value, 1-beta)
 
-class HessianUpdateStrategy(TensorwiseTransform, ABC):
+class HessianUpdateStrategy(TensorTransform, ABC):
     """Base class for quasi-newton methods that store and update hessian approximation H or inverse B.
 
     This is an abstract class, to use it, subclass it and override ``update_H`` and/or ``update_B``,

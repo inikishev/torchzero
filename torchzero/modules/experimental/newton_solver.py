@@ -3,7 +3,7 @@ from typing import Any, Literal, overload
 
 import torch
 
-from ...core import Chainable, Modular, Module, apply_transform, HVPMethod
+from ...core import Chainable, Modular, Module, step, HVPMethod
 from ...utils import TensorList, as_tensorlist
 from ...utils.derivatives import hvp_fd_forward, hvp_fd_central
 from ..quasi_newton import LBFGS
@@ -59,7 +59,7 @@ class NewtonSolver(Module):
         # -------------------------------- inner step -------------------------------- #
         b = as_tensorlist(grad)
         if 'inner' in self.children:
-            b = as_tensorlist(apply_transform(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, var=var))
+            b = as_tensorlist(step(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, var=var))
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None

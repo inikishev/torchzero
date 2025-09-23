@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import debias, ema_
 
@@ -20,7 +20,7 @@ class EMA(Transform):
         ema_init (str, optional): initial values for the EMA, "zeros" or "update".
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros', target: Target = 'update'):
+    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros', target: _RemoveThis = 'update'):
         defaults = dict(momentum=momentum,dampening=dampening,debiased=debiased,lerp=lerp,ema_init=ema_init)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -53,7 +53,7 @@ class HeavyBall(EMA):
         ema_init (str, optional): initial values for the EMA, "zeros" or "update".
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=False, ema_init: Literal['zeros', 'update'] = 'update', target: Target = 'update'):
+    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=False, ema_init: Literal['zeros', 'update'] = 'update', target: _RemoveThis = 'update'):
         super().__init__(momentum=momentum, dampening=dampening, debiased=debiased, lerp=lerp, ema_init=ema_init, target=target)
 
 def nag_(
@@ -84,7 +84,7 @@ class NAG(Transform):
             whether to use linear interpolation, if True, this becomes similar to exponential moving average. Defaults to False.
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False, target: Target = 'update'):
+    def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False, target: _RemoveThis = 'update'):
         defaults = dict(momentum=momentum,dampening=dampening, lerp=lerp)
         super().__init__(defaults, uses_grad=False, target=target)
 

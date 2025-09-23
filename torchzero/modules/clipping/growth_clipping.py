@@ -2,11 +2,11 @@ from operator import itemgetter
 
 import torch
 
-from ...core import TensorwiseTransform, Target, Transform
+from ...core import TensorTransform,  Transform
 from ...utils import TensorList, as_tensorlist
 
 
-class ClipValueGrowth(TensorwiseTransform):
+class ClipValueGrowth(TensorTransform):
     """Clips update value magnitude growth.
 
     Args:
@@ -27,7 +27,7 @@ class ClipValueGrowth(TensorwiseTransform):
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
         max_decay: float | None = 2,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
         super().__init__(defaults, target=target)
@@ -142,7 +142,7 @@ class ClipNormGrowth(Transform):
         max_decay: float | None = 2,
         ord: float = 2,
         parameterwise=True,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay, ord=ord, parameterwise=parameterwise)
         super().__init__(defaults, target=target)

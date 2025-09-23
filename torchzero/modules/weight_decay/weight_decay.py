@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module,  Transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, Metrics
 
 
@@ -63,7 +63,7 @@ class WeightDecay(Transform):
     ```
 
     """
-    def __init__(self, weight_decay: float, ord: int = 2, target: Target = 'update'):
+    def __init__(self, weight_decay: float, ord: int = 2, target: _RemoveThis = 'update'):
 
         defaults = dict(weight_decay=weight_decay, ord=ord)
         super().__init__(defaults, uses_grad=False, target=target)
@@ -117,7 +117,7 @@ class RelativeWeightDecay(Transform):
         ord: int  = 2,
         norm_input: Literal["update", "grad", "params"] = "update",
         metric: Metrics = 'mad',
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input, metric=metric)
         super().__init__(defaults, uses_grad=norm_input == 'grad', target=target)

@@ -3,7 +3,7 @@ from typing import Literal, overload
 import torch
 from scipy.sparse.linalg import LinearOperator, gcrotmk
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, step
 from ...utils import NumberList, TensorList, as_tensorlist, generic_vector_norm, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import cg, minres
@@ -85,7 +85,7 @@ class ScipyNewtonCG(Module):
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
+            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
         b = as_tensorlist(b)
 
         # ---------------------------------- run cg ---------------------------------- #

@@ -6,7 +6,7 @@ from typing import Any
 
 import torch
 
-from ...core import Chainable, Module, Target, Objective, maybe_chain
+from ...core import Chainable, Module,  Objective, maybe_chain
 from ...utils import TensorList, tensorlist
 
 

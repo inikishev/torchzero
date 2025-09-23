@@ -10,7 +10,7 @@ import numpy as np
 import scipy.optimize
 import torch
 
-from ...core import Chainable, Module, apply_transform, DerivativesMethod
+from ...core import Chainable, Module, step, DerivativesMethod
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,

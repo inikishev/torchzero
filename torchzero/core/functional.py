@@ -1,11 +1,13 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Iterable, Callable
 from typing import TYPE_CHECKING, Any
 
 import torch
 
+from .transform import Transform
+from .objective import Objective
+
 if TYPE_CHECKING:
     from .module import Module
-    from .objective import Objective
 
 
 
@@ -17,11 +19,13 @@ def update(
 ) -> None:
     if states is None:
         assert settings is None
-        module.update_internal(objective)
+        module.update(objective)
 
     else:
         assert settings is not None
-        module.update(objective, states, settings)
+        if not isinstance(module, Transform):
+            raise RuntimeError("`module` must be a subclass of `Transform` in order to use custom states and settings")
+        module.update_states(objective, states, settings)
 
 def apply(
     objective: "Objective",
@@ -31,13 +35,27 @@ def apply(
 ) -> "Objective":
     if states is None:
         assert settings is None
-        return module.apply_internal(objective)
+        return module.apply(objective)
 
-    assert settings is not None
-    return module.apply(objective, states, settings)
+    else:
+        assert settings is not None
+        if not isinstance(module, Transform):
+            raise RuntimeError("`module` must be a subclass of `Transform` in order to use custom states and settings")
+        return module.apply_states(objective, states, settings)
 
+def _chain_step(objective: "Objective", modules: "Sequence[Module]"):
+    """steps with ``modules`` and returns updated objective, this is used within ``step`` and within ``Chain.step``"""
+    # step
+    for i, module in enumerate(modules):
+        if i!=0: objective = objective.clone(clone_update=False)
+
+        objective = module.step(objective)
+        if objective.stop: break
+
+    return objective
 
 def step(objective: "Objective", modules: "Module | Sequence[Module]"):
+    """doesn't apply hooks!"""
     if not isinstance(modules, Sequence):
         modules = (modules, )
 
@@ -48,17 +66,36 @@ def step(objective: "Objective", modules: "Module | Sequence[Module]"):
     if objective.closure is None:
         objective.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in objective.params]
 
-    # step
-    for i, module in enumerate(modules):
-        if i!=0: objective = objective.clone(clone_update=False)
+    # step and return
+    return _chain_step(objective, modules)
 
-        module.update_internal(objective)
-        objective = module.apply_internal(objective)
 
-        if objective.stop: break
+def step_tensors(
+    modules: "Module | Sequence[Module]",
+    tensors: Sequence[torch.Tensor],
+    params: Iterable[torch.Tensor] | None = None,
+    grads: Sequence[torch.Tensor] | None = None,
+    loss: torch.Tensor | None = None,
+    closure: Callable | None = None,
+) -> list[torch.Tensor]:
 
-    # apply hooks
-    for hook in objective.post_step_hooks:
-        hook(objective, tuple(modules))
+    if not isinstance(modules, Sequence):
+        modules = (modules, )
 
-    return objective
+    # make fake params if they are only used for shapes
+    if params is None:
+        params = [t.view_as(t).requires_grad_() for t in tensors]
+
+    # create objective
+    objective = Objective(params=params, loss=loss, closure=closure)
+    objective.updates = list(tensors)
+
+    if grads is not None:
+        objective.grads = list(grads)
+
+    # step with modules
+    # this won't update parameters in-place because objective.Modular is None
+    objective = _chain_step(objective, modules)
+
+    # return updates
+    return objective.get_updates()

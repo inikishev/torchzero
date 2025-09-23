@@ -8,7 +8,7 @@ from typing import Any, Literal
 import numpy as np
 import torch
 
-from ...core import Module, Target, Objective
+from ...core import Module,  Objective
 from ...utils import tofloat, set_storage_
 from ..functional import clip_by_finfo
 

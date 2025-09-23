@@ -4,7 +4,7 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, HVPMethod
+from ...core import Chainable, Module, step, HVPMethod
 from ...utils import TensorList, as_tensorlist, tofloat
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import cg, find_within_trust_radius, minres
@@ -121,7 +121,7 @@ class NewtonCG(Module):
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
+            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
         b = as_tensorlist(b)
 
         # ---------------------------------- run cg ---------------------------------- #
@@ -280,7 +280,7 @@ class NewtonCGSteihaug(Module):
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
+            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
         b = as_tensorlist(b)
 
         # ------------------------------- trust region ------------------------------- #

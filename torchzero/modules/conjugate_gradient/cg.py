@@ -9,7 +9,7 @@ from ...core import (
     Module,
     Transform,
     Objective,
-    apply_transform,
+    step,
 )
 from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
 from ..line_search import LineSearchBase
@@ -100,7 +100,7 @@ class ConguateGradientBase(Transform, ABC):
         step = self.global_state['step']
 
         if 'inner' in self.children:
-            tensors = as_tensorlist(apply_transform(self.children['inner'], tensors, params, grads))
+            tensors = as_tensorlist(step(self.children['inner'], tensors, params, grads))
 
         assert self.global_state['stage'] != 0
         if self.global_state['stage'] == 1:

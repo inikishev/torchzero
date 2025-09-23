@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module,  Transform
 from ...utils import Metrics, NumberList, TensorList
 from ...utils.metrics import _METRICS
 
@@ -180,7 +180,7 @@ class ClipValue(Transform):
     ```
 
     """
-    def __init__(self, value: float, target: Target = 'update'):
+    def __init__(self, value: float, target: _RemoveThis = 'update'):
         defaults = dict(value=value)
         super().__init__(defaults, target=target)
 
@@ -236,7 +236,7 @@ class ClipNorm(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,inverse_dims=inverse_dims)
         super().__init__(defaults, target=target)
@@ -304,7 +304,7 @@ class Normalize(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size, inverse_dims=inverse_dims)
         super().__init__(defaults, target=target)
@@ -395,7 +395,7 @@ class Centralize(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 2,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(dim=dim,min_size=min_size,inverse_dims=inverse_dims)
         super().__init__(defaults, target=target)

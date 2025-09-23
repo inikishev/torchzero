@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Target, Transform
+from ...core import  Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     centered_ema_sq_,
@@ -95,7 +95,7 @@ class Debias(Transform):
         pow (float, optional): power, assumes absolute value is used. Defaults to 2.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, beta1: float | None = None, beta2: float | None = None, alpha: float = 1, pow:float=2, target: Target = 'update',):
+    def __init__(self, beta1: float | None = None, beta2: float | None = None, alpha: float = 1, pow:float=2, target: _RemoveThis = 'update',):
         defaults = dict(beta1=beta1, beta2=beta2, alpha=alpha, pow=pow)
         super().__init__(defaults, uses_grad=False, target=target)
 
@@ -117,7 +117,7 @@ class Debias2(Transform):
         pow (float, optional): power, assumes absolute value is used. Defaults to 2.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, beta: float = 0.999, pow: float = 2, target: Target = 'update',):
+    def __init__(self, beta: float = 0.999, pow: float = 2, target: _RemoveThis = 'update',):
         defaults = dict(beta=beta, pow=pow)
         super().__init__(defaults, uses_grad=False, target=target)
 

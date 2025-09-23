@@ -1,7 +1,7 @@
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module,  Transform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
 
 
@@ -218,7 +218,7 @@ class ScaleLRBySignChange(Transform):
         ub=50.0,
         alpha=1.0,
         use_grad=False,
-        target: Target = "update",
+        target: _RemoveThis = "update",
     ):
         defaults = dict(nplus=nplus, nminus=nminus, alpha=alpha, lb=lb, ub=ub, use_grad=use_grad)
         super().__init__(defaults, uses_grad=use_grad, target=target)
@@ -266,7 +266,7 @@ class BacktrackOnSignChange(Transform):
             Defaults to True.
 
     """
-    def __init__(self, use_grad = False, backtrack = True, target: Target = 'update'):
+    def __init__(self, use_grad = False, backtrack = True, target: _RemoveThis = 'update'):
         defaults = dict(use_grad=use_grad, backtrack=backtrack, target=target)
         super().__init__(defaults, uses_grad=use_grad)
 
@@ -311,7 +311,7 @@ class SignConsistencyMask(Transform):
             )
 
     """
-    def __init__(self,target: Target = 'update'):
+    def __init__(self,target: _RemoveThis = 'update'):
         super().__init__({}, uses_grad=False, target = target)
 
     @torch.no_grad
@@ -347,7 +347,7 @@ class SignConsistencyLRs(Transform):
         lb: float | None = 1e-6,
         ub: float | None = 50,
         alpha: float = 1,
-        target: Target = 'update'
+        target: _RemoveThis = 'update'
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
         super().__init__(defaults, uses_grad=False, target = target)

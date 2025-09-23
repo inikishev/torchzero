@@ -3,7 +3,7 @@ from functools import partial
 
 import torch
 
-from ...core import Module, Target, Transform, apply_transform, Chainable
+from ...core import Module,  Transform, step, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     debias, debiased_step_size,
@@ -36,7 +36,7 @@ def adam_(
 
     if inner is not None:
         assert params is not None
-        tensors = TensorList(apply_transform(inner, tensors, params=params, grads=grads))
+        tensors = TensorList(step(inner, tensors, params=params, grads=grads))
 
     exp_avg_ = ema_(tensors, exp_avg_=exp_avg_, beta=beta1, dampening=0,lerp=True)
     if debiased: alpha = debiased_step_size(step, beta1=beta1, beta2=beta2, pow=pow, alpha=alpha)

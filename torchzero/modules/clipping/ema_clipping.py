@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 
 import torch
 
-from ...core import Module, Target, Transform, apply_transform, Chainable
+from ...core import Module,  Transform, step, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, Metrics
 
 class ClipNormByEMA(Transform):
@@ -144,7 +144,7 @@ class ClipValueByEMA(Transform):
         ema = unpack_states(states, tensors, 'ema', cls=TensorList)
 
         if 'ema_tfm' in self.children:
-            ema = TensorList(apply_transform(self.children['ema_tfm'], ema.clone(), params, grads, loss))
+            ema = TensorList(step(self.children['ema_tfm'], ema.clone(), params, grads, loss))
 
         tensors.clip_(-ema, ema)
         return tensors

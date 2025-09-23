@@ -64,18 +64,11 @@ def get_group_vals(param_groups: Iterable[Mapping[str, Any]],
                 values[i].extend(group_value for _ in range(num_params))
     return values
 
-_InitLiterals = Literal['param', 'grad']
-Init = _InitLiterals | Any | list[_InitLiterals | Any] | tuple[_InitLiterals | Any]
+Init =  Any
 
 def _make_initial_state_value(param: torch.Tensor, init: Init, i: int | None):
     if callable(init): return init(param)
     if isinstance(init, torch.Tensor): return init.detach().clone()
-
-    if isinstance(init, str):
-        if init in ('param','params'): return param.detach().clone()
-        if init in ('grad', 'grads'):
-            if param.grad is None: raise RuntimeError('init is set to "grad, but param.grad is None"')
-            return param.grad.detach().clone()
 
     if isinstance(init, (list,tuple)):
         if i is None: raise RuntimeError(f'init is per-parameter ({type(init)}) but parameter index i is None')

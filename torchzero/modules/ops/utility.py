@@ -2,7 +2,7 @@ from collections import deque
 
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module,  Transform
 from ...utils.tensorlist import Distributions, TensorList
 from ...utils.linalg.linear_operator import ScaledIdentity
 

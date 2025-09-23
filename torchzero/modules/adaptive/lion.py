@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Module, Target, Transform
+from ...core import Module,  Transform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 

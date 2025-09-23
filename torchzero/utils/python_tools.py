@@ -41,6 +41,11 @@ def generic_ne(x: int | float | Iterable[int | float], y: int | float | Iterable
         return any(i!=y for i in x)
     return any(i!=j for i,j in zip(x,y))
 
+def generic_is_none(x: Any | Iterable[Any]):
+    """returns True if x is None or iterable with all elements set to None"""
+    if x is None: return True
+    if isinstance(x, Iterable): return all(i is None for i in x)
+    return False
 
 def zipmap(self, fn: Callable, other: Any | list | tuple, *args, **kwargs):
     """If `other` is list/tuple, applies `fn` to self zipped with `other`.

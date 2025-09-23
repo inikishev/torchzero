@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, HVPMethod
+from ...core import Chainable, Module, step, HVPMethod
 from ...utils import NumberList, TensorList
 from ..functional import initial_step_size
 
@@ -77,7 +77,7 @@ class MatrixMomentum(Module):
             Hs = [t.detach() for t in Hs]
 
             if 'hvp_tfm' in self.children:
-                Hs = TensorList(apply_transform(self.children['hvp_tfm'], Hs, params=p, grads=var.grad, var=var))
+                Hs = TensorList(step(self.children['hvp_tfm'], Hs, params=p, grads=var.grad, var=var))
 
             self.store(p, ("Hs", "s"), (Hs, s))
 

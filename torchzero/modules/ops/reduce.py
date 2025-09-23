@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import torch
 
-from ...core import Chainable, Module, Target, Objective, maybe_chain
+from ...core import Chainable, Module,  Objective, maybe_chain
 
 
 class ReduceOperationBase(Module, ABC):

@@ -1,62 +1,14 @@
-from operator import itemgetter
 from typing import Literal
-
 import torch
+
 from ...core import (
     Chainable,
-    Module,
-    Target,
-    TensorwiseTransform,
-    Transform,
-    Objective,
-    apply_transform,
+    TensorTransform,
 )
-from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
+from ...utils import NumberList, TensorList, unpack_dicts
 from ...utils.linalg import matrix_power_eigh
-from ..functional import add_power_, lerp_power_, root, epsilon_step_size
-from ...utils.linalg.linear_operator import Dense
 
-def adagrad_(
-    tensors_: TensorList,
-    sq_sum_: TensorList,
-    alpha: float | NumberList,
-    lr_decay: float | NumberList,
-    eps: float | NumberList,
-    step: int,
-    pow: float = 2,
-    use_sqrt: bool = True,
-    divide: bool = False,
-
-    decay: float | None = None,
-    beta: float | None = None,
-
-    # inner args
-    inner: Module | None = None,
-    params: list[torch.Tensor] | None = None,
-    grads: list[torch.Tensor] | None = None,
-):
-    """returns `tensors_`"""
-    clr = alpha / (1 + step * lr_decay)
-
-    if beta is None or step == 1: sq_sum_ = add_power_(tensors_, sum_=sq_sum_, pow=pow)
-    else: sq_sum_ = lerp_power_(tensors_, exp_avg_pow_=sq_sum_, beta=beta, pow=pow)
-    if decay is not None:
-        sq_sum_.mul_(1-decay)
-
-    if inner is not None:
-        assert params is not None
-        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
-
-    if divide: sq_sum_ = sq_sum_ / max(step, 1)
-
-    if use_sqrt: tensors_.div_(root(sq_sum_, p=pow, inplace=False).add_(eps)).mul_(clr)
-    else: tensors_.div_(sq_sum_.add(eps)).mul_(clr)
-
-    return tensors_
-
-
-
-class Adagrad(Transform):
+class Adagrad(TensorTransform):
     """Adagrad, divides by sum of past squares of gradients.
 
     This implementation is identical to ``torch.optim.Adagrad``.
@@ -72,103 +24,56 @@ class Adagrad(Transform):
     """
     def __init__(
         self,
+
+        # hyperparams
         lr_decay: float = 0,
         initial_accumulator_value: float = 0,
         eps: float = 1e-10,
         alpha: float = 1,
-        pow: float = 2,
-        use_sqrt: bool = True,
-        divide: bool=False,
-        beta:float | None = None,
-        decay: float | None = None,
+
+        # tfms
         inner: Chainable | None = None,
+        accumulator_tfm: Chainable | None = None
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
-        super().__init__(defaults=defaults, uses_grad=False)
+        del defaults['self'], defaults['inner'], defaults["accumulator_tfm"]
+        super().__init__(defaults=defaults, inner=inner)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child('accumulator_tfm', accumulator_tfm)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        tensors = TensorList(tensors)
-        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+    def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
+        for tensor, state, setting in zip(tensors, states, settings):
+            state["accumulator"] = torch.full_like(tensor, fill_value=setting["initial_accumulator_value"])
 
-        lr_decay,alpha,eps = unpack_dicts(settings, 'lr_decay', 'alpha', 'eps', cls=NumberList)
+    @torch.no_grad
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
+        torch._foreach_addcmul_([state["accumulator"] for state in states], tensors, tensors)
 
-        pow, use_sqrt, divide = itemgetter('pow', 'use_sqrt', 'divide')(settings[0])
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        tensors_ = TensorList(tensors)
+        eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
+        step = self.increment_counter("step", 0) + 1
 
-        sq_sum = unpack_states(states, tensors, 'sq_sum', cls=TensorList)
-
-        # initialize accumulator on 1st step
-        if step == 1:
-            sq_sum.set_(tensors.full_like([s['initial_accumulator_value'] for s in settings]))
-
-        return adagrad_(
-            tensors,
-            sq_sum_=sq_sum,
-            alpha=alpha,
-            lr_decay=lr_decay,
-            eps=eps,
-            step=step,
-            pow=pow,
-            use_sqrt=use_sqrt,
-            divide=divide,
-
-            beta = self.defaults["beta"],
-            decay = self.defaults["decay"],
-            # inner args
-            inner=self.children.get("inner", None),
-            params=params,
-            grads=grads,
+        accumulator = [state["accumulator"] for state in states]
+        accumulator = self.step_tensors_with_child(
+            "accumulator_tfm", accumulator, clone=True, params=params, grads=grads, loss=loss, must_exist=False
         )
+        accumulator = TensorList(accumulator)
 
 
-def lerp(start, end, weight):
-    return start + weight * (end - start)
+        denom = accumulator + eps
+        tensors_ /= denom
 
-def adagrad_norm_(
-    tensors_: TensorList,
-    accumulator: float | torch.Tensor,
-    alpha: float | NumberList,
-    lr_decay: float | NumberList,
-    eps: float | NumberList,
-    step: int,
-    use_sqrt: bool = True,
-    divide: bool = False,
+        clr = alpha / (1 + (step - 1) * lr_decay)
+        tensors_.lazy_mul_(clr)
 
-    decay: float | None = None,
-    beta: float | None = None,
+        return tensors_
 
-    # inner args
-    inner: Module | None = None,
-    params: list[torch.Tensor] | None = None,
-    grads: list[torch.Tensor] | None = None,
-):
-    """returns `tensors_`"""
-    clr = alpha / (1 + step * lr_decay)
 
-    gg = tensors_.dot(tensors_)
 
-    if beta is None or step == 1: accumulator += gg
-    else: accumulator = lerp(accumulator, gg, 1-beta)
-
-    if decay is not None:
-        accumulator *= 1-decay
-
-    if inner is not None:
-        assert params is not None
-        tensors_ = TensorList(apply_transform(inner, tensors_, params=params, grads=grads))
-
-    if divide: accumulator = accumulator / max(step, 1)
-
-    if use_sqrt: tensors_.div_(eps + accumulator.sqrt()).mul_(clr)
-    else: tensors_.div_(eps + accumulator).mul_(clr)
-
-    return tensors_, accumulator
-
-class AdagradNorm(Transform):
+class AdagradNorm(TensorTransform):
     """Adagrad-Norm, divides by sum of past means of squares of gradients.
 
     Args:
@@ -176,7 +81,6 @@ class AdagradNorm(Transform):
         initial_accumulator_value (float, optional): initial value of the sum of squares of gradients. Defaults to 0.
         eps (float, optional): division epsilon. Defaults to 1e-10.
         alpha (float, optional): step size. Defaults to 1.
-        pow (float, optional): power for gradients and accumulator root. Defaults to 2.
         use_sqrt (bool, optional): whether to take the root of the accumulator. Defaults to True.
         inner (Chainable | None, optional): Inner modules that are applied after updating accumulator and before preconditioning. Defaults to None.
     """
@@ -185,53 +89,90 @@ class AdagradNorm(Transform):
         lr_decay: float = 0,
         initial_accumulator_value: float = 0,
         eps: float = 1e-10,
-        alpha: float = 1,
-        pow: float = 2,
-        use_sqrt: bool = True,
-        divide: bool=False,
         beta:float | None = None,
-        decay: float | None = None,
+        beta_debias: bool = True,
+        layerwise: bool = True,
+        use_sqrt: bool = True,
+        divide: bool = False,
+        alpha: float = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(alpha = alpha, lr_decay = lr_decay, initial_accumulator_value=initial_accumulator_value,
-                        eps = eps, pow=pow, use_sqrt = use_sqrt, divide=divide, beta=beta, decay=decay)
-        super().__init__(defaults=defaults, uses_grad=False)
-
-        if inner is not None:
-            self.set_child('inner', inner)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner']
+        super().__init__(defaults=defaults, inner=inner)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
+
+        # layerwise initialize in each state
+        if settings[0]["layerwise"]:
+            for tensor, state, setting in zip(tensors, states, settings):
+
+                initial_accumulator_value = setting["initial_accumulator_value"]
+                state["accumulator"] = torch.tensor(initial_accumulator_value, device=tensor.device, dtype=tensor.dtype)
+
+        # global initialize in global state
+        else:
+            initial_accumulator_value = settings[0]["initial_accumulator_value"]
+            tensor = tensors[0]
+            self.global_state["accumulator"] = torch.tensor(initial_accumulator_value, device=tensor.device, dtype=tensor.dtype)
+
+    def _get_accumulator(self, states, settings) -> torch.Tensor | TensorList:
+        layerwise = settings[0]["layerwise"]
+        if layerwise:
+            return TensorList(s["accumulator"] for s in states)
+
+        return self.global_state["accumulator"]
+
+    @torch.no_grad
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
-        lr_decay,alpha,eps = unpack_dicts(settings, 'lr_decay', 'alpha', 'eps', cls=NumberList)
+        accumulator = self._get_accumulator(states, settings)
 
-        use_sqrt, divide, initial_accumulator_value = itemgetter('use_sqrt', 'divide', "initial_accumulator_value")(settings[0])
+        # compute squared gradient norm (gg)
+        if isinstance(accumulator, TensorList): gg = tensors.tensorwise_dot(tensors)
+        else: gg = tensors.dot(tensors)
 
-        accumulator = self.global_state.get("accumulator", initial_accumulator_value)
+        # update the accumulator
+        beta = settings[0]["beta"]
+        if beta is None: accumulator.add_(gg) # pyright:ignore[reportArgumentType]
+        else: accumulator.lerp_(gg, weight=1-beta) # pyright:ignore[reportArgumentType, reportCallIssue]
 
-        d, self.global_state["accumulator"] = adagrad_norm_(
-            tensors,
-            accumulator=accumulator,
-            alpha=alpha,
-            lr_decay=lr_decay,
-            eps=eps,
-            step=step,
-            use_sqrt=use_sqrt,
-            divide=divide,
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        tensors = TensorList(tensors)
+        accumulator = self._get_accumulator(states, settings)
+        eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
+        fs = settings[0]
+        beta = fs["beta"]
+        step = self.increment_counter("step", 0) + 1
 
-            beta = self.defaults["beta"],
-            decay = self.defaults["decay"],
-            # inner args
-            inner=self.children.get("inner", None),
-            params=params,
-            grads=grads,
-        )
+        # divide makes it estimate variance (beta too)
+        if fs["divide"]:
+            if beta is not None: raise RuntimeError("In AdagradNorm, either specify `beta` or `divide=True`")
+            accumulator = accumulator / step
 
-        return d
+        # compute denominator
+        if fs["use_sqrt"]:
+            denom = accumulator.sqrt().add_(eps) # pyright:ignore[reportArgumentType]
+        else:
+            denom = accumulator + eps # pyright:ignore[reportOperatorIssue]
+
+        if fs["beta_debias"] and beta is not None:
+            denom /= 1 - beta ** step
+
+        # update tensors
+        tensors /= denom
+
+        # lr decay
+        clr = alpha / (1 + (step - 1) * lr_decay)
+        tensors.lazy_mul_(clr)
+
+        return tensors
 
 
-class FullMatrixAdagrad(TensorwiseTransform):
+
+class FullMatrixAdagrad(TensorTransform):
     """Full-matrix version of Adagrad, can be customized to make RMSprop or Adam (see examples).
 
     Note:
@@ -240,7 +181,6 @@ class FullMatrixAdagrad(TensorwiseTransform):
     Args:
         beta (float | None, optional): momentum for gradient outer product accumulators. if None, uses sum. Defaults to None.
         decay (float | None, optional): decay for gradient outer product accumulators. Defaults to None.
-        sqrt (bool, optional): whether to take the square root of the accumulator. Defaults to True.
         concat_params (bool, optional): if False, each parameter will have it's own accumulator. Defaults to True.
         precond_freq (int, optional): frequency of updating the inverse square root of the accumulator. Defaults to 1.
         init (Literal[str], optional):
@@ -284,73 +224,90 @@ class FullMatrixAdagrad(TensorwiseTransform):
     """
     def __init__(
         self,
-        beta: float | None = None,
-        decay: float | None = None,
-        sqrt: bool = True,
-        concat_params=True,
-        precond_freq: int = 1,
-        init: Literal["identity", "zeros", "ones", "GGT"] = "identity",
         reg: float = 1e-12,
+        precond_freq: int = 1,
+        beta: float | None = None,
+        beta_debias: bool=True,
         divide: bool = False,
+        init: Literal["identity", "zeros", "GGT"] = "identity",
+        matrix_power: float = -1/2,
+        concat_params=True,
+
         inner: Chainable | None = None,
     ):
-        defaults = dict(beta=beta, decay=decay, sqrt=sqrt, precond_freq=precond_freq, init=init, divide=divide, reg=reg)
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner,)
+        defaults = locals().copy()
+        del defaults['self'], defaults['inner'], defaults["concat_params"]
+        super().__init__(defaults=defaults, inner=inner, concat_params=concat_params)
+
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+
         G = tensor.ravel()
-        GG = torch.outer(G, G)
-        decay = setting['decay']
-        beta = setting['beta']
-        init = setting['init']
+        GGᵀ = torch.outer(G, G)
 
-        if 'GG' not in state:
-            if init == 'identity': state['GG'] = torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype)
-            elif init == 'zeros': state['GG'] =  torch.zeros_like(GG)
-            elif init == 'ones': state['GG'] = torch.ones_like(GG)
-            elif init == 'GGT': state['GG'] = GG.clone()
+        # initialize
+        if "accumulator" not in state:
+            init = setting['init']
+            if init == 'identity': state['accumulator'] = torch.eye(GGᵀ.size(0), device=GGᵀ.device, dtype=GGᵀ.dtype)
+            elif init == 'zeros': state['accumulator'] =  torch.zeros_like(GGᵀ)
+            elif init == 'GGT': state['accumulator'] = GGᵀ.clone()
             else: raise ValueError(init)
-        if decay is not None: state['GG'].mul_(decay)
 
-        if beta is not None: state['GG'].lerp_(GG, 1-beta)
-        else: state['GG'].add_(GG)
-        state['i'] = state.get('i', 0) + 1 # number of GGTs in sum
+        # update
+        beta = setting['beta']
+        accumulator: torch.Tensor = state["accumulator"]
+
+        if beta is None: accumulator.add_(GGᵀ)
+        else: accumulator.lerp_(GGᵀ, 1-beta)
+
+        # update number of GGᵀ in accumulator for divide
+        state['num_GGTs'] = state.get('num_GGTs', 0) + 1
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         step = state.get('step', 0)
         state['step'] = step + 1
 
-        GG: torch.Tensor = state['GG']
-        sqrt = setting['sqrt']
+        accumulator: torch.Tensor = state['accumulator']
         divide = setting['divide']
         precond_freq = setting['precond_freq']
         reg = setting['reg']
+        beta = setting["beta"]
+        num_GGTs = state.get('num_GGTs', 1)
 
-        if divide: GG = GG/state.get('i', 1)
+        # divide by number of GGᵀ to get mean
+        if divide:
+            if beta is not None: raise RuntimeError("In FullMatrixAdagrad, either specify `beta` or `divide=True`")
+            accumulator = accumulator / num_GGTs
 
+        # add regularizer
         if reg != 0:
-            GG = GG + torch.eye(GG.size(0), device=GG.device, dtype=GG.dtype).mul_(reg)
+            device = accumulator.device; dtype = accumulator.dtype
+            accumulator = accumulator + torch.eye(accumulator.size(0), device=device, dtype=dtype).mul_(reg)
 
+        # for single value use sqrt
         if tensor.numel() == 1:
-            GG = GG.squeeze()
-            if sqrt: return tensor / GG.sqrt()
-            return tensor / GG
+            dir = tensor.mul_(accumulator.squeeze() ** setting["matrix_power"])
 
-        try:
-            if sqrt:
+        # otherwise use matrix inverse square root
+        else:
+
+            # compute inverse square root and store to state
+            try:
                 if "B" not in state or step % precond_freq == 0:
-                    B = state["B"] = matrix_power_eigh(GG, -1/2, abs=True)
+                    B = state["B"] = matrix_power_eigh(accumulator, setting["matrix_power"], abs=True)
                 else:
                     B = state["B"]
 
-            else: return torch.linalg.solve(GG, tensor.ravel()).view_as(tensor) # pylint:disable = not-callable
+                dir = (B @ tensor.ravel()).view_as(tensor)
 
-        except torch.linalg.LinAlgError:
-            # fallback to diagonal AdaGrad
-            denom = GG.diagonal()
-            if sqrt: denom = denom.sqrt()
-            return tensor.div_(denom + max(reg, 1e-12))
+            # fallback to diagonal Adagrad on fail
+            except torch.linalg.LinAlgError:
+                dir = tensor.mul_(accumulator.diagonal() ** setting["matrix_power"])
 
-        return (B @ tensor.ravel()).view_as(tensor)
+        # debias
+        if setting["beta_debias"] and beta is not None:
+            dir *= (1 - beta**num_GGTs)
+
+        return dir

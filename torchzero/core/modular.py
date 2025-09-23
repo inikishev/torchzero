@@ -190,17 +190,20 @@ class Modular(torch.optim.Optimizer):
                 if not p.requires_grad: continue
                 for map in self._per_parameter_global_settings[p]: map.update(settings)
 
-        # create var
+        # create Objective
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
         objective = Objective(
             params=params, closure=_EvalCounterClosure(self, closure), model=self.model,
             current_step=self.current_step, modular=self, loss=loss, storage=kwargs
         )
 
-        # step with all modules and apply hooks
+        # step with all modules
         objective = step(objective, self.modules)
 
         # apply update to parameters unless `objective.skip_update = True`
+        # this does:
+        # if not objective.skip_update:
+        #   torch._foreach_sub_(objective.params, objective.get_updates())
         objective.update_parameters()
 
         # update attributes
@@ -209,6 +212,12 @@ class Modular(torch.optim.Optimizer):
             self.should_terminate = objective.should_terminate
 
         self.current_step += 1
+
+        # apply hooks
+        # this does:
+        # for hook in objective.post_step_hooks:
+        #     hook(objective, modules)
+        objective.apply_post_step_hooks(self.modules)
 
         # return the first closure evaluation return
         # could return loss if it was passed but that's pointless

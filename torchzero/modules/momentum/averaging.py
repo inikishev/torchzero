@@ -5,18 +5,18 @@ from typing import Any, Literal, cast
 
 import torch
 
-from ...core import TensorwiseTransform, Target
+from ...core import TensorTransform, _RemoveThis
 from ...utils import tolist
 
 
-class Averaging(TensorwiseTransform):
+class Averaging(TensorTransform):
     """Average of past ``history_size`` updates.
 
     Args:
         history_size (int): Number of past updates to average
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, history_size: int, target: Target = 'update'):
+    def __init__(self, history_size: int, target: _RemoveThis = 'update'):
         defaults = dict(history_size=history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
@@ -34,14 +34,14 @@ class Averaging(TensorwiseTransform):
 
         return average / len(history)
 
-class WeightedAveraging(TensorwiseTransform):
+class WeightedAveraging(TensorTransform):
     """Weighted average of past ``len(weights)`` updates.
 
     Args:
         weights (Sequence[float]): a sequence of weights from oldest to newest.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: Target = 'update'):
+    def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: _RemoveThis = 'update'):
         defaults = dict(weights = tolist(weights))
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
@@ -68,14 +68,14 @@ class WeightedAveraging(TensorwiseTransform):
         return average
 
 
-class MedianAveraging(TensorwiseTransform):
+class MedianAveraging(TensorTransform):
     """Median of past ``history_size`` updates.
 
     Args:
         history_size (int): Number of past updates to average
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, history_size: int, target: Target = 'update'):
+    def __init__(self, history_size: int, target: _RemoveThis = 'update'):
         defaults = dict(history_size = history_size)
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 

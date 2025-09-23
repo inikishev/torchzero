@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, HVPMethod
+from ...core import Chainable, Module, step, HVPMethod
 from ...utils import Distributions, NumberList, TensorList
 
 
@@ -140,7 +140,7 @@ class ESGD(Module):
 
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
+            update = step(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
 
         var.update, self.global_state['i'] = esgd_(
             tensors_=TensorList(update),

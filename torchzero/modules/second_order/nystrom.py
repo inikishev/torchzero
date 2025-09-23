@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform, HVPMethod
+from ...core import Chainable, Module, step, HVPMethod
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
 from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation
@@ -122,7 +122,7 @@ class NystromSketchAndSolve(Module):
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=var.params, grads=grad, var=var)
+            b = step(self.children['inner'], b, params=var.params, grads=grad, var=var)
 
         # ----------------------------------- solve ---------------------------------- #
         if "L" not in self.global_state:
@@ -251,7 +251,7 @@ class NystromPCG(Module):
         # -------------------------------- inner step -------------------------------- #
         b = var.get_update()
         if 'inner' in self.children:
-            b = apply_transform(self.children['inner'], b, params=params, grads=grad, var=var)
+            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
 
         # ------------------------------ sketch&n&solve ------------------------------ #
         x = nystrom_pcg(A_mv=H_mv, A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)

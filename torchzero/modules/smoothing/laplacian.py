@@ -4,7 +4,7 @@ from collections.abc import Iterable
 import torch
 
 from ...utils.tensorlist import TensorList
-from ...core import Transform, Target
+from ...core import Transform, _RemoveThis
 
 
 def vector_laplacian_smoothing(input: torch.Tensor, sigma: float = 1) -> torch.Tensor:
@@ -84,7 +84,7 @@ class LaplacianSmoothing(Transform):
         Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.
 
     """
-    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: Target = 'update'):
+    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: _RemoveThis = 'update'):
         defaults = dict(sigma = sigma, layerwise=layerwise, min_numel=min_numel)
         super().__init__(defaults, uses_grad=False, target=target)
         # precomputed denominator for when layerwise=False

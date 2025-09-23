@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, apply_transform
+from ...core import Chainable, Module, step
 from ...utils import NumberList, TensorList
 
 
@@ -69,7 +69,7 @@ class CurveBall(Module):
 
         update = var.get_update()
         if 'inner' in self.children:
-            update = apply_transform(self.children['inner'], update, params, grads=var.grad, var=var)
+            update = step(self.children['inner'], update, params, grads=var.grad, var=var)
 
         z = curveball(TensorList(update), z, Hzz, momentum=momentum, precond_lr=precond_lr)
         var.update = z.neg()

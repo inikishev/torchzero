@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Target, Transform, apply_transform
+from ...core import Chainable, Module,  Transform, step
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, generic_ne
 from ..functional import ema_
 from ..momentum.momentum import nag_
@@ -55,7 +55,7 @@ def msam_(
 
     if inner is not None:
         assert params is not None
-        inner_update = TensorList(apply_transform(inner, tensors, params=params, grads=grads))
+        inner_update = TensorList(step(inner, tensors, params=params, grads=grads))
 
     else:
         assert lr is not None

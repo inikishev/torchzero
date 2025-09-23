@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Target, Transform, Module, Chainable
+from ...core import  Transform, Module, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts
 
 
