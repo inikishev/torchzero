@@ -147,9 +147,6 @@ class AdaHessian(Transform):
 
         step = self.increment_counter("step", start=0) # 0 on 1st update
 
-        closure = objective.closure
-        assert closure is not None
-
         # ---------------------------- hutchinson hessian ---------------------------- #
         fs = settings[0]
         update_freq = fs['update_freq']

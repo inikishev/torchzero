@@ -1,41 +1,11 @@
-from collections.abc import Callable
-from typing import Literal
-
 import torch
 
-from ...core import Chainable, Module,  Transform, step, HVPMethod
-from ...utils import Distributions, NumberList, TensorList, as_tensorlist
+from ...core import Chainable, Transform, HVPMethod
+from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states
 
 
-def sophia_H(
-    tensors: TensorList,
-    D: TensorList | None,
-    exp_avg_: TensorList,
-    D_exp_avg_: TensorList,
-    beta1: float | NumberList,
-    beta2: float | NumberList,
-    update_freq: int,
-    precond_scale: float | NumberList,
-    clip: float | NumberList,
-    eps: float | NumberList,
-    step: int
-):
-    # momentum
-    exp_avg_.lerp_(tensors, 1-beta1)
 
-    # update preconditioner
-    if step % update_freq == 0:
-        assert D is not None
-        D_exp_avg_.lerp_(D, 1-beta2)
-
-    else:
-        assert D is None
-
-    denom = (D_exp_avg_ * precond_scale).clip_(min=eps)
-    return (exp_avg_ / denom).clip_(-clip, clip)
-
-
-class SophiaH(Module):
+class SophiaH(Transform):
     """SophiaH optimizer from https://arxiv.org/abs/2305.14342
 
     This is similar to Adam, but the second momentum is replaced by an exponential moving average of randomized hessian diagonal estimates, and the update is agressively clipped.
@@ -113,62 +83,80 @@ class SophiaH(Module):
         h: float = 1e-3,
         n_samples = 1,
         zHz: bool = True,
+        debias: bool = False,
         seed: int | None = None,
-        inner: Chainable | None = None
+
+        exp_avg_tfm: Chainable | None = None,
+        D_exp_avg_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child('exp_avg', exp_avg_tfm)
+        self.set_child('D_exp_avg', D_exp_avg_tfm)
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def update_states(self, objective, states, settings):
+        params = objective.params
 
-        beta1, beta2, precond_scale, clip, eps = self.get_settings(params,
-            'beta1', 'beta2', 'precond_scale', 'clip', 'eps', cls=NumberList)
+        beta1, beta2 = unpack_dicts(settings, 'beta1', 'beta2', cls=NumberList)
 
-        exp_avg, D_exp_avg = self.get_state(params, 'exp_avg', 'D_exp_avg', cls=TensorList)
+        exp_avg, D_exp_avg = unpack_states(states, params, 'exp_avg', 'D_exp_avg', cls=TensorList)
 
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+        step = self.increment_counter("step", start=0) # 0 on 1st update
 
-        closure = var.closure
-        assert closure is not None
+        # ---------------------------- hutchinson hessian ---------------------------- #
+        fs = settings[0]
+        update_freq = fs['update_freq']
 
-        D = None
-        update_freq = self.defaults['update_freq']
         if step % update_freq == 0:
+            self.increment_counter("num_Ds", start=1)
 
-            D, _ = var.hutchinson_hessian(
+            D, _ = objective.hutchinson_hessian(
                 rgrad = None,
                 at_x0 = True,
-                n_samples = self.defaults['n_samples'],
-                distribution = self.defaults['distribution'],
-                hvp_method = self.defaults['hvp_method'],
-                h = self.defaults['h'],
-                zHz = self.defaults["zHz"],
-                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+                n_samples = fs['n_samples'],
+                distribution = fs['distribution'],
+                hvp_method = fs['hvp_method'],
+                h = fs['h'],
+                zHz = fs["zHz"],
+                generator = self.get_generator(params[0].device, fs["seed"]),
             )
 
+            D_exp_avg.mul_(beta2).addcmul_(D, D, value=1-beta2)
 
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
+        # --------------------------------- momentum --------------------------------- #
+        tensors = objective.get_updates() # do this after hutchinson to not disturb autograd
+        exp_avg.lerp_(tensors, 1-beta1)
 
-        var.update = sophia_H(
-            tensors=TensorList(update),
-            D=TensorList(D) if D is not None else None,
-            exp_avg_=exp_avg,
-            D_exp_avg_=D_exp_avg,
-            beta1=beta1,
-            beta2=beta2,
-            update_freq=update_freq,
-            precond_scale=precond_scale,
-            clip=clip,
-            eps=eps,
-            step=step,
-        )
-        return var
+
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        params = objective.params
+
+        beta1, beta2, eps, precond_scale, clip = unpack_dicts(
+            settings, 'beta1', 'beta2', 'eps', 'precond_scale', 'clip', cls=NumberList)
+
+        exp_avg, D_exp_avg = unpack_states(states, params, 'exp_avg', 'D_exp_avg')
+
+        # ---------------------------------- debias ---------------------------------- #
+        if settings[0]["debias"]:
+            num_Ds = self.global_state["num_Ds"]
+            bias_correction1 = 1.0 - (beta1 ** num_Ds)
+            bias_correction2 = 1.0 - (beta2 ** num_Ds)
+
+            exp_avg = exp_avg / bias_correction1
+            D_exp_avg = D_exp_avg / bias_correction2
+
+        # -------------------------------- transforms -------------------------------- #
+        exp_avg = TensorList(self.inner_tensors_step(
+            "exp_avg", tensors=exp_avg, clone=True, objective=objective, must_exist=False))
+
+        D_exp_avg = TensorList(self.inner_tensors_step(
+            "D_exp_avg", tensors=D_exp_avg, clone=True, objective=objective, must_exist=False))
+
+        # ------------------------------ compute update ------------------------------ #
+        denom = D_exp_avg.lazy_mul(precond_scale).clip(min=eps)
+        objective.updates = (exp_avg / denom).clip_(-clip, clip)
+        return objective
