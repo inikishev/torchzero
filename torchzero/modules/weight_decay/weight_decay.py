@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module,  Transform
+from ...core import Module,  TensorTransform
 from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states, Metrics
 
 
@@ -21,7 +21,7 @@ def weight_decay_(
     return grad_.add_(params.pow(ord-1).copysign_(params).mul_(weight_decay))
 
 
-class WeightDecay(Transform):
+class WeightDecay(TensorTransform):
     """Weight decay.
 
     Args:
@@ -63,10 +63,10 @@ class WeightDecay(Transform):
     ```
 
     """
-    def __init__(self, weight_decay: float, ord: int = 2, target: _RemoveThis = 'update'):
+    def __init__(self, weight_decay: float, ord: int = 2):
 
         defaults = dict(weight_decay=weight_decay, ord=ord)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -75,7 +75,7 @@ class WeightDecay(Transform):
 
         return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
 
-class RelativeWeightDecay(Transform):
+class RelativeWeightDecay(TensorTransform):
     """Weight decay relative to the mean absolute value of update, gradient or parameters depending on value of ``norm_input`` argument.
 
     Args:
@@ -117,10 +117,9 @@ class RelativeWeightDecay(Transform):
         ord: int  = 2,
         norm_input: Literal["update", "grad", "params"] = "update",
         metric: Metrics = 'mad',
-        target: _RemoveThis = "update",
     ):
         defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input, metric=metric)
-        super().__init__(defaults, uses_grad=norm_input == 'grad', target=target)
+        super().__init__(defaults, uses_grad=norm_input == 'grad')
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -161,9 +160,9 @@ class DirectWeightDecay(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, var):
-        weight_decay = self.get_settings(var.params, 'weight_decay', cls=NumberList)
+    def apply(self, objective):
+        weight_decay = self.get_settings(objective.params, 'weight_decay', cls=NumberList)
         ord = self.defaults['ord']
 
-        decay_weights_(var.params, weight_decay, ord)
-        return var
+        decay_weights_(objective.params, weight_decay, ord)
+        return objective

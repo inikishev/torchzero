@@ -23,26 +23,26 @@ class HigherOrderMethodBase(Module, ABC):
         self,
         x: torch.Tensor,
         evaluate: Callable[[torch.Tensor, int], tuple[torch.Tensor, ...]],
-        var: Objective,
+        objective: Objective,
     ) -> torch.Tensor:
         """"""
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
+    def apply(self, objective):
+        params = TensorList(objective.params)
 
-        closure = var.closure
+        closure = objective.closure
         if closure is None: raise RuntimeError('MultipointNewton requires closure')
         derivatives_method = self._derivatives_method
 
         def evaluate(x, order) -> tuple[torch.Tensor, ...]:
             """order=0 - returns (loss,), order=1 - returns (loss, grad), order=2 - returns (loss, grad, hessian), etc."""
-            return var.derivatives_at(x, order,method=derivatives_method)
+            return objective.derivatives_at(x, order,method=derivatives_method)
 
         x = torch.cat([p.ravel() for p in params])
-        dir = self.one_iteration(x, evaluate, var)
-        var.update = vec_to_tensors(dir, var.params)
-        return var
+        dir = self.one_iteration(x, evaluate, objective)
+        objective.updates = vec_to_tensors(dir, objective.params)
+        return objective
 
 def _inv(A: torch.Tensor, lstsq:bool) -> torch.Tensor:
     if lstsq: return torch.linalg.pinv(A) # pylint:disable=not-callable
@@ -77,7 +77,7 @@ class SixthOrder3P(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, var):
+    def one_iteration(self, x, evaluate, objective):
         settings = self.defaults
         lstsq = settings['lstsq']
         def f(x): return evaluate(x, 1)[1]
@@ -144,7 +144,7 @@ class SixthOrder5P(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, var):
+    def one_iteration(self, x, evaluate, objective):
         settings = self.defaults
         lstsq = settings['lstsq']
         def f_j(x): return evaluate(x, 2)[1:]
@@ -167,7 +167,7 @@ class TwoPointNewton(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, var):
+    def one_iteration(self, x, evaluate, objective):
         settings = self.defaults
         lstsq = settings['lstsq']
         def f(x): return evaluate(x, 1)[1]
@@ -195,7 +195,7 @@ class SixthOrder3PM2(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, var):
+    def one_iteration(self, x, evaluate, objective):
         settings = self.defaults
         lstsq = settings['lstsq']
         def f_j(x): return evaluate(x, 2)[1:]

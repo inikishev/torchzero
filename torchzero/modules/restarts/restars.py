@@ -41,23 +41,23 @@ class RestartStrategyBase(Module, ABC):
         return modules
 
     @final
-    def update(self, var):
-        modules = self._reset_on_condition(var)
+    def update(self, objective):
+        modules = self._reset_on_condition(objective)
         if modules is not None:
-            modules.update(var)
+            modules.update(objective)
 
     @final
-    def apply(self, var):
+    def apply(self, objective):
         # don't check here because it was check in `update`
         modules = self.children.get('modules', None)
-        if modules is None: return var
-        return modules.apply(var.clone(clone_update=False))
+        if modules is None: return objective
+        return modules.apply(objective.clone(clone_update=False))
 
     @final
-    def apply(self, var):
-        modules = self._reset_on_condition(var)
-        if modules is None: return var
-        return modules.apply(var.clone(clone_update=False))
+    def step(self, objective):
+        modules = self._reset_on_condition(objective)
+        if modules is None: return objective
+        return modules.step(objective.clone(clone_update=False))
 
 
 
@@ -231,17 +231,17 @@ class BirginMartinezRestart(Module):
 
         self.set_child("module", module)
 
-    def update(self, var):
+    def update(self, objective):
         module = self.children['module']
-        module.update(var)
+        module.update(objective)
 
-    def apply(self, var):
+    def apply(self, objective):
         module = self.children['module']
-        var = module.apply(var.clone(clone_update=False))
+        objective = module.apply(objective.clone(clone_update=False))
 
         cond = self.defaults['cond']
-        g = TensorList(var.get_grads())
-        d = TensorList(var.get_updates())
+        g = TensorList(objective.get_grads())
+        d = TensorList(objective.get_updates())
         d_g = d.dot(g)
         d_norm = d.global_vector_norm()
         g_norm = g.global_vector_norm()
@@ -249,7 +249,7 @@ class BirginMartinezRestart(Module):
         # d in our case is same direction as g so it has a minus sign
         if -d_g > -cond * d_norm * g_norm:
             module.reset()
-            var.updates = g.clone()
-            return var
+            objective.updates = g.clone()
+            return objective
 
-        return var
+        return objective

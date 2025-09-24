@@ -7,7 +7,8 @@ import torch
 
 from ...core import Chainable, Module, step, HVPMethod
 from ...utils import Distributions, TensorList, vec_to_tensors
-from ...utils.linalg.linear_operator import Sketched
+from ...linalg.linear_operator import Sketched
+
 from .newton import _newton_step
 
 def _qr_orthonormalize(A:torch.Tensor):
@@ -115,16 +116,16 @@ class SubspaceNewton(Module):
             self.set_child("inner", inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         if step % self.defaults['update_freq'] == 0:
 
-            closure = var.closure
+            closure = objective.closure
             if closure is None:
                 raise RuntimeError("RSN requires closure")
-            params = var.params
+            params = objective.params
             generator = self.get_generator(params[0].device, self.defaults["seed"])
 
             ndim = sum(p.numel() for p in params)
@@ -148,7 +149,7 @@ class SubspaceNewton(Module):
 
             elif sketch_type == 'common_directions':
                 # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
-                g_list = var.get_grad(create_graph=hvp_method in ("batched_autograd", "autograd"))
+                g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
                 g = torch.cat([t.ravel() for t in g_list])
 
                 # initialize directions deque
@@ -173,7 +174,7 @@ class SubspaceNewton(Module):
                         S = torch.cat([S, p.unsqueeze(1)], dim=1)
 
             elif sketch_type == "mixed":
-                g_list = var.get_grad(create_graph=hvp_method in ("batched_autograd", "autograd"))
+                g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
                 g = torch.cat([t.ravel() for t in g_list])
 
                 # initialize state
@@ -205,16 +206,16 @@ class SubspaceNewton(Module):
                 raise ValueError(f'Unknown sketch_type {sketch_type}')
 
             # form sketched hessian
-            HS, _ = var.hessian_matrix_product(S, rgrad=None, at_x0=True, hvp_method=self.defaults["hvp_method"], h=self.defaults["h"])
+            HS, _ = objective.hessian_matrix_product(S, rgrad=None, at_x0=True, hvp_method=self.defaults["hvp_method"], h=self.defaults["h"])
             H_sketched = S.T @ HS
 
             self.global_state["H_sketched"] = H_sketched
             self.global_state["S"] = S
 
-    def apply(self, var):
+    def apply(self, objective):
         S: torch.Tensor = self.global_state["S"]
         d_proj = _newton_step(
-            var=var,
+            objective=objective,
             H=self.global_state["H_sketched"],
             damping=self.defaults["damping"],
             inner=self.children.get("inner", None),
@@ -224,11 +225,11 @@ class SubspaceNewton(Module):
             g_proj = lambda g: S.T @ g
         )
         d = S @ d_proj
-        var.update = vec_to_tensors(d, var.params)
+        objective.updates = vec_to_tensors(d, objective.params)
 
-        return var
+        return objective
 
-    def get_H(self, var=...):
+    def get_H(self, objective=...):
         eigval_fn = self.defaults["eigval_fn"]
         H_sketched: torch.Tensor = self.global_state["H_sketched"]
         S: torch.Tensor = self.global_state["S"]

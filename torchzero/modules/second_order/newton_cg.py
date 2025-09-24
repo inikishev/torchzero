@@ -4,10 +4,9 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Module, step, HVPMethod
+from ...core import Chainable, Module, HVPMethod
 from ...utils import TensorList, as_tensorlist, tofloat
-from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import cg, find_within_trust_radius, minres
+from ...linalg.solve import cg, find_within_trust_radius, minres
 from ..trust_region.trust_region import default_radius
 
 
@@ -98,9 +97,9 @@ class NewtonCG(Module):
         self._num_hvps_last_step = 0
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def apply(self, objective):
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -115,14 +114,12 @@ class NewtonCG(Module):
         self._num_hvps_last_step = 0
 
         # ---------------------- Hessian vector product function --------------------- #
-        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
-        grad = var.get_grad()
+        _, H_mv = objective.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+
 
         # -------------------------------- inner step -------------------------------- #
-        b = var.get_update()
-        if 'inner' in self.children:
-            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
-        b = as_tensorlist(b)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
@@ -144,10 +141,10 @@ class NewtonCG(Module):
             assert x0 is not None
             x0.copy_(d)
 
-        var.update = d
+        objective.updates = d
 
         self._num_hvps += self._num_hvps_last_step
-        return var
+        return objective
 
 
 class NewtonCGSteihaug(Module):
@@ -253,9 +250,9 @@ class NewtonCGSteihaug(Module):
         self._num_hvps_last_step = 0
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def apply(self, objective):
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         tol = self.defaults['tol'] * self.global_state.get('tol_mul', 1)
@@ -272,16 +269,11 @@ class NewtonCGSteihaug(Module):
         self._num_hvps_last_step = 0
 
         # ---------------------- Hessian vector product function --------------------- #
-        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
-        grad = var.get_grad()
-
-
+        _, H_mv = objective.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
 
         # -------------------------------- inner step -------------------------------- #
-        b = var.get_update()
-        if 'inner' in self.children:
-            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
-        b = as_tensorlist(b)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
         # ------------------------------- trust region ------------------------------- #
         success = False
@@ -334,7 +326,7 @@ class NewtonCGSteihaug(Module):
             self.global_state["trust_radius"], success = default_radius(
                 params=params,
                 closure=closure,
-                f=tofloat(var.get_loss(False)),
+                f=tofloat(objective.get_loss(False)),
                 g=b,
                 H=H_mv,
                 d=d,
@@ -355,10 +347,10 @@ class NewtonCGSteihaug(Module):
         # --------------------------- assign new direction --------------------------- #
         assert d is not None
         if success:
-            var.update = d
+            objective.updates = d
 
         else:
-            var.update = params.zeros_like()
+            objective.updates = params.zeros_like()
 
         self._num_hvps += self._num_hvps_last_step
-        return var
+        return objective

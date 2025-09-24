@@ -3,14 +3,17 @@ from functools import partial
 
 import torch
 
-from ...core.module import Module
+from ...core.module import Module, Objective
 from ...utils import tofloat
 
 
-def _reset_except_self(optimizer, var, self: Module):
-    for m in optimizer.unrolled_modules:
+
+def _reset_except_self(objective: Objective, modules, self: Module):
+    assert objective.modular is not None
+    for m in objective.modular.flat_modules:
         if m is not self:
             m.reset()
+
 
 class SVRG(Module):
     """Stochastic variance reduced gradient method (SVRG).
@@ -83,17 +86,18 @@ class SVRG(Module):
         defaults = dict(svrg_steps = svrg_steps, accum_steps=accum_steps, reset_before_accum=reset_before_accum, svrg_loss=svrg_loss, alpha=alpha)
         super().__init__(defaults)
 
+
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
-        closure = var.closure
+    def update(self, objective):
+        params = objective.params
+        closure = objective.closure
         assert closure is not None
 
         if "full_grad" not in self.global_state:
 
             # -------------------------- calculate full gradient ------------------------- #
-            if "full_closure" in var.storage:
-                full_closure = var.storage['full_closure']
+            if "full_closure" in objective.storage:
+                full_closure = objective.storage['full_closure']
                 with torch.enable_grad():
                     full_loss = full_closure()
                     if all(p.grad is None for p in params):
@@ -116,12 +120,12 @@ class SVRG(Module):
 
                 # accumulate grads
                 accumulator = self.get_state(params, 'accumulator')
-                grad = var.get_grad()
+                grad = objective.get_grads()
                 torch._foreach_add_(accumulator, grad)
 
                 # accumulate loss
                 loss_accumulator = self.global_state.get('loss_accumulator', 0)
-                loss_accumulator += tofloat(var.loss)
+                loss_accumulator += tofloat(objective.loss)
                 self.global_state['loss_accumulator'] = loss_accumulator
 
                 # on nth step, use the accumulated gradient
@@ -136,10 +140,10 @@ class SVRG(Module):
 
                 # otherwise skip update until enough grads are accumulated
                 else:
-                    var.update = None
-                    var.stop = True
-                    var.skip_update = True
-                    return var
+                    objective.updates = None
+                    objective.stop = True
+                    objective.skip_update = True
+                    return
 
 
         svrg_steps = self.defaults['svrg_steps']
@@ -194,7 +198,7 @@ class SVRG(Module):
 
             return closure(False)
 
-        var.closure = svrg_closure
+        objective.closure = svrg_closure
 
         # --- after svrg_steps steps reset so that new full gradient is calculated on next step --- #
         if current_svrg_step >= svrg_steps:
@@ -203,6 +207,5 @@ class SVRG(Module):
             del self.global_state['full_loss']
             del self.global_state['x_0']
             if self.defaults['reset_before_accum']:
-                var.post_step_hooks.append(partial(_reset_except_self, self=self))
+                objective.post_step_hooks.append(partial(_reset_except_self, self=self))
 
-        return var

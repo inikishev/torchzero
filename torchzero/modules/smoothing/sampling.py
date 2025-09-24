@@ -13,8 +13,9 @@ from ...utils import Distributions, NumberList, TensorList
 from ..termination import TerminationCriteriaBase, make_termination_criteria
 
 
-def _reset_except_self(optimizer: Modular, var: Objective, self: Module):
-    for m in optimizer.flat_modules:
+def _reset_except_self(objective: Objective, modules, self: Module):
+    assert objective.modular is not None
+    for m in objective.modular.flat_modules:
         if m is not self:
             m.reset()
 
@@ -98,15 +99,15 @@ class GradientSampling(Reformulation):
             self.set_child('termination', make_termination_criteria(extra=termination))
 
     @torch.no_grad
-    def pre_step(self, var):
-        params = TensorList(var.params)
+    def pre_step(self, objective):
+        params = TensorList(objective.params)
 
         fixed = self.defaults['fixed']
 
         # check termination criteria
         if 'termination' in self.children:
             termination = cast(TerminationCriteriaBase, self.children['termination'])
-            if termination.should_terminate(var):
+            if termination.should_terminate(objective):
 
                 # decay sigmas
                 states = [self.state[p] for p in params]
@@ -118,7 +119,7 @@ class GradientSampling(Reformulation):
 
                 # reset on sigmas decay
                 if self.defaults['reset_on_termination']:
-                    var.post_step_hooks.append(partial(_reset_except_self, self=self))
+                    objective.post_step_hooks.append(partial(_reset_except_self, self=self))
 
                 # clear perturbations
                 self.global_state.pop('perts', None)
@@ -136,7 +137,7 @@ class GradientSampling(Reformulation):
             self.global_state['perts'] = perts
 
     @torch.no_grad
-    def closure(self, backward, closure, params, var):
+    def closure(self, backward, closure, params, objective):
         params = TensorList(params)
         loss_agg = None
         grad_agg = None
@@ -160,7 +161,7 @@ class GradientSampling(Reformulation):
 
         # evaluate at x_0
         if include_x0:
-            f_0 = cast(torch.Tensor, var.get_loss(backward=backward))
+            f_0 = objective.get_loss(backward=backward)
 
             isfinite = math.isfinite(f_0)
             if isfinite:
@@ -168,7 +169,7 @@ class GradientSampling(Reformulation):
                 loss_agg = f_0
 
             if backward:
-                g_0 = var.get_grad()
+                g_0 = objective.get_grads()
                 if isfinite: grad_agg = g_0
 
         # evaluate at x_0 + p for each perturbation

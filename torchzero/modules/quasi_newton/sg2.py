@@ -58,12 +58,12 @@ class SG2(Module):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         k = self.global_state.get('step', 0) + 1
         self.global_state["step"] = k
 
-        params = TensorList(var.params)
-        closure = var.closure
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None:
             raise RuntimeError("closure is required for SG2")
         generator = self.get_generator(params[0].device, self.defaults["seed"])
@@ -79,7 +79,7 @@ class SG2(Module):
 
             # one sided
             if self.defaults["one_sided"]:
-                g_0 = TensorList(var.get_grad())
+                g_0 = TensorList(objective.get_grads())
                 params.add_(cd)
                 closure()
 
@@ -126,9 +126,9 @@ class SG2(Module):
 
 
     @torch.no_grad
-    def apply(self, var):
+    def apply(self, objective):
         dir = _newton_step(
-            var=var,
+            objective=objective,
             H = self.global_state["H"],
             damping = self.defaults["damping"],
             inner = self.children.get("inner", None),
@@ -138,10 +138,10 @@ class SG2(Module):
             g_proj=None,
         )
 
-        var.update = vec_to_tensors(dir, var.params)
-        return var
+        objective.updates = vec_to_tensors(dir, objective.params)
+        return objective
 
-    def get_H(self,var=...):
+    def get_H(self,objective=...):
         return _get_H(self.global_state["H"], self.defaults["eigval_fn"])
 
 
@@ -198,12 +198,12 @@ class SPSA2(Module):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         k = self.global_state.get('step', 0) + 1
         self.global_state["step"] = k
 
-        params = TensorList(var.params)
-        closure = var.closure
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None:
             raise RuntimeError("closure is required for SPSA2")
 
@@ -260,7 +260,7 @@ class SPSA2(Module):
             H_hat /= n_samples
 
         # set grad to approximated grad
-        var.grad = g_0
+        objective.grads = g_0
 
         # update H
         H = self.global_state.get("H", None)
@@ -273,9 +273,9 @@ class SPSA2(Module):
         self.global_state["H"] = H
 
     @torch.no_grad
-    def apply(self, var):
+    def apply(self, objective):
         dir = _newton_step(
-            var=var,
+            objective=objective,
             H = self.global_state["H"],
             damping = self.defaults["damping"],
             inner = self.children.get("inner", None),
@@ -285,8 +285,8 @@ class SPSA2(Module):
             g_proj=None,
         )
 
-        var.update = vec_to_tensors(dir, var.params)
-        return var
+        objective.updates = vec_to_tensors(dir, objective.params)
+        return objective
 
-    def get_H(self,var=...):
+    def get_H(self,objective=...):
         return _get_H(self.global_state["H"], self.defaults["eigval_fn"])

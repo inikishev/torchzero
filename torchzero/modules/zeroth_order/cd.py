@@ -33,13 +33,16 @@ class CD(Module):
         defaults = dict(h=h, grad=grad, adaptive=adaptive, index=index, threepoint=threepoint)
         super().__init__(defaults)
 
+    def update(self, objective): raise RuntimeError
+    def apply(self, objective): raise RuntimeError
+
     @torch.no_grad
-    def apply(self, var):
-        closure = var.closure
+    def step(self, objective):
+        closure = objective.closure
         if closure is None:
             raise RuntimeError("CD requires closure")
 
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
         ndim = params.global_numel()
 
         grad_step_size = self.defaults['grad']
@@ -79,7 +82,7 @@ class CD(Module):
             else:
                 warnings.warn("CD adaptive=True only works with threepoint=True")
 
-        f_0 = var.get_loss(False)
+        f_0 = objective.get_loss(False)
         params.flat_set_lambda_(idx, lambda x: x + h)
         f_p = closure(False)
 
@@ -117,6 +120,6 @@ class CD(Module):
         # ----------------------------- create the update ---------------------------- #
         update = params.zeros_like()
         update.flat_set_(idx, alpha)
-        var.update = update
-        return var
+        objective.updates = update
+        return objective
 

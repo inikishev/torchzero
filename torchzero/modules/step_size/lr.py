@@ -2,7 +2,7 @@
 import torch
 import random
 
-from ...core import Transform
+from ...core import TensorTransform
 from ...utils import NumberList, TensorList, generic_ne, unpack_dicts
 
 def lazy_lr(tensors: TensorList, lr: float | list, inplace:bool):
@@ -12,21 +12,21 @@ def lazy_lr(tensors: TensorList, lr: float | list, inplace:bool):
         return tensors * lr
     return tensors
 
-class LR(Transform):
+class LR(TensorTransform):
     """Learning rate. Adding this module also adds support for LR schedulers."""
     def __init__(self, lr: float):
         defaults=dict(lr=lr)
-        super().__init__(defaults, uses_grad=False)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return lazy_lr(TensorList(tensors), lr=[s['lr'] for s in settings], inplace=True)
 
-class StepSize(Transform):
+class StepSize(TensorTransform):
     """this is exactly the same as LR, except the `lr` parameter can be renamed to any other name to avoid clashes"""
     def __init__(self, step_size: float, key = 'step_size'):
         defaults={"key": key, key: step_size}
-        super().__init__(defaults, uses_grad=False)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -38,8 +38,8 @@ def _warmup_lr(step: int, start_lr: float | NumberList, end_lr: float | NumberLi
     if step > steps: return end_lr
     return start_lr + (end_lr - start_lr) * (step / steps)
 
-class Warmup(Transform):
-    """Learning rate warmup, linearly increases learning rate multiplier from :code:`start_lr` to :code:`end_lr` over :code:`steps` steps.
+class Warmup(TensorTransform):
+    """Learning rate warmup, linearly increases learning rate multiplier from ``start_lr`` to ``end_lr`` over ``steps`` steps.
 
     Args:
         steps (int, optional): number of steps to perform warmup for. Defaults to 100.
@@ -77,7 +77,7 @@ class Warmup(Transform):
         self.global_state['step'] = step + 1
         return tensors
 
-class WarmupNormClip(Transform):
+class WarmupNormClip(TensorTransform):
     """Warmup via clipping of the update norm.
 
     Args:
@@ -118,8 +118,8 @@ class WarmupNormClip(Transform):
         return tensors
 
 
-class RandomStepSize(Transform):
-    """Uses random global or layer-wise step size from `low` to `high`.
+class RandomStepSize(TensorTransform):
+    """Uses random global or layer-wise step size from ``low`` to ``high``.
 
     Args:
         low (float, optional): minimum learning rate. Defaults to 0.

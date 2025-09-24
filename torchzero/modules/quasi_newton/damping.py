@@ -4,7 +4,7 @@ from typing import Literal, Protocol, overload
 import torch
 
 from ...utils import TensorList
-from ...utils.linalg.linear_operator import DenseInverse, LinearOperator
+from ...linalg.linear_operator import DenseInverse, LinearOperator
 from ..functional import safe_clip
 
 

@@ -41,9 +41,9 @@ class RandomReinitialize(Module):
         defaults = dict(p_weights=p_weights, p_reinit=p_reinit, store_every=store_every, beta=beta, reset=reset, seed=seed)
         super().__init__(defaults)
 
-    def update(self, var):
+    def update(self, objective):
         # this stores initial values to per-parameter states
-        p_init = self.get_state(var.params, "p_init", init="params", cls=TensorList)
+        p_init = self.get_state(objective.params, "p_init", init="params", cls=TensorList)
 
         # store new params every store_every steps
         step = self.global_state.get("step", 0)
@@ -51,13 +51,13 @@ class RandomReinitialize(Module):
 
         store_every = self.defaults["store_every"]
         if (store_every is not None and step % store_every == 0):
-            beta = self.get_settings(var.params, "beta", cls=NumberList)
-            p_init.lerp_(var.params, weight=(1 - beta))
+            beta = self.get_settings(objective.params, "beta", cls=NumberList)
+            p_init.lerp_(objective.params, weight=(1 - beta))
 
     @torch.no_grad
-    def apply(self, var):
+    def apply(self, objective):
         p_reinit = self.defaults["p_reinit"]
-        device = var.params[0].device
+        device = objective.params[0].device
         generator = self.get_generator(device, self.defaults["seed"])
 
         # determine whether to trigger reinitialization
@@ -65,7 +65,7 @@ class RandomReinitialize(Module):
 
         # reinitialize
         if reinitialize:
-            params = TensorList(var.params)
+            params = TensorList(objective.params)
             p_init = self.get_state(params, "p_init", init=params)
 
 
@@ -78,6 +78,6 @@ class RandomReinitialize(Module):
 
             # reset
             if self.defaults["reset"]:
-                var.post_step_hooks.append(partial(_reset_except_self, self=self))
+                objective.post_step_hooks.append(partial(_reset_except_self, self=self))
 
-        return var
+        return objective

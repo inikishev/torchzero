@@ -2,7 +2,7 @@
 import torch
 
 from ...core import Chainable, Module
-from ...utils.linalg import linear_operator
+from ...linalg import linear_operator
 from .trust_region import _RADIUS_KEYS, TrustRegionBase, _RadiusStrategy
 
 

@@ -1,7 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import cast
+from typing import cast, final
 
 import torch
 
@@ -16,14 +16,15 @@ class TerminationCriteriaBase(Module):
         super().__init__(defaults)
 
     @abstractmethod
-    def termination_criteria(self, var: Objective) -> bool:
+    def termination_criteria(self, objective: Objective) -> bool:
         ...
 
-    def should_terminate(self, var: Objective) -> bool:
+    @final
+    def should_terminate(self, objective: Objective) -> bool:
         n_bad = self.global_state.get('_n_bad', 0)
         n = self.defaults['_n']
 
-        if self.termination_criteria(var):
+        if self.termination_criteria(objective):
             n_bad += 1
             if n_bad >= n:
                 self.global_state['_n_bad'] = 0
@@ -36,12 +37,12 @@ class TerminationCriteriaBase(Module):
         return False
 
 
-    def update(self, var):
-        var.should_terminate = self.should_terminate(var)
-        if var.should_terminate: self.global_state['_n_bad'] = 0
+    def update(self, objective):
+        objective.should_terminate = self.should_terminate(objective)
+        if objective.should_terminate: self.global_state['_n_bad'] = 0
 
-    def apply(self, var):
-        return var
+    def apply(self, objective):
+        return objective
 
 
 class TerminateAfterNSteps(TerminationCriteriaBase):
@@ -49,7 +50,7 @@ class TerminateAfterNSteps(TerminationCriteriaBase):
         defaults = dict(steps=steps)
         super().__init__(defaults)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -61,16 +62,17 @@ class TerminateAfterNEvaluations(TerminationCriteriaBase):
         defaults = dict(maxevals=maxevals)
         super().__init__(defaults)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         maxevals = self.defaults['maxevals']
-        return var.modular.num_evaluations >= maxevals
+        assert objective.modular is not None
+        return objective.modular.num_evaluations >= maxevals
 
 class TerminateAfterNSeconds(TerminationCriteriaBase):
     def __init__(self, seconds:float, sec_fn = time.time):
         defaults = dict(seconds=seconds, sec_fn=sec_fn)
         super().__init__(defaults)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         max_seconds = self.defaults['seconds']
         sec_fn = self.defaults['sec_fn']
 
@@ -88,10 +90,10 @@ class TerminateByGradientNorm(TerminationCriteriaBase):
         defaults = dict(tol=tol, ord=ord)
         super().__init__(defaults, n=n)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         tol = self.defaults['tol']
         ord = self.defaults['ord']
-        return TensorList(var.get_grads()).global_metric(ord) <= tol
+        return TensorList(objective.get_grads()).global_metric(ord) <= tol
 
 
 class TerminateByUpdateNorm(TerminationCriteriaBase):
@@ -100,20 +102,20 @@ class TerminateByUpdateNorm(TerminationCriteriaBase):
         defaults = dict(tol=tol, ord=ord)
         super().__init__(defaults, n=n)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         tol = self.defaults['tol']
         ord = self.defaults['ord']
 
-        p_prev = self.get_state(var.params, 'p_prev', cls=TensorList)
+        p_prev = self.get_state(objective.params, 'p_prev', cls=TensorList)
         if step == 0:
-            p_prev.copy_(var.params)
+            p_prev.copy_(objective.params)
             return False
 
-        should_terminate = (p_prev - var.params).global_metric(ord) <= tol
-        p_prev.copy_(var.params)
+        should_terminate = (p_prev - objective.params).global_metric(ord) <= tol
+        p_prev.copy_(objective.params)
         return should_terminate
 
 
@@ -122,10 +124,10 @@ class TerminateOnNoImprovement(TerminationCriteriaBase):
         defaults = dict(tol=tol)
         super().__init__(defaults, n=n)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         tol = self.defaults['tol']
 
-        f = tofloat(var.get_loss(False))
+        f = tofloat(objective.get_loss(False))
         if 'f_min' not in self.global_state:
             self.global_state['f_min'] = f
             return False
@@ -141,9 +143,9 @@ class TerminateOnLossReached(TerminationCriteriaBase):
         defaults = dict(value=value)
         super().__init__(defaults)
 
-    def termination_criteria(self, var):
+    def termination_criteria(self, objective):
         value = self.defaults['value']
-        return var.get_loss(False) <= value
+        return objective.get_loss(False) <= value
 
 class TerminateAny(TerminationCriteriaBase):
     def __init__(self, *criteria: TerminationCriteriaBase):
@@ -151,9 +153,9 @@ class TerminateAny(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def termination_criteria(self, var: Objective) -> bool:
+    def termination_criteria(self, objective: Objective) -> bool:
         for c in self.get_children_sequence():
-            if cast(TerminationCriteriaBase, c).termination_criteria(var): return True
+            if cast(TerminationCriteriaBase, c).termination_criteria(objective): return True
 
         return False
 
@@ -163,9 +165,9 @@ class TerminateAll(TerminationCriteriaBase):
 
         self.set_children_sequence(criteria)
 
-    def termination_criteria(self, var: Objective) -> bool:
+    def termination_criteria(self, objective: Objective) -> bool:
         for c in self.get_children_sequence():
-            if not cast(TerminationCriteriaBase, c).termination_criteria(var): return False
+            if not cast(TerminationCriteriaBase, c).termination_criteria(objective): return False
 
         return True
 
@@ -173,7 +175,7 @@ class TerminateNever(TerminationCriteriaBase):
     def __init__(self):
         super().__init__()
 
-    def termination_criteria(self, var): return False
+    def termination_criteria(self, objective): return False
 
 def make_termination_criteria(
     ftol: float | None = None,

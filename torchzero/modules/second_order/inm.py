@@ -52,26 +52,26 @@ class ImprovedNewton(Module):
             self.set_child("inner", inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         update_freq = self.defaults['update_freq']
 
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         if step % update_freq == 0:
-            _, f_list, J = var.hessian(
+            _, f_list, J = objective.hessian(
                 hessian_method=self.defaults['hessian_method'],
                 h=self.defaults['h'],
                 at_x0=True
             )
-            if f_list is None: f_list = var.get_grad()
+            if f_list is None: f_list = objective.get_grads()
 
             f = torch.cat([t.ravel() for t in f_list])
             J = _eigval_fn(J, self.defaults["eigval_fn"])
 
-            x_list = TensorList(var.params)
-            f_list = TensorList(var.get_grad())
-            x_prev, f_prev = self.get_state(var.params, "x_prev", "f_prev", cls=TensorList)
+            x_list = TensorList(objective.params)
+            f_list = TensorList(objective.get_grads())
+            x_prev, f_prev = self.get_state(objective.params, "x_prev", "f_prev", cls=TensorList)
 
             # initialize on 1st step, do Newton step
             if step == 0:
@@ -90,10 +90,10 @@ class ImprovedNewton(Module):
 
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def apply(self, objective):
+        params = objective.params
         update = _newton_step(
-            var=var,
+            objective=objective,
             H = self.global_state["P"],
             damping=self.defaults["damping"],
             inner=self.children.get("inner", None),
@@ -102,9 +102,9 @@ class ImprovedNewton(Module):
             use_lstsq=self.defaults["use_lstsq"],
         )
 
-        var.update = vec_to_tensors(update, params)
+        objective.updates = vec_to_tensors(update, params)
 
-        return var
+        return objective
 
-    def get_H(self,var=...):
+    def get_H(self,objective=...):
         return _get_H(self.global_state["P"], eigval_fn=None)

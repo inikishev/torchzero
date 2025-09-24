@@ -7,7 +7,7 @@ import torch
 
 from ...core import Chainable, Module, TensorTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states, safe_dict_update_
-from ...utils.linalg import linear_operator
+from ...linalg import linear_operator
 from ..functional import initial_step_size, safe_clip
 
 
@@ -250,8 +250,8 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         self.global_state.clear()
         return tensor.mul_(initial_step_size(tensor))
 
-    def get_H(self, var):
-        param = var.params[0]
+    def get_H(self, objective):
+        param = objective.params[0]
         state = self.state[param]
         settings = self.settings[param]
         if "B" in state:
@@ -1005,7 +1005,7 @@ def gradient_correction(g: TensorList, s: TensorList, y: TensorList):
     return g - (y * (s.dot(g) / sy))
 
 
-class GradientCorrection(Transform):
+class GradientCorrection(TensorTransform):
     """
     Estimates gradient at minima along search direction assuming function is quadratic.
 
@@ -1027,7 +1027,7 @@ class GradientCorrection(Transform):
 
     """
     def __init__(self):
-        super().__init__(None, uses_grad=False)
+        super().__init__()
 
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         if 'p_prev' not in states[0]:

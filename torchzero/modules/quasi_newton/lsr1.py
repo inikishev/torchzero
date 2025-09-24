@@ -4,9 +4,9 @@ from operator import itemgetter
 
 import torch
 
-from ...core import Chainable, Module, Transform, Objective, step
+from ...core import Chainable, Module, TensorTransform, Objective, step
 from ...utils import NumberList, TensorList, as_tensorlist, generic_finfo_tiny, unpack_states, vec_to_tensors_
-from ...utils.linalg.linear_operator import LinearOperator
+from ...linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
 
@@ -76,7 +76,7 @@ class LSR1LinearOperator(LinearOperator):
         return (n, n)
 
 
-class LSR1(Transform):
+class LSR1(TensorTransform):
     """Limited-memory SR1 algorithm. A line search or trust region is recommended.
 
     Args:
@@ -146,7 +146,7 @@ class LSR1(Transform):
             gtol_restart=gtol_restart,
             damping = damping,
         )
-        super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
+        super().__init__(defaults, inner=inner, update_freq=update_freq)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
@@ -225,7 +225,7 @@ class LSR1(Transform):
             s_history.append(s)
             y_history.append(y)
 
-    def get_H(self, var=...):
+    def get_H(self, objective=...):
         s_history = [tl.to_vec() for tl in self.global_state['s_history']]
         y_history = [tl.to_vec() for tl in self.global_state['y_history']]
         return LSR1LinearOperator(s_history, y_history)

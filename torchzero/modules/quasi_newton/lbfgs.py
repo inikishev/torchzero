@@ -4,9 +4,9 @@ from typing import overload
 
 import torch
 
-from ...core import Chainable, Transform
+from ...core import Chainable, TensorTransform
 from ...utils import TensorList, as_tensorlist, unpack_states
-from ...utils.linalg.linear_operator import LinearOperator
+from ...linalg.linear_operator import LinearOperator
 from ..functional import initial_step_size
 from .damping import DampingStrategyType, apply_damping
 
@@ -154,7 +154,7 @@ class LBFGSLinearOperator(LinearOperator):
         return (n, n)
 
 
-class LBFGS(Transform):
+class LBFGS(TensorTransform):
     """Limited-memory BFGS algorithm. A line search or trust region is recommended.
 
     Args:
@@ -226,7 +226,7 @@ class LBFGS(Transform):
             sy_tol=sy_tol,
             damping = damping,
         )
-        super().__init__(defaults, uses_grad=False, inner=inner, update_freq=update_freq)
+        super().__init__(defaults, inner=inner, update_freq=update_freq)
 
         self.global_state['s_history'] = deque(maxlen=history_size)
         self.global_state['y_history'] = deque(maxlen=history_size)
@@ -311,7 +311,7 @@ class LBFGS(Transform):
             y_history.append(y)
             sy_history.append(sy)
 
-    def get_H(self, var=...):
+    def get_H(self, objective=...):
         s_history = [tl.to_vec() for tl in self.global_state['s_history']]
         y_history = [tl.to_vec() for tl in self.global_state['y_history']]
         sy_history = self.global_state['sy_history']

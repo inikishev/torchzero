@@ -7,9 +7,16 @@ from typing import Any, Literal, Protocol, cast, final, overload
 
 import torch
 
-from ...core import Chainable, Module, Objective, step
-from ...utils import TensorList, safe_dict_update_, tofloat, vec_to_tensors, generic_finfo, generic_vector_norm
-from ...utils.linalg.linear_operator import LinearOperator
+from ...core import Chainable, Module, Objective
+from ...linalg.linear_operator import LinearOperator
+from ...utils import (
+    TensorList,
+    generic_finfo,
+    generic_vector_norm,
+    safe_dict_update_,
+    tofloat,
+    vec_to_tensors,
+)
 
 
 def _flatten_tensors(tensors: list[torch.Tensor]):
@@ -256,24 +263,24 @@ class TrustRegionBase(Module, ABC):
         """Solve Hx=g with a trust region penalty/bound defined by `radius`"""
         ... # pylint:disable=unnecessary-ellipsis
 
-    def trust_region_update(self, var: Objective, H: LinearOperator | None) -> None:
+    def trust_region_update(self, objective: Objective, H: LinearOperator | None) -> None:
         """updates the state of this module after H or B have been updated, if necessary"""
 
-    def trust_region_apply(self, var: Objective, tensors:list[torch.Tensor], H: LinearOperator | None) -> Objective:
+    def trust_region_apply(self, objective: Objective, tensors:list[torch.Tensor], H: LinearOperator | None) -> Objective:
         """Solves the trust region subproblem and outputs ``Objective`` with the solution direction."""
         assert H is not None
 
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
         settings = self.settings[params[0]]
         g = _flatten_tensors(tensors)
 
         max_attempts = settings['max_attempts']
 
         # loss at x_0
-        loss = var.loss
-        closure = var.closure
+        loss = objective.loss
+        closure = objective.closure
         if closure is None: raise RuntimeError("Trust region requires closure")
-        if loss is None: loss = var.get_loss(False)
+        if loss is None: loss = objective.get_loss(False)
         loss = tofloat(loss)
 
         # trust region step and update
@@ -313,38 +320,36 @@ class TrustRegionBase(Module, ABC):
             )
 
         assert d is not None
-        if success: var.updates = vec_to_tensors(d, params)
-        else: var.updates = params.zeros_like()
+        if success: objective.updates = vec_to_tensors(d, params)
+        else: objective.updates = params.zeros_like()
 
-        return var
+        return objective
 
 
     @final
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         if step % self.defaults["update_freq"] == 0:
 
             hessian_module = self.children['hess_module']
-            hessian_module.update(var)
-            H = hessian_module.get_H(var)
+            hessian_module.update(objective)
+            H = hessian_module.get_H(objective)
             self.global_state["H"] = H
 
-            self.trust_region_update(var, H=H)
+            self.trust_region_update(objective, H=H)
 
 
     @final
     @torch.no_grad
-    def apply(self, var):
+    def apply(self, objective):
         H = self.global_state.get('H', None)
 
         # -------------------------------- inner step -------------------------------- #
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], update, params=var.params, grads=var.grad, var=var)
+        objective = self.inner_step("inner", objective, must_exist=False)
 
         # ----------------------------------- apply ---------------------------------- #
-        return self.trust_region_apply(var=var, tensors=update, H=H)
+        return self.trust_region_apply(objective=objective, tensors=objective.get_updates(), H=H)
 

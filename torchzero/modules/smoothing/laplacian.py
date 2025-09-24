@@ -4,7 +4,7 @@ from collections.abc import Iterable
 import torch
 
 from ...utils.tensorlist import TensorList
-from ...core import Transform, _RemoveThis
+from ...core import TensorTransform
 
 
 def vector_laplacian_smoothing(input: torch.Tensor, sigma: float = 1) -> torch.Tensor:
@@ -55,7 +55,7 @@ def _precompute_denominator(tensor: torch.Tensor, sigma) -> torch.Tensor:
     v[-1] = 1
     return 1 - sigma * torch.fft.fft(v) # pylint: disable = not-callable
 
-class LaplacianSmoothing(Transform):
+class LaplacianSmoothing(TensorTransform):
     """Applies laplacian smoothing via a fast Fourier transform solver which can improve generalization.
 
     Args:
@@ -70,23 +70,24 @@ class LaplacianSmoothing(Transform):
             what to set on var.
 
     Examples:
-        Laplacian Smoothing Gradient Descent optimizer as in the paper
+    Laplacian Smoothing Gradient Descent optimizer as in the paper
 
-        .. code-block:: python
+    ```python
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.LaplacianSmoothing(),
-                tz.m.LR(1e-2),
-            )
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.LaplacianSmoothing(),
+        tz.m.LR(1e-2),
+    )
+    ```
 
     Reference:
         Osher, S., Wang, B., Yin, P., Luo, X., Barekat, F., Pham, M., & Lin, A. (2022). Laplacian smoothing gradient descent. Research in the Mathematical Sciences, 9(3), 55.
 
     """
-    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4, target: _RemoveThis = 'update'):
+    def __init__(self, sigma:float = 1, layerwise=True, min_numel = 4):
         defaults = dict(sigma = sigma, layerwise=layerwise, min_numel=min_numel)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
         # precomputed denominator for when layerwise=False
         self.global_state['full_denominator'] = None
 

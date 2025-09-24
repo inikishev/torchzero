@@ -2,11 +2,10 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step, HVPMethod
+from ...core import Chainable, Module, HVPMethod
 from ...utils import TensorList, vec_to_tensors
-from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation
-from ...utils.linalg.linear_operator import Eigendecomposition, ScaledIdentity
+from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation
+from ...linalg.linear_operator import Eigendecomposition, ScaledIdentity
 
 class NystromSketchAndSolve(Module):
     """Newton's method with a Nyström sketch-and-solve solver.
@@ -80,15 +79,15 @@ class NystromSketchAndSolve(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         update_freq = self.defaults["update_freq"]
         step = self.global_state.get("step", 0)
         self.global_state["step"] = step + 1
 
         if step % update_freq == 0:
-            params = TensorList(var.params)
+            params = TensorList(objective.params)
 
-            closure = var.closure
+            closure = objective.closure
             if closure is None: raise RuntimeError('NewtonCG requires closure')
 
             rank = self.defaults['rank']
@@ -99,10 +98,10 @@ class NystromSketchAndSolve(Module):
             generator = self.get_generator(params[0].device, seed=seed)
 
             # ---------------------- Hessian vector product function --------------------- #
-            _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+            _, H_mv, H_mm = objective.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
 
             # ---------------------------------- sketch ---------------------------------- #
-            ndim = sum(t.numel() for t in var.params)
+            ndim = sum(t.numel() for t in objective.params)
             device = params[0].device
             dtype = params[0].dtype
 
@@ -115,29 +114,27 @@ class NystromSketchAndSolve(Module):
             except torch.linalg.LinAlgError:
                 pass
 
-    def apply(self, var):
-        grad = var.get_grad()
+    def apply(self, objective):
         reg = self.defaults['reg']
 
         # -------------------------------- inner step -------------------------------- #
-        b = var.get_update()
-        if 'inner' in self.children:
-            b = step(self.children['inner'], b, params=var.params, grads=grad, var=var)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
         # ----------------------------------- solve ---------------------------------- #
         if "L" not in self.global_state:
-            var.update = None
-            return var
+            objective.updates = None
+            return objective
 
         L = self.global_state["L"]
         Q = self.global_state["Q"]
         x = nystrom_sketch_and_solve(L=L, Q=Q, b=torch.cat([t.ravel() for t in b]), reg=reg)
 
         # -------------------------------- set update -------------------------------- #
-        var.update = vec_to_tensors(x, reference=var.params)
-        return var
+        objective.updates = vec_to_tensors(x, reference=objective.params)
+        return objective
 
-    def get_H(self, var=...):
+    def get_H(self, objective=...):
         if "L" not in self.global_state:
             return ScaledIdentity()
 
@@ -207,6 +204,7 @@ class NystromPCG(Module):
         maxiter=None,
         tol=1e-8,
         reg: float = 1e-6,
+        update_freq: int = 1,
         hvp_method: HVPMethod = "batched_autograd",
         h=1e-3,
         inner: Chainable | None = None,
@@ -221,41 +219,61 @@ class NystromPCG(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-
-        closure = var.closure
-        if closure is None: raise RuntimeError('NystromPCG requires closure')
-
-        settings = self.settings[params[0]]
-        sketch_size = settings['sketch_size']
-        maxiter = settings['maxiter']
-        tol = settings['tol']
-        reg = settings['reg']
-        hvp_method = settings['hvp_method']
-        h = settings['h']
-
-
-        seed = settings['seed']
-        generator = None
-        if seed is not None:
-            if 'generator' not in self.global_state:
-                self.global_state['generator'] = torch.Generator(params[0].device).manual_seed(seed)
-            generator = self.global_state['generator']
-
+    def update(self, objective):
+        update_freq = self.defaults["update_freq"]
+        step = self.global_state.get("step", 0)
+        self.global_state["step"] = step + 1
 
         # ---------------------- Hessian vector product function --------------------- #
-        _, H_mv, H_mm = var.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
-        grad = var.get_grad()
+        hvp_method = self.defaults['hvp_method']
+        h = self.defaults['h']
+        _, H_mv, H_mm = objective.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        objective.temp = H_mv
 
+        # --------------------------- update preconditioner -------------------------- #
+        if step % update_freq == 0:
+            params = TensorList(objective.params)
+
+            closure = objective.closure
+            if closure is None: raise RuntimeError('NewtonCG requires closure')
+
+            rank = self.defaults['rank']
+
+            seed = self.defaults['seed']
+            generator = self.get_generator(params[0].device, seed=seed)
+
+
+            # ---------------------------------- sketch ---------------------------------- #
+            ndim = sum(t.numel() for t in objective.params)
+            device = params[0].device
+            dtype = params[0].dtype
+
+            try:
+                L, Q = nystrom_approximation(A_mv=H_mv, A_mm=H_mm, ndim=ndim, rank=rank,
+                                            dtype=dtype, device=device, generator=generator)
+
+                self.global_state["L"] = L
+                self.global_state["Q"] = Q
+            except torch.linalg.LinAlgError:
+                pass
+
+    @torch.no_grad
+    def apply(self, objective):
         # -------------------------------- inner step -------------------------------- #
-        b = var.get_update()
-        if 'inner' in self.children:
-            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
-        # ------------------------------ sketch&n&solve ------------------------------ #
-        x = nystrom_pcg(A_mv=H_mv, A_mm=H_mm, b=torch.cat([t.ravel() for t in b]), sketch_size=sketch_size, reg=reg, tol=tol, maxiter=maxiter, x0_=None, generator=generator)
-        var.update = vec_to_tensors(x, reference=params)
-        return var
+        # ----------------------------------- solve ---------------------------------- #
+        if "L" not in self.global_state:
+            objective.updates = None
+            return objective
 
+        L = self.global_state["L"]
+        Q = self.global_state["Q"]
+        fs = self.settings[objective.params[0]]
+        x = nystrom_pcg(L=L, Q=Q, A_mv=objective.poptemp(), b=torch.cat([t.ravel() for t in b]),
+                        reg=fs['reg'], tol=fs["tol"], maxiter=fs["maxiter"])
 
+        # -------------------------------- set update -------------------------------- #
+        objective.updates = vec_to_tensors(x, reference=objective.params)
+        return objective

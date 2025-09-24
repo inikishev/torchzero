@@ -5,9 +5,9 @@ from typing import Any, Literal
 
 import torch
 
-from ...core import Chainable, Transform
+from ...core import Chainable, TensorTransform
 from ...utils import NumberList, TensorList, tofloat, unpack_dicts, unpack_states
-from ...utils.linalg.linear_operator import ScaledIdentity
+from ...linalg.linear_operator import ScaledIdentity
 from ..functional import epsilon_step_size
 
 def _acceptable_alpha(alpha, param:torch.Tensor):
@@ -16,7 +16,7 @@ def _acceptable_alpha(alpha, param:torch.Tensor):
         return False
     return True
 
-def _get_H(self: Transform, var):
+def _get_H(self: TensorTransform, var):
     n = sum(p.numel() for p in var.params)
     p = var.params[0]
     alpha = self.global_state.get('alpha', 1)
@@ -25,7 +25,7 @@ def _get_H(self: Transform, var):
     return ScaledIdentity(1 / alpha, shape=(n,n), device=p.device, dtype=p.dtype)
 
 
-class PolyakStepSize(Transform):
+class PolyakStepSize(TensorTransform):
     """Polyak's subgradient method with known or unknown f*.
 
     Args:
@@ -86,8 +86,8 @@ class PolyakStepSize(Transform):
         torch._foreach_mul_(tensors, alpha * unpack_dicts(settings, 'alpha', cls=NumberList))
         return tensors
 
-    def get_H(self, var):
-        return _get_H(self, var)
+    def get_H(self, objective):
+        return _get_H(self, objective)
 
 
 def _bb_short(s: TensorList, y: TensorList, sy, eps):
@@ -116,7 +116,7 @@ def _bb_geom(s: TensorList, y: TensorList, sy, eps, fallback:bool):
         return None
     return (short * long) ** 0.5
 
-class BarzilaiBorwein(Transform):
+class BarzilaiBorwein(TensorTransform):
     """Barzilai-Borwein step size method.
 
     Args:
@@ -175,8 +175,8 @@ class BarzilaiBorwein(Transform):
         prev_p.copy_(params)
         prev_g.copy_(g)
 
-    def get_H(self, var):
-        return _get_H(self, var)
+    def get_H(self, objective):
+        return _get_H(self, objective)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -189,7 +189,7 @@ class BarzilaiBorwein(Transform):
         return tensors
 
 
-class BBStab(Transform):
+class BBStab(TensorTransform):
     """Stabilized Barzilai-Borwein method (https://arxiv.org/abs/1907.06409).
 
     This clips the norm of the Barzilai-Borwein update by ``delta``, where ``delta`` can be adaptive if ``c`` is specified.
@@ -287,8 +287,8 @@ class BBStab(Transform):
         prev_p.copy_(params)
         prev_g.copy_(g)
 
-    def get_H(self, var):
-        return _get_H(self, var)
+    def get_H(self, objective):
+        return _get_H(self, objective)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -301,7 +301,7 @@ class BBStab(Transform):
         return tensors
 
 
-class AdGD(Transform):
+class AdGD(TensorTransform):
     """AdGD and AdGD-2 (https://arxiv.org/abs/2308.02261)"""
     def __init__(self, variant:Literal[1,2]=2, alpha_0:float = 1e-7, sqrt:bool=True, use_grad=True, inner: Chainable | None = None,):
         defaults = dict(variant=variant, alpha_0=alpha_0, sqrt=sqrt)
@@ -383,5 +383,5 @@ class AdGD(Transform):
         torch._foreach_mul_(tensors, alpha)
         return tensors
 
-    def get_H(self, var):
-        return _get_H(self, var)
+    def get_H(self, objective):
+        return _get_H(self, objective)

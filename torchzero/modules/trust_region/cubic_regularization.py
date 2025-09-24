@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Module
 from ...utils import TensorList, vec_to_tensors
-from ...utils.linalg.linear_operator import LinearOperator
+from ...linalg.linear_operator import LinearOperator
 from .trust_region import _RADIUS_KEYS, TrustRegionBase, _RadiusStrategy
 
 

@@ -7,7 +7,7 @@ import torch
 
 from ...core import Chainable, Module, step, Objective, HessianMethod
 from ...utils import TensorList, vec_to_tensors
-from ...utils.linalg.linear_operator import DenseWithInverse, Dense
+from ...linalg.linear_operator import DenseWithInverse, Dense
 
 
 class InverseFreeNewton(Module):
@@ -31,14 +31,14 @@ class InverseFreeNewton(Module):
             self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, var):
+    def update(self, objective):
         update_freq = self.defaults['update_freq']
 
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
         if step % update_freq == 0:
-            _, _, H = var.hessian(
+            _, _, H = objective.hessian(
                 hessian_method=self.defaults['hessian_method'],
                 h=self.defaults['h'],
                 at_x0=True
@@ -61,21 +61,19 @@ class InverseFreeNewton(Module):
                 self.global_state['Y'] = Y @ I2
 
 
-    def apply(self, var):
+    def apply(self, objective):
         Y = self.global_state["Y"]
-        params = var.params
+        params = objective.params
 
         # -------------------------------- inner step -------------------------------- #
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], update, params=params, grads=var.grad, var=var)
-
+        objective = self.inner_step("inner", objective, must_exist=False)
+        update = objective.get_updates()
         g = torch.cat([t.ravel() for t in update])
 
         # ----------------------------------- solve ---------------------------------- #
-        var.update = vec_to_tensors(Y@g, params)
+        objective.updates = vec_to_tensors(Y@g, params)
 
-        return var
+        return objective
 
-    def get_H(self,var):
+    def get_H(self,objective=...):
         return DenseWithInverse(A = self.global_state["H"], A_inv=self.global_state["Y"])

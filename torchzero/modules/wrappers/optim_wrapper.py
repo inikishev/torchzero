@@ -3,7 +3,7 @@ from typing import Any
 import torch
 
 from ...core.module import Module
-from ...utils import Params, _copy_param_groups, _make_param_groups
+from ...utils.params import Params, _copy_param_groups, _make_param_groups
 
 
 class Wrap(Module):
@@ -66,8 +66,8 @@ class Wrap(Module):
         return super().set_param_groups(param_groups)
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def apply(self, objective):
+        params = objective.params
 
         # initialize opt on 1st step
         if self.optimizer is None:
@@ -76,7 +76,7 @@ class Wrap(Module):
             self.optimizer = self._opt_fn(param_groups, *self._opt_args, **self._opt_kwargs)
 
         # set optimizer per-parameter settings
-        if self.defaults["use_param_groups"] and var.modular is not None:
+        if self.defaults["use_param_groups"] and objective.modular is not None:
             for group in self.optimizer.param_groups:
                 first_param = group['params'][0]
                 setting = self.settings[first_param]
@@ -91,19 +91,19 @@ class Wrap(Module):
 
         # set grad to update
         orig_grad = [p.grad for p in params]
-        for p, u in zip(params, var.get_update()):
+        for p, u in zip(params, objective.get_updates()):
             p.grad = u
 
         # if this is last module, simply use optimizer to update parameters
-        if var.modular is not None and self is var.modular.modules[-1]:
+        if objective.modular is not None and self is objective.modular.modules[-1]:
             self.optimizer.step()
 
             # restore grad
             for p, g in zip(params, orig_grad):
                 p.grad = g
 
-            var.stop = True; var.skip_update = True
-            return var
+            objective.stop = True; objective.skip_update = True
+            return objective
 
         # this is not the last module, meaning update is difference in parameters
         # and passed to next module
@@ -111,11 +111,11 @@ class Wrap(Module):
         self.optimizer.step() # step and update params
         for p, g in zip(params, orig_grad):
             p.grad = g
-        var.update = list(torch._foreach_sub(params_before_step, params)) # set update to difference between params
+        objective.updates = list(torch._foreach_sub(params_before_step, params)) # set update to difference between params
         for p, o in zip(params, params_before_step):
             p.set_(o) # pyright: ignore[reportArgumentType]
 
-        return var
+        return objective
 
     def reset(self):
         super().reset()
