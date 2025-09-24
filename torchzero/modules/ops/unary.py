@@ -28,7 +28,7 @@ class UnaryParameterwiseLambda(TensorTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         return setting['fn'](tensor)
 
 class CustomUnaryOperation(Transform):

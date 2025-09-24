@@ -40,7 +40,7 @@ class Adam(TensorTransform):
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
-        self.increment_counter("step", 0) # increment in update because debiasing needs number of grads in accumulator
+        self.increment_counter("step", start=0)
         beta1, beta2 = unpack_dicts(settings, 'beta1','beta2', cls=NumberList)
 
         # ----------------------------- initialize states ---------------------------- #

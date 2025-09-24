@@ -196,7 +196,7 @@ class Orthogonalize(TensorTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         orthogonalize, ns_steps, dual_norm_correction, adjust_lr, method = itemgetter(
             'orthogonalize', 'ns_steps', 'dual_norm_correction', 'adjust_lr', 'method')(setting)
 
@@ -223,7 +223,7 @@ class DualNormCorrection(TensorTransform):
     def __init__(self, target: _RemoveThis='update'):
         super().__init__({}, uses_grad=True, target=target)
 
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         assert grad is not None
         if (tensor.ndim >= 2) and (tensor.size(0) > 1) and (tensor.size(1) > 1):
             return _dual_norm_correction(tensor, grad, batch_first=False)

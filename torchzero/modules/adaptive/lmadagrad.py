@@ -115,17 +115,16 @@ class LMAdagrad(TensorTransform):
         true_damping: bool = True,
         U_beta: float | None = None,
         L_beta: float | None = None,
-        interval: int = 1,
         concat_params: bool = True,
         inner: Chainable | None = None,
     ):
-        # history is still updated each step so Precondition's update_freq has different meaning
         defaults = locals().copy()
-        del defaults['self'], defaults['inner'], defaults['interval'], defaults['concat_params']
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, inner=inner, update_freq=interval)
+        del defaults['self'], defaults['inner'], defaults['concat_params']
+
+        super().__init__(defaults, concat_params=concat_params, inner=inner)
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_update(self, tensor, param, grad, loss, state, setting):
         order = setting['order']
         history_size = setting['history_size']
         update_freq = setting['update_freq']
@@ -174,7 +173,7 @@ class LMAdagrad(TensorTransform):
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         U = state.get('U', None)
         if U is None:
             # make a conservative step to avoid issues due to different GD scaling

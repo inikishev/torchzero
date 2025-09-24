@@ -21,7 +21,7 @@ class Averaging(TensorTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         history_size = setting['history_size']
         if 'history' not in state:
             state['history'] = deque(maxlen=history_size)
@@ -46,7 +46,7 @@ class WeightedAveraging(TensorTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         weights = setting['weights']
 
         if 'history' not in state:
@@ -80,7 +80,7 @@ class MedianAveraging(TensorTransform):
         super().__init__(uses_grad=False, defaults=defaults, target=target)
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         history_size = setting['history_size']
 
         if 'history' not in state:

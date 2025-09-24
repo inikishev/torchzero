@@ -27,7 +27,7 @@ class Previous(TensorTransform):
 
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         n = setting['n']
 
         if 'history' not in state:

@@ -54,7 +54,7 @@ class Adagrad(TensorTransform):
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors_ = TensorList(tensors)
         eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
-        step = self.increment_counter("step", 0) + 1
+        step = self.increment_counter("step", start=0) + 1
 
         accumulator = [state["accumulator"] for state in states]
         accumulator = TensorList(self.inner_tensors_step(
@@ -90,7 +90,6 @@ class AdagradNorm(TensorTransform):
         beta_debias: bool = True,
         layerwise: bool = True,
         use_sqrt: bool = True,
-        divide: bool = False,
         alpha: float = 1,
         inner: Chainable | None = None,
     ):
@@ -125,7 +124,7 @@ class AdagradNorm(TensorTransform):
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         accumulator = self._get_accumulator(states, settings)
-        self.increment_counter("step", 0)
+        self.increment_counter("step", start=0)
 
         # compute squared gradient norm (gg)
         if isinstance(accumulator, TensorList): gg = tensors.tensorwise_dot(tensors)
@@ -141,29 +140,25 @@ class AdagradNorm(TensorTransform):
         tensors = TensorList(tensors)
         accumulator = self._get_accumulator(states, settings)
         eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
-        step = self.global_state["step"] + 1
+        step = self.global_state["step"] # 0 on 1st step
         fs = settings[0]
         beta = fs["beta"]
 
-        # divide makes it estimate variance (beta too)
-        if fs["divide"]:
-            if beta is not None: raise RuntimeError("In AdagradNorm, either specify `beta` or `divide=True`")
-            accumulator = accumulator / step
+        # ------------------------ debias if beta is not None ------------------------ #
+        if fs["beta_debias"] and beta is not None:
+            accumulator = accumulator / (1 - beta ** (step + 1))
 
-        # compute denominator
+
+        # ---------------------------- compute denominator --------------------------- #
         if fs["use_sqrt"]:
             denom = accumulator.sqrt().add_(eps) # pyright:ignore[reportArgumentType]
         else:
             denom = accumulator + eps # pyright:ignore[reportOperatorIssue]
 
-        if fs["beta_debias"] and beta is not None:
-            denom /= 1 - beta ** step
 
-        # update tensors
+        # ---------------------------- compute the update ---------------------------- #
         tensors /= denom
-
-        # lr decay
-        clr = alpha / (1 + (step - 1) * lr_decay)
+        clr = alpha / (1 + step * lr_decay) # lr decay
         tensors.lazy_mul_(clr)
 
         return tensors
@@ -181,7 +176,6 @@ class FullMatrixAdagrad(TensorTransform):
         precond_freq (int, optional): frequency of updating the inverse square root of the accumulator. Defaults to 1.
         beta (float | None, optional): momentum for gradient outer product accumulators. if None, uses sum. Defaults to None.
         beta_debias (bool, optional): whether to use debiasing, only has effect when ``beta`` is not ``None``. Defaults to True.
-        divide (bool, optional): if ``True``, accumulator is divided by number of accumulated gradients. Defaults to False.
         init (Literal[str], optional):
             how to initialize the accumulator.
             - "identity" - with identity matrix (default).
@@ -228,7 +222,6 @@ class FullMatrixAdagrad(TensorTransform):
         precond_freq: int = 1,
         beta: float | None = None,
         beta_debias: bool=True,
-        divide: bool = False,
         init: Literal["identity", "zeros", "GGT"] = "identity",
         matrix_power: float = -1/2,
         concat_params=True,
@@ -274,16 +267,9 @@ class FullMatrixAdagrad(TensorTransform):
         accumulator: torch.Tensor = state['accumulator']
         accumulator = self.inner_tensors_step("accumulator", [accumulator], clone=True, must_exist=False)[0]
 
-        divide = setting['divide']
         precond_freq = setting['precond_freq']
         reg = setting['reg']
         beta = setting["beta"]
-        num_GGTs = state.get('num_GGTs', 1)
-
-        # divide by number of GGᵀ to get mean
-        if divide:
-            if beta is not None: raise RuntimeError("In FullMatrixAdagrad, either specify `beta` or `divide=True`")
-            accumulator = accumulator / num_GGTs
 
         # add regularizer
         if reg != 0:
@@ -312,6 +298,8 @@ class FullMatrixAdagrad(TensorTransform):
 
         # debias
         if setting["beta_debias"] and beta is not None:
-            dir *= (1 - beta**num_GGTs)
+            num_GGTs = state.get('num_GGTs', 1)
+            bias_correction = 1 - beta ** num_GGTs
+            dir *= bias_correction ** 0.5
 
         return dir

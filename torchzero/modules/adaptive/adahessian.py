@@ -145,7 +145,7 @@ class AdaHessian(Transform):
 
         exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq', cls=TensorList)
 
-        step = self.increment_counter("step", 0) # 0 on 1st update
+        step = self.increment_counter("step", start=0) # 0 on 1st update
 
         closure = objective.closure
         assert closure is not None
@@ -155,6 +155,7 @@ class AdaHessian(Transform):
         update_freq = fs['update_freq']
 
         if step % update_freq == 0:
+            self.increment_counter("num_Ds", start=1)
 
             D, _ = objective.hutchinson_hessian(
                 rgrad = None,
@@ -170,8 +171,6 @@ class AdaHessian(Transform):
             D = TensorList(D).zipmap_args(_block_average, block_size, averaging)
             D_exp_avg_sq.mul_(beta2).addcmul_(D, D, value=1-beta2)
 
-            self.increment_counter("num_Ds", start=1)
-
         # --------------------------------- momentum --------------------------------- #
         tensors = objective.get_updates() # do this after hutchinson to not disturb autograd
         exp_avg.lerp_(tensors, 1-beta1)
@@ -180,15 +179,15 @@ class AdaHessian(Transform):
     @torch.no_grad
     def apply_states(self, objective, states, settings):
         params = objective.params
-        step = self.global_state["step"] # 0 on 1st step
 
         beta1, beta2, eps, hessian_power = unpack_dicts(settings, 'beta1', 'beta2', 'eps', 'hessian_power', cls=NumberList)
         exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq')
 
         # ---------------------------------- debias ---------------------------------- #
         if settings[0]["debias"]:
-            bias_correction1 = 1.0 - (beta1 ** (step + 1))
-            bias_correction2 = 1.0 - (beta2 ** (step + 1))
+            num_Ds = self.global_state["num_Ds"]
+            bias_correction1 = 1.0 - (beta1 ** num_Ds)
+            bias_correction2 = 1.0 - (beta2 ** num_Ds)
 
             exp_avg = exp_avg / bias_correction1
             D_exp_avg_sq = D_exp_avg_sq / bias_correction2

@@ -33,7 +33,7 @@ class ClipValueGrowth(TensorTransform):
         super().__init__(defaults, target=target)
 
 
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         add, mul, min_value, max_decay = itemgetter('add','mul','min_value','max_decay')(setting)
         add: float | None
 

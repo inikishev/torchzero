@@ -157,7 +157,7 @@ class HessianUpdateStrategy(TensorTransform, ABC):
             else: P *= init_scale
 
     @torch.no_grad
-    def update_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_update(self, tensor, param, grad, loss, state, setting):
         p = param.view(-1); g = tensor.view(-1)
         inverse = setting['inverse']
         M_key = 'H' if inverse else 'B'
@@ -223,7 +223,7 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         state['f_prev'] = loss
 
     @torch.no_grad
-    def apply_tensor(self, tensor, param, grad, loss, state, setting):
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         step = state['step']
 
         if setting['scale_first'] and step == 1:

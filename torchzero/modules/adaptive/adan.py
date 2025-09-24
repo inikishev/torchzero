@@ -90,7 +90,7 @@ class Adan(TensorTransform):
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        step = self.increment_counter("step", 0)
+        step = self.increment_counter("step", start=0)
 
         beta1, beta2, beta3 = unpack_dicts(settings, 'beta1','beta2','beta3', cls=NumberList)
         g_prev, m, v, n = unpack_states(states, tensors, 'g_prev', 'm', 'v', 'n', cls=TensorList)

@@ -97,9 +97,10 @@ class ESGD(Transform):
         update_freq = fs['update_freq']
 
         # ------------------------------- accumulate Hz ------------------------------ #
-        step = self.increment_counter("step", 0)
+        step = self.increment_counter("step", start=0)
+
         if step % update_freq == 0:
-            self.increment_counter("num_Hzs", 1)
+            self.increment_counter("num_Hzs", start=1)
 
             Hz, _ = objective.hutchinson_hessian(
                 rgrad = None,
@@ -122,9 +123,9 @@ class ESGD(Transform):
             else:
                 Hz_sq_acc.mul_(beta).addcmul_(Hz, Hz, value=1-beta)
 
-
+    @torch.no_grad
     def apply_states(self, objective, states, settings):
-        tensors = objective.get_updates()
+        tensors = TensorList(objective.get_updates())
         Hz_sq_acc = unpack_states(states, tensors, 'Hz_sq_acc', cls=TensorList)
         num_Hzs = self.global_state["num_Hzs"]
         fs = settings[0]
@@ -134,7 +135,7 @@ class ESGD(Transform):
         beta_debias = fs["beta_debias"]
 
         if beta_debias and beta is not None:
-            bias_correction = 1.0 - (beta ** (num_Hzs + 1))
+            bias_correction = 1.0 - beta ** num_Hzs
             Hz_sq_acc = Hz_sq_acc / bias_correction
 
         else:
@@ -144,5 +145,6 @@ class ESGD(Transform):
         damping = [s["damping"] for s in settings]
 
         denom = (Hz_sq_acc / num_Hzs).sqrt_().add_(damping)
-        return tensors_.div_(denom), i
 
+        objective.updates = tensors.div_(denom)
+        return objective
