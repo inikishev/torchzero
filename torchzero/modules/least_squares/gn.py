@@ -1,9 +1,10 @@
 import torch
-from ...core import Module, Chainable, step
 
-from ...utils.derivatives import jacobian_wrt, flatten_jacobian
+from ...core import Chainable, Module, step
+from ...linalg import linear_operator
 from ...utils import vec_to_tensors
-from ...utils.linalg import linear_operator
+from ...utils.derivatives import flatten_jacobian, jacobian_wrt
+
 
 class SumOfSquares(Module):
     """Sets loss to be the sum of squares of values returned by the closure.
@@ -11,19 +12,20 @@ class SumOfSquares(Module):
     This is meant to be used to test least squares methods against ordinary minimization methods.
 
     To use this, the closure should return a vector of values to minimize sum of squares of.
-    Please add the `backward` argument, it will always be False but it is required.
+    Please add the ``backward`` argument, it will always be False but it is required.
     """
     def __init__(self):
         super().__init__()
 
     @torch.no_grad
-    def apply(self, var):
-        closure = var.closure
+    def update(self, objective):
+        closure = objective.closure
 
         if closure is not None:
+
             def sos_closure(backward=True):
                 if backward:
-                    var.zero_grad()
+                    objective.zero_grad()
                     with torch.enable_grad():
                         loss = closure(False)
                         loss = loss.pow(2).sum()
@@ -33,15 +35,13 @@ class SumOfSquares(Module):
                 loss = closure(False)
                 return loss.pow(2).sum()
 
-            var.closure = sos_closure
+            objective.closure = sos_closure
 
-        if var.loss is not None:
-            var.loss = var.loss.pow(2).sum()
+        if objective.loss is not None:
+            objective.loss = objective.loss.pow(2).sum()
 
-        if var.loss_approx is not None:
-            var.loss_approx = var.loss_approx.pow(2).sum()
-
-        return var
+        if objective.loss_approx is not None:
+            objective.loss_approx = objective.loss_approx.pow(2).sum()
 
 class GaussNewton(Module):
     """Gauss-newton method.
@@ -106,20 +106,20 @@ class GaussNewton(Module):
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, var):
-        params = var.params
+    def update(self, objective):
+        params = objective.params
         batched = self.defaults['batched']
 
-        closure = var.closure
+        closure = objective.closure
         assert closure is not None
 
         # gauss newton direction
         with torch.enable_grad():
-            r = var.get_loss(backward=False) # nresiduals
+            r = objective.get_loss(backward=False) # nresiduals
             assert isinstance(r, torch.Tensor)
             J_list = jacobian_wrt([r.ravel()], params, batched=batched)
 
-        var.loss = r.pow(2).sum()
+        objective.loss = r.pow(2).sum()
 
         J = self.global_state["J"] = flatten_jacobian(J_list) # (nresiduals, ndim)
         Jr = J.T @ r.detach() # (ndim)
@@ -133,13 +133,13 @@ class GaussNewton(Module):
         else:
             self.global_state["r"] = r
 
-        var.grad = vec_to_tensors(Jr, var.params)
+        objective.grads = vec_to_tensors(Jr, objective.params)
 
         # set closure to calculate sum of squares for line searches etc
-        if var.closure is not None:
+        if objective.closure is not None:
             def sos_closure(backward=True):
                 if backward:
-                    var.zero_grad()
+                    objective.zero_grad()
                     with torch.enable_grad():
                         loss = closure(False).pow(2).sum()
                         loss.backward()
@@ -148,38 +148,39 @@ class GaussNewton(Module):
                 loss = closure(False).pow(2).sum()
                 return loss
 
-            var.closure = sos_closure
+            objective.closure = sos_closure
 
     @torch.no_grad
-    def apply(self, var):
+    def apply(self, objective):
         reg = self.defaults['reg']
 
-        J = self.global_state['J']
+        J: torch.Tensor = self.global_state['J']
         nresiduals, ndim = J.shape
         if nresiduals >= ndim or "inner" in self.children:
+
             # (J^T J)v = J^T r
-            Jr = self.global_state['Jr']
+            Jr: torch.Tensor = self.global_state['Jr']
 
             # inner step
             if "inner" in self.children:
 
                 # var.grad is set to unflattened Jr
-                assert var.grad is not None
-                Jr_list = step(self.children["inner"], tensors=[g.clone() for g in var.grad],
-                                          params=var.params, grads=var.grad, loss=var.loss, var=var)
+                assert objective.grads is not None
+                objective = self.inner_step("inner", objective, must_exist=True)
+                Jr_list = objective.get_updates()
                 Jr = torch.cat([t.ravel() for t in Jr_list])
 
             JJ = J.T @ J # (ndim, ndim)
             if reg != 0:
                 JJ.add_(torch.eye(JJ.size(0), device=JJ.device, dtype=JJ.dtype).mul_(reg))
 
-            if nresiduals>= ndim:
+            if nresiduals >= ndim:
                 v, info = torch.linalg.solve_ex(JJ, Jr) # pylint:disable=not-callable
             else:
                 v = torch.linalg.lstsq(JJ, Jr).solution # pylint:disable=not-callable
 
-            var.update = vec_to_tensors(v, var.params)
-            return var
+            objective.updates = vec_to_tensors(v, objective.params)
+            return objective
 
         else:
             # solve (J J^T)z = r and set v = J^T z
@@ -200,9 +201,9 @@ class GaussNewton(Module):
             z, info = torch.linalg.solve_ex(JJT, r) # pylint:disable=not-callable
             v = J.T @ z
 
-            var.update = vec_to_tensors(v, var.params)
-            return var
+            objective.updates = vec_to_tensors(v, objective.params)
+            return objective
 
-    def get_H(self, var):
+    def get_H(self, objective=...):
         J = self.global_state['J']
         return linear_operator.AtA(J)

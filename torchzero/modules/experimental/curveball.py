@@ -2,8 +2,8 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step
-from ...utils import NumberList, TensorList
+from ...core import Chainable, Transform, step, HVPMethod
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
 def curveball(
@@ -19,7 +19,7 @@ def curveball(
     return z_
 
 
-class CurveBall(Module):
+class CurveBall(Transform):
     """CurveBall method from https://arxiv.org/pdf/1805.08095#page=4.09.
 
     For now this implementation does not include automatic ρ, α and β hyper-parameters in closed form, therefore it is expected to underperform compared to official implementation (https://github.com/jotaf98/pytorch-curveball/tree/master) so I moved this to experimental.
@@ -36,7 +36,7 @@ class CurveBall(Module):
         self,
         precond_lr: float=1e-3,
         momentum: float=0.9,
-        hvp_method: Literal["autograd", "fd_forward", "central"] = "autograd",
+        hvp_method: HVPMethod = "autograd",
         h: float = 1e-3,
         reg: float = 1,
         inner: Chainable | None = None,
@@ -44,34 +44,30 @@ class CurveBall(Module):
         defaults = dict(precond_lr=precond_lr, momentum=momentum, hvp_method=hvp_method, h=h, reg=reg)
         super().__init__(defaults)
 
-        if inner is not None: self.set_child('inner', inner)
+        self.set_child('inner', inner)
 
     @torch.no_grad
-    def apply(self, var):
+    def apply_states(self, objective, states, settings):
+        params = objective.params
+        fs = settings[0]
+        hvp_method = fs['hvp_method']
+        h = fs['h']
 
-        params = var.params
-        settings = self.settings[params[0]]
-        hvp_method = settings['hvp_method']
-        h = settings['h']
+        precond_lr, momentum, reg = unpack_dicts(settings, 'precond_lr', 'momentum', 'reg', cls=NumberList)
 
-        precond_lr, momentum, reg = self.get_settings(params, 'precond_lr', 'momentum', 'reg', cls=NumberList)
-
-
-        closure = var.closure
+        closure = objective.closure
         assert closure is not None
 
-        z, Hz = self.get_state(params, 'z', 'Hz', cls=TensorList)
-
-        Hz, _ = var.hessian_vector_product(z, rgrad=None, at_x0=True, hvp_method=hvp_method, h=h)
+        z, Hz = unpack_states(states, params, 'z', 'Hz', cls=TensorList)
+        Hz, _ = objective.hessian_vector_product(z, rgrad=None, at_x0=True, hvp_method=hvp_method, h=h)
 
         Hz = TensorList(Hz)
         Hzz = Hz.add_(z * reg)
 
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], update, params, grads=var.grad, var=var)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        updates = objective.get_updates()
 
-        z = curveball(TensorList(update), z, Hzz, momentum=momentum, precond_lr=precond_lr)
-        var.update = z.neg()
+        z = curveball(TensorList(updates), z, Hzz, momentum=momentum, precond_lr=precond_lr)
+        objective.updates = z.neg()
 
-        return var
+        return objective

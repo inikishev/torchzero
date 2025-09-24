@@ -43,9 +43,9 @@ class Dropout(Transform):
     ```
 
     """
-    def __init__(self, p: float = 0.5, graft: bool=False, target: _RemoveThis = 'update'):
+    def __init__(self, p: float = 0.5, graft: bool=False):
         defaults = dict(p=p, graft=graft)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -78,10 +78,10 @@ class WeightDropout(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, var):
-        closure = var.closure
+    def update(self, objective):
+        closure = objective.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
         p = NumberList(self.settings[p]['p'] for p in params)
 
         # create masks
@@ -104,8 +104,7 @@ class WeightDropout(Module):
             params.copy_(orig_params)
             return loss
 
-        var.closure = dropout_closure
-        return var
+        objective.closure = dropout_closure
 
 
 class PerturbWeights(Module):
@@ -132,10 +131,10 @@ class PerturbWeights(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, var):
-        closure = var.closure
+    def update(self, objective):
+        closure = objective.closure
         if closure is None: raise RuntimeError('WeightDropout requires closure')
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
 
         # create perturbations
         perts = []
@@ -170,5 +169,4 @@ class PerturbWeights(Module):
             params.sub_(perts)
             return loss
 
-        var.closure = perturbed_closure
-        return var
+        objective.closure = perturbed_closure

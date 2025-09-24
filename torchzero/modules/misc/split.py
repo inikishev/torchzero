@@ -1,4 +1,3 @@
-import warnings
 from collections.abc import Callable, Sequence, Iterable
 from typing import cast
 
@@ -11,44 +10,44 @@ def _split(
     module: Module,
     idxs,
     params,
-    var: Objective,
+    objective: Objective,
 ):
     split_params = [p for i,p in enumerate(params) if i in idxs]
 
     split_grad = None
-    if var.grads is not None:
-        split_grad = [g for i,g in enumerate(var.grads) if i in idxs]
+    if objective.grads is not None:
+        split_grad = [g for i,g in enumerate(objective.grads) if i in idxs]
 
     split_update = None
-    if var.updates is not None:
-        split_update = [u for i,u in enumerate(var.updates) if i in idxs]
+    if objective.updates is not None:
+        split_update = [u for i,u in enumerate(objective.updates) if i in idxs]
 
-    split_var = var.clone(clone_update=False, parent=var)
-    split_var.params = split_params
-    split_var.grads = split_grad
-    split_var.updates = split_update
+    split_obj = objective.clone(clone_update=False, parent=objective)
+    split_obj.params = split_params
+    split_obj.grads = split_grad
+    split_obj.updates = split_update
 
-    split_var = module.apply(split_var)
+    split_obj = module.step(split_obj)
 
     # those should be set due to var being parent
-    if split_var.grads is not None:
-        assert var.grads is not None
+    if split_obj.grads is not None:
+        assert objective.grads is not None
 
-    if split_var.loss is not None:
-        assert var.loss is not None
+    if split_obj.loss is not None:
+        assert objective.loss is not None
 
-    if split_var.updates is not None:
+    if split_obj.updates is not None:
 
         # make sure update is set, it will be filled with ``true`` and ``false`` tensors
-        if var.updates is None:
-            if var.grads is None: var.updates = [cast(torch.Tensor, None) for _ in var.params]
-            else: var.updates = [g.clone() for g in var.grads]
+        if objective.updates is None:
+            if objective.grads is None: objective.updates = [cast(torch.Tensor, None) for _ in objective.params]
+            else: objective.updates = [g.clone() for g in objective.grads]
 
         # set all tensors from this split
-        for idx, u in zip(idxs, split_var.updates):
-            var.updates[idx] = u
+        for idx, u in zip(idxs, split_obj.updates):
+            objective.updates[idx] = u
 
-    return var
+    return objective
 
 _SingleFilter = Callable[[torch.Tensor], bool] | torch.Tensor | Iterable[torch.Tensor] | torch.nn.Module | Iterable[torch.nn.Module]
 Filter = _SingleFilter | Iterable[_SingleFilter]
@@ -101,9 +100,12 @@ class Split(Module):
         if true is not None: self.set_child('true', true)
         if false is not None: self.set_child('false', false)
 
-    def apply(self, var):
+    def update(self, objective): raise RuntimeError
+    def apply(self, objective): raise RuntimeError
 
-        params = var.params
+    def step(self, objective):
+
+        params = objective.params
         filter = _make_filter(self.settings[params[0]]['filter'])
 
         true_idxs = []
@@ -114,10 +116,10 @@ class Split(Module):
 
         if 'true' in self.children and len(true_idxs) > 0:
             true = self.children['true']
-            var = _split(true, idxs=true_idxs, params=params, var=var)
+            objective = _split(true, idxs=true_idxs, params=params, objective=objective)
 
         if 'false' in self.children and len(false_idxs) > 0:
             false = self.children['false']
-            var = _split(false, idxs=false_idxs, params=params, var=var)
+            objective = _split(false, idxs=false_idxs, params=params, objective=objective)
 
-        return var
+        return objective

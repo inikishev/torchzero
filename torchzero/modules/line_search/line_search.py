@@ -229,34 +229,34 @@ class LineSearchBase(Module, ABC):
         """Finds the step size to use"""
 
     @torch.no_grad
-    def apply(self, var: Objective) -> Objective:
+    def apply(self, objective: Objective) -> Objective:
         self._reset()
 
-        params = var.params
+        params = objective.params
         self._initial_params = [p.clone() for p in params]
-        update = var.get_updates()
+        update = objective.get_updates()
 
         try:
-            step_size = self.search(update=update, var=var)
+            step_size = self.search(update=update, var=objective)
         except MaxLineSearchItersReached:
             step_size = self._best_step_size
 
         step_size = clip_by_finfo(step_size, torch.finfo(update[0].dtype))
 
         # set loss_approx
-        if var.loss_approx is None: var.loss_approx = self._lowest_loss
+        if objective.loss_approx is None: objective.loss_approx = self._lowest_loss
 
         # if this is last module, directly update parameters to avoid redundant operations
-        if var.modular is not None and self is var.modular.modules[-1]:
+        if objective.modular is not None and self is objective.modular.modules[-1]:
             self.set_step_size_(step_size, params=params, update=update)
 
-            var.stop = True; var.skip_update = True
-            return var
+            objective.stop = True; objective.skip_update = True
+            return objective
 
         # revert parameters and multiply update by step size
         self.set_step_size_(0, params=params, update=update)
-        torch._foreach_mul_(var.updates, step_size)
-        return var
+        torch._foreach_mul_(objective.updates, step_size)
+        return objective
 
 
 

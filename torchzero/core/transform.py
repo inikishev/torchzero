@@ -198,7 +198,7 @@ class TensorTransform(Transform):
         loss: torch.Tensor | None,
         states: list[dict[str, Any]],
         settings: Sequence[Mapping[str, Any]],
-    ) -> list[torch.Tensor]:
+    ) -> Sequence[torch.Tensor]:
         """Updates ``tensors`` and returns it. This shouldn't modify ``state`` if possible.
          By default calls ``single_tensor_apply`` on all tensors.
          """
@@ -305,7 +305,7 @@ class TensorTransform(Transform):
             objective.updates = vec_to_tensors(ret[0], objective.params)
 
         else:
-            objective.updates = ret
+            objective.updates = list(ret)
 
         return objective
 

@@ -11,9 +11,9 @@ class PrintUpdate(Module):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)
 
-    def apply(self, var):
-        self.defaults["print_fn"](f'{self.defaults["text"]}{var.update}')
-        return var
+    def apply(self, objective):
+        self.defaults["print_fn"](f'{self.defaults["text"]}{objective.updates}')
+        return objective
 
 class PrintShape(Module):
     """Prints shapes of the update."""
@@ -21,10 +21,10 @@ class PrintShape(Module):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)
 
-    def apply(self, var):
-        shapes = [u.shape for u in var.update] if var.update is not None else None
+    def apply(self, objective):
+        shapes = [u.shape for u in objective.updates] if objective.updates is not None else None
         self.defaults["print_fn"](f'{self.defaults["text"]}{shapes}')
-        return var
+        return objective
 
 class PrintParams(Module):
     """Prints current update."""
@@ -32,9 +32,9 @@ class PrintParams(Module):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)
 
-    def apply(self, var):
-        self.defaults["print_fn"](f'{self.defaults["text"]}{var.params}')
-        return var
+    def apply(self, objective):
+        self.defaults["print_fn"](f'{self.defaults["text"]}{objective.params}')
+        return objective
 
 
 class PrintLoss(Module):
@@ -43,6 +43,6 @@ class PrintLoss(Module):
         defaults = dict(text=text, print_fn=print_fn)
         super().__init__(defaults)
 
-    def apply(self, var):
-        self.defaults["print_fn"](f'{self.defaults["text"]}{var.get_loss(False)}')
-        return var
+    def apply(self, objective):
+        self.defaults["print_fn"](f'{self.defaults["text"]}{objective.get_loss(False)}')
+        return objective

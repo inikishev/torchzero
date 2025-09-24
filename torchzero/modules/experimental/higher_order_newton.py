@@ -1,21 +1,12 @@
-import itertools
 import math
-import warnings
-from collections.abc import Callable
-from contextlib import nullcontext
-from functools import partial
 from typing import Any, Literal
 
 import numpy as np
 import scipy.optimize
 import torch
 
-from ...core import Chainable, Module, step, DerivativesMethod
+from ...core import DerivativesMethod, Module
 from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
-from ...utils.derivatives import (
-    flatten_jacobian,
-    jacobian_wrt,
-)
 
 _LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 def _poly_eval(s: np.ndarray, c, derivatives):
@@ -205,9 +196,9 @@ class HigherOrderNewton(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def apply(self, objective):
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('HigherOrderNewton requires closure')
 
         settings = self.defaults
@@ -224,7 +215,7 @@ class HigherOrderNewton(Module):
         rho_bad = settings['rho_bad']
 
         # ------------------------ calculate grad and hessian ------------------------ #
-        loss, *derivatives = var.derivatives(order=order, at_x0=True, method=self.defaults["derivatives_method"])
+        loss, *derivatives = objective.derivatives(order=order, at_x0=True, method=self.defaults["derivatives_method"])
 
         x0 = torch.cat([p.ravel() for p in params])
 
@@ -302,8 +293,9 @@ class HigherOrderNewton(Module):
         assert x_star is not None
         if success:
             difference = vec_to_tensors(x0 - x_star, params)
-            var.update = list(difference)
+            objective.updates = list(difference)
         else:
-            var.update = params.zeros_like()
-        return var
+            objective.updates = params.zeros_like()
+
+        return objective
 

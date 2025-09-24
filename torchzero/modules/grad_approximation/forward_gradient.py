@@ -52,11 +52,11 @@ class ForwardGradient(RandomizedFDM):
         params = TensorList(params)
         loss_approx = None
 
-        settings = self.settings[params[0]]
-        n_samples = settings['n_samples']
-        jvp_method = settings['jvp_method']
-        h = settings['h']
-        distribution = settings['distribution']
+        fs = self.settings[params[0]]
+        n_samples = fs['n_samples']
+        jvp_method = fs['jvp_method']
+        h = fs['h']
+        distribution = fs['distribution']
         default = [None]*n_samples
         perturbations = list(zip(*(self.state[p].get('perturbations', default) for p in params)))
         generator = self.get_generator(params[0].device, self.defaults['seed'])

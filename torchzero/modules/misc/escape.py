@@ -15,11 +15,11 @@ class EscapeAnnealing(Module):
 
 
     @torch.no_grad
-    def apply(self, var):
-        closure = var.closure
+    def apply(self, objective):
+        closure = objective.closure
         if closure is None: raise RuntimeError("Escape requries closure")
 
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
         settings = self.settings[params[0]]
         max_region = self.get_settings(params, 'max_region', cls=NumberList)
         max_iter = settings['max_iter']
@@ -41,7 +41,7 @@ class EscapeAnnealing(Module):
         self.global_state['n_bad'] = n_bad
 
         # no progress
-        f_0 = var.get_loss(False)
+        f_0 = objective.get_loss(False)
         if n_bad >= n_tol:
             for i in range(1, max_iter+1):
                 alpha = max_region * (i / max_iter)
@@ -51,12 +51,12 @@ class EscapeAnnealing(Module):
                 f_star = closure(False)
 
                 if math.isfinite(f_star) and f_star < f_0-1e-12:
-                    var.update = None
-                    var.stop = True
-                    var.skip_update = True
-                    return var
+                    objective.updates = None
+                    objective.stop = True
+                    objective.skip_update = True
+                    return objective
 
                 params.sub_(pert)
 
             self.global_state['n_bad'] = 0
-        return var
+        return objective

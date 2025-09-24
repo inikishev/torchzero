@@ -12,7 +12,7 @@ from .binary import (
     CopyMagnitude,
     CopySign,
     Div,
-    Graft,
+    GraftToUpdate,
     GraftToUpdate,
     GramSchimdt,
     Maximum,
@@ -38,7 +38,7 @@ from .higher_level import (
 from .multi import (
     ClipModules,
     DivModules,
-    GraftModules,
+    Graft,
     LerpModules,
     MultiOperationBase,
     PowModules,

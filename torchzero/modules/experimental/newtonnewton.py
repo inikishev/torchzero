@@ -8,6 +8,7 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Module, step
+from ...linalg.linear_operator import Dense
 from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import (
     flatten_jacobian,
@@ -19,7 +20,7 @@ from ..second_order.newton import (
     _least_squares_solve,
     _lu_solve,
 )
-from ...utils.linalg.linear_operator import Dense
+
 
 class NewtonNewton(Module):
     """Applies Newton-like preconditioning to Newton step.
@@ -51,9 +52,10 @@ class NewtonNewton(Module):
         super().__init__(defaults)
 
     @torch.no_grad
-    def update(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def update(self, objective):
+
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('NewtonNewton requires closure')
 
         settings = self.settings[params[0]]
@@ -66,9 +68,9 @@ class NewtonNewton(Module):
         # ------------------------ calculate grad and hessian ------------------------ #
         Hs = []
         with torch.enable_grad():
-            loss = var.loss = var.loss_approx = closure(False)
+            loss = objective.loss = objective.loss_approx = closure(False)
             g_list = torch.autograd.grad(loss, params, create_graph=True)
-            var.grad = list(g_list)
+            objective.grads = list(g_list)
 
             xp = torch.cat([t.ravel() for t in g_list])
             I = torch.eye(xp.numel(), dtype=xp.dtype, device=xp.device)
@@ -93,13 +95,14 @@ class NewtonNewton(Module):
         self.global_state['xp'] = xp.nan_to_num_(0,0,0)
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def apply(self, objective):
+        params = objective.params
         xp = self.global_state['xp']
-        var.update = vec_to_tensors(xp, params)
-        return var
+        objective.updates = vec_to_tensors(xp, params)
+        return objective
 
-    def get_H(self, var):
+    @torch.no_grad
+    def get_H(self, objective=...):
         Hs = self.global_state["Hs"]
         if len(Hs) == 1: return Dense(Hs[0])
         return Dense(torch.linalg.multi_dot(self.global_state["Hs"])) # pylint:disable=not-callable

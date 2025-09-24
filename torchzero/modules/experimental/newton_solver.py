@@ -1,11 +1,10 @@
-from collections.abc import Callable, Iterable
-from typing import Any, Literal, overload
+from collections.abc import Callable
+from typing import Any
 
 import torch
 
 from ...core import Chainable, Modular, Module, step, HVPMethod
-from ...utils import TensorList, as_tensorlist
-from ...utils.derivatives import hvp_fd_forward, hvp_fd_central
+from ...utils import TensorList
 from ..quasi_newton import LBFGS
 
 
@@ -22,22 +21,23 @@ class NewtonSolver(Module):
         hvp_method: HVPMethod = "autograd",
         reset_solver: bool = False,
         h: float= 1e-3,
+
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
         super().__init__(defaults)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child("inner", inner)
 
         self._num_hvps = 0
         self._num_hvps_last_step = 0
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def apply(self, objective):
+
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
         settings = self.settings[params[0]]
@@ -53,13 +53,11 @@ class NewtonSolver(Module):
         self._num_hvps_last_step = 0
 
         # ---------------------- Hessian vector product function --------------------- #
-        _, H_mv = var.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
-        grad = var.get_grad()
+        _, H_mv = objective.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
 
         # -------------------------------- inner step -------------------------------- #
-        b = as_tensorlist(grad)
-        if 'inner' in self.children:
-            b = as_tensorlist(step(self.children['inner'], [g.clone() for g in grad], params=params, grads=grad, var=var))
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
@@ -114,8 +112,8 @@ class NewtonSolver(Module):
             assert x0 is not None
             x0.copy_(x)
 
-        var.update = x.detach()
+        objective.updates = x.detach()
         self._num_hvps += self._num_hvps_last_step
-        return var
+        return objective
 
 

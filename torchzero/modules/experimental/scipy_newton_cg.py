@@ -4,9 +4,8 @@ import torch
 from scipy.sparse.linalg import LinearOperator, gcrotmk
 
 from ...core import Chainable, Module, step
-from ...utils import NumberList, TensorList, as_tensorlist, generic_vector_norm, vec_to_tensors
+from ...utils import TensorList, vec_to_tensors
 from ...utils.derivatives import hvp_fd_central, hvp_fd_forward
-from ...utils.linalg.solve import cg, minres
 
 
 class ScipyNewtonCG(Module):
@@ -33,22 +32,22 @@ class ScipyNewtonCG(Module):
         self._kwargs = kwargs
 
     @torch.no_grad
-    def apply(self, var):
-        params = TensorList(var.params)
-        closure = var.closure
+    def apply(self, objective):
+        params = TensorList(objective.params)
+        closure = objective.closure
         if closure is None: raise RuntimeError('NewtonCG requires closure')
 
-        settings = self.settings[params[0]]
-        hvp_method = settings['hvp_method']
-        solver = settings['solver']
-        h = settings['h']
-        warm_start = settings['warm_start']
+        fs = self.settings[params[0]]
+        hvp_method = fs['hvp_method']
+        solver = fs['solver']
+        h = fs['h']
+        warm_start = fs['warm_start']
 
         self._num_hvps_last_step = 0
         # ---------------------- Hessian vector product function --------------------- #
         device = params[0].device; dtype=params[0].dtype
         if hvp_method == 'autograd':
-            grad = var.get_grad(create_graph=True)
+            grad = objective.get_grads(create_graph=True)
 
             def H_mm(x_np):
                 self._num_hvps_last_step += 1
@@ -60,7 +59,7 @@ class ScipyNewtonCG(Module):
         else:
 
             with torch.enable_grad():
-                grad = var.get_grad()
+                grad = objective.get_grads()
 
             if hvp_method == 'forward':
                 def H_mm(x_np):
@@ -83,10 +82,8 @@ class ScipyNewtonCG(Module):
         H = LinearOperator(shape=(ndim,ndim), matvec=H_mm, rmatvec=H_mm) # type:ignore
 
         # -------------------------------- inner step -------------------------------- #
-        b = var.get_update()
-        if 'inner' in self.children:
-            b = step(self.children['inner'], b, params=params, grads=grad, var=var)
-        b = as_tensorlist(b)
+        objective = self.inner_step("inner", objective, must_exist=False)
+        b = TensorList(objective.get_updates())
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
@@ -98,8 +95,8 @@ class ScipyNewtonCG(Module):
         if warm_start:
             self.global_state['x_prev'] = x_np
 
-        var.update = vec_to_tensors(torch.as_tensor(x_np, device=device, dtype=dtype), params)
+        objective.updates = vec_to_tensors(torch.as_tensor(x_np, device=device, dtype=dtype), params)
 
         self._num_hvps += self._num_hvps_last_step
-        return var
+        return objective
 

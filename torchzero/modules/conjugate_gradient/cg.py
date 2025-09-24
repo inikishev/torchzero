@@ -3,21 +3,14 @@ from typing import Literal
 
 import torch
 
-from ...core import (
-    Chainable,
-    Modular,
-    Module,
-    Transform,
-    Objective,
-    step,
-)
-from ...utils import TensorList, as_tensorlist, unpack_dicts, unpack_states
-from ..line_search import LineSearchBase
+from ...core import Chainable, TensorTransform
+
+from ...utils import TensorList, safe_dict_update_, unpack_dicts, unpack_states
 from ..quasi_newton.quasi_newton import HessianUpdateStrategy
 from ..functional import safe_clip
 
 
-class ConguateGradientBase(Transform, ABC):
+class ConguateGradientBase(TensorTransform, ABC):
     """Base class for conjugate gradient methods. The only difference between them is how beta is calculated.
 
     This is an abstract class, to use it, subclass it and override `get_beta`.
@@ -52,13 +45,8 @@ class ConguateGradientBase(Transform, ABC):
     """
     def __init__(self, defaults, clip_beta: bool, restart_interval: int | None | Literal['auto'], inner: Chainable | None = None):
         if defaults is None: defaults = {}
-        defaults['restart_interval'] = restart_interval
-        defaults['clip_beta'] = clip_beta
-        super().__init__(defaults, uses_grad=False)
-
-        if inner is not None:
-            self.set_child('inner', inner)
-
+        safe_dict_update_(defaults, dict(restart_interval=restart_interval, clip_beta=clip_beta))
+        super().__init__(defaults, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
@@ -75,39 +63,37 @@ class ConguateGradientBase(Transform, ABC):
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
-        tensors = as_tensorlist(tensors)
-        params = as_tensorlist(params)
-
-        step = self.global_state.get('step', 0) + 1
-        self.global_state['step'] = step
+        tensors = TensorList(tensors)
+        params = TensorList(params)
+        self.increment_counter("step", start=0)
 
         # initialize on first step
-        if self.global_state.get('stage', 0) == 0:
+        if self.global_state.get('stage', "first step") == "first update":
             g_prev, d_prev = unpack_states(states, tensors, 'g_prev', 'd_prev', cls=TensorList)
             d_prev.copy_(tensors)
             g_prev.copy_(tensors)
             self.initialize(params, tensors)
-            self.global_state['stage'] = 1
+            self.global_state['stage'] = "first apply"
 
         else:
             # if `update_tensors` was called multiple times before `apply_tensors`,
             # stage becomes 2
-            self.global_state['stage'] = 2
+            self.global_state['stage'] = "initialized"
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
-        tensors = as_tensorlist(tensors)
+        tensors = TensorList(tensors)
         step = self.global_state['step']
 
-        if 'inner' in self.children:
-            tensors = as_tensorlist(step(self.children['inner'], tensors, params, grads))
+        assert self.global_state['stage'] != "first update"
 
-        assert self.global_state['stage'] != 0
-        if self.global_state['stage'] == 1:
-            self.global_state['stage'] = 2
+        # on 1st apply we don't have previous gradients
+        # so just return tensors
+        if self.global_state['stage'] == "first apply":
+            self.global_state['stage'] = "initialized"
             return tensors
 
-        params = as_tensorlist(params)
+        params = TensorList(params)
         g_prev, d_prev = unpack_states(states, tensors, 'g_prev', 'd_prev', cls=TensorList)
 
         # get beta
@@ -119,10 +105,13 @@ class ConguateGradientBase(Transform, ABC):
         dir = tensors.add_(d_prev.mul_(beta))
         d_prev.copy_(dir)
 
-        # resetting
+        # resetting every `reset_interval` steps, use step+1 to not reset on 1st step
+        # so if reset_interval=2, then 1st step collects g_prev and d_prev, then
+        # two steps will happen until reset.
         restart_interval = settings[0]['restart_interval']
         if restart_interval == 'auto': restart_interval = tensors.global_numel() + 1
-        if restart_interval is not None and step % restart_interval == 0:
+
+        if restart_interval is not None and (step + 1) % restart_interval == 0:
             self.state.clear()
             self.global_state.clear()
 

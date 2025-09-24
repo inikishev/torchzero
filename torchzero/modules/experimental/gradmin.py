@@ -43,7 +43,7 @@ class GradMin(Reformulation):
         super().__init__(defaults, modules=modules)
 
     @torch.no_grad
-    def closure(self, backward, closure, params, var):
+    def closure(self, backward, closure, params, objective):
         settings = self.settings[params[0]]
         loss_term = settings['loss_term']
         relative = settings['relative']

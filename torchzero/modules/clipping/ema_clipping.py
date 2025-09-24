@@ -1,13 +1,14 @@
+from collections.abc import Iterable, Sequence
 from operator import itemgetter
 from typing import Literal
-from collections.abc import Iterable, Sequence
 
 import torch
 
-from ...core import Module,  Transform, step, Chainable
-from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, Metrics
+from ...core import Chainable, TensorTransform, step
+from ...utils import Metrics, NumberList, TensorList, unpack_dicts, unpack_states
 
-class ClipNormByEMA(Transform):
+
+class ClipNormByEMA(TensorTransform):
     """Clips norm to be no larger than the norm of an exponential moving average of past updates.
 
     Args:
@@ -106,45 +107,50 @@ class NormalizeByEMA(ClipNormByEMA):
 
 # TODO Centralize by EMA?
 
-class ClipValueByEMA(Transform):
+class ClipValueByEMA(TensorTransform):
     """Clips magnitude of update to be no larger than magnitude of exponential moving average of past (unclipped) updates.
 
     Args:
         beta (float, optional): beta for the exponential moving average. Defaults to 0.99.
         ema_init (str, optional):
-            How to initialize exponential moving average on first step, "update" to use the first update or "zeros". Defaults to 'zeros'.
-        ema_tfm (Chainable | None, optional):
+            How to initialize exponential moving average on first step,
+            "update" to use the first update or "zeros". Defaults to 'zeros'.
+        exp_avg_tfm (Chainable | None, optional):
             optional modules applied to exponential moving average before clipping by it. Defaults to None.
     """
     def __init__(
         self,
         beta=0.99,
-        ema_init: Literal['zeros', 'update'] = 'zeros',
-        ema_tfm:Chainable | None=None,
+        init: Literal['zeros', 'update'] = 'zeros',
+
         inner: Chainable | None = None,
+        exp_avg_tfm:Chainable | None=None,
     ):
-        defaults = dict(beta=beta, ema_init=ema_init)
+        defaults = dict(beta=beta, init=init)
         super().__init__(defaults, inner=inner)
 
-        if ema_tfm is not None:
-            self.set_child('ema_tfm', ema_tfm)
+        self.set_child('exp_avg', exp_avg_tfm)
+
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        if setting["init"] == "zeros":
+            state["exp_avg"] = torch.zeros_like(tensor)
+        else:
+            state["exp_avg"] = tensor.abs()
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
-        ema_init = itemgetter('ema_init')(settings[0])
-
-        beta = unpack_dicts(settings, 'beta', cls=NumberList)
         tensors = TensorList(tensors)
+        beta = unpack_dicts(settings, 'beta', cls=NumberList)
 
-        ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
-        ema.lerp_(tensors.abs(), 1-beta)
+        exp_avg = unpack_states(states, tensors, 'exp_avg', must_exist=True, cls=TensorList)
+        exp_avg.lerp_(tensors.abs(), 1-beta)
 
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        ema = unpack_states(states, tensors, 'ema', cls=TensorList)
+        exp_avg = unpack_states(states, tensors, 'exp_avg')
 
-        if 'ema_tfm' in self.children:
-            ema = TensorList(step(self.children['ema_tfm'], ema.clone(), params, grads, loss))
+        exp_avg = TensorList(
+            self.inner_tensors_step("exp_avg", exp_avg, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
-        tensors.clip_(-ema, ema)
+        tensors.clip_(-exp_avg, exp_avg)
         return tensors

@@ -38,15 +38,15 @@ class SPSA1(GradApproximator):
         super().__init__(defaults, target=target)
 
 
-    def pre_step(self, var):
+    def pre_step(self, objective):
 
         if self.defaults['pre_generate']:
 
-            params = TensorList(var.params)
+            params = TensorList(objective.params)
             generator = self.get_generator(params[0].device, self.defaults['seed'])
 
             n_samples = self.defaults['n_samples']
-            h = self.get_settings(var.params, 'h')
+            h = self.get_settings(objective.params, 'h')
 
             perturbations = [params.rademacher_like(generator=generator) for _ in range(n_samples)]
             torch._foreach_mul_([p for l in perturbations for p in l], [v for vv in h for v in [vv]*n_samples])

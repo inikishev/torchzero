@@ -4,7 +4,7 @@ from typing import Literal
 
 import torch
 
-from ...core import  Transform
+from ...core import  TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import (
     centered_ema_sq_,
@@ -17,7 +17,7 @@ from ..functional import (
 )
 
 
-class EMASquared(Transform):
+class EMASquared(TensorTransform):
     """Maintains an exponential moving average of squared updates.
 
     Args:
@@ -29,7 +29,7 @@ class EMASquared(Transform):
 
     def __init__(self, beta:float=0.999, amsgrad=False, pow:float=2):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad)
-        super().__init__(defaults, uses_grad=False)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -44,7 +44,7 @@ class EMASquared(Transform):
 
         return self.EMA_SQ_FN(TensorList(tensors), exp_avg_sq_=exp_avg_sq, beta=beta, max_exp_avg_sq_=max_exp_avg_sq, pow=pow).clone()
 
-class SqrtEMASquared(Transform):
+class SqrtEMASquared(TensorTransform):
     """Maintains an exponential moving average of squared updates, outputs optionally debiased square root.
 
     Args:
@@ -56,7 +56,7 @@ class SqrtEMASquared(Transform):
     SQRT_EMA_SQ_FN: staticmethod = staticmethod(sqrt_ema_sq_)
     def __init__(self, beta:float=0.999, amsgrad=False, debiased: bool = False, pow:float=2,):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad,debiased=debiased)
-        super().__init__(defaults, uses_grad=False)
+        super().__init__(defaults)
 
 
     @torch.no_grad
@@ -83,7 +83,7 @@ class SqrtEMASquared(Transform):
         )
 
 
-class Debias(Transform):
+class Debias(TensorTransform):
     """Multiplies the update by an Adam debiasing term based first and/or second momentum.
 
     Args:
@@ -95,9 +95,9 @@ class Debias(Transform):
         pow (float, optional): power, assumes absolute value is used. Defaults to 2.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, beta1: float | None = None, beta2: float | None = None, alpha: float = 1, pow:float=2, target: _RemoveThis = 'update',):
+    def __init__(self, beta1: float | None = None, beta2: float | None = None, alpha: float = 1, pow:float=2):
         defaults = dict(beta1=beta1, beta2=beta2, alpha=alpha, pow=pow)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -108,7 +108,7 @@ class Debias(Transform):
 
         return debias(TensorList(tensors), step=step, beta1=beta1, beta2=beta2, alpha=alpha, pow=pow, inplace=True)
 
-class Debias2(Transform):
+class Debias2(TensorTransform):
     """Multiplies the update by an Adam debiasing term based on the second momentum.
 
     Args:
@@ -117,9 +117,9 @@ class Debias2(Transform):
         pow (float, optional): power, assumes absolute value is used. Defaults to 2.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, beta: float = 0.999, pow: float = 2, target: _RemoveThis = 'update',):
+    def __init__(self, beta: float = 0.999, pow: float = 2,):
         defaults = dict(beta=beta, pow=pow)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -129,7 +129,7 @@ class Debias2(Transform):
         beta = NumberList(s['beta'] for s in settings)
         return debias_second_momentum(TensorList(tensors), step=step, beta=beta, pow=pow, inplace=True)
 
-class CenteredEMASquared(Transform):
+class CenteredEMASquared(TensorTransform):
     """Maintains a centered exponential moving average of squared updates. This also maintains an additional
     exponential moving average of un-squared updates, square of which is subtracted from the EMA.
 
@@ -162,7 +162,7 @@ class CenteredEMASquared(Transform):
             pow=pow,
         ).clone()
 
-class CenteredSqrtEMASquared(Transform):
+class CenteredSqrtEMASquared(TensorTransform):
     """Maintains a centered exponential moving average of squared updates, outputs optionally debiased square root.
     This also maintains an additional exponential moving average of un-squared updates, square of which is subtracted from the EMA.
 

@@ -1,11 +1,8 @@
 import math
-
-import numpy as np
 import torch
 
 from ...core import Chainable
-from ...utils import vec_to_tensors, TensorList
-from ..adaptive.shampoo import _merge_small_dims
+from ...utils import vec_to_tensors
 from ..projections import ProjectionBase
 
 

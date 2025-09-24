@@ -13,27 +13,27 @@ class HomotopyBase(Module):
         """transform the loss"""
 
     @torch.no_grad
-    def apply(self, var):
-        if var.loss is not None:
-            var.loss = self.loss_transform(var.loss)
+    def apply(self, objective):
+        if objective.loss is not None:
+            objective.loss = self.loss_transform(objective.loss)
 
-        closure = var.closure
+        closure = objective.closure
         if closure is None: raise RuntimeError("SquareHomotopy requires closure")
 
         def homotopy_closure(backward=True):
             if backward:
                 with torch.enable_grad():
                     loss = self.loss_transform(closure(False))
-                    grad = torch.autograd.grad(loss, var.params, allow_unused=True)
-                    for p,g in zip(var.params, grad):
+                    grad = torch.autograd.grad(loss, objective.params, allow_unused=True)
+                    for p,g in zip(objective.params, grad):
                         p.grad = g
             else:
                 loss = self.loss_transform(closure(False))
 
             return loss
 
-        var.closure = homotopy_closure
-        return var
+        objective.closure = homotopy_closure
+        return objective
 
 class SquareHomotopy(HomotopyBase):
     def __init__(self): super().__init__()
@@ -57,3 +57,11 @@ class LambdaHomotopy(HomotopyBase):
         super().__init__(defaults)
 
     def loss_transform(self, loss): return self.defaults['fn'](loss)
+
+class FixedLossHomotopy(HomotopyBase):
+    def __init__(self, value: float = 1):
+        defaults = dict(value=value)
+        super().__init__(defaults)
+
+    def loss_transform(self, loss): return loss / loss.detach().clip(min=torch.finfo(loss.dtype).tiny * 2)
+

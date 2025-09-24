@@ -4,12 +4,12 @@ from typing import Literal
 
 import torch
 
-from ...core import  Transform
+from ...core import  TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 from ..functional import debias, ema_
 
 
-class EMA(Transform):
+class EMA(TensorTransform):
     """Maintains an exponential moving average of update.
 
     Args:
@@ -20,9 +20,9 @@ class EMA(Transform):
         ema_init (str, optional): initial values for the EMA, "zeros" or "update".
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros', target: _RemoveThis = 'update'):
+    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=True, ema_init: Literal['zeros', 'update'] = 'zeros'):
         defaults = dict(momentum=momentum,dampening=dampening,debiased=debiased,lerp=lerp,ema_init=ema_init)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -53,8 +53,8 @@ class HeavyBall(EMA):
         ema_init (str, optional): initial values for the EMA, "zeros" or "update".
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=False, ema_init: Literal['zeros', 'update'] = 'update', target: _RemoveThis = 'update'):
-        super().__init__(momentum=momentum, dampening=dampening, debiased=debiased, lerp=lerp, ema_init=ema_init, target=target)
+    def __init__(self, momentum:float=0.9, dampening:float=0, debiased: bool = False, lerp=False, ema_init: Literal['zeros', 'update'] = 'update'):
+        super().__init__(momentum=momentum, dampening=dampening, debiased=debiased, lerp=lerp, ema_init=ema_init)
 
 def nag_(
     tensors_: TensorList,
@@ -74,7 +74,7 @@ def nag_(
     return tensors_
 
 
-class NAG(Transform):
+class NAG(TensorTransform):
     """Nesterov accelerated gradient method (nesterov momentum).
 
     Args:
@@ -84,9 +84,9 @@ class NAG(Transform):
             whether to use linear interpolation, if True, this becomes similar to exponential moving average. Defaults to False.
         target (Target, optional): target to apply EMA to. Defaults to 'update'.
     """
-    def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False, target: _RemoveThis = 'update'):
+    def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False):
         defaults = dict(momentum=momentum,dampening=dampening, lerp=lerp)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

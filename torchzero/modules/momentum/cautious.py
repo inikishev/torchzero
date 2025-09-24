@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import  Transform, Module, Chainable
+from ...core import  TensorTransform, Module, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts
 
 
@@ -36,7 +36,7 @@ def cautious_(
     tensors_ -= tensors_.mul(2).mul_(mask.logical_not_())
     return tensors_
 
-class Cautious(Transform):
+class Cautious(TensorTransform):
     """Negates update for parameters where update and gradient sign is inconsistent.
     Optionally normalizes the update by the number of parameters that are not masked.
     This is meant to be used after any momentum-based modules.
@@ -84,7 +84,7 @@ class Cautious(Transform):
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(settings[0])
         return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
 
-class UpdateGradientSignConsistency(Transform):
+class UpdateGradientSignConsistency(TensorTransform):
     """Compares update and gradient signs. Output will have 1s where signs match, and 0s where they don't.
 
     Args:
@@ -108,7 +108,7 @@ class UpdateGradientSignConsistency(Transform):
         return mask
 
 class IntermoduleCautious(Module):
-    """Negaties update on :code:`main` module where it's sign doesn't match with output of :code:`compare` module.
+    """Negaties update on :code:`main` module where it's sign doesn't match with output of ``compare`` module.
 
     Args:
         main (Chainable): main module or sequence of modules whose update will be cautioned.
@@ -137,19 +137,22 @@ class IntermoduleCautious(Module):
         self.set_child('main', main)
         self.set_child('compare', compare)
 
+    def update(self, objective): raise RuntimeError
+    def apply(self, objective): raise RuntimeError
+
     @torch.no_grad
-    def apply(self, var):
+    def step(self, objective):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.apply(var.clone(clone_update=True))
-        var.update_attrs_from_clone_(main_var)
+        main_var = main.step(objective.clone(clone_update=True))
+        objective.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.apply(var.clone(clone_update=True))
-        var.update_attrs_from_clone_(compare_var)
+        compare_var = compare.step(objective.clone(clone_update=True))
+        objective.update_attrs_from_clone_(compare_var)
 
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.defaults)
-        var.update = cautious_(
+        objective.updates = cautious_(
             TensorList(main_var.get_updates()),
             TensorList(compare_var.get_updates()),
             normalize=normalize,
@@ -157,9 +160,9 @@ class IntermoduleCautious(Module):
             eps=eps,
         )
 
-        return var
+        return objective
 
-class ScaleByGradCosineSimilarity(Transform):
+class ScaleByGradCosineSimilarity(TensorTransform):
     """Multiplies the update by cosine similarity with gradient.
     If cosine similarity is negative, naturally the update will be negated as well.
 
@@ -196,8 +199,8 @@ class ScaleByGradCosineSimilarity(Transform):
         return tensors.mul_(cos_sim)
 
 class ScaleModulesByCosineSimilarity(Module):
-    """Scales the output of :code:`main` module by it's cosine similarity to the output
-    of :code:`compare` module.
+    """Scales the output of ``main`` module by it's cosine similarity to the output
+    of ``compare`` module.
 
     Args:
         main (Chainable): main module or sequence of modules whose update will be scaled.
@@ -230,16 +233,19 @@ class ScaleModulesByCosineSimilarity(Module):
         self.set_child('main', main)
         self.set_child('compare', compare)
 
+    def update(self, objective): raise RuntimeError
+    def apply(self, objective): raise RuntimeError
+
     @torch.no_grad
-    def apply(self, var):
+    def step(self, objective):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.apply(var.clone(clone_update=True))
-        var.update_attrs_from_clone_(main_var)
+        main_var = main.step(objective.clone(clone_update=True))
+        objective.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.apply(var.clone(clone_update=True))
-        var.update_attrs_from_clone_(compare_var)
+        compare_var = compare.step(objective.clone(clone_update=True))
+        objective.update_attrs_from_clone_(compare_var)
 
         m = TensorList(main_var.get_updates())
         c = TensorList(compare_var.get_updates())
@@ -247,5 +253,5 @@ class ScaleModulesByCosineSimilarity(Module):
 
         cos_sim = m.dot(c) / (m.global_vector_norm() * c.global_vector_norm()).clip(min=eps)
 
-        var.update = m.mul_(cos_sim)
-        return var
+        objective.updates = m.mul_(cos_sim)
+        return objective

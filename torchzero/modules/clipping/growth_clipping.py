@@ -2,8 +2,8 @@ from operator import itemgetter
 
 import torch
 
-from ...core import TensorTransform,  Transform
-from ...utils import TensorList, as_tensorlist
+from ...core import TensorTransform
+from ...utils import TensorList
 
 
 class ClipValueGrowth(TensorTransform):
@@ -27,10 +27,9 @@ class ClipValueGrowth(TensorTransform):
         mul: float | None = 1.5,
         min_value: float | None = 1e-4,
         max_decay: float | None = 2,
-        target: _RemoveThis = "update",
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
 
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -115,7 +114,7 @@ def norm_growth_clip_(
     return tensor_.div_(denom), new_prev_norm, denom
 
 
-class ClipNormGrowth(Transform):
+class ClipNormGrowth(TensorTransform):
     """Clips update norm growth.
 
     Args:
@@ -130,7 +129,7 @@ class ClipNormGrowth(Transform):
             Next norm is at most :code:`max(previous norm * mul, max_decay)`.
             Defaults to 2.
         ord (float, optional): norm order. Defaults to 2.
-        parameterwise (bool, optional):
+        tensorwise (bool, optional):
             if True, norms are calculated parameter-wise, otherwise treats all parameters as single vector. Defaults to True.
         target (Target, optional): what to set on var. Defaults to "update".
     """
@@ -141,19 +140,17 @@ class ClipNormGrowth(Transform):
         min_value: float | None = 1e-4,
         max_decay: float | None = 2,
         ord: float = 2,
-        parameterwise=True,
-        target: _RemoveThis = "update",
+        tensorwise=True,
     ):
-        defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay, ord=ord, parameterwise=parameterwise)
-        super().__init__(defaults, target=target)
-
+        defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay, ord=ord, tensorwise=tensorwise)
+        super().__init__(defaults)
 
 
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
-        parameterwise = settings[0]['parameterwise']
+        tensorwise = settings[0]['tensorwise']
         tensors = TensorList(tensors)
 
-        if parameterwise:
+        if tensorwise:
             ts = tensors
             stts = states
             stns = settings
@@ -180,7 +177,7 @@ class ClipNormGrowth(Transform):
                 ord = setting['ord'],
             )
 
-        if not parameterwise:
+        if not tensorwise:
             tensors.from_vec_(ts[0])
 
         return tensors

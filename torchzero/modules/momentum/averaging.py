@@ -1,11 +1,11 @@
 """Modules that perform averaging over a history of past updates."""
 from collections import deque
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Any
 
 import torch
 
-from ...core import TensorTransform, _RemoveThis
+from ...core import TensorTransform
 from ...utils import tolist
 
 
@@ -16,9 +16,9 @@ class Averaging(TensorTransform):
         history_size (int): Number of past updates to average
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, history_size: int, target: _RemoveThis = 'update'):
+    def __init__(self, history_size: int):
         defaults = dict(history_size=history_size)
-        super().__init__(uses_grad=False, defaults=defaults, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -41,9 +41,9 @@ class WeightedAveraging(TensorTransform):
         weights (Sequence[float]): a sequence of weights from oldest to newest.
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, weights: Sequence[float] | torch.Tensor | Any, target: _RemoveThis = 'update'):
+    def __init__(self, weights: Sequence[float] | torch.Tensor | Any):
         defaults = dict(weights = tolist(weights))
-        super().__init__(uses_grad=False, defaults=defaults, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -75,9 +75,9 @@ class MedianAveraging(TensorTransform):
         history_size (int): Number of past updates to average
         target (Target, optional): target. Defaults to 'update'.
     """
-    def __init__(self, history_size: int, target: _RemoveThis = 'update'):
+    def __init__(self, history_size: int,):
         defaults = dict(history_size = history_size)
-        super().__init__(uses_grad=False, defaults=defaults, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):

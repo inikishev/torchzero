@@ -70,16 +70,16 @@ class GradApproximator(Module, ABC):
     def approximate(self, closure: Callable, params: list[torch.Tensor], loss: torch.Tensor | None) -> tuple[Iterable[torch.Tensor], torch.Tensor | None, torch.Tensor | None]:
         """Returns a tuple: ``(grad, loss, loss_approx)``, make sure this resets parameters to their original values!"""
 
-    def pre_step(self, var: Objective) -> None:
+    def pre_step(self, objective: Objective) -> None:
         """This runs once before each step, whereas `approximate` may run multiple times per step if further modules
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
 
     @torch.no_grad
-    def apply(self, var):
-        self.pre_step(var)
+    def apply(self, objective):
+        self.pre_step(objective)
 
-        if var.closure is None: raise RuntimeError("Gradient approximation requires closure")
-        params, closure, loss = var.params, var.closure, var.loss
+        if objective.closure is None: raise RuntimeError("Gradient approximation requires closure")
+        params, closure, loss = objective.params, objective.closure, objective.loss
 
         if self._target == 'closure':
 
@@ -91,17 +91,17 @@ class GradApproximator(Module, ABC):
                     return l if l is not None else closure(False)
                 return closure(False)
 
-            var.closure = approx_closure
-            return var
+            objective.closure = approx_closure
+            return objective
 
         # if var.grad is not None:
         #     warnings.warn('Using grad approximator when `var.grad` is already set.')
-        grad,loss,loss_approx = self.approximate(closure=closure, params=params, loss=loss)
-        if loss_approx is not None: var.loss_approx = loss_approx
-        if loss is not None: var.loss = var.loss_approx = loss
-        if self._target == 'grad': var.grad = list(grad)
-        elif self._target == 'update': var.update = list(grad)
+        grad, loss, loss_approx = self.approximate(closure=closure, params=params, loss=loss)
+        if loss_approx is not None: objective.loss_approx = loss_approx
+        if loss is not None: objective.loss = objective.loss_approx = loss
+        if self._target == 'grad': objective.grads = list(grad)
+        elif self._target == 'update': objective.updates = list(grad)
         else: raise ValueError(self._target)
-        return var
+        return objective
 
 _FD_Formula = Literal['forward', 'forward2', 'backward', 'backward2', 'central', 'central2', 'central3', 'forward3', 'backward3', 'central4', 'forward4', 'forward5', 'bspsa4']

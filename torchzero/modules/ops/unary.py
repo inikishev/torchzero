@@ -2,84 +2,84 @@ from collections import deque
 
 import torch
 
-from ...core import TensorTransform,  Transform
+from ...core import TensorTransform
 from ...utils import TensorList, unpack_dicts,unpack_states
 
-class UnaryLambda(Transform):
-    """Applies :code:`fn` to input tensors.
+class UnaryLambda(TensorTransform):
+    """Applies ``fn`` to input tensors.
 
-    :code:`fn` must accept and return a list of tensors.
+    ``fn`` must accept and return a list of tensors.
     """
-    def __init__(self, fn, target: "_RemoveThis" = 'update'):
+    def __init__(self, fn):
         defaults = dict(fn=fn)
-        super().__init__(defaults=defaults, uses_grad=False, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return settings[0]['fn'](tensors)
 
 class UnaryParameterwiseLambda(TensorTransform):
-    """Applies :code:`fn` to each input tensor.
+    """Applies ``fn`` to each input tensor.
 
-    :code:`fn` must accept and return a tensor.
+    ``fn`` must accept and return a tensor.
     """
-    def __init__(self, fn, target: "_RemoveThis" = 'update'):
+    def __init__(self, fn):
         defaults = dict(fn=fn)
-        super().__init__(uses_grad=False, defaults=defaults, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         return setting['fn'](tensor)
 
-class CustomUnaryOperation(Transform):
-    """Applies :code:`getattr(tensor, name)` to each tensor
+class CustomUnaryOperation(TensorTransform):
+    """Applies ``getattr(tensor, name)`` to each tensor
     """
-    def __init__(self, name: str, target: "_RemoveThis" = 'update'):
+    def __init__(self, name: str):
         defaults = dict(name=name)
-        super().__init__(defaults=defaults, uses_grad=False, target=target)
+        super().__init__(defaults=defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return getattr(tensors, settings[0]['name'])()
 
 
-class Abs(Transform):
-    """Returns :code:`abs(input)`"""
-    def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
+class Abs(TensorTransform):
+    """Returns ``abs(input)``"""
+    def __init__(self): super().__init__()
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_abs_(tensors)
         return tensors
 
-class Sign(Transform):
-    """Returns :code:`sign(input)`"""
-    def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
+class Sign(TensorTransform):
+    """Returns ``sign(input)``"""
+    def __init__(self): super().__init__()
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sign_(tensors)
         return tensors
 
-class Exp(Transform):
-    """Returns :code:`exp(input)`"""
-    def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
+class Exp(TensorTransform):
+    """Returns ``exp(input)``"""
+    def __init__(self): super().__init__()
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_exp_(tensors)
         return tensors
 
-class Sqrt(Transform):
-    """Returns :code:`sqrt(input)`"""
-    def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
+class Sqrt(TensorTransform):
+    """Returns ``sqrt(input)``"""
+    def __init__(self): super().__init__()
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sqrt_(tensors)
         return tensors
 
-class Reciprocal(Transform):
-    """Returns :code:`1 / input`"""
-    def __init__(self, eps = 0, target: "_RemoveThis" = 'update'):
+class Reciprocal(TensorTransform):
+    """Returns ``1 / input``"""
+    def __init__(self, eps = 0):
         defaults = dict(eps = eps)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         eps = [s['eps'] for s in settings]
@@ -87,17 +87,17 @@ class Reciprocal(Transform):
         torch._foreach_reciprocal_(tensors)
         return tensors
 
-class Negate(Transform):
-    """Returns :code:`- input`"""
-    def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
+class Negate(TensorTransform):
+    """Returns ``- input``"""
+    def __init__(self): super().__init__()
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_neg_(tensors)
         return tensors
 
 
-class NanToNum(Transform):
-    """Convert `nan`, `inf` and `-inf` to numbers.
+class NanToNum(TensorTransform):
+    """Convert ``nan``, ``inf`` and `-`inf`` to numbers.
 
     Args:
         nan (optional): the value to replace NaNs with. Default is zero.
@@ -108,20 +108,20 @@ class NanToNum(Transform):
             If None, negative infinity values are replaced with the lowest finite value
             representable by input's dtype. Default is None.
     """
-    def __init__(self, nan=None, posinf=None, neginf=None, target: "_RemoveThis" = 'update'):
+    def __init__(self, nan=None, posinf=None, neginf=None):
         defaults = dict(nan=nan, posinf=posinf, neginf=neginf)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         nan, posinf, neginf = unpack_dicts(settings, 'nan', 'posinf', 'neginf')
         return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
-class Rescale(Transform):
-    """Rescales input to :code`(min, max)` range"""
-    def __init__(self, min: float, max: float, tensorwise: bool = False, eps:float=1e-8, target: "_RemoveThis" = 'update'):
+class Rescale(TensorTransform):
+    """Rescales input to ``(min, max)`` range"""
+    def __init__(self, min: float, max: float, tensorwise: bool = False, eps:float=1e-8):
         defaults = dict(min=min, max=max, eps=eps, tensorwise=tensorwise)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

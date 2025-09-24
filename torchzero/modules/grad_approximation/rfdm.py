@@ -231,15 +231,15 @@ class RandomizedFDM(GradApproximator):
         super().__init__(defaults, target=target)
 
 
-    def pre_step(self, var):
-        h = self.get_settings(var.params, 'h')
+    def pre_step(self, objective):
+        h = self.get_settings(objective.params, 'h')
         pre_generate = self.defaults['pre_generate']
 
         if pre_generate:
             n_samples = self.defaults['n_samples']
             distribution = self.defaults['distribution']
 
-            params = TensorList(var.params)
+            params = TensorList(objective.params)
             generator = self.get_generator(params[0].device, self.defaults['seed'])
             perturbations = [params.sample_like(distribution=distribution, variance=1, generator=generator) for _ in range(n_samples)]
 
@@ -419,19 +419,19 @@ class MeZO(GradApproximator):
         )
         return prt
 
-    def pre_step(self, var):
-        h = NumberList(self.settings[p]['h'] for p in var.params)
+    def pre_step(self, objective):
+        h = NumberList(self.settings[p]['h'] for p in objective.params)
 
         n_samples = self.defaults['n_samples']
         distribution = self.defaults['distribution']
 
-        step = var.current_step
+        step = objective.current_step
 
         # create functions that generate a deterministic perturbation from seed based on current step
         prt_fns = []
         for i in range(n_samples):
 
-            prt_fn = partial(self._seeded_perturbation, params=var.params, distribution=distribution, seed=1_000_000*step + i, h=h)
+            prt_fn = partial(self._seeded_perturbation, params=objective.params, distribution=distribution, seed=1_000_000*step + i, h=h)
             prt_fns.append(prt_fn)
 
         self.global_state['prt_fns'] = prt_fns
