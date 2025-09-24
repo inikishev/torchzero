@@ -36,7 +36,7 @@ class ClipNormByEMA(Transform):
         super().__init__(defaults, inner=inner)
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(settings[0])
 
@@ -83,7 +83,7 @@ class ClipNormByEMA(Transform):
         self.global_state['denom'] = denom
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         denom = self.global_state.pop('denom')
         torch._foreach_div_(tensors, denom)
         return tensors
@@ -130,7 +130,7 @@ class ClipValueByEMA(Transform):
             self.set_child('ema_tfm', ema_tfm)
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         ema_init = itemgetter('ema_init')(settings[0])
 
         beta = unpack_dicts(settings, 'beta', cls=NumberList)
@@ -139,7 +139,7 @@ class ClipValueByEMA(Transform):
         ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else lambda t: t.abs()), cls=TensorList)
         ema.lerp_(tensors.abs(), 1-beta)
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         ema = unpack_states(states, tensors, 'ema', cls=TensorList)
 

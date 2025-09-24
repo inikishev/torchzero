@@ -1,8 +1,9 @@
 from typing import Literal
 import torch
-from ..compile import enable_compilation
+from ..utils.compile import enable_compilation
 
 # reference - https://www.cs.cornell.edu/~bindel/class/cs6210-f09/lec18.pdf
+@enable_compilation
 def _get_w_tau(R: torch.Tensor, i: int, eps: float):
     R_ii = R[...,i,i]
     R_below = R[...,i:,i]
@@ -17,6 +18,7 @@ def _get_w_tau(R: torch.Tensor, i: int, eps: float):
     tau = torch.where(degenerate, 1, tau)
     return w, tau
 
+@enable_compilation
 def _qr_householder_complete(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
@@ -33,6 +35,7 @@ def _qr_householder_complete(A:torch.Tensor):
 
     return Q, R
 
+@enable_compilation
 def _qr_householder_reduced(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
@@ -64,7 +67,6 @@ def _qr_householder_reduced(A:torch.Tensor):
 
     return Q, R
 
-# @enable_compilation
 def qr_householder(A:torch.Tensor, mode: Literal['complete', 'reduced'] = 'reduced'):
     """an attempt at making QR decomposition for very tall and thin matrices that doesn't freeze, but it is around n_cols times slower than torch.linalg.qr, but compilation makes it faster, but it has to recompile when processing different shapes"""
     if mode == 'reduced': return _qr_householder_reduced(A)

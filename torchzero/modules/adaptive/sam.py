@@ -1,10 +1,10 @@
 from contextlib import nullcontext
 import torch
-from ...utils import TensorList, NumberList
-from ...core import Module
+from ...utils import TensorList, NumberList, unpack_dicts, unpack_states
+from ...core import Transform
 
 
-class SAM(Module):
+class SAM(Transform):
     """Sharpness-Aware Minimization from https://arxiv.org/pdf/2010.01412
 
     SAM functions by seeking parameters that lie in neighborhoods having uniformly low loss value.
@@ -22,50 +22,51 @@ class SAM(Module):
         p (float, optional): norm of the SAM objective. Defaults to 2.
         asam (bool, optional):
             enables ASAM variant which makes perturbation relative to weight magnitudes.
-            ASAM requires a much larger :code:`rho`, like 0.5 or 1.
-            The :code:`tz.m.ASAM` class is idential to setting this argument to True, but
-            it has larger :code:`rho` by default.
+            ASAM requires a much larger ``rho``, like 0.5 or 1.
+            The ``tz.m.ASAM`` class is idential to setting this argument to True, but
+            it has larger ``rho`` by default.
 
-    Examples:
-        SAM-SGD:
+    ### Examples:
 
-        .. code-block:: python
+    SAM-SGD:
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SAM(),
-                tz.m.LR(1e-2)
-            )
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SAM(),
+        tz.m.LR(1e-2)
+    )
+    ```
 
-        SAM-Adam:
+    SAM-Adam:
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SAM(),
-                tz.m.Adam(),
-                tz.m.LR(1e-2)
-            )
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SAM(),
+        tz.m.Adam(),
+        tz.m.LR(1e-2)
+    )
+    ```
 
     References:
-        Foret, P., Kleiner, A., Mobahi, H., & Neyshabur, B. (2020). Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412. https://arxiv.org/abs/2010.01412#page=3.16
+        [Foret, P., Kleiner, A., Mobahi, H., & Neyshabur, B. (2020). Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412.](https://arxiv.org/abs/2010.01412#page=3.16)
     """
     def __init__(self, rho: float = 0.05, p: float = 2, eps=1e-10, asam=False):
         defaults = dict(rho=rho, p=p, eps=eps, asam=asam)
         super().__init__(defaults)
 
     @torch.no_grad
-    def apply(self, var):
+    def update_states(self, objective, states, settings):
 
-        params = var.params
-        closure = var.closure
-        zero_grad = var.zero_grad
+        params = objective.params
+        closure = objective.closure
+        zero_grad = objective.zero_grad
         if closure is None: raise RuntimeError("SAM requires a closure passed to the optimizer step")
-        p, rho = self.get_settings(var.params, 'p', 'rho', cls=NumberList)
-        s = self.defaults
-        eps = s['eps']
-        asam = s['asam']
+        p, rho = unpack_dicts(settings, 'p', 'rho', cls=NumberList)
+        fs = settings[0]
+        eps = fs['eps']
+        asam = fs['asam']
 
         # 1/p + 1/q = 1
         # okay, authors of SAM paper, I will manually solve your equation
@@ -123,8 +124,7 @@ class SAM(Module):
 
             return sam_loss
 
-        var.closure = sam_closure
-        return var
+        objective.closure = sam_closure
 
 # different class because defaults for SAM are bad for ASAM
 class ASAM(SAM):
@@ -144,20 +144,30 @@ class ASAM(SAM):
         rho (float, optional): Neighborhood size. Defaults to 0.05.
         p (float, optional): norm of the SAM objective. Defaults to 2.
 
-    Examples:
-        ASAM-Adam:
+    ### Examples:
 
-        .. code-block:: python
+    ASAM-SGD:
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.ASAM(),
-                tz.m.Adam(),
-                tz.m.LR(1e-2)
-            )
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.ASAM(),
+        tz.m.LR(1e-2)
+    )
+    ```
 
+    ASAM-Adam:
+
+    ```
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.ASAM(),
+        tz.m.Adam(),
+        tz.m.LR(1e-2)
+    )
+    ```
     References:
-        Kwon, J., Kim, J., Park, H., & Choi, I. K. (2021, July). Asam: Adaptive sharpness-aware minimization for scale-invariant learning of deep neural networks. In International Conference on Machine Learning (pp. 5905-5914). PMLR. https://arxiv.org/abs/2102.11600
+        [Kwon, J., Kim, J., Park, H., & Choi, I. K. (2021, July). ASAM: Adaptive sharpness-aware minimization for scale-invariant learning of deep neural networks. In International Conference on Machine Learning (pp. 5905-5914). PMLR.](https://arxiv.org/abs/2102.11600)
     """
     def __init__(self, rho: float = 0.5, p: float = 2, eps=1e-10):
         super().__init__(rho=rho, p=p, eps=eps, asam=True)

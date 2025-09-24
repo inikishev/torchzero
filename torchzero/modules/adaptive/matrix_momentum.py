@@ -2,12 +2,12 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step, HVPMethod
-from ...utils import NumberList, TensorList
+from ...core import Chainable, Transform, HVPMethod
+from ...utils import NumberList, TensorList, unpack_states, unpack_dicts
 from ..functional import initial_step_size
 
 
-class MatrixMomentum(Module):
+class MatrixMomentum(Transform):
     """Second order momentum method.
 
     Matrix momentum is useful for convex objectives, also for some reason it has very really good generalization on elastic net logistic regression.
@@ -47,47 +47,41 @@ class MatrixMomentum(Module):
         h: float = 1e-3,
         adaptive:bool = False,
         adapt_freq: int | None = None,
-        hvp_tfm: Chainable | None = None,
+
+        inner: Chainable | None = None,
     ):
         defaults = dict(lr=lr, mu=mu, hvp_method=hvp_method, h=h, adaptive=adaptive, adapt_freq=adapt_freq)
-        super().__init__(defaults)
-
-        if hvp_tfm is not None:
-            self.set_child('hvp_tfm', hvp_tfm)
+        super().__init__(defaults, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
         self.clear_state_keys('p_prev')
 
     @torch.no_grad
-    def update(self, var):
-        assert var.closure is not None
-        p = TensorList(var.params)
-        p_prev = self.get_state(p, 'p_prev', init=var.params)
+    def update_states(self, objective, states, settings):
+        step = self.increment_counter("step", 0)
+        p = TensorList(objective.params)
+        p_prev = unpack_states(states, p, 'p_prev', init=p)
 
-        hvp_method = self.defaults['hvp_method']
-        h = self.defaults['h']
-        step = self.global_state.get("step", 0)
-        self.global_state["step"] = step + 1
+        fs = settings[0]
+        hvp_method = fs['hvp_method']
+        h = fs['h']
 
         if step > 0:
             s = p - p_prev
 
-            Hs, _ = var.hessian_vector_product(s, at_x0=True, rgrad=None, hvp_method=hvp_method, h=h, retain_graph=False)
+            Hs, _ = objective.hessian_vector_product(s, at_x0=True, rgrad=None, hvp_method=hvp_method, h=h, retain_graph=False)
             Hs = [t.detach() for t in Hs]
-
-            if 'hvp_tfm' in self.children:
-                Hs = TensorList(step(self.children['hvp_tfm'], Hs, params=p, grads=var.grad, var=var))
 
             self.store(p, ("Hs", "s"), (Hs, s))
 
             # -------------------------------- adaptive mu ------------------------------- #
-            if self.defaults["adaptive"]:
-                g = TensorList(var.get_grad())
+            if fs["adaptive"]:
+                g = TensorList(objective.get_grads())
 
-                if self.defaults["adapt_freq"] is None:
+                if fs["adapt_freq"] is None:
                     # ---------------------------- deterministic case ---------------------------- #
-                    g_prev = self.get_state(var.params, "g_prev", cls=TensorList)
+                    g_prev = unpack_states(states, p, "g_prev", cls=TensorList)
                     y = g - g_prev
                     g_prev.copy_(g)
                     denom = y.global_vector_norm()
@@ -100,14 +94,14 @@ class MatrixMomentum(Module):
 
                     # we start on 1nd step, and want to adapt when we start, so use (step - 1)
                     if (step - 1) % adapt_freq == 0:
-                        assert var.closure is not None
-                        params = TensorList(var.params)
+                        assert objective.closure is not None
+                        params = TensorList(objective.params)
                         p_cur = params.clone()
 
                         # move to previous params and evaluate p_prev with current mini-batch
-                        params.copy_(self.get_state(var.params, 'p_prev'))
+                        params.copy_(unpack_states(states, p, 'p_prev'))
                         with torch.enable_grad():
-                            var.closure()
+                            objective.closure()
                         g_prev = [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
                         y = g - g_prev
 
@@ -118,12 +112,12 @@ class MatrixMomentum(Module):
                         denom = denom.clip(min=torch.finfo(denom.dtype).tiny * 2)
                         self.global_state["mu_mul"] = s.global_vector_norm() / denom
 
-        torch._foreach_copy_(p_prev, var.params)
+        torch._foreach_copy_(p_prev, objective.params)
 
     @torch.no_grad
-    def apply(self, var):
-        update = TensorList(var.get_update())
-        lr,mu = self.get_settings(var.params, "lr", 'mu', cls=NumberList)
+    def apply_states(self, objective, states, settings):
+        update = TensorList(objective.get_updates())
+        lr, mu = unpack_dicts(settings, "lr", 'mu', cls=NumberList)
 
         if "mu_mul" in self.global_state:
             mu = mu * self.global_state["mu_mul"]
@@ -132,14 +126,17 @@ class MatrixMomentum(Module):
         # p_prev is not available so make a small step
         step = self.global_state["step"]
         if step == 1:
-            if self.defaults["adaptive"]: self.get_state(var.params, "g_prev", init=var.get_grad())
+            if self.defaults["adaptive"]:
+                # initialize
+                unpack_states(states, objective.params, "g_prev", init=objective.get_grads())
+
             update.mul_(lr) # separate so that initial_step_size can clip correctly
             update.mul_(initial_step_size(update, 1e-7))
-            return var
+            return objective
 
         # -------------------------- matrix momentum update -------------------------- #
-        s, Hs = self.get_state(var.params, 's', 'Hs', cls=TensorList)
+        s, Hs = unpack_states(states, objective.params, 's', 'Hs', cls=TensorList)
 
         update.mul_(lr).sub_(s).add_(Hs*mu)
-        var.update = update
-        return var
+        objective.updates = update
+        return objective

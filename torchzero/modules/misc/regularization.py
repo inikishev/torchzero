@@ -48,7 +48,7 @@ class Dropout(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         p = NumberList(s['p'] for s in settings)
         graft = settings[0]['graft']

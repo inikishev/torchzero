@@ -149,7 +149,7 @@ class ClipNormGrowth(Transform):
 
 
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         parameterwise = settings[0]['parameterwise']
         tensors = TensorList(tensors)
 

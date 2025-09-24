@@ -29,14 +29,14 @@ class Adam(TensorTransform):
         debias: bool = True,
 
         exp_avg_tfm: Chainable | None = None,
-        D_exp_avg_sq_tfm: Chainable | None = None,
+        exp_avg_sq_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults["exp_avg_tfm"], defaults["D_exp_avg_sq_tfm"]
+        del defaults['self'], defaults["exp_avg_tfm"], defaults["exp_avg_sq_tfm"]
         super().__init__(defaults)
 
         self.set_child('exp_avg', exp_avg_tfm)
-        self.set_child('D_exp_avg_sq', D_exp_avg_sq_tfm)
+        self.set_child('exp_avg_sq', exp_avg_sq_tfm)
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):

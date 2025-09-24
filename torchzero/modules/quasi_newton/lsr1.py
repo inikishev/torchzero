@@ -167,7 +167,7 @@ class LSR1(Transform):
         self.global_state.pop('step', None)
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         p = as_tensorlist(params)
         g = as_tensorlist(tensors)
         step = self.global_state.get('step', 0)
@@ -231,7 +231,7 @@ class LSR1(Transform):
         return LSR1LinearOperator(s_history, y_history)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         scale_first = self.defaults['scale_first']
 
         tensors = as_tensorlist(tensors)

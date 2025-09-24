@@ -1,4 +1,6 @@
-"""simplified version of https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.LinearOperator.html. This is used for trust regions."""
+"""This is mainly used for trust regions. In some cases certain operations are relaxed, e.g. eigenvalue shift instead of
+adding diagonal when it isn't tractable, to make it work with Levenberg-Marquadt.
+"""
 import math
 from abc import ABC, abstractmethod
 from functools import partial
@@ -7,7 +9,7 @@ from typing import cast, final
 
 import torch
 
-from ..torch_tools import tofloat, tonumpy, totensor
+from ..utils.torch_tools import tofloat, tonumpy, totensor
 from .solve import nystrom_sketch_and_solve
 
 if find_spec('scipy') is not None:
@@ -16,7 +18,6 @@ else:
     _ScipyLinearOperator = None
 
 class LinearOperator(ABC):
-    """this is used for trust region"""
     device: torch.types.Device
     dtype: torch.dtype | None
 

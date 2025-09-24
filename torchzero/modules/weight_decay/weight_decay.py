@@ -69,7 +69,7 @@ class WeightDecay(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         weight_decay = NumberList(s['weight_decay'] for s in settings)
         ord = settings[0]['ord']
 
@@ -123,7 +123,7 @@ class RelativeWeightDecay(Transform):
         super().__init__(defaults, uses_grad=norm_input == 'grad', target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         weight_decay = NumberList(s['weight_decay'] for s in settings)
 
         ord = settings[0]['ord']

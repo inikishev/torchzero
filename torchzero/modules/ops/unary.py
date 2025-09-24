@@ -15,7 +15,7 @@ class UnaryLambda(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return settings[0]['fn'](tensors)
 
 class UnaryParameterwiseLambda(TensorTransform):
@@ -39,7 +39,7 @@ class CustomUnaryOperation(Transform):
         super().__init__(defaults=defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return getattr(tensors, settings[0]['name'])()
 
 
@@ -47,7 +47,7 @@ class Abs(Transform):
     """Returns :code:`abs(input)`"""
     def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_abs_(tensors)
         return tensors
 
@@ -55,7 +55,7 @@ class Sign(Transform):
     """Returns :code:`sign(input)`"""
     def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sign_(tensors)
         return tensors
 
@@ -63,7 +63,7 @@ class Exp(Transform):
     """Returns :code:`exp(input)`"""
     def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_exp_(tensors)
         return tensors
 
@@ -71,7 +71,7 @@ class Sqrt(Transform):
     """Returns :code:`sqrt(input)`"""
     def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_sqrt_(tensors)
         return tensors
 
@@ -81,7 +81,7 @@ class Reciprocal(Transform):
         defaults = dict(eps = eps)
         super().__init__(defaults, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         eps = [s['eps'] for s in settings]
         if any(e != 0 for e in eps): torch._foreach_add_(tensors, eps)
         torch._foreach_reciprocal_(tensors)
@@ -91,7 +91,7 @@ class Negate(Transform):
     """Returns :code:`- input`"""
     def __init__(self, target: "_RemoveThis" = 'update'): super().__init__({}, uses_grad=False, target=target)
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         torch._foreach_neg_(tensors)
         return tensors
 
@@ -113,7 +113,7 @@ class NanToNum(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         nan, posinf, neginf = unpack_dicts(settings, 'nan', 'posinf', 'neginf')
         return [t.nan_to_num_(nan_i, posinf_i, neginf_i) for t, nan_i, posinf_i, neginf_i in zip(tensors, nan, posinf, neginf)]
 
@@ -124,7 +124,7 @@ class Rescale(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         min, max = unpack_dicts(settings, 'min','max')
         tensorwise = settings[0]['tensorwise']
         dim = None if tensorwise else 'global'

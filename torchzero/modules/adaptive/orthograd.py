@@ -1,13 +1,9 @@
-from operator import itemgetter
-import math
-import warnings
-from collections.abc import Iterable, Sequence
-from typing import Literal
+from collections.abc import Iterable
 
 import torch
 
-from ...core import  Transform
-from ...utils import as_tensorlist
+from ...core import  TensorTransform
+from ...utils import TensorList
 
 def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
     """Applies ⟂Grad - projects gradient of an iterable of parameters to be orthogonal to the weights.
@@ -19,29 +15,29 @@ def orthograd_(params: Iterable[torch.Tensor], eps: float = 1e-30):
     reference
         https://arxiv.org/abs/2501.04697
     """
-    params = as_tensorlist(params).with_grad()
+    params = TensorList(params).with_grad()
     grad = params.grad
     grad -= (params.dot(grad)/(params.dot(params) + eps)) * params
 
 
-class OrthoGrad(Transform):
+class OrthoGrad(TensorTransform):
     """Applies ⟂Grad - projects gradient of an iterable of parameters to be orthogonal to the weights.
 
     Args:
         eps (float, optional): epsilon added to the denominator for numerical stability (default: 1e-30)
         renormalize (bool, optional): whether to graft projected gradient to original gradient norm. Defaults to True.
-        target (Target, optional): what to set on var. Defaults to 'update'.
     """
-    def __init__(self, eps: float = 1e-8, renormalize=True, target: _RemoveThis = 'update'):
+    def __init__(self, eps: float = 1e-8, renormalize=True):
         defaults = dict(eps=eps, renormalize=renormalize)
-        super().__init__(defaults, uses_grad=False, target=target)
+        super().__init__(defaults)
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         eps = settings[0]['eps']
         renormalize = settings[0]['renormalize']
 
-        params = as_tensorlist(params)
-        target = as_tensorlist(tensors)
+        params = TensorList(params)
+        target = TensorList(tensors)
 
         scale = params.dot(target)/(params.dot(params) + eps)
         if renormalize:

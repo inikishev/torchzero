@@ -6,8 +6,8 @@ from collections.abc import Callable
 from typing import Any, NamedTuple, overload
 
 import torch
-from .utils import mm
-from .. import (
+from .linalg_utils import mm
+from ..utils import (
     TensorList,
     generic_eq,
     generic_finfo_tiny,
@@ -15,7 +15,6 @@ from .. import (
     generic_vector_norm,
     generic_zeros_like,
 )
-
 
 def _make_A_mv_reg(A_mv: Callable, reg):
     def A_mv_reg(x): # A_mm with regularization
@@ -26,41 +25,22 @@ def _make_A_mv_reg(A_mv: Callable, reg):
 
 def _identity(x): return x
 
-
-# https://arxiv.org/pdf/2110.02820
-def nystrom_approximation(
-    A_mv: Callable[[torch.Tensor], torch.Tensor] | None,
-    ndim: int,
-    rank: int,
-    device,
-    dtype = torch.float32,
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    generator = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Computes Nyström approximation to positive-semidefinite A factored as Q L Q^T (truncatd eigenvalue decomp),
-    returns (L, Q). A is (n,n), then Q is (n, rank); L is a vector - diagonal of (rank, rank)"""
-    # basis
-    O = torch.randn((ndim, rank), device=device, dtype=dtype, generator=generator) # Gaussian test matrix
-    O, _ = torch.linalg.qr(O) # Thin QR decomposition # pylint:disable=not-callable
-
-    # Y = AΩ
-    AO = mm(A_mv=A_mv, A_mm=A_mm, X=O)
-
-    v = torch.finfo(dtype).eps * torch.linalg.matrix_norm(AO, ord='fro') # Compute shift # pylint:disable=not-callable
-    Yv = AO + v*O # Shift for stability
-    C = torch.linalg.cholesky_ex(O.mT @ Yv)[0] # pylint:disable=not-callable
-    B = torch.linalg.solve_triangular(C, Yv.mT, upper=False, unitriangular=False).mT # pylint:disable=not-callable
-    Q, S, _ = torch.linalg.svd(B, full_matrices=False) # pylint:disable=not-callable
-    L = (S.pow(2) - v).clip(min=0) #Remove shift, compute eigs
-    return L, Q
-
-
+# TODO this is used in NystromSketchAndSolve
+# I need to add alternative to it where it just shifts eigenvalues by reg and uses their reciprocal
 def nystrom_sketch_and_solve(
     L: torch.Tensor,
     Q: torch.Tensor,
     b: torch.Tensor,
     reg: float = 1e-3,
 ) -> torch.Tensor:
+    """Solves (Q diag(L) Q.T + reg*I)x = b. Becomes super unstable with reg smaller than like 1e-5.
+
+    Args:
+        L (torch.Tensor): eigenvalues, like from ``nystrom_approximation``
+        Q (torch.Tensor): eigenvectors, like from ``nystrom_approximation``
+        b (torch.Tensor): right hand side
+        reg (float, optional): regularization. Defaults to 1e-3.
+    """
 
     b = b.unsqueeze(-1)
     L += reg
@@ -73,27 +53,30 @@ def nystrom_sketch_and_solve(
     return (term1 + term2).squeeze(-1)
 
 def nystrom_pcg(
+    L: torch.Tensor,
+    Q: torch.Tensor,
     A_mv: Callable[[torch.Tensor], torch.Tensor],
     b: torch.Tensor,
-    sketch_size: int,
     reg: float = 1e-6,
     x0_: torch.Tensor | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
-    A_mm: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    generator=None,
 ) -> torch.Tensor:
+    """conjugate gradient preconditioned by nystrom approximation.
 
-    L, Q = nystrom_approximation(
-        A_mv=A_mv,
-        ndim=b.size(-1),
-        rank=sketch_size,
-        device=b.device,
-        dtype=b.dtype,
-        A_mm=A_mm,
-        generator=generator,
-    )
+    The preconditioner can be computed by one matrix-matrix multiplication with A.
+    If matrix-matrix is efficient, then this is good (e.g. batched hessian-vector products in pytorch)
 
+    Args:
+        L (torch.Tensor): eigenvalues of approximation of A, like from ``nystrom_approximation``
+        Q (torch.Tensor): eigenvectors of approximation of A, like from ``nystrom_approximation``
+        A_mv (Callable[[torch.Tensor], torch.Tensor]): mat-vec func with hessian
+        b (torch.Tensor): right hand side
+        reg (float, optional): regularization. Defaults to 1e-6.
+        x0_ (torch.Tensor | None, optional): initial guess (modified in-place). Defaults to None.
+        tol (float | None, optional): tolerance for convergence. Defaults to 1e-4.
+        maxiter (int | None, optional): maximum number of iterations. Defaults to None.
+    """
     L += reg
     eps = torch.finfo(b.dtype).tiny * 2
     if tol is None: tol = eps
@@ -153,7 +136,7 @@ def _trust_tau(x, d, trust_radius):
 
 
 class CG:
-    """Conjugate gradient method.
+    """Conjugate gradient method optionally with norm constraint.
 
     Args:
         A_mv (Callable[[torch.Tensor], torch.Tensor] | torch.Tensor): Callable that returns matvec ``Ax``.
@@ -180,7 +163,7 @@ class CG:
         A_mv: Callable,
         b: torch.Tensor | TensorList,
         x0: torch.Tensor | TensorList | None = None,
-        tol: float | None = 1e-4,
+        tol: float | None = 1e-8,
         maxiter: int | None = None,
         reg: float = 0,
         trust_radius: float | None = None,
@@ -292,7 +275,8 @@ class CG:
         return sol
 
 def find_within_trust_radius(history, trust_radius: float):
-    """find first ``x`` in history that exceeds trust radius, if no such ``x`` exists, returns ``None``"""
+    """find first ``x`` in history that exceeds trust radius and returns solution within,
+    if no such ``x`` exists, returns ``None``"""
     for x, x_norm, d in reversed(tuple(history)):
         if x_norm <= trust_radius:
             return _trust_tau(x, d, trust_radius)
@@ -376,7 +360,7 @@ def minres(
     A_mv: Callable[[torch.Tensor], torch.Tensor] | torch.Tensor,
     b: torch.Tensor,
     x0: torch.Tensor | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float = 0,
     npc_terminate: bool=True,
@@ -387,7 +371,7 @@ def minres(
     A_mv: Callable[[TensorList], TensorList],
     b: TensorList,
     x0: TensorList | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
@@ -397,12 +381,13 @@ def minres(
     A_mv,
     b,
     x0: torch.Tensor | TensorList | None = None,
-    tol: float | None = 1e-4,
+    tol: float | None = 1e-8,
     maxiter: int | None = None,
     reg: float | list[float] | tuple[float] = 0,
     npc_terminate: bool=True,
     trust_radius: float | None = None, #trust region is experimental
 ):
+    """MINRES (experimental)"""
     A_mv_reg = _make_A_mv_reg(A_mv, reg)
     eps = math.sqrt(generic_finfo_tiny(b) * 2)
     if tol is None: tol = eps

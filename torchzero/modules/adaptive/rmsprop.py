@@ -3,43 +3,10 @@ from typing import Literal
 
 import torch
 
-from ...core import Module,  Transform, Chainable, Objective, step
+from ...core import TensorTransform, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..functional import sqrt_centered_ema_sq_, sqrt_ema_sq_
 
-
-def rmsprop_(
-    tensors_: TensorList,
-    exp_avg_sq_: TensorList,
-    smoothing: float | NumberList,
-    eps: float | NumberList,
-    debiased: bool,
-    step: int,
-    exp_avg_: TensorList | None = None,
-    max_exp_avg_sq_: TensorList | None = None,
-    pow: float = 2,
-
-    # inner args
-    inner: Module | None = None,
-    params: list[torch.Tensor] | None = None,
-    grads: list[torch.Tensor] | None = None,
-):
-    """returns `tensors_`"""
-    if exp_avg_ is not None:
-        sqrt_exp_avg_sq = sqrt_centered_ema_sq_(tensors=tensors_, exp_avg_=exp_avg_,
-                                                exp_avg_sq_=exp_avg_sq_,max_exp_avg_sq_=max_exp_avg_sq_,
-                                                beta=smoothing,debiased=debiased,step=step,pow=pow)
-    else:
-        sqrt_exp_avg_sq = sqrt_ema_sq_(tensors=tensors_,exp_avg_sq_=exp_avg_sq_,max_exp_avg_sq_=max_exp_avg_sq_,
-                                       beta=smoothing,debiased=debiased,step=step,pow=pow)
-
-    if inner is not None:
-        assert params is not None
-        tensors_ = TensorList(step(inner, tensors_, params=params, grads=grads))
-
-    return tensors_.div_(sqrt_exp_avg_sq.add_(eps))
-
-class RMSprop(Transform):
+class RMSprop(TensorTransform):
     """Divides graient by EMA of gradient squares.
 
     This implementation is identical to :code:`torch.optim.RMSprop`.
@@ -48,7 +15,7 @@ class RMSprop(Transform):
         smoothing (float, optional): beta for exponential moving average of gradient squares. Defaults to 0.99.
         eps (float, optional): epsilon for division. Defaults to 1e-8.
         centered (bool, optional): whether to center EMA of gradient squares using an additional EMA. Defaults to False.
-        debiased (bool, optional): applies Adam debiasing. Defaults to False.
+        debias (bool, optional): applies Adam debiasing. Defaults to False.
         amsgrad (bool, optional): Whether to divide by maximum of EMA of gradient squares instead. Defaults to False.
         pow (float, optional): power used in second momentum power and root. Defaults to 2.
         init (str, optional): how to initialize EMA, either "update" to use first update or "zeros". Defaults to "update".
@@ -60,44 +27,72 @@ class RMSprop(Transform):
         smoothing: float = 0.99,
         eps: float = 1e-8,
         centered: bool = False,
-        debiased: bool = False,
+        debias: bool = False,
         amsgrad: bool = False,
-        pow: float = 2,
         init: Literal["zeros", "update"] = "zeros",
+
         inner: Chainable | None = None,
+        exp_avg_sq_tfm: Chainable | None = None,
     ):
-        defaults = dict(smoothing=smoothing,eps=eps,centered=centered,debiased=debiased,amsgrad=amsgrad,pow=pow,init=init)
-        super().__init__(defaults=defaults, uses_grad=False)
+        defaults = locals().copy()
+        del defaults['self'], defaults["inner"], defaults["exp_avg_sq_tfm"]
+        super().__init__(defaults, inner=inner)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child('exp_avg_sq', exp_avg_sq_tfm)
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
-        smoothing, eps = unpack_dicts(settings, 'smoothing', 'eps', cls=NumberList)
-        centered, debiased, amsgrad, pow, init = itemgetter('centered','debiased','amsgrad','pow','init')(settings[0])
+    @torch.no_grad
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        if setting["init"] == "zeros":
+            state["exp_avg_sq"] = torch.zeros_like(tensor)
+            if setting["centered"]: state["exp_avg"] = torch.zeros_like(tensor)
+            if setting["amsgrad"]: state["amsgrad"] = torch.zeros_like(tensor)
 
-        exp_avg_sq = unpack_states(states, tensors, 'exp_avg_sq', cls=TensorList)
-        exp_avg = unpack_states(states, tensors, 'exp_avg', cls=TensorList) if centered else None
-        max_exp_avg_sq = unpack_states(states, tensors, 'max_exp_avg_sq', cls=TensorList) if amsgrad else None
+        else:
+            state["exp_avg_sq"] = tensor ** 2
+            if setting["centered"]: state["exp_avg"] = tensor.clone()
+            if setting["amsgrad"]: state["amsgrad"] = tensor ** 2
 
-        if init == 'update' and step == 1:
-            exp_avg_sq.set_([t**2 for t in tensors])
-            if exp_avg is not None: exp_avg.set_([t.clone() for t in tensors])
+    @torch.no_grad
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
+        step = self.increment_counter("step", start = 0)
+        fs = settings[0]
 
-        return rmsprop_(
-            TensorList(tensors),
-            exp_avg_sq_=exp_avg_sq,
-            smoothing=smoothing,
-            eps=eps,
-            debiased=debiased,
-            step=step,
-            exp_avg_=exp_avg,
-            max_exp_avg_sq_=max_exp_avg_sq,
-            pow=pow,
+        exp_avg_sq = unpack_states(states, tensors, "exp_avg_sq", cls=TensorList)
 
-            # inner args
-            inner=self.children.get("inner", None),
-            params=params,
-            grads=grads,
-        )
+        # update exponential average
+        smoothing = NumberList(s["smoothing"] for s in settings)
+        exp_avg_sq.mul_(smoothing).addcmul(tensors, tensors, value=1-smoothing)
+
+        # center
+        if fs["centered"]:
+            exp_avg = unpack_states(states, tensors, "exp_avg_sq", cls=TensorList)
+            exp_avg.lerp_(tensors, 1-smoothing)
+
+            if fs["debias"]:
+                bias_correction = 1 - (smoothing ** (step + 1))
+                exp_avg = exp_avg / bias_correction
+            exp_avg_sq = exp_avg_sq.addcmul(exp_avg, exp_avg, value=-1)
+
+        # amsgrad
+        if fs["amsgrad"]:
+            exp_avg_sq_max = unpack_states(states, tensors, "exp_avg_sq_max", cls=TensorList)
+            exp_avg_sq_max.maximum_(exp_avg_sq)
+
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        tensors = TensorList(tensors)
+        step = self.global_state["step"] # 0 on 1st step
+        eps = NumberList(s["eps"] for s in settings)
+        fs = settings[0]
+
+        if fs["amsgrad"]: key = "max_exp_avg_sq"
+        else: key = "exp_avg_sq"
+        exp_avg_sq = [s[key] for s in states]
+        exp_avg_sq = TensorList(self.inner_tensors_step("exp_avg_sq", exp_avg_sq, clone=True, must_exist=False))
+
+        if fs["debias"]:
+            smoothing = NumberList(s["smoothing"] for s in settings)
+            bias_correction = 1 - (smoothing ** (step + 1))
+            exp_avg_sq = exp_avg_sq / bias_correction
+
+        return tensors.div_(exp_avg_sq.sqrt().add_(eps))

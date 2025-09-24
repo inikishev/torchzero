@@ -3,8 +3,10 @@ import warnings
 
 import torch
 
-from ...core import Chainable, Transform, step
+from ...core import TensorTransform
+from ...utils import unpack_dicts, unpack_states, TensorList, NumberList
 from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
+from ...linalg import torch_linalg
 
 @torch.no_grad
 def update_soap_covariances_(
@@ -20,52 +22,48 @@ def update_soap_covariances_(
         else: GG.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
 
 @torch.no_grad
-def project(tensors: torch.Tensor, Q: list[torch.Tensor | None]):
+def project(tensor: torch.Tensor, Q: list[torch.Tensor | None]):
     """
     Projects the gradient to the eigenbases of the preconditioner.
     """
-    for mat in Q:
-        if mat is not None and len(mat) > 0:
-            tensors = torch.tensordot(tensors, mat, dims=[[0], [0]]) # pyright:ignore[reportArgumentType]
+    for M in Q:
+        if M is not None:
+            tensor = torch.tensordot(tensor, M, dims=[[0], [0]]) # pyright:ignore[reportArgumentType]
         else:
-            permute_order = list(range(1, len(tensors.shape))) + [0]
-            tensors = tensors.permute(permute_order)
+            permute_order = list(range(1, len(tensor.shape))) + [0]
+            tensor = tensor.permute(permute_order)
 
-    return tensors
+    return tensor
 
 @torch.no_grad
-def project_back(tensors: torch.Tensor, Q: list[torch.Tensor| None]):
+def project_back(tensor: torch.Tensor, Q: list[torch.Tensor| None]):
     """
     Projects the gradient back to the original space.
     """
-    for mat in Q:
-        if mat is not None and len(mat) > 0:
-            tensors = torch.tensordot(tensors, mat,dims=[[0], [1]]) # pyright:ignore[reportArgumentType]
+    for M in Q:
+        if M is not None:
+            tensor = torch.tensordot(tensor, M, dims=[[0], [1]]) # pyright:ignore[reportArgumentType]
         else:
-            permute_order = list(range(1, len(tensors.shape))) + [0]
-            tensors = tensors.permute(permute_order)
+            permute_order = list(range(1, len(tensor.shape))) + [0]
+            tensor = tensor.permute(permute_order)
 
-    return tensors
+    return tensor
 
 # function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
 @torch.no_grad
-def get_orthogonal_matrix(mat: list[torch.Tensor | None]):
+def get_orthogonal_matrix(mats: list[torch.Tensor | None]):
     """
     Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
     """
 
     final = []
-    for m in mat:
+    for M in mats:
 
-        if m is None or len(m) == 0:
-            final.append([])
+        if M is None:
+            final.append(None)
             continue
 
-        try:
-            _, Q = torch.linalg.eigh(m+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-        except torch.linalg.LinAlgError:
-            _, Q = torch.linalg.eigh(m.to(torch.float64)+1e-30*torch.eye(m.shape[0], device=m.device)) # pylint:disable=not-callable
-            Q = Q.to(m.dtype)
+        _, Q = torch_linalg.eigh(M + 1e-30 * torch.eye(M.shape[0], device=M.device), retry_float64=True)
 
         Q = torch.flip(Q, [1])
         final.append(Q)
@@ -78,30 +76,33 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
     """
     Computes the eigenbases of the preconditioner using one round of power iteration
     followed by torch.linalg.qr decomposition.
-    """
+
+    Approximately modifies ``exp_avg_sq`` to be in the new eigenbases.
+     """
     final = []
 
-    for ind, (m,o) in enumerate(zip(GG, Q_list)):
+    for ind, (M, O) in enumerate(zip(GG, Q_list)):
 
         # skip 1d or large dims
-        if m is None or len(m) == 0:
-            final.append([])
+        if M is None:
+            final.append(None)
             continue
-        assert o is not None
 
-        est_eig = torch.diag(o.T @ m @ o)
+        assert O is not None
+
+        est_eig = torch.diagonal(O.T @ M @ O)
         sort_idx = torch.argsort(est_eig, descending=True)
         exp_avg_sq = exp_avg_sq.index_select(ind, sort_idx)
 
-        power_iter = m @ o[:, sort_idx]
-        Q, _ = torch.linalg.qr(power_iter.to(torch.float32)) # pylint:disable=not-callable
+        power_iter = M @ O[:, sort_idx]
+        Q, _ = torch_linalg.qr(power_iter.to(torch.float32), retry_float64=True)
         Q = Q.to(power_iter.dtype)
 
         final.append(Q)
 
     return final, exp_avg_sq
 
-class SOAP(Transform):
+class SOAP(TensorTransform):
     """SOAP (ShampoO with Adam in the Preconditioner's eigenbasis from https://arxiv.org/abs/2409.11321).
 
     Args:
@@ -111,35 +112,36 @@ class SOAP(Transform):
             beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad (which works worse). Defaults to 0.95.
         precond_freq (int, optional): How often to update the preconditioner. Defaults to 10.
         merge_small (bool, optional): Whether to merge small dims. Defaults to True.
-        max_dim (int, optional): Won't precondition dims larger than this. Defaults to 2_000.
+        max_dim (int, optional): Won't precondition dims larger than this. Defaults to 10_000.
         precondition_1d (bool, optional):
             Whether to precondition 1d params (SOAP paper sets this to False). Defaults to True.
         eps (float, optional):
             epsilon for dividing first momentum by second. Defaults to 1e-8.
-        decay (float | None, optional):
-            Decays covariance matrix accumulators, this may be useful if `shampoo_beta` is None. Defaults to None.
         alpha (float, optional):
             learning rate. Defaults to 1.
         bias_correction (bool, optional):
             enables adam bias correction. Defaults to True.
 
-    Examples:
-        SOAP:
+    ### Examples:
+    SOAP:
 
-        .. code-block:: python
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SOAP(),
+        tz.m.LR(1e-3)
+    )
+    ```
+    Stabilized SOAP:
 
-            opt = tz.Modular(model.parameters(), tz.m.SOAP(), tz.m.LR(1e-3))
-
-        Stabilized SOAP:
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.SOAP(),
-                tz.m.NormalizeByEMA(max_ema_growth=1.2),
-                tz.m.LR(1e-2)
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.SOAP(),
+        tz.m.NormalizeByEMA(max_ema_growth=1.2),
+        tz.m.LR(1e-2)
+    )
+    ```
     """
     def __init__(
         self,
@@ -148,118 +150,136 @@ class SOAP(Transform):
         shampoo_beta: float | None = 0.95,
         precond_freq: int = 10,
         merge_small: bool = True,
-        max_dim: int = 2_000,
+        max_dim: int = 10_000,
         precondition_1d: bool = True,
         eps: float = 1e-8,
-        decay: float | None = None,
+        debias: bool = True,
         alpha: float = 1,
         bias_correction: bool = True,
     ):
-        defaults = dict(
-            beta1=beta1,
-            beta2=beta2,
-            shampoo_beta=shampoo_beta,
-            precond_freq=precond_freq,
-            merge_small=merge_small,
-            max_dim=max_dim,
-            precondition_1d=precondition_1d,
-            eps=eps,
-            decay=decay,
-            bias_correction=bias_correction,
-            alpha=alpha,
-        )
-        super().__init__(defaults, uses_grad=False)
+        defaults = locals().copy()
+        del defaults['self']
+
+        super().__init__(defaults)
+
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        updates = []
-        # update preconditioners
-        for i,(p,t, state, setting) in enumerate(zip(params, tensors, states, settings)):
-            beta1, beta2, shampoo_beta, merge_small, max_dim, precondition_1d, eps,alpha = itemgetter(
-                'beta1', 'beta2', 'shampoo_beta', 'merge_small', 'max_dim', 'precondition_1d', 'eps','alpha')(setting)
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        if setting["merge_small"]:
+            tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
-            if merge_small:
-                t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
+        state["exp_avg_proj"] = torch.zeros_like(tensor)
+        state["exp_avg_sq_proj"] = torch.zeros_like(tensor)
 
-            # initialize state on 1st step
-            if 'GG' not in state:
-                state["exp_avg"] = torch.zeros_like(t)
-                state["exp_avg_sq_projected"] = torch.zeros_like(t)
+        if tensor.ndim <= 1 and not setting["precondition_1d"]:
+            state['GG'] = []
 
-                if not precondition_1d and t.ndim <= 1:
-                    state['GG'] = []
+        else:
+            max_dim = setting["max_dim"]
+            state['GG'] = [
+                torch.zeros(s, s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
+            ]
 
-                else:
-                    state['GG'] = [torch.zeros(s, s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
+        # either scalar parameter, 1d with precondition_1d=False, or all dims are too big.
+        if len([i is not None for i in state['GG']]) == 0:
+            state['GG'] = None
 
-                # either scalar parameter, 1d with precondition_1d=False, or all dims are too big.
-                if len([i is not None for i in state['GG']]) == 0:
-                    state['GG'] = None
+        # first covariance accumulation
+        if state['GG'] is not None:
+            update_soap_covariances_(tensor, GGs_=state['GG'], beta=setting["shampoo_beta"])
 
-                if state['GG'] is not None:
-                    update_soap_covariances_(t, GGs_=state['GG'], beta=shampoo_beta)
-                    try: state['Q'] = get_orthogonal_matrix(state['GG'])
-                    except torch.linalg.LinAlgError as e:
-                        warnings.warn(f"torch.linalg.eigh raised an error when initializing SOAP Q matrices on 1st step, diagonal preconditioning will be used for this parameter. The error was:\n{e}")
-                        state["GG"] = None
+            # get projection matrix with first gradients with eigh
+            try: state['Q'] = get_orthogonal_matrix(state['GG'])
+            except torch.linalg.LinAlgError as e:
+                warnings.warn(f"torch.linalg.eigh raised an error when initializing SOAP Q matrices on 1st step, diagonal preconditioning will be used for this parameter. The error was:\n{e}")
+                state["GG"] = None
 
-                state['step'] = 0
-                updates.append(tensors[i].clip(-0.1, 0.1))
-                continue  # skip 1st step as in https://github.com/nikhilvyas/SOAP/blob/main/soap.py ?
-                # I use scaled update instead as to not mess up with next modules.
+        state['step'] = 0
 
-            # Projecting gradients to the eigenbases of Shampoo's preconditioner
-            # i.e. projecting to the eigenbases of matrices in state['GG']
-            t_projected = None
+
+    # no update because
+    # 1. to avoid running merge_dims twice
+    # 2. because there isn't any good place to put `inner`.
+
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        # note
+        # do not modify tensors in-place
+        # because they are used to update preconditioner at the end
+
+        steps = [s["step"] for s in states]
+        if any(s is None for s in steps):
+            # skip 1st update so to avoid using current gradient in the projection
+            # I scale it instead to avoid issues with further modules
+            return TensorList(tensors).clamp(-0.1, 0.1)
+
+        fs = settings[0]
+        projected = []
+
+        # ---------------------------------- project --------------------------------- #
+        for dir, state, setting in zip(tensors, states, settings):
+            if setting["merge_small"]:
+                dir, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(dir, setting["max_dim"])
+
             if state['GG'] is not None:
-                t_projected = project(t, state['Q'])
+                dir = project(dir, state['Q'])
 
-            # exponential moving averages
-            # this part could be foreached but I will do that at some point its not a big difference compared to preconditioning
-            exp_avg: torch.Tensor = state["exp_avg"]
-            exp_avg_sq_projected: torch.Tensor = state["exp_avg_sq_projected"]
+            projected.append(dir)
 
-            exp_avg.lerp_(t, 1-beta1)
+        # ------------------------ run adam in projected space ----------------------- #
+        exp_avg_proj, exp_avg_sq_proj = unpack_states(states, tensors, "exp_avg_proj", "exp_avg_sq_proj", must_exist=True, cls=TensorList)
 
-            if t_projected is None:
-                exp_avg_sq_projected.mul_(beta2).addcmul_(t, t, value=1-beta2)
-            else:
-                exp_avg_sq_projected.mul_(beta2).addcmul_(t_projected, t_projected, value=1-beta2)
+        alpha, beta1, beta2, eps = unpack_dicts(settings, "alpha", "beta1", "beta2", "eps", cls=NumberList)
+        exp_avg_proj.lerp_(projected, weight=1-beta1)
+        exp_avg_sq_proj.mul_(beta2).addcmul_(projected, projected, value=1-beta2)
 
-            # project exponential moving averages if they are accumulated unprojected
-            exp_avg_projected = exp_avg
-            if t_projected is not None:
-                exp_avg_projected = project(exp_avg, state['Q'])
+        denom = exp_avg_sq_proj.sqrt().add_(eps)
+        dirs_proj = exp_avg_proj / denom
 
-            denom = exp_avg_sq_projected.sqrt().add_(eps)
-            # print(f'{t_projected = }, {exp_avg = }, {exp_avg_projected = }, {exp_avg_sq = }, {exp_avg_sq_projected = }, {denom = }')
-
-            # Projecting back the preconditioned (by Adam) exponential moving average of gradients
-            # to the original space
-            update = exp_avg_projected / denom
-
-            if t_projected is not None:
-                update = project_back(update, state["Q"])
-
-            if setting['bias_correction']:
-                bias_correction1 = 1.0 - beta1 ** (state["step"]+1)
-                bias_correction2 = 1.0 - beta2 ** (state["step"]+1)
-                update *= ((bias_correction2 ** .5) / bias_correction1) * alpha
-            elif alpha is not None:
-                update *= alpha
-
-            if merge_small:
-                update = _unmerge_small_dims(update, state['flat_sizes'], state['sort_idxs'])
-
-            updates.append(update)
-            state["step"] += 1
-
-            # Update is done after the gradient step to avoid using current gradients in the projection.
+        # ------------------------------- project back ------------------------------- #
+        dirs: list[torch.Tensor] = []
+        for dir, state, setting in zip(dirs_proj, states, settings):
             if state['GG'] is not None:
-                update_soap_covariances_(t, state['GG'], shampoo_beta)
+                dir = project_back(dir, state['Q'])
+
+            if setting["merge_small"]:
+                dir = _unmerge_small_dims(dir, state['flat_sizes'], state['sort_idxs'])
+
+            dirs.append(dir)
+
+
+        # -------------------------- update preconditioners -------------------------- #
+        # Update is done after the gradient step to avoid using current gradients in the projection.
+        for tensor, state, setting in zip(tensors, states, settings):
+            if state['GG'] is not None:
+
+                # lerp covariances
+                update_soap_covariances_(tensor, state['GG'], beta=setting["shampoo_beta"])
+
                 if state['step'] % setting['precond_freq'] == 0:
+
+                    # unproject exp_avg before updating
+                    exp_avg = project_back(state["exp_avg_proj"], state["Q"])
+
+                    # update projection matrix and exp_avg_sq_proj
+                    exp_avg_sq_proj = state["exp_avg_sq_proj"]
                     try:
-                        state['Q'], state['exp_avg_sq_projected'] = get_orthogonal_matrix_QR(exp_avg_sq_projected, state['GG'], state['Q'])
+                        state['Q'], state['exp_avg_sq_proj'] = get_orthogonal_matrix_QR(exp_avg_sq_proj, state['GG'], state['Q'])
+
+                        # re-project exp_avg
+                        state["exp_avg_proj"] = project(exp_avg, state["Q"])
+
                     except torch.linalg.LinAlgError:
                         pass
-        return updates
+
+            state["step"] += 1
+
+
+        # ------------------------- bias-corrected step size ------------------------- #
+        if fs["debias"]:
+            bias_correction1 = 1.0 - beta1 ** steps
+            bias_correction2 = 1.0 - beta2 ** steps
+            alpha = alpha * (bias_correction2 ** .5) / bias_correction1
+
+        torch._foreach_mul_(dirs, alpha)
+        return dirs

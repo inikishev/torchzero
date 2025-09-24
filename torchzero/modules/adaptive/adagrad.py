@@ -6,7 +6,7 @@ from ...core import (
     TensorTransform,
 )
 from ...utils import NumberList, TensorList, unpack_dicts
-from ...utils.linalg import matrix_power_eigh
+from ...linalg.matrix_power import matrix_power as _matrix_power, MatrixPowerMethod
 
 class Adagrad(TensorTransform):
     """Adagrad, divides by sum of past squares of gradients.
@@ -42,9 +42,8 @@ class Adagrad(TensorTransform):
         self.set_child('accumulator', accumulator_tfm)
 
     @torch.no_grad
-    def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
-        for tensor, state, setting in zip(tensors, states, settings):
-            state["accumulator"] = torch.full_like(tensor, fill_value=setting["initial_accumulator_value"])
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        state["accumulator"] = torch.full_like(tensor, fill_value=setting["initial_accumulator_value"])
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
@@ -224,6 +223,7 @@ class FullMatrixAdagrad(TensorTransform):
         beta_debias: bool=True,
         init: Literal["identity", "zeros", "GGT"] = "identity",
         matrix_power: float = -1/2,
+        matrix_power_method: MatrixPowerMethod = "eigh",
         concat_params=True,
 
         inner: Chainable | None = None,
@@ -286,7 +286,7 @@ class FullMatrixAdagrad(TensorTransform):
             # compute inverse square root and store to state
             try:
                 if "B" not in state or step % precond_freq == 0:
-                    B = state["B"] = matrix_power_eigh(accumulator, setting["matrix_power"], abs=True)
+                    B = state["B"] = _matrix_power(accumulator, setting["matrix_power"], method=setting["matrix_power_method"])
                 else:
                     B = state["B"]
 

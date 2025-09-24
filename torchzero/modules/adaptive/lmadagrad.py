@@ -16,7 +16,13 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
         MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype).mul_(damping))
 
     try:
-        L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
+        try:
+            L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
+        except torch.linalg.LinAlgError as e:
+            dtype = MTM.dtype
+            if dtype == torch.float64: raise e
+            L, Q = torch.linalg.eigh(MTM.to(torch.float64)) # pylint:disable=not-callable
+            L = L.to(dtype); Q = Q.to(dtype)
 
         tol = torch.finfo(M.dtype).eps * L.amax() # remove small eigenvalues
         indices = L > tol
@@ -116,12 +122,18 @@ class LMAdagrad(TensorTransform):
         U_beta: float | None = None,
         L_beta: float | None = None,
         concat_params: bool = True,
+
         inner: Chainable | None = None,
+        U_tfm: Chainable | None = None,
+        L_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner'], defaults['concat_params']
+        del defaults['self'], defaults['inner'], defaults['concat_params'], defaults["U_tfm"], defaults["L_tfm"]
 
         super().__init__(defaults, concat_params=concat_params, inner=inner)
+
+        self.set_child("U", U_tfm)
+        self.set_child("L", L_tfm)
 
     @torch.no_grad
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
@@ -177,10 +189,19 @@ class LMAdagrad(TensorTransform):
         U = state.get('U', None)
         if U is None:
             # make a conservative step to avoid issues due to different GD scaling
-            return tensor.clip_(-0.1, 0.1) # pyright:ignore[reportArgumentType]
+            return tensor.clip_(-0.1, 0.1)
 
+        # -------------------------------- transforms -------------------------------- #
         L = state['L']
-        update = lm_adagrad_apply(tensor.view(-1), U, L).view_as(tensor)
+        if "L" in self.children:
+            if not self._concat_params: raise RuntimeError("L/U transforms can only be used with concat_params=True")
+            L = self.inner_tensors_step("L", [L], clone=True)[0]
 
+        if "U" in self.children:
+            if not self._concat_params: raise RuntimeError("L/U transforms can only be used with concat_params=True")
+            U = self.inner_tensors_step("U", [U], clone=True)[0]
+
+        # ------------------------------- precondition ------------------------------- #
+        update = lm_adagrad_apply(tensor.view(-1), U, L).view_as(tensor)
         return update
 

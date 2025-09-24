@@ -47,7 +47,7 @@ class PolyakStepSize(Transform):
         super().__init__(defaults, uses_grad=use_grad, uses_loss=True, inner=inner)
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         assert grads is not None and loss is not None
         tensors = TensorList(tensors)
         grads = TensorList(grads)
@@ -79,7 +79,7 @@ class PolyakStepSize(Transform):
         self.global_state['alpha'] = alpha
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', 1)
         if not _acceptable_alpha(alpha, tensors[0]): alpha = epsilon_step_size(TensorList(tensors))
 
@@ -144,7 +144,7 @@ class BarzilaiBorwein(Transform):
         self.global_state['reset'] = True
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -179,7 +179,7 @@ class BarzilaiBorwein(Transform):
         return _get_H(self, var)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
         if not _acceptable_alpha(alpha, tensors[0]):
@@ -228,7 +228,7 @@ class BBStab(Transform):
         self.global_state['reset'] = True
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -291,7 +291,7 @@ class BBStab(Transform):
         return _get_H(self, var)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
         if not _acceptable_alpha(alpha, tensors[0]):
@@ -313,7 +313,7 @@ class AdGD(Transform):
         self.global_state['reset'] = True
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         variant = settings[0]['variant']
         theta_0 = 0 if variant == 1 else 1/3
         theta = self.global_state.get('theta', theta_0)
@@ -371,7 +371,7 @@ class AdGD(Transform):
         prev_g.copy_(g)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         alpha = self.global_state.get('alpha', None)
 
         if not _acceptable_alpha(alpha, tensors[0]):

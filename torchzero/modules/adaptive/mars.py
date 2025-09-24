@@ -1,6 +1,6 @@
 import torch
 
-from ...core import Transform
+from ...core import TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
@@ -20,7 +20,7 @@ def mars_correction_(
 
     return c
 
-class MARSCorrection(Transform):
+class MARSCorrection(TensorTransform):
     """MARS variance reduction correction.
 
     Place any other momentum-based optimizer after this,
@@ -61,11 +61,11 @@ class MARSCorrection(Transform):
         scaling: float = 0.025,
         max_norm: float | None = 1,
     ):
-        defaults=dict(beta=beta, scaling=scaling, max_norm=max_norm)
-        super().__init__(defaults, uses_grad=False)
+        defaults = dict(beta=beta, scaling=scaling, max_norm=max_norm)
+        super().__init__(defaults)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
         beta, scaling = unpack_dicts(settings, 'beta', 'scaling', cls=NumberList)
         max_norm = settings[0]['max_norm']

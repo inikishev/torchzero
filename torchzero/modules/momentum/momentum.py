@@ -25,7 +25,7 @@ class EMA(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
 
         debiased, lerp, ema_init = itemgetter('debiased','lerp','ema_init')(settings[0])
@@ -89,7 +89,7 @@ class NAG(Transform):
         super().__init__(defaults, uses_grad=False, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
         lerp = self.settings[params[0]]['lerp']
 

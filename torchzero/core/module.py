@@ -6,7 +6,7 @@ from typing import Any, overload
 
 import torch
 
-from ..utils.linalg.linear_operator import LinearOperator
+from ..linalg.linear_operator import LinearOperator
 from ..utils.optimizer import Init, ListLike, get_state_vals
 from ..utils.params import Params, _make_param_groups
 from .functional import step_tensors
@@ -28,6 +28,7 @@ class Module(ABC):
 """
     def __init__(self, defaults: dict[str, Any] | None = None):
         if defaults is None: defaults = {}
+        if any(isinstance(v, Module) for v in defaults.values()): raise RuntimeError("Passed a module to defaults")
         self.defaults: dict[str, Any] = defaults
 
         # settings are stored like state in per-tensor defaultdict, with per-parameter overrides possible

@@ -74,7 +74,7 @@ class ConguateGradientBase(Transform, ABC):
         """returns beta"""
 
     @torch.no_grad
-    def update_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         params = as_tensorlist(params)
 
@@ -95,7 +95,7 @@ class ConguateGradientBase(Transform, ABC):
             self.global_state['stage'] = 2
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors = as_tensorlist(tensors)
         step = self.global_state['step']
 

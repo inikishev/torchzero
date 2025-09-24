@@ -185,7 +185,7 @@ class ClipValue(Transform):
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         value = [s['value'] for s in settings]
         return TensorList(tensors).clip_([-v for v in value], value)
 
@@ -242,7 +242,7 @@ class ClipNorm(Transform):
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         max_norm = NumberList(s['max_norm'] for s in settings)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
         _clip_norm_(
@@ -310,7 +310,7 @@ class Normalize(Transform):
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         norm_value = NumberList(s['norm_value'] for s in settings)
         ord, dim, min_size, inverse_dims = itemgetter('ord', 'dim', 'min_size', 'inverse_dims')(settings[0])
 
@@ -401,7 +401,7 @@ class Centralize(Transform):
         super().__init__(defaults, target=target)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         dim, min_size, inverse_dims = itemgetter('dim', 'min_size', 'inverse_dims')(settings[0])
 
         _centralize_(tensors_ = TensorList(tensors), dim=dim, inverse_dims=inverse_dims, min_size=min_size)

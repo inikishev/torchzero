@@ -2,7 +2,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module,  Transform, step
+from ...core import Chainable, Module,  Transform, TensorTransform, step, Objective
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, generic_ne
 from ..functional import ema_
 from ..momentum.momentum import nag_
@@ -21,7 +21,7 @@ def msam_(
 
     # inner args
     inner: Module | None = None,
-    grads: list[torch.Tensor] | None = None,
+    objective: Objective | None = None,
 ):
     # weights w and wh, momentum μ, perturbation strength ρ
     # w = wh + rho * v / ||v||
@@ -54,8 +54,8 @@ def msam_(
     v1n = velocity_ / denom
 
     if inner is not None:
-        assert params is not None
-        inner_update = TensorList(step(inner, tensors, params=params, grads=grads))
+        assert objective is not None and inner is not None
+        inner_update = TensorList(step(objective, inner).get_updates())
 
     else:
         assert lr is not None
@@ -69,7 +69,7 @@ def msam_(
 
     return update
 
-class MSAM(Transform):
+class MSAMMomentum(TensorTransform):
     """Momentum-SAM from https://arxiv.org/pdf/2401.12033.
 
     This implementation expresses the update rule as function of gradient. This way it can be used as a drop-in
@@ -93,46 +93,40 @@ class MSAM(Transform):
         lerp (bool, optional):
             whether to use linear interpolation, if True, this becomes similar to exponential moving average. Defaults to False.
 
-    Examples:
-        MSAM
+    ### Examples:
 
-        .. code-block:: python
+    MSAM
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.MSAM(1e-3)
-            )
+    ```python
 
-        Adam with MSAM instead of exponential average. Note that this is different from Adam_MSAM.
-        To make Adam_MSAM and such, use the :code:`tz.m.MSAMObjective` module.
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.MSAM(1e-3)
+    )
+    ```
 
-        .. code-block:: python
+    Adam with MSAM instead of exponential average. Note that this is different from Adam_MSAM.
+    To make Adam_MSAM and such, use the ``tz.m.MSAMObjective`` module.
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.RMSprop(0.999, inner=tz.m.MSAM(1e-3)),
-                tz.m.Debias(0.9, 0.999),
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.RMSprop(0.999, inner=tz.m.MSAM(1e-3)),
+        tz.m.Debias(0.9, 0.999),
+    )
+    ```
     """
-    _USES_LR = True
+
     def __init__(self, lr: float, momentum:float=0.9, rho:float=0.3,  weight_decay:float=0, nesterov=False, lerp=False,):
-        defaults = dict(momentum=momentum,rho=rho, nesterov=nesterov, lerp=lerp, weight_decay=weight_decay)
-        if self._USES_LR: defaults['lr'] = lr
+        defaults = dict(lr = lr, momentum=momentum, rho=rho, nesterov=nesterov, lerp=lerp, weight_decay=weight_decay)
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
-        s = self.settings[params[0]]
-        lerp = s['lerp']
-        nesterov = s['nesterov']
+        fs = settings[0]
 
-        if self._USES_LR:
-            lr, momentum, rho, weight_decay = unpack_dicts(settings, 'lr','momentum','rho','weight_decay', cls=NumberList)
-
-        else:
-            lr=None
-            momentum,rho,weight_decay = unpack_dicts(settings, 'momentum','rho','weight_decay', cls=NumberList)
+        lr, momentum, rho, weight_decay = unpack_dicts(settings, 'lr','momentum','rho','weight_decay', cls=NumberList)
 
         return msam_(
             TensorList(tensors),
@@ -142,16 +136,16 @@ class MSAM(Transform):
             lr=lr,
             rho=rho,
             weight_decay=weight_decay,
-            nesterov=nesterov,
-            lerp=lerp,
+            nesterov=fs['nesterov'],
+            lerp=fs['lerp'],
 
             # inner args
-            inner=self.children.get("modules", None),
-            grads=grads,
+            inner=None,
+            objective=None,
         )
 
 
-class MSAMObjective(MSAM):
+class MSAM(Transform):
     """Momentum-SAM from https://arxiv.org/pdf/2401.12033.
 
     Note:
@@ -160,7 +154,7 @@ class MSAMObjective(MSAM):
         to an incorrect update rule.
 
     Args:
-        modules (Chainable): modules that will optimizer the MSAM objective. Make sure :code:`tz.m.LR` is one of them.
+        modules (Chainable): modules that will optimize the MSAM objective. Make sure ``tz.m.LR`` is one of them.
         momentum (float, optional): momentum (beta). Defaults to 0.9.
         rho (float, optional): perturbation strength. Defaults to 0.3.
         nesterov (bool, optional): whether to use nesterov momentum formula. Defaults to False.
@@ -169,20 +163,44 @@ class MSAMObjective(MSAM):
             Defaults to False.
 
     Examples:
-        AdamW-MSAM
+    AdamW-MSAM
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                bench.parameters(),
-                tz.m.MSAMObjective(
-                    [tz.m.Adam(), tz.m.WeightDecay(1e-3), tz.m.LR(1e-3)],
-                    rho=1.
-                )
-            )
+    ```py
+    opt = tz.Modular(
+        bench.parameters(),
+        tz.m.MSAMObjective(
+            [tz.m.Adam(), tz.m.WeightDecay(1e-3), tz.m.LR(1e-3)],
+            rho=1.
+        )
+    )
+    ```
     """
-    _USES_LR = False
     def __init__(self, modules: Chainable, momentum:float=0.9, rho:float=0.3, weight_decay:float=0, nesterov=False, lerp=False):
-        super().__init__(lr=0, momentum=momentum, rho=rho, weight_decay=weight_decay, nesterov=nesterov, lerp=lerp)
+        defaults = dict(momentum=momentum, rho=rho, weight_decay=weight_decay, nesterov=nesterov, lerp=lerp)
+        super().__init__(defaults)
+
         self.set_child('modules', modules)
 
+
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        velocity = unpack_states(states, objective.params, 'velocity', cls=TensorList)
+        fs = settings[0]
+
+        momentum, rho, weight_decay = unpack_dicts(settings, 'momentum', 'rho', 'weight_decay', cls=NumberList)
+
+        return msam_(
+            TensorList(objective.get_updates()),
+            params=TensorList(objective.params),
+            velocity_=velocity,
+            momentum=momentum,
+            lr=None,
+            rho=rho,
+            weight_decay=weight_decay,
+            nesterov=fs['nesterov'],
+            lerp=fs['lerp'],
+
+            # inner args
+            inner=self.children["modules"],
+            objective=objective,
+        )

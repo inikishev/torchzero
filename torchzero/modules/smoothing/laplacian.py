@@ -92,7 +92,7 @@ class LaplacianSmoothing(Transform):
 
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         layerwise = settings[0]['layerwise']
 
         # layerwise laplacian smoothing

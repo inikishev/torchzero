@@ -1,12 +1,12 @@
 import torch
-from ...core import Module, Chainable, step
+from ...core import Transform
 
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
-from ...utils import vec_to_tensors, TensorList
-from ...utils.linalg import linear_operator
+from ...utils import vec_to_tensors
+from ...linalg import linear_operator
 from .lmadagrad import lm_adagrad_apply, lm_adagrad_update
 
-class NaturalGradient(Module):
+class NaturalGradient(Transform):
     """Natural gradient approximated via empirical fisher information matrix.
 
     To use this, either pass vector of per-sample losses to the step method, or make sure
@@ -97,20 +97,21 @@ class NaturalGradient(Module):
         super().__init__(defaults=dict(batched=batched, reg=reg, sqrt=sqrt, gn_grad=gn_grad))
 
     @torch.no_grad
-    def update(self, var):
-        params = var.params
-        batched = self.defaults['batched']
-        gn_grad = self.defaults['gn_grad']
+    def update_states(self, objective, states, settings):
+        params = objective.params
+        fs = settings[0]
+        batched = fs['batched']
+        gn_grad = fs['gn_grad']
 
-        closure = var.closure
+        closure = objective.closure
         assert closure is not None
 
         with torch.enable_grad():
-            f = var.get_loss(backward=False) # n_out
+            f = objective.get_loss(backward=False) # n_out
             assert isinstance(f, torch.Tensor)
             G_list = jacobian_wrt([f.ravel()], params, batched=batched)
 
-        var.loss = f.sum()
+        objective.loss = f.sum()
         G = self.global_state["G"] = flatten_jacobian(G_list) # (n_samples, ndim)
 
         if gn_grad:
@@ -119,13 +120,13 @@ class NaturalGradient(Module):
         else:
             g = self.global_state["g"] = G.sum(0)
 
-        var.grad = vec_to_tensors(g, params)
+        objective.grads = vec_to_tensors(g, params)
 
         # set closure to calculate scalar value for line searches etc
-        if var.closure is not None:
+        if objective.closure is not None:
             def ngd_closure(backward=True):
                 if backward:
-                    var.zero_grad()
+                    objective.zero_grad()
                     with torch.enable_grad():
                         loss = closure(False)
                         if gn_grad: loss = loss.pow(2)
@@ -137,13 +138,14 @@ class NaturalGradient(Module):
                 if gn_grad: loss = loss.pow(2)
                 return loss.sum()
 
-            var.closure = ngd_closure
+            objective.closure = ngd_closure
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
-        reg = self.defaults['reg']
-        sqrt = self.defaults['sqrt']
+    def apply_states(self, objective, states, settings):
+        params = objective.params
+        fs = settings[0]
+        reg = fs['reg']
+        sqrt = fs['sqrt']
 
         G: torch.Tensor = self.global_state['G'] # (n_samples, n_dim)
 
@@ -151,11 +153,11 @@ class NaturalGradient(Module):
             # this computes U, S <- SVD(M), then calculate update as U S^-1 Uᵀg,
             # but it computes it through eigendecompotision
             U, L = lm_adagrad_update(G.H, reg, 0)
-            if U is None or L is None: return var
+            if U is None or L is None: return objective
 
             v = lm_adagrad_apply(self.global_state["g"], U, L)
-            var.update = vec_to_tensors(v, params)
-            return var
+            objective.updates = vec_to_tensors(v, params)
+            return objective
 
         # we need (G^T G)v = g
         # where g = G^T
@@ -168,11 +170,11 @@ class NaturalGradient(Module):
         z, _ = torch.linalg.solve_ex(GGT, torch.ones_like(GGT[0])) # pylint:disable=not-callable
         v = G.H @ z
 
-        var.update = vec_to_tensors(v, params)
-        return var
+        objective.updates = vec_to_tensors(v, params)
+        return objective
 
 
-    def get_H(self, var):
+    def get_H(self, objective=...):
         if "G" not in self.global_state: return linear_operator.ScaledIdentity()
         G = self.global_state['G']
         return linear_operator.AtA(G)

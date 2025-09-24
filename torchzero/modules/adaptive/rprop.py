@@ -1,8 +1,8 @@
 
 import torch
 
-from ...core import Module,  Transform
-from ...utils import NumberList, TensorList, as_tensorlist, unpack_dicts, unpack_states
+from ...core import TensorTransform
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
 def _bool_ones_like(x):
@@ -126,7 +126,7 @@ def rprop_(
 
 
 
-class Rprop(Transform):
+class Rprop(TensorTransform):
     """
     Resilient propagation. The update magnitude gets multiplied by `nplus` if gradient didn't change the sign,
     or `nminus` if it did. Then the update is applied with the sign of the current gradient.
@@ -165,7 +165,7 @@ class Rprop(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
@@ -178,7 +178,7 @@ class Rprop(Transform):
         )
 
         tensors = rprop_(
-            tensors_ = as_tensorlist(tensors),
+            tensors_ = TensorList(tensors),
             prev_ = prev,
             allowed_ = allowed,
             magnitudes_ = magnitudes,
@@ -194,7 +194,7 @@ class Rprop(Transform):
         return tensors
 
 
-class ScaleLRBySignChange(Transform):
+class ScaleLRBySignChange(TensorTransform):
     """
     learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign,
     or `nminus` if it did.
@@ -218,19 +218,19 @@ class ScaleLRBySignChange(Transform):
         ub=50.0,
         alpha=1.0,
         use_grad=False,
-        target: _RemoveThis = "update",
     ):
         defaults = dict(nplus=nplus, nminus=nminus, alpha=alpha, lb=lb, ub=ub, use_grad=use_grad)
-        super().__init__(defaults, uses_grad=use_grad, target=target)
+        super().__init__(defaults, uses_grad=use_grad)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        tensors = as_tensorlist(tensors)
-        use_grad = settings[0]['use_grad']
-        if use_grad: cur = as_tensorlist(grads)
+        tensors = TensorList(tensors)
+        if self._uses_grad:
+            assert grads is not None
+            cur = TensorList(grads)
         else: cur = tensors
 
         nplus, nminus, lb, ub = unpack_dicts(settings, 'nplus', 'nminus', 'lb', 'ub', cls=NumberList)
@@ -252,7 +252,7 @@ class ScaleLRBySignChange(Transform):
         )
         return tensors
 
-class BacktrackOnSignChange(Transform):
+class BacktrackOnSignChange(TensorTransform):
     """Negates or undoes update for parameters where where gradient or update sign changes.
 
     This is part of RProp update rule.
@@ -266,20 +266,21 @@ class BacktrackOnSignChange(Transform):
             Defaults to True.
 
     """
-    def __init__(self, use_grad = False, backtrack = True, target: _RemoveThis = 'update'):
-        defaults = dict(use_grad=use_grad, backtrack=backtrack, target=target)
+    def __init__(self, use_grad = False, backtrack = True):
+        defaults = dict(use_grad=use_grad, backtrack=backtrack)
         super().__init__(defaults, uses_grad=use_grad)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        tensors = as_tensorlist(tensors)
-        use_grad = settings[0]['use_grad']
+        tensors = TensorList(tensors)
         backtrack = settings[0]['backtrack']
 
-        if use_grad: cur = as_tensorlist(grads)
+        if self._uses_grad:
+            assert grads is not None
+            cur = TensorList(grads)
         else: cur = tensors
 
         tensors = backtrack_on_sign_change_(
@@ -292,54 +293,55 @@ class BacktrackOnSignChange(Transform):
 
         return tensors
 
-class SignConsistencyMask(Transform):
+class SignConsistencyMask(TensorTransform):
     """
     Outputs a mask of sign consistency of current and previous inputs.
 
     The output is 0 for weights where input sign changed compared to previous input, 1 otherwise.
 
-    Examples:
+    ### Examples:
 
-        GD that skips update for weights where gradient sign changed compared to previous gradient.
+    GD that skips update for weights where gradient sign changed compared to previous gradient.
 
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Mul(tz.m.SignConsistencyMask()),
-                tz.m.LR(1e-2)
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Mul(tz.m.SignConsistencyMask()),
+        tz.m.LR(1e-2)
+    )
+    ```
 
     """
-    def __init__(self,target: _RemoveThis = 'update'):
-        super().__init__({}, uses_grad=False, target = target)
+    def __init__(self):
+        super().__init__()
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         prev = unpack_states(states, tensors, 'prev', cls=TensorList)
         mask = prev.mul_(tensors).gt_(0)
         prev.copy_(tensors)
         return mask
 
 
-class SignConsistencyLRs(Transform):
+class SignConsistencyLRs(TensorTransform):
     """Outputs per-weight learning rates based on consecutive sign consistency.
 
-    The learning rate for a weight is multiplied by :code:`nplus` when two consecutive update signs are the same, otherwise it is multiplied by :code:`nplus`. The learning rates are bounded to be in :code:`(lb, ub)` range.
+    The learning rate for a weight is multiplied by ``nplus`` when two consecutive update signs are the same, otherwise it is multiplied by ``nplus``. The learning rates are bounded to be in ``(lb, ub)`` range.
 
-    Examples:
+    ### Examples:
 
-        GD scaled by consecutive gradient sign consistency
+    GD scaled by consecutive gradient sign consistency
 
-        .. code-block:: python
+    ```python
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Mul(tz.m.SignConsistencyLRs()),
-                tz.m.LR(1e-2)
-            )
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Mul(tz.m.SignConsistencyLRs()),
+        tz.m.LR(1e-2)
+    )
+    ```
 
-    """
+"""
     def __init__(
         self,
         nplus: float = 1.2,
@@ -347,17 +349,16 @@ class SignConsistencyLRs(Transform):
         lb: float | None = 1e-6,
         ub: float | None = 50,
         alpha: float = 1,
-        target: _RemoveThis = 'update'
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub)
-        super().__init__(defaults, uses_grad=False, target = target)
+        super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        target = as_tensorlist(tensors)
+        target = TensorList(tensors)
         nplus, nminus, lb, ub = unpack_dicts(settings, 'nplus', 'nminus', 'lb', 'ub', cls=NumberList)
         prev, lrs = unpack_states(states, tensors, 'prev', 'lrs', cls=TensorList)
 

@@ -1029,7 +1029,7 @@ class GradientCorrection(Transform):
     def __init__(self):
         super().__init__(None, uses_grad=False)
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         if 'p_prev' not in states[0]:
             p_prev = unpack_states(states, tensors, 'p_prev', init=params)
             g_prev = unpack_states(states, tensors, 'g_prev', init=tensors)

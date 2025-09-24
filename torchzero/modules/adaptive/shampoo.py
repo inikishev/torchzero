@@ -1,11 +1,11 @@
 from collections.abc import Sequence
 from operator import itemgetter
-from functools import partial
+
 import numpy as np
 import torch
 
-from ...core import Chainable, Transform, step
-from ...utils.linalg import matrix_power_eigh
+from ...core import Chainable, TensorTransform
+from ...linalg.matrix_power import MatrixPowerMethod, matrix_power as _matrix_power
 from ...utils import set_storage_
 
 
@@ -15,9 +15,10 @@ def update_shampoo_preconditioner_(
     preconditioners_: list[torch.Tensor | None],
     step: int,
     update_freq: int,
-    exp_override: int | None,
+    matrix_power: float | None,
     beta: float | None,
-    reg: float
+    reg: float,
+    matrix_power_method: MatrixPowerMethod,
 ):
     for i, (accumulator, preconditioner) in enumerate(zip(accumulators_, preconditioners_)):
         if accumulator is None: continue
@@ -28,21 +29,20 @@ def update_shampoo_preconditioner_(
         else: accumulator.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
 
         if step % update_freq == 0:
-            matrix_exp = -1/(grad.ndim*2) if exp_override is None else -1/exp_override
             if reg != 0:
                 accumulator = accumulator + torch.eye(accumulator.size(0), device=accumulator.device, dtype=accumulator.dtype).mul_(reg)
-            set_storage_(preconditioner, matrix_power_eigh(accumulator, matrix_exp, abs=True))
+
+            if matrix_power is None: matrix_power = -1 / max(grad.ndim, 2)
+            set_storage_(preconditioner, _matrix_power(accumulator, matrix_power, method=matrix_power_method))
 
 
 def apply_shampoo_preconditioner(
     tensor: torch.Tensor,
     preconditioners_: list[torch.Tensor | None],
-    decay: float | None,
 ):
     for i, preconditioner in enumerate(preconditioners_):
         if preconditioner is None: continue
         tensor = torch.tensordot(tensor, preconditioner, ([0], [0])) # pyright:ignore[reportArgumentType]
-        if decay is not None: preconditioner.mul_(decay)
     return tensor
 
 
@@ -50,9 +50,8 @@ def update_diagonal_(grad: torch.Tensor, diagonal_accumulator_: torch.Tensor, be
     if beta is None: diagonal_accumulator_.add_(grad.pow(2))
     else: diagonal_accumulator_.mul_(beta).addcmul_(grad, grad, value=1-beta)
 
-def apply_diagonal_(grad_: torch.Tensor, diagonal_accumulator_: torch.Tensor, decay: float | None, eps: float):
+def apply_diagonal_(grad_: torch.Tensor, diagonal_accumulator_: torch.Tensor, eps: float):
     grad_.div_(diagonal_accumulator_.sqrt() + eps)
-    if decay is not None: diagonal_accumulator_.mul_(decay)
     return grad_
 
 def _merge_small_dims(tensor: torch.Tensor, max_dim: int):
@@ -86,144 +85,140 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
     return tensor.permute(*np.argsort(sort_idxs).tolist())
 
 
-class Shampoo(Transform):
+class Shampoo(TensorTransform):
     """Shampoo from Preconditioned Stochastic Tensor Optimization (https://arxiv.org/abs/1802.09568).
 
-    .. note::
+    Notes:
         Shampoo is usually grafted to another optimizer like Adam, otherwise it can be unstable. An example of how to do grafting is given below in the Examples section.
 
-    .. note::
-        Shampoo is a very computationally expensive optimizer, increase :code:`update_freq` if it is too slow.
+        Shampoo is a very computationally expensive optimizer, increase ``update_freq`` if it is too slow.
 
-    .. note::
-        SOAP optimizer usually outperforms Shampoo and is also not as computationally expensive. SOAP implementation is available as :code:`tz.m.SOAP`.
+        SOAP optimizer usually outperforms Shampoo and is also not as computationally expensive. SOAP implementation is available as ``tz.m.SOAP``.
 
     Args:
-        decay (float | None, optional): slowly decays preconditioners. Defaults to None.
-        beta (float | None, optional):
-            if None calculates sum as in standard shampoo, otherwise uses EMA of preconditioners. Defaults to None.
         update_freq (int, optional): preconditioner update frequency. Defaults to 10.
-        exp_override (int | None, optional): matrix exponent override, if not set, uses 2*ndim. Defaults to 2.
+        matrix_power (float | None, optional): overrides matrix exponent. By default uses ``-1/grad.ndim``. Defaults to None.
         merge_small (bool, optional): whether to merge small dims on tensors. Defaults to True.
-        max_dim (int, optional): maximum dimension size for preconditioning. Defaults to 2_000.
+        max_dim (int, optional): maximum dimension size for preconditioning. Defaults to 10_000.
         precondition_1d (bool, optional): whether to precondition 1d tensors. Defaults to True.
         adagrad_eps (float, optional): epsilon for adagrad division for tensors where shampoo can't be applied. Defaults to 1e-8.
+        matrix_power_method (MatrixPowerMethod, optional): how to compute matrix power.
+        beta (float | None, optional):
+            if None calculates sum as in standard Shampoo, otherwise uses EMA of preconditioners. Defaults to None.
         inner (Chainable | None, optional):
             module applied after updating preconditioners and before applying preconditioning.
             For example if beta≈0.999 and `inner=tz.m.EMA(0.9)`, this becomes Adam with shampoo preconditioner (ignoring debiasing).
             Defaults to None.
 
     Examples:
-        Shampoo grafted to Adam
+    Shampoo grafted to Adam
 
-        .. code-block:: python
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.GraftModules(
+            direction = tz.m.Shampoo(),
+            magnitude = tz.m.Adam(),
+        ),
+        tz.m.LR(1e-3)
+    )
+    ```
 
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.GraftModules(
-                    direction = tz.m.Shampoo(),
-                    magnitude = tz.m.Adam(),
-                ),
-                tz.m.LR(1e-3)
-            )
+    Adam with Shampoo preconditioner
 
-        Adam with Shampoo preconditioner
-
-        .. code-block:: python
-
-            opt = tz.Modular(
-                model.parameters(),
-                tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
-                tz.m.Debias(0.9, 0.999),
-                tz.m.LR(1e-3)
-            )
+    ```python
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
+        tz.m.Debias(0.9, 0.999),
+        tz.m.LR(1e-3)
+    )
+    ```
     """
     def __init__(
         self,
-        decay: float | None = None,
-        beta: float | None = None,
         reg: float = 1e-12,
         update_freq: int = 10,
-        exp_override: int | None = 2,
+        matrix_power: float | None = None,
         merge_small: bool = True,
-        max_dim: int = 2_000,
+        max_dim: int = 10_000,
         precondition_1d: bool = True,
         adagrad_eps: float = 1e-8,
+        matrix_power_method: MatrixPowerMethod = "eigh",
+        beta: float | None = None,
+        beta_debias: bool = True,
+
         inner: Chainable | None = None,
     ):
-        defaults = dict(decay=decay, beta=beta, update_freq=update_freq, exp_override=exp_override, merge_small=merge_small, max_dim=max_dim, precondition_1d=precondition_1d,adagrad_eps=adagrad_eps, reg=reg)
-        super().__init__(defaults, uses_grad=False)
+        defaults = locals().copy()
+        del defaults['self'], defaults["inner"]
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        super().__init__(defaults, inner=inner)
 
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
-        merged_tensors = [] # target with merged dims
+    @torch.no_grad
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        if setting["merge_small"]:
+            tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
-        # update preconditioners
-        for i,(t,state, setting) in enumerate(zip(tensors, states, settings)):
-            beta, update_freq, exp_override, merge_small, max_dim, precondition_1d, reg = itemgetter(
-                'beta', 'update_freq', 'exp_override', 'merge_small', 'max_dim', 'precondition_1d', "reg")(setting)
+        if tensor.ndim <= 1 and not setting["precondition_1d"]:
+            state["accumulators"] = []
 
-            if merge_small:
-                t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, max_dim)
+        else:
+            max_dim = setting["max_dim"]
+            state['accumulators'] = [
+                torch.zeros(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
+            ]
+            state['preconditioners'] = [
+                torch.zeros(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
+            ]
 
-            merged_tensors.append(t)
+        # either scalar parameter, 1d with precondition_1d=False, or too big, then basic diagonal preconditioner is used.
+        if len([i is not None for i in state['accumulators']]) == 0:
+            state['diagonal_accumulator'] = torch.zeros_like(tensor)
 
-            # initialize accumulators and preconditioners for each dim on 1st step
-            if 'accumulators' not in state:
+        state['step'] = 0
+        state["num_GTG"] = 0
 
-                if not precondition_1d and t.ndim <= 1:
-                    state['accumulators'] = []
+    @torch.no_grad
+    def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+        if setting["merge_small"]:
+            tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
-                else:
-                    state['accumulators'] = [torch.eye(s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
-                    state['preconditioners'] = [torch.eye(s, dtype=t.dtype, device=t.device) if 1<s<max_dim else None for s in t.shape]
+        if 'diagonal_accumulator' in state:
+            update_diagonal_(tensor, state['diagonal_accumulator'], beta=setting["beta"])
+        else:
+            update_shampoo_preconditioner_(
+                tensor,
+                accumulators_=state['accumulators'],
+                preconditioners_=state['preconditioners'],
+                step=state['step'],
+                update_freq=setting["update_freq"],
+                matrix_power=setting["matrix_power"],
+                beta=setting["beta"],
+                reg=setting["reg"],
+                matrix_power_method=setting["matrix_power_method"],
+            )
 
-                # either scalar parameter, 1d with precondition_1d=False, or too big, then basic diagonal preconditioner is used.
-                if len([i is not None for i in state['accumulators']]) == 0:
-                    state['diagonal_accumulator'] = torch.zeros_like(t)
+        state["step"] += 1
+        if state["step"] % setting["update_freq"] == 0:
+            state["num_GTG"] += 1
 
-                state['step'] = 0
+    @torch.no_grad
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
+        if setting["merge_small"]:
+            tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
-            # update preconditioners
-            if 'diagonal_accumulator' in state:
-                update_diagonal_(t, state['diagonal_accumulator'], beta)
-            else:
-                update_shampoo_preconditioner_(
-                    t,
-                    accumulators_=state['accumulators'],
-                    preconditioners_=state['preconditioners'],
-                    step=state['step'],
-                    update_freq=update_freq,
-                    exp_override=exp_override,
-                    beta=beta,
-                    reg=reg,
-                )
+        if 'diagonal_accumulator' in state:
+            dir = apply_diagonal_(tensor, state['diagonal_accumulator'], eps=setting["adagrad_eps"])
+        else:
+            dir = apply_shampoo_preconditioner(tensor, preconditioners_=state['preconditioners'])
 
-        # inner step
-        if 'inner' in self.children:
-            tensors = step(self.children['inner'], tensors, params=params, grads=grads)
+        if setting["merge_small"]:
+            dir = _unmerge_small_dims(tensor, state['flat_sizes'], state['sort_idxs'])
 
-            # have to merge small dims again
-            merged_tensors = [] # target with merged dims
-            for i,(t,state, setting) in enumerate(zip(tensors, states, settings)):
-                if setting['merge_small']:
-                    t, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(t, setting['max_dim'])
-                merged_tensors.append(t)
+        if setting['beta_debias'] and setting["beta"] is not None:
+            bias_correction = 1 - (setting["beta"] ** state["num_GTG"])
+            dir *= bias_correction ** 0.5
 
-        # precondition
-        for i,(t,state, setting) in enumerate(zip(merged_tensors, states, settings)):
-            decay, merge_small, adagrad_eps= itemgetter('decay', 'merge_small', 'adagrad_eps')(setting)
+        return dir
 
-            if 'diagonal_accumulator' in state:
-                tensors[i] = apply_diagonal_(t, state['diagonal_accumulator'], decay=decay, eps=adagrad_eps)
-            else:
-                tensors[i] = apply_shampoo_preconditioner(t, preconditioners_=state['preconditioners'], decay=decay)
-
-            if merge_small:
-                tensors[i] = _unmerge_small_dims(tensors[i], state['flat_sizes'], state['sort_idxs'])
-
-            state['step'] += 1
-
-        return tensors

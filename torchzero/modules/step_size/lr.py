@@ -19,7 +19,7 @@ class LR(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return lazy_lr(TensorList(tensors), lr=[s['lr'] for s in settings], inplace=True)
 
 class StepSize(Transform):
@@ -29,7 +29,7 @@ class StepSize(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         return lazy_lr(TensorList(tensors), lr=[s[s['key']] for s in settings], inplace=True)
 
 
@@ -64,7 +64,7 @@ class Warmup(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         start_lr, end_lr = unpack_dicts(settings, 'start_lr', 'end_lr', cls = NumberList)
         num_steps = settings[0]['steps']
         step = self.global_state.get('step', 0)
@@ -102,7 +102,7 @@ class WarmupNormClip(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         start_norm, end_norm = unpack_dicts(settings, 'start_norm', 'end_norm', cls = NumberList)
         num_steps = settings[0]['steps']
         step = self.global_state.get('step', 0)
@@ -133,7 +133,7 @@ class RandomStepSize(Transform):
         super().__init__(defaults, uses_grad=False)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         s = settings[0]
         parameterwise = s['parameterwise']
 

@@ -79,7 +79,7 @@ class Cautious(Transform):
         super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(settings[0])
         return cautious_(TensorList(tensors), TensorList(grads), normalize=normalize, eps=eps, mode=mode)
@@ -98,7 +98,7 @@ class UpdateGradientSignConsistency(Transform):
         super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         normalize, eps = itemgetter('normalize', 'eps')(settings[0])
 
@@ -186,7 +186,7 @@ class ScaleByGradCosineSimilarity(Transform):
         super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         assert grads is not None
         eps = settings[0]['eps']
         tensors = TensorList(tensors)

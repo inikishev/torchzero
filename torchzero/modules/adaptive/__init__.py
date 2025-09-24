@@ -12,7 +12,7 @@ from .lmadagrad import LMAdagrad
 from .lion import Lion
 from .mars import MARSCorrection
 from .matrix_momentum import MatrixMomentum
-from .msam import MSAM, MSAMObjective
+from .msam import MSAMMomentum, MSAM
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .natural_gradient import NaturalGradient
 from .orthograd import OrthoGrad, orthograd_
