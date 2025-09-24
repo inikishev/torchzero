@@ -513,7 +513,6 @@ class TensorList(list[torch.Tensor | Any]):
         torch._foreach_mul_(self, other)
         return self
 
-    # TODO: benchmark
     def lazy_mul(self, other: int | float | list[int | float] | tuple[int | float], clone=False):
         if generic_ne(other, 1):
             return self * other
@@ -538,6 +537,13 @@ class TensorList(list[torch.Tensor | Any]):
     def pow(self, exponent: "_Scalar | _STSeq"): return self.__class__(torch._foreach_pow(self, exponent))
     def pow_(self, exponent: "_Scalar | _STSeq"):
         torch._foreach_pow_(self, exponent)
+        return self
+
+    def lazy_pow(self, other: int | float | list[int | float] | tuple[int | float]):
+        if generic_ne(other, 1): return self.pow(other)
+        return self
+    def lazy_pow_(self, other: int | float | list[int | float] | tuple[int | float]):
+        if generic_ne(other, 1): return self.pow_(other)
         return self
 
     def rpow(self, input: _Scalar | _TensorSeq): return self.__class__(torch._foreach_pow(input, self))

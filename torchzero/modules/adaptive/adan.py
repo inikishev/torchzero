@@ -1,9 +1,9 @@
 import torch
 
-from ...core import Transform
+from ...core import TensorTransform, Chainable
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
-def adan_(
+def adan_update_(
     g: TensorList,
     g_prev_: TensorList,
     m_: TensorList, # exponential moving average
@@ -12,10 +12,8 @@ def adan_(
     beta1: float | NumberList,
     beta2: float | NumberList,
     beta3: float | NumberList,
-    eps: float | NumberList,
     step: int,
 ):
-    """Returns new tensors"""
     m_.lerp_(g, 1 - beta1)
 
     if step == 1:
@@ -26,7 +24,18 @@ def adan_(
         term = g + beta2 * diff
 
     n_.mul_(beta3).addcmul_(term, term, value=(1 - beta3))
+    g_prev_.copy_(g)
 
+def adan_apply_(
+    m_: TensorList, # exponential moving average
+    v_: TensorList, # exponential moving average of gradient differences
+    n_: TensorList, # kinda like squared momentum
+    beta1: float | NumberList,
+    beta2: float | NumberList,
+    beta3: float | NumberList,
+    eps: float | NumberList,
+    step: int,
+):
     m = m_ / (1.0 - beta1**step)
     v = v_ / (1.0 - beta2**step)
     n = n_ / (1.0 - beta3**step)
@@ -35,13 +44,12 @@ def adan_(
     num = m + beta2 * v
 
     update = num.div_(denom)
-    g_prev_.copy_(g)
 
     return update
 
 
 
-class Adan(Transform):
+class Adan(TensorTransform):
     """Adaptive Nesterov Momentum Algorithm from https://arxiv.org/abs/2208.06677
 
     Args:
@@ -49,8 +57,6 @@ class Adan(Transform):
         beta2 (float, optional): momentum for gradient differences. Defaults to 0.92.
         beta3 (float, optional): thrid (squared) momentum. Defaults to 0.99.
         eps (float, optional): epsilon. Defaults to 1e-8.
-        use_n_prev (bool, optional):
-            whether to use previous gradient differences momentum.
 
     Example:
     ```python
@@ -59,8 +65,9 @@ class Adan(Transform):
         tz.m.Adan(),
         tz.m.LR(1e-3),
     )
+    ```
     Reference:
-        Xie, X., Zhou, P., Li, H., Lin, Z., & Yan, S. (2024). Adan: Adaptive nesterov momentum algorithm for faster optimizing deep models. IEEE Transactions on Pattern Analysis and Machine Intelligence. https://arxiv.org/abs/2208.06677
+        [Xie, X., Zhou, P., Li, H., Lin, Z., & Yan, S. (2024). Adan: Adaptive nesterov momentum algorithm for faster optimizing deep models. IEEE Transactions on Pattern Analysis and Machine Intelligence](https://arxiv.org/abs/2208.06677).
     """
     def __init__(
         self,
@@ -68,29 +75,41 @@ class Adan(Transform):
         beta2: float = 0.92,
         beta3: float = 0.99,
         eps: float = 1e-8,
+
+        m_tfm: Chainable | None = None,
+        v_tfm: Chainable | None = None,
+        n_tfm: Chainable | None = None,
     ):
-        defaults=dict(beta1=beta1,beta2=beta2,beta3=beta3,eps=eps)
+        defaults=dict(beta1=beta1, beta2=beta2, beta3=beta3, eps=eps)
         super().__init__(defaults, uses_grad=False)
 
+        self.set_child("m", m_tfm)
+        self.set_child("v", v_tfm)
+        self.set_child("n", n_tfm)
+
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+        step = self.increment_counter("step", 0)
 
-        beta1,beta2,beta3,eps=unpack_dicts(settings, 'beta1','beta2','beta3','eps', cls=NumberList)
-        g_prev, m, v, n = unpack_states(states, tensors, 'g_prev','m','v','n', cls=TensorList)
+        beta1, beta2, beta3 = unpack_dicts(settings, 'beta1','beta2','beta3', cls=NumberList)
+        g_prev, m, v, n = unpack_states(states, tensors, 'g_prev', 'm', 'v', 'n', cls=TensorList)
 
-        update = adan_(
-            g=tensors,
-            g_prev_=g_prev,
-            m_=m,
-            v_=v,
-            n_=n,
-            beta1=beta1,
-            beta2=beta2,
-            beta3=beta3,
-            eps=eps,
-            step=step,
-        )
+        adan_update_(g=tensors, g_prev_=g_prev, m_=m, v_=v, n_=n, beta1=beta1, beta2=beta2, beta3=beta3, step=step+1)
 
-        return update
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        tensors = TensorList(tensors)
+        step = self.global_state["step"] # 0 on 1st step
+
+        beta1, beta2, beta3, eps = unpack_dicts(settings, 'beta1','beta2','beta3', 'eps', cls=NumberList)
+        m, v, n = unpack_states(states, tensors, 'm', 'v', 'n')
+
+        # -------------------------------- transforms -------------------------------- #
+        m = TensorList(self.inner_tensors_step("m", m, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+        v = TensorList(self.inner_tensors_step("v", v, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+        n = TensorList(self.inner_tensors_step("n", n, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+
+        # ---------------------------------- update ---------------------------------- #
+        return adan_apply_(m_=m, v_=v, n_=n, beta1=beta1, beta2=beta2, beta3=beta3, eps=eps, step=step+1)
+

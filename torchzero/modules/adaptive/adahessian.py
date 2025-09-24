@@ -3,8 +3,8 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module,  Transform, step, HVPMethod
-from ...utils import NumberList, TensorList, Distributions
+from ...core import Chainable, Transform, HVPMethod
+from ...utils import NumberList, TensorList, Distributions, unpack_dicts, unpack_states
 
 def _full_average(hvp: torch.Tensor):
     if hvp.ndim >= 3:  # Conv kernel
@@ -40,38 +40,8 @@ def _rademacher_like(tensor, p = 0.5, generator = None):
     """p is probability of a 1, other values will be -1."""
     return torch.bernoulli(torch.full_like(tensor, p), generator = generator).mul_(2).sub_(1)
 
-def adahessian(
-    tensors: TensorList,
-    D: TensorList | None,
-    exp_avg_: TensorList,
-    D_exp_avg_sq_: TensorList,
-    beta1: float | NumberList,
-    beta2: float | NumberList,
-    update_freq: int,
-    eps: float | NumberList,
-    hessian_power: float | NumberList,
-    step: int,
-):
-    # momentum
-    exp_avg_.lerp_(tensors, 1-beta1)
 
-    # update preconditioner
-    if step % update_freq == 0:
-        assert D is not None
-        D_exp_avg_sq_.mul_(beta2).addcmul_(D, D, 1 - beta2)
-
-    else:
-        assert D is None
-
-    bias_correction1 = 1.0 - (beta1 ** (step + 1))
-    bias_correction2 = 1.0 - (beta2 ** (step + 1))
-
-    denom = (D_exp_avg_sq_ / bias_correction2).pow_(hessian_power / 2).add_(eps)
-
-    return (exp_avg_ / denom).div_(bias_correction1)
-
-
-class AdaHessian(Module):
+class AdaHessian(Transform):
     """AdaHessian: An Adaptive Second Order Optimizer for Machine Learning (https://arxiv.org/abs/2006.00719)
 
     This is similar to Adam, but the second momentum is replaced by square root of an exponential moving average of random hessian-vector products.
@@ -154,63 +124,83 @@ class AdaHessian(Module):
         h: float = 1e-3,
         n_samples = 1,
         zHz: bool = True,
+        debias: bool = True,
         seed: int | None = None,
-        inner: Chainable | None = None
+
+        exp_avg_tfm: Chainable | None = None,
+        D_exp_avg_sq_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
+        del defaults['self'], defaults["exp_avg_tfm"], defaults["D_exp_avg_sq_tfm"]
         super().__init__(defaults)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child('exp_avg', exp_avg_tfm)
+        self.set_child('D_exp_avg_sq', D_exp_avg_sq_tfm)
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def update_states(self, objective, states, settings):
+        params = objective.params
 
-        beta1, beta2, eps, averaging, block_size, hessian_power = self.get_settings(params,
-            'beta1', 'beta2', 'eps', 'averaging', 'block_size', "hessian_power", cls=NumberList)
+        beta1, beta2, averaging, block_size = unpack_dicts(settings, 'beta1', 'beta2', 'averaging', 'block_size', cls=NumberList)
 
-        exp_avg, D_exp_avg_sq = self.get_state(params, 'exp_avg', 'h_exp_avg', cls=TensorList)
+        exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq', cls=TensorList)
 
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+        step = self.increment_counter("step", 0) # 0 on 1st update
 
-        closure = var.closure
+        closure = objective.closure
         assert closure is not None
 
-        D = None
-        update_freq = self.defaults['update_freq']
+        # ---------------------------- hutchinson hessian ---------------------------- #
+        fs = settings[0]
+        update_freq = fs['update_freq']
+
         if step % update_freq == 0:
 
-            D, _ = var.hutchinson_hessian(
+            D, _ = objective.hutchinson_hessian(
                 rgrad = None,
                 at_x0 = True,
-                n_samples = self.defaults['n_samples'],
-                distribution = self.defaults['distribution'],
-                hvp_method = self.defaults['hvp_method'],
-                h = self.defaults['h'],
-                zHz = self.defaults["zHz"],
-                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+                n_samples = fs['n_samples'],
+                distribution = fs['distribution'],
+                hvp_method = fs['hvp_method'],
+                h = fs['h'],
+                zHz = fs["zHz"],
+                generator = self.get_generator(params[0].device, fs["seed"]),
             )
 
             D = TensorList(D).zipmap_args(_block_average, block_size, averaging)
+            D_exp_avg_sq.mul_(beta2).addcmul_(D, D, value=1-beta2)
 
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
+            self.increment_counter("num_Ds", start=1)
 
-        var.update = adahessian(
-            tensors=TensorList(update),
-            D=TensorList(D) if D is not None else None,
-            exp_avg_=exp_avg,
-            D_exp_avg_sq_=D_exp_avg_sq,
-            beta1=beta1,
-            beta2=beta2,
-            update_freq=update_freq,
-            eps=eps,
-            hessian_power=hessian_power,
-            step=step,
-        )
+        # --------------------------------- momentum --------------------------------- #
+        tensors = objective.get_updates() # do this after hutchinson to not disturb autograd
+        exp_avg.lerp_(tensors, 1-beta1)
 
-        return var
+
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        params = objective.params
+        step = self.global_state["step"] # 0 on 1st step
+
+        beta1, beta2, eps, hessian_power = unpack_dicts(settings, 'beta1', 'beta2', 'eps', 'hessian_power', cls=NumberList)
+        exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq')
+
+        # ---------------------------------- debias ---------------------------------- #
+        if settings[0]["debias"]:
+            bias_correction1 = 1.0 - (beta1 ** (step + 1))
+            bias_correction2 = 1.0 - (beta2 ** (step + 1))
+
+            exp_avg = exp_avg / bias_correction1
+            D_exp_avg_sq = D_exp_avg_sq / bias_correction2
+
+        # -------------------------------- transforms -------------------------------- #
+        exp_avg = TensorList(self.inner_tensors_step(
+            "exp_avg", tensors=exp_avg, clone=True, objective=objective, must_exist=False))
+
+        D_exp_avg_sq = TensorList(self.inner_tensors_step(
+            "D_exp_avg_sq", tensors=D_exp_avg_sq, clone=True, objective=objective, must_exist=False))
+
+        # ------------------------------ compute update ------------------------------ #
+        denom = D_exp_avg_sq.lazy_pow(hessian_power / 2) + eps
+        objective.updates = exp_avg / denom
+        return objective

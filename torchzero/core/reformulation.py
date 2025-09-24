@@ -3,7 +3,6 @@ from collections.abc import Callable, Sequence
 
 import torch
 
-from .chain import Chain
 from .module import Chainable, Module
 from .objective import Objective
 

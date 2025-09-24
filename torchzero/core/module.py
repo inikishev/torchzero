@@ -1,13 +1,11 @@
 import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
-from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
-from operator import itemgetter
-from typing import Any, final, overload
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any, overload
 
 import torch
 
-from ..utils import vec_to_tensors
 from ..utils.linalg.linear_operator import LinearOperator
 from ..utils.optimizer import Init, ListLike, get_state_vals
 from ..utils.params import Params, _make_param_groups
@@ -84,7 +82,13 @@ class Module(ABC):
     def get_children_sequence(self, prefix = 'module_'):
         return [self.children[f'{prefix}{i}'] for i in range(len(self.children)) if f'{prefix}{i}' in self.children]
 
-    def step_with_child(self, key: str, objective: "Objective", must_exist: bool = True) -> Objective:
+    def inner_step(
+        self,
+        key: str,
+        objective: "Objective",
+        must_exist: bool = True,
+    ) -> Objective:
+        """Passes ``objective`` to child and returns it."""
         child = self.children.get(key, None)
 
         if child is None:
@@ -93,18 +97,22 @@ class Module(ABC):
 
         return child.step(objective)
 
-    def step_tensors_with_child(
+
+    def inner_tensors_step(
         self,
         key: str,
-        tensors: Sequence[torch.Tensor],
+        tensors: list[torch.Tensor],
         clone: bool,
         params: Iterable[torch.Tensor] | None = None,
         grads: Sequence[torch.Tensor] | None = None,
         loss: torch.Tensor | None = None,
         closure: Callable | None = None,
+        objective: Objective | None = None,
         must_exist: bool = True
     ) -> list[torch.Tensor]:
         """Steps with child module. Can be used to apply transforms to any internal buffers.
+
+        If ``objective`` is specified, other attributes shouldn't to be specified.
 
         Args:
             key (str): Child module key.
@@ -118,14 +126,17 @@ class Module(ABC):
             closure (Callable | None, optional): closure. Defaults to None.
             must_exist (bool, optional): if True, if ``key`` doesn't exist, raises ``KeyError``. Defaults to True.
         """
+
         child = self.children.get(key, None)
 
         if child is None:
             if must_exist: raise KeyError(f"child `{key}` doesn't exist")
-            return list(tensors)
+            return tensors
 
         if clone: tensors = [t.clone() for t in tensors]
-        return step_tensors(modules=child, tensors=tensors, params=params, grads=grads, loss=loss, closure=closure)
+        return step_tensors(modules=child, tensors=tensors, params=params, grads=grads,
+                            loss=loss, closure=closure, objective=objective)
+
 
     def __repr__(self):
         s = self.__class__.__name__
@@ -309,8 +320,9 @@ class Module(ABC):
         return self.global_state[key]
 
     def increment_counter(self, key: str, start: int):
-        value = self.global_state.get(key, start)
-        self.global_state["key"] = value + 1
+        """first value is ``start``"""
+        value = self.global_state.get(key, start - 1) + 1
+        self.global_state["key"] = value
         return value
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #

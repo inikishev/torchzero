@@ -66,13 +66,13 @@ def get_group_vals(param_groups: Iterable[Mapping[str, Any]],
 
 Init =  Any
 
-def _make_initial_state_value(param: torch.Tensor, init: Init, i: int | None):
-    if callable(init): return init(param)
+def _make_initial_state_value(tensor: torch.Tensor, init: Init, i: int | None):
+    if callable(init): return init(tensor)
     if isinstance(init, torch.Tensor): return init.detach().clone()
 
     if isinstance(init, (list,tuple)):
         if i is None: raise RuntimeError(f'init is per-parameter ({type(init)}) but parameter index i is None')
-        return _make_initial_state_value(param, init[i], None)
+        return _make_initial_state_value(tensor, init[i], None)
 
     return init
 
@@ -125,72 +125,6 @@ def get_state_vals(state: Mapping[torch.Tensor, MutableMapping[str, Any]], param
 
     return values
 
-
-class Optimizer(torch.optim.Optimizer, ABC):
-    """subclass of torch.optim.Optimizer with some helper methods for fast experimentation, it's not used anywhere in torchzero.
-
-    Args:
-        params (iterable): an iterable of :class:`torch.Tensor` s or
-            :class:`dict` s. Specifies what Tensors should be optimized.
-        defaults (dict | None): a dict containing default values of optimization
-            options (used when a parameter group doesn't specify them).
-    """
-    def __init__(self, params, defaults: dict[str, Any] | None = None, **_defaults):
-        if defaults is None: defaults = {}
-        defaults.update(_defaults)
-
-        super().__init__(params, defaults)
-        self.global_state = self.state[self.param_groups[0]['params'][0]]
-        """state of 1st parameter, can be used as global state which is how L-BFGS uses it in pytorch, and there is some kind of good reason to do it like that"""
-
-    def get_params(self, mode: ParamFilter = 'requires_grad', cls: type[ListLike] = TensorList) -> ListLike:
-        return get_params(self.param_groups, mode, cls)
-
-    @overload
-    def group_vals(self, key: str, *,
-                   mode: ParamFilter = 'requires_grad', cls: type[ListLike] = NumberList) -> ListLike: ...
-    @overload
-    def group_vals(self, key: list[str] | tuple[str,...], *,
-                   mode: ParamFilter = 'requires_grad', cls: type[ListLike] = NumberList) -> list[ListLike]: ...
-    @overload
-    def group_vals(self, key: str, key2: str, *keys: str,
-                   mode: ParamFilter = 'requires_grad', cls: type[ListLike] = NumberList) -> list[ListLike]: ...
-
-    def group_vals(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                   mode: ParamFilter = 'requires_grad', cls: type[ListLike] = NumberList) -> ListLike | list[ListLike]:
-        return get_group_vals(self.param_groups, key, key2, *keys, mode = mode, cls = cls) # pyright:ignore[reportArgumentType]
-
-
-    @overload
-    def state_vals(self, key: str, *,
-                   init: Init = torch.zeros_like,
-                   mode: ParamFilter | list[torch.Tensor] | tuple[torch.Tensor, ...] = 'requires_grad',
-                   cls: type[ListLike] = TensorList) -> ListLike: ...
-    @overload
-    def state_vals(self, key: list[str] | tuple[str,...], *,
-                   init: Init | Sequence[Init] = torch.zeros_like,
-                   mode: ParamFilter | list[torch.Tensor] | tuple[torch.Tensor, ...] = 'requires_grad',
-                   cls: type[ListLike] = TensorList) -> list[ListLike]: ...
-    @overload
-    def state_vals(self, key: str, key2: str, *keys: str,
-                   init: Init | Sequence[Init] = torch.zeros_like,
-                   mode: ParamFilter | list[torch.Tensor] | tuple[torch.Tensor, ...] = 'requires_grad',
-                   cls: type[ListLike] = TensorList) -> list[ListLike]: ...
-
-    def state_vals(self, key: str | list[str] | tuple[str,...], key2: str | None = None, *keys: str,
-                   init: Init | Sequence[Init] = torch.zeros_like,
-                   mode: ParamFilter | list[torch.Tensor] | tuple[torch.Tensor, ...] = 'requires_grad',
-                   cls: type[ListLike] = TensorList) -> ListLike | list[ListLike]:
-
-        if isinstance(mode, (list,tuple)): params = mode
-        else: params = self.get_params(mode)
-
-        return get_state_vals(self.state, params, key, key2, *keys, init = init, cls = cls) # type:ignore[reportArgumentType]
-
-
-    # shut up pylance
-    @abstractmethod
-    def step(self, closure) -> Any: ... # pylint:disable=signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
 
 def zero_grad_(params: Iterable[torch.Tensor], set_to_none):
     if set_to_none:

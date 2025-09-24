@@ -39,7 +39,7 @@ class Adagrad(TensorTransform):
         del defaults['self'], defaults['inner'], defaults["accumulator_tfm"]
         super().__init__(defaults=defaults, inner=inner)
 
-        self.set_child('accumulator_tfm', accumulator_tfm)
+        self.set_child('accumulator', accumulator_tfm)
 
     @torch.no_grad
     def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
@@ -57,11 +57,8 @@ class Adagrad(TensorTransform):
         step = self.increment_counter("step", 0) + 1
 
         accumulator = [state["accumulator"] for state in states]
-        accumulator = self.step_tensors_with_child(
-            "accumulator_tfm", accumulator, clone=True, params=params, grads=grads, loss=loss, must_exist=False
-        )
-        accumulator = TensorList(accumulator)
-
+        accumulator = TensorList(self.inner_tensors_step(
+            "accumulator", tensors=accumulator, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
         denom = accumulator + eps
         tensors_ /= denom
@@ -128,6 +125,7 @@ class AdagradNorm(TensorTransform):
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         accumulator = self._get_accumulator(states, settings)
+        self.increment_counter("step", 0)
 
         # compute squared gradient norm (gg)
         if isinstance(accumulator, TensorList): gg = tensors.tensorwise_dot(tensors)
@@ -143,9 +141,9 @@ class AdagradNorm(TensorTransform):
         tensors = TensorList(tensors)
         accumulator = self._get_accumulator(states, settings)
         eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
+        step = self.global_state["step"] + 1
         fs = settings[0]
         beta = fs["beta"]
-        step = self.increment_counter("step", 0) + 1
 
         # divide makes it estimate variance (beta too)
         if fs["divide"]:
@@ -179,17 +177,19 @@ class FullMatrixAdagrad(TensorTransform):
         A more memory-efficient version equivalent to full matrix Adagrad on last n gradients is implemented in ``tz.m.LMAdagrad``.
 
     Args:
-        beta (float | None, optional): momentum for gradient outer product accumulators. if None, uses sum. Defaults to None.
-        decay (float | None, optional): decay for gradient outer product accumulators. Defaults to None.
-        concat_params (bool, optional): if False, each parameter will have it's own accumulator. Defaults to True.
+        reg (float, optional): regularization, scale of identity matrix added to accumulator. Defaults to 1e-12.
         precond_freq (int, optional): frequency of updating the inverse square root of the accumulator. Defaults to 1.
+        beta (float | None, optional): momentum for gradient outer product accumulators. if None, uses sum. Defaults to None.
+        beta_debias (bool, optional): whether to use debiasing, only has effect when ``beta`` is not ``None``. Defaults to True.
+        divide (bool, optional): if ``True``, accumulator is divided by number of accumulated gradients. Defaults to False.
         init (Literal[str], optional):
             how to initialize the accumulator.
             - "identity" - with identity matrix (default).
             - "zeros" - with zero matrix.
             - "ones" - with matrix of ones.
              -"GGT" - with the first outer product
-        divide (bool, optional): whether to divide the accumulator by number of gradients in it. Defaults to False.
+        matrix_power (float, optional): accumulator matrix power. Defaults to -1/2.
+        concat_params (bool, optional): if False, each parameter will have it's own accumulator. Defaults to True.
         inner (Chainable | None, optional): inner modules to apply preconditioning to. Defaults to None.
 
     ## Examples:
@@ -234,11 +234,13 @@ class FullMatrixAdagrad(TensorTransform):
         concat_params=True,
 
         inner: Chainable | None = None,
+        accumulator_tfm: Chainable | None = None
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner'], defaults["concat_params"]
+        del defaults['self'], defaults['inner'], defaults["concat_params"], defaults["accumulator_tfm"]
         super().__init__(defaults=defaults, inner=inner, concat_params=concat_params)
 
+        self.set_child("accumulator", accumulator_tfm)
 
     @torch.no_grad
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
@@ -270,6 +272,8 @@ class FullMatrixAdagrad(TensorTransform):
         state['step'] = step + 1
 
         accumulator: torch.Tensor = state['accumulator']
+        accumulator = self.inner_tensors_step("accumulator", [accumulator], clone=True, must_exist=False)[0]
+
         divide = setting['divide']
         precond_freq = setting['precond_freq']
         reg = setting['reg']

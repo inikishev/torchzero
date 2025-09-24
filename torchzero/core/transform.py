@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from operator import itemgetter
 from typing import Any, final, cast
@@ -8,8 +7,7 @@ import torch
 
 from .chain import Chainable
 from .module import Module
-from ..utils import vec_to_tensors_, vec_to_tensors, safe_dict_update_, unpack_states
-from ..utils.optimizer import _make_initial_state_value
+from ..utils import vec_to_tensors, safe_dict_update_
 from .objective import Objective
 
 
@@ -66,28 +64,6 @@ class Transform(Module):
 
         return self.apply_states(objective=objective, states=states, settings=settings)
 
-    def lerp_(
-        self, states: list[dict[str, Any]], key: str, tensors: list[torch.Tensor],
-        weight: float | Sequence[float], init: Any = torch.zeros_like
-    ):
-        buff = unpack_states(states, tensors, key, init=init)
-        torch._foreach_lerp_(buff, tensors, weight=weight)
-        return buff
-
-    def accumulate_(
-        self, states: list[dict[str, Any]], key: str, tensors: list[torch.Tensor],
-        beta: float | None = None, init: Any = torch.zeros_like
-    ):
-
-        if beta is None:
-            buff = unpack_states(states, tensors, key, init=init)
-            torch._foreach_add_(buff, tensors)
-            return buff
-
-        else:
-            return self.lerp_(states=states, key=key, tensors=tensors, weight=(1-beta), init=init)
-
-
 
 
 class TensorTransform(Transform):
@@ -99,6 +75,29 @@ class TensorTransform(Transform):
 
     To use, subclass this and override one of ``single_tensor_update`` or ``multi_tensor_update``,
     and one of ``single_tensor_apply`` or ``multi_tensor_apply``.
+
+    For copying:
+
+    multi tensor:
+    ```
+    def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
+        ...
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
+        ...
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        ...
+    ```
+
+    single tensor:
+
+    ```
+    def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
+        ...
+    def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+        ...
+    def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
+        ...
+    ```
     """
     def __init__(
         self,
@@ -126,11 +125,6 @@ class TensorTransform(Transform):
         setting: Mapping[str, Any],
     ) -> None:
         """initialize ``state`` before first ``update``.
-
-        for copying:
-        ```python
-        def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
-        ```
         """
 
     def single_tensor_update(
@@ -143,11 +137,6 @@ class TensorTransform(Transform):
         setting: Mapping[str, Any],
     ) -> None:
         """Updates ``state``. This should not modify ``tensor``.
-
-        for copying:
-        ```python
-        def single_tensor_update(self, tensor, param, grad, loss, state, setting):
-        ```
         """
 
     def single_tensor_apply(
@@ -160,11 +149,6 @@ class TensorTransform(Transform):
         setting: Mapping[str, Any],
     ) -> torch.Tensor:
         """Updates ``tensor`` and returns it. This shouldn't modify ``state`` if possible.
-
-        for copying:
-        ```python
-        def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
-        ```
         """
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `single_tensor_apply`.")
 
@@ -180,11 +164,6 @@ class TensorTransform(Transform):
     ) -> None:
         """initialize ``states`` before first ``update``.
         By default calls ``single_tensor_initialize`` on all tensors.
-
-        for copying:
-        ```python
-        def multi_tensor_initialize(self, tensors, params, grads, loss, states, settings):
-        ```
         """
         if grads is None:
             grads = cast(list, [None] * len(tensors))
@@ -203,11 +182,6 @@ class TensorTransform(Transform):
     ) -> None:
         """Updates ``states``. This should not modify ``tensor``.
         By default calls ``single_tensor_update`` on all tensors.
-
-        for copying:
-        ```python
-        def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
-        ```
         """
 
         if grads is None:
@@ -227,11 +201,6 @@ class TensorTransform(Transform):
     ) -> list[torch.Tensor]:
         """Updates ``tensors`` and returns it. This shouldn't modify ``state`` if possible.
          By default calls ``single_tensor_apply`` on all tensors.
-
-        for copying:
-        ```python
-        def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
-        ```
          """
 
         if grads is None:

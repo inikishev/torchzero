@@ -1,5 +1,5 @@
 import torch
-from ...core import  Transform
+from ...core import  TensorTransform
 from ...utils import TensorList, unpack_dicts, unpack_states
 
 
@@ -16,10 +16,10 @@ def adaptive_heavy_ball(f, f_star, f_prev, g: TensorList, g_prev: TensorList, p:
     return (1 + m) * h * g - m*(p-p_prev)
 
 
-class AdaptiveHeavyBall(Transform):
+class AdaptiveHeavyBall(TensorTransform):
     """Adaptive heavy ball from https://hal.science/hal-04832983v1/file/OJMO_2024__5__A7_0.pdf.
 
-    This is related to conjugate gradient methods, it may be very good for non-stochastic convex objectives, but won't work on stochastic ones.
+    Suitable for quadratic objectives with known f* (loss at minimum).
 
     note:
         The step size is determined by the algorithm, so learning rate modules shouldn't be used.
@@ -33,22 +33,27 @@ class AdaptiveHeavyBall(Transform):
         super().__init__(defaults, uses_grad=False, uses_loss=True)
 
     @torch.no_grad
-    def apply_tensors(self, tensors, params, grads, loss, states, settings):
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         assert loss is not None
         tensors = TensorList(tensors)
-        f_star = self.defaults['f_star']
+        f_star = settings[0]['f_star']
 
         f_prev = self.global_state.get('f_prev', None)
         p_prev, g_prev = unpack_states(states, tensors, 'p_prev', 'g_prev', init=[params,tensors], cls=TensorList)
 
+        # -------------------------------- first step -------------------------------- #
         if f_prev is None:
             self.global_state['f_prev'] = loss
             h = 2*(loss - f_star) / tensors.dot(tensors)
             return h * tensors
 
-        update = adaptive_heavy_ball(f=loss, f_star=f_star, f_prev=f_prev, g=tensors, g_prev=g_prev, p=TensorList(params), p_prev=p_prev)
+        # ------------------------------- further steps ------------------------------ #
+        update = adaptive_heavy_ball(
+            f=loss, f_star=f_star, f_prev=f_prev, g=tensors, g_prev=g_prev, p=TensorList(params), p_prev=p_prev)
 
+        # --------------------------- store previous values -------------------------- #
         self.global_state['f_prev'] = loss
         p_prev.copy_(params)
         g_prev.copy_(tensors)
+
         return update

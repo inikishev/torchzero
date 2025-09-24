@@ -2,32 +2,11 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step, HVPMethod
-from ...utils import Distributions, NumberList, TensorList
+from ...core import Chainable, HVPMethod, Transform
+from ...utils import Distributions, NumberList, TensorList, unpack_dicts, unpack_states
 
 
-def esgd_(
-    tensors_: TensorList,
-    Hz: TensorList | None,
-    Hz_sq_acc_: TensorList,
-    damping: float | NumberList,
-    update_freq: int,
-    step: int,
-    i: int,
-):
-    # update preconditioner
-    if step % update_freq == 0:
-        assert Hz is not None
-        Hz_sq_acc_.addcmul_(Hz, Hz)
-        i += 1
-    else:
-        assert Hz is None
-
-    denom = (Hz_sq_acc_ / max(i, 1)).sqrt_().add_(damping)
-    return tensors_.div_(denom), i
-
-
-class ESGD(Module):
+class ESGD(Transform):
     """Equilibrated Gradient Descent (https://arxiv.org/abs/1502.04390)
 
     This is similar to Adagrad, but the accumulates squared randomized hessian diagonal estimates instead of squared gradients.
@@ -98,58 +77,72 @@ class ESGD(Module):
         n_samples = 1,
         zHz: bool = False,
         seed: int | None = None,
-        inner: Chainable | None = None
+        beta: float | None = None,
+        beta_debias: bool = True,
+
+        inner: Chainable | None = None,
+        Hz_sq_acc_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
-        super().__init__(defaults)
+        del defaults['self'], defaults['inner'], defaults["Hz_sq_acc_tfm"]
+        super().__init__(defaults, inner=inner)
 
-        if inner is not None:
-            self.set_child('inner', inner)
+        self.set_child("Hz_sq_acc", Hz_sq_acc_tfm)
 
     @torch.no_grad
-    def apply(self, var):
-        params = var.params
+    def update_states(self, objective, states, settings):
+        params = objective.params
 
-        damping = self.get_settings(params, 'damping', cls=NumberList)
-        Hz_sq_acc = self.get_state(params, 'Hz_sq_acc', cls=TensorList)
-        i = self.global_state.get('i', 0)
+        fs = settings[0]
+        update_freq = fs['update_freq']
 
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
-
-        closure = var.closure
-        assert closure is not None
-
-        Hz = None
-        update_freq = self.defaults['update_freq']
+        # ------------------------------- accumulate Hz ------------------------------ #
+        step = self.increment_counter("step", 0)
         if step % update_freq == 0:
+            self.increment_counter("num_Hzs", 1)
 
-            Hz, _ = var.hutchinson_hessian(
+            Hz, _ = objective.hutchinson_hessian(
                 rgrad = None,
                 at_x0 = True,
-                n_samples = self.defaults['n_samples'],
-                distribution = self.defaults['distribution'],
-                hvp_method = self.defaults['hvp_method'],
-                h = self.defaults['h'],
-                zHz = self.defaults["zHz"], # False
-                generator = self.get_generator(params[0].device, self.defaults["seed"]),
+                n_samples = fs['n_samples'],
+                distribution = fs['distribution'],
+                hvp_method = fs['hvp_method'],
+                h = fs['h'],
+                zHz = fs["zHz"], # default is False, so it returns Hz, not z⊙Hz
+                generator = self.get_generator(params[0].device, fs["seed"]),
             )
 
             Hz = TensorList(Hz)
+            Hz_sq_acc = unpack_states(states, params, 'Hz_sq_acc', cls=TensorList)
 
-        update = var.get_update()
-        if 'inner' in self.children:
-            update = step(self.children['inner'], tensors=update, params=params, grads=var.grad, var=var)
+            beta = fs["beta"]
+            if beta is None:
+                Hz_sq_acc.addcmul_(Hz, Hz)
 
-        var.update, self.global_state['i'] = esgd_(
-            tensors_=TensorList(update),
-            Hz=TensorList(Hz) if Hz is not None else None,
-            Hz_sq_acc_=Hz_sq_acc,
-            damping=damping,
-            update_freq=update_freq,
-            step=step,
-            i=i,
-        )
+            else:
+                Hz_sq_acc.mul_(beta).addcmul_(Hz, Hz, value=1-beta)
 
-        return var
+
+    def apply_states(self, objective, states, settings):
+        tensors = objective.get_updates()
+        Hz_sq_acc = unpack_states(states, tensors, 'Hz_sq_acc', cls=TensorList)
+        num_Hzs = self.global_state["num_Hzs"]
+        fs = settings[0]
+
+        # ---------------------------------- debias ---------------------------------- #
+        beta = fs["beta"]
+        beta_debias = fs["beta_debias"]
+
+        if beta_debias and beta is not None:
+            bias_correction = 1.0 - (beta ** (num_Hzs + 1))
+            Hz_sq_acc = Hz_sq_acc / bias_correction
+
+        else:
+            Hz_sq_acc = Hz_sq_acc / num_Hzs
+
+        # ---------------------------------- update ---------------------------------- #
+        damping = [s["damping"] for s in settings]
+
+        denom = (Hz_sq_acc / num_Hzs).sqrt_().add_(damping)
+        return tensors_.div_(denom), i
+

@@ -77,7 +77,11 @@ def step_tensors(
     grads: Sequence[torch.Tensor] | None = None,
     loss: torch.Tensor | None = None,
     closure: Callable | None = None,
+    objective: "Objective | None" = None
 ) -> list[torch.Tensor]:
+    if objective is not None:
+        if any(i is not None for i in (params, grads, loss, closure)):
+            raise RuntimeError("Specify either `objective` or `(params, grads, loss, closure)`")
 
     if not isinstance(modules, Sequence):
         modules = (modules, )
@@ -87,11 +91,13 @@ def step_tensors(
         params = [t.view_as(t).requires_grad_() for t in tensors]
 
     # create objective
-    objective = Objective(params=params, loss=loss, closure=closure)
-    objective.updates = list(tensors)
+    if objective is None:
+        objective = Objective(params=params, loss=loss, closure=closure)
 
     if grads is not None:
         objective.grads = list(grads)
+
+    objective.updates = list(tensors)
 
     # step with modules
     # this won't update parameters in-place because objective.Modular is None

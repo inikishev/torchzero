@@ -182,7 +182,7 @@ class Objective:
 
         self.updates: list[torch.Tensor] | None = None
         """
-        current update. Update is assumed to be a transformed gradient, therefore it is subtracted.
+        current updates list. Update is assumed to be a transformed gradient, therefore it is subtracted.
 
         If closure is None, this is initially set to cloned gradient. Otherwise this is set to None.
 

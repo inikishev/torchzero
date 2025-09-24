@@ -6,10 +6,10 @@ from typing import Any
 
 import torch
 
-from ..utils import Params, _make_param_groups
+from ..utils.params import Params, _make_param_groups
+from .functional import step
 from .module import Chainable, Module
 from .objective import Objective
-from .functional import step
 
 
 class _EvalCounterClosure:

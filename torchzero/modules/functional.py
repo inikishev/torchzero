@@ -30,7 +30,7 @@ def debiased_step_size(
     pow: float = 2,
     alpha: float | NumberList = 1,
 ):
-    """returns multiplier to step size"""
+    """returns multiplier to step size, step starts from 1"""
     if isinstance(beta1, NumberList): beta1 = beta1.fill_none(0)
     if isinstance(beta2, NumberList): beta2 = beta2.fill_none(0)
 
