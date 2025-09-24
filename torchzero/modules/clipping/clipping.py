@@ -5,7 +5,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Module,  Transform
+from ...core import Module,  TensorTransform
 from ...utils import Metrics, NumberList, TensorList
 from ...utils.metrics import _METRICS
 
@@ -150,7 +150,7 @@ def normalize_grads_(
     _clip_norm_(grads, min=None, max=None, norm_value=norm_value, ord=ord, dim=dim, inverse_dims=inverse_dims, min_size=min_size)
 
 
-class ClipValue(Transform):
+class ClipValue(TensorTransform):
     """Clips update magnitude to be within ``(-value, value)`` range.
 
     Args:
@@ -180,17 +180,17 @@ class ClipValue(Transform):
     ```
 
     """
-    def __init__(self, value: float, target: _RemoveThis = 'update'):
+    def __init__(self, value: float):
         defaults = dict(value=value)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         value = [s['value'] for s in settings]
         return TensorList(tensors).clip_([-v for v in value], value)
 
-class ClipNorm(Transform):
-    """Clips update norm to be no larger than `value`.
+class ClipNorm(TensorTransform):
+    """Clips update norm to be no larger than ``value``.
 
     Args:
         max_norm (float): value to clip norm to.
@@ -236,10 +236,9 @@ class ClipNorm(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
-        target: _RemoveThis = "update",
     ):
         defaults = dict(max_norm=max_norm,ord=ord,dim=dim,min_size=min_size,inverse_dims=inverse_dims)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -257,7 +256,7 @@ class ClipNorm(Transform):
         )
         return tensors
 
-class Normalize(Transform):
+class Normalize(TensorTransform):
     """Normalizes the update.
 
     Args:
@@ -304,10 +303,9 @@ class Normalize(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 1,
-        target: _RemoveThis = "update",
     ):
         defaults = dict(norm_value=norm_value,ord=ord,dim=dim,min_size=min_size, inverse_dims=inverse_dims)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -362,7 +360,7 @@ def _centralize_(
     return tensors_
 
 
-class Centralize(Transform):
+class Centralize(TensorTransform):
     """Centralizes the update.
 
     Args:
@@ -395,10 +393,9 @@ class Centralize(Transform):
         dim: int | Sequence[int] | Literal["global"] | None = None,
         inverse_dims: bool = False,
         min_size: int = 2,
-        target: _RemoveThis = "update",
     ):
         defaults = dict(dim=dim,min_size=min_size,inverse_dims=inverse_dims)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
