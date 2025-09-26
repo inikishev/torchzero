@@ -264,9 +264,8 @@ class SOAP(TensorTransform):
             merged = []
             for tensor, state, setting in zip(tensors, states, settings):
                 if setting["merge_small"]:
-                    tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(
-                        tensor, setting["max_dim"]
-                    )
+                    tensor, _, _ = _merge_small_dims(tensor, setting["max_dim"])
+                    merged.append(tensor)
 
 
         for tensor, state, setting in zip(merged, states, settings):
