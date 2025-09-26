@@ -208,3 +208,4 @@ class SVRG(Module):
             if self.defaults['reset_before_accum']:
                 objective.post_step_hooks.append(partial(_reset_except_self, self=self))
 
+    def apply(self, objective): return objective
