@@ -17,7 +17,7 @@ _NS_COEFFS = (
 )
 
 @enable_compilation
-def zeropower_via_newtonschulz5(A: torch.Tensor, coeffs=_NS_COEFFS, eps=1e-7) -> torch.Tensor:
+def zeropower_via_newtonschulz5(G: torch.Tensor, coeffs=_NS_COEFFS) -> torch.Tensor:
     """
     Applies to last 2 dims - so usually reverse_dims should be applied to G before and after.
 
@@ -29,14 +29,14 @@ def zeropower_via_newtonschulz5(A: torch.Tensor, coeffs=_NS_COEFFS, eps=1e-7) ->
     where S' is diagonal with S_{ii}' ~ Uniform(0.5, 1.5), which turns out not to hurt model
     performance at all relative to UV^T, where USV^T = G is the SVD.
     """
-    assert A.ndim >= 2 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
+    assert G.ndim >= 2 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
 
-    X = A.bfloat16()
-    if A.size(-2) > A.size(-1):
+    X = G.bfloat16()
+    if G.size(-2) > G.size(-1):
         X = X.mT
 
     # Ensure spectral norm is at most 1
-    X = X / (X.norm(dim=(-2, -1), keepdim=True) + eps)
+    X = X / (X.norm(dim=(-2, -1), keepdim=True).clip(min=torch.finfo(X.dtype).tiny * 2))
 
     # Perform the NS iterations
     for a,b,c in coeffs:
@@ -44,16 +44,14 @@ def zeropower_via_newtonschulz5(A: torch.Tensor, coeffs=_NS_COEFFS, eps=1e-7) ->
         B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
         X = a * X + B @ X
 
-    if A.size(-2) > A.size(-1):
+    if G.size(-2) > G.size(-1):
         X = X.mT
 
-    return X.to(A.dtype)
-
+    return X.to(G.dtype)
 
 # code from https://github.com/MarkTuddenham/Orthogonal-Optimisers.
 # Tuddenham, M., Prügel-Bennett, A., & Hare, J. (2022).
 # Orthogonalising gradients to speed up neural network optimisation. arXiv preprint arXiv:2202.07052.
-@torch.no_grad
 def zeropower_via_svd(A: torch.Tensor) -> torch.Tensor:
     """
     Applies to first 2 dims and isn't batched - rest of dimensions are flattened.
@@ -65,7 +63,6 @@ def zeropower_via_svd(A: torch.Tensor) -> torch.Tensor:
 
     return  U @ Vt
 
-@torch.no_grad
 def zeropower_via_eigh(A: torch.Tensor) -> torch.Tensor:
     """
     Only SPD and I need to check if I apply those to SPD because this is better than SVD.
@@ -73,10 +70,26 @@ def zeropower_via_eigh(A: torch.Tensor) -> torch.Tensor:
     L, Q = torch_linalg.eigh(A, retry_float64=True)
     return  Q @ Q.mH
 
+
+def orthogonalize_via_qr(A: torch.Tensor):
+    *_, m, n = A.shape
+    T = False
+    if m < n:
+        T = True
+        m,n = n,m
+        A = A.mH
+
+    Q = torch_linalg.qr(A, mode='reduced', retry_float64=True).Q
+
+    if T:
+        Q = Q.mH
+
+    return Q
+
 OrthogonalizeMethod = Literal["newtonschulz", "svd", "qr"]
 def orthogonalize(A: torch.Tensor, method: OrthogonalizeMethod = "newtonschulz") -> torch.Tensor:
     if method == "newtonschulz": return zeropower_via_newtonschulz5(A)
     if method == "svd": return zeropower_via_svd(A)
-    if method == "qr": return torch_linalg.qr(A, retry_float64=True).Q
+    if method == "qr": return orthogonalize_via_qr(A)
     if method == "eigh": return zeropower_via_eigh(A)
     raise ValueError(method)

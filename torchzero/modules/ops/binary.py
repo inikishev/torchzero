@@ -281,8 +281,8 @@ class Threshold(BinaryOperationBase):
         update_above = self.defaults['update_above']
         update = TensorList(update)
         if update_above:
-            if isinstance(value, list): return update.where_(update>threshold, value)
+            if isinstance(value, list): return update.where(update>threshold, value)
             return update.masked_fill_(update<=threshold, value)
 
-        if isinstance(value, list): return update.where_(update<threshold, value)
+        if isinstance(value, list): return update.where(update<threshold, value)
         return update.masked_fill_(update>=threshold, value)

@@ -6,24 +6,13 @@ import numpy as np
 import torch
 from mads.mads import orthomads
 
-from ...utils import Optimizer, TensorList
-
-
-def _ensure_float(x):
-    if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return x.item()
-    return float(x)
-
-def _ensure_numpy(x):
-    if isinstance(x, torch.Tensor): return x.detach().cpu()
-    if isinstance(x, np.ndarray): return x
-    return np.array(x)
-
+from ...utils import TensorList
+from .wrapper import WrapperBase
 
 Closure = Callable[[bool], Any]
 
 
-class MADS(Optimizer):
+class MADS(WrapperBase):
     """Use mads.orthomads as pytorch optimizer.
 
     Note that this performs full minimization on each step,
@@ -53,37 +42,28 @@ class MADS(Optimizer):
         displog = False,
         savelog = False,
     ):
-        super().__init__(params, lb=lb, ub=ub)
+        super().__init__(params, dict(lb=lb, ub=ub))
 
         kwargs = locals().copy()
         del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
         self._kwargs = kwargs
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure):
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return _ensure_float(closure(False))
 
     @torch.no_grad
     def step(self, closure: Closure):
-        params = self.get_params()
+        params = TensorList(self._get_params())
+        x0 = params.to_vec().numpy(force=True)
+        lb, ub = self._get_lb_ub()
 
-        x0 = params.to_vec().detach().cpu().numpy()
-
-        lb, ub = self.group_vals('lb', 'ub', cls=list)
-        bounds_lower = []
-        bounds_upper = []
-        for p, l, u in zip(params, lb, ub):
-            bounds_lower.extend([l] * p.numel())
-            bounds_upper.extend([u] * p.numel())
 
         f, x = orthomads(
             design_variables=x0,
-            bounds_upper=np.asarray(bounds_upper),
-            bounds_lower=np.asarray(bounds_lower),
-            objective_function=partial(self._objective, params = params, closure = closure),
+            bounds_upper=np.asarray(ub),
+            bounds_lower=np.asarray(lb),
+            objective_function=partial(self._f, params=params, closure=closure),
             **self._kwargs
         )
 
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        params.from_vec_(torch.as_tensor(x, device = params[0].device, dtype=params[0].dtype,))
         return f
 

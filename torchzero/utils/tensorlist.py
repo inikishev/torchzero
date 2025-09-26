@@ -22,7 +22,6 @@ from typing_extensions import Self, TypeAlias, Unpack
 
 from .metrics import Metrics, evaluate_metric, calculate_metric_list
 from .numberlist import NumberList, as_numberlist, maybe_numberlist
-from .ops import where_
 from .python_tools import generic_ne, zipmap
 
 _Scalar = int | float | bool | complex
@@ -994,9 +993,6 @@ class TensorList(list[torch.Tensor | Any]):
     def where(self, condition: "torch.Tensor | _TensorSeq", other: _STOrSTSeq):
         """self where condition is true other otherwise"""
         return self.zipmap_args(_MethodCallerWithArgs('where'), condition, other)
-    def where_(self, condition: "torch.Tensor | _TensorSeq", other: "torch.Tensor | _TensorSeq"):
-        """self where condition is true other otherwise"""
-        return self.zipmap_args_inplace_(where_, condition, other)
 
     def masked_fill(self, mask: "torch.Tensor | _TensorSeq", fill_value: "_Scalar | _ScalarSeq"):
         """Same as tensor[mask] = value (not in-place), where value must be scalar/scalars"""

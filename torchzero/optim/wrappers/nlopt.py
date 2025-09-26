@@ -5,7 +5,8 @@ import numpy as np
 import torch
 
 import nlopt
-from ...utils import Optimizer, TensorList
+from ...utils import TensorList
+from .wrapper import WrapperBase
 
 _ALGOS_LITERAL = Literal[
     "GN_DIRECT",  # = _nlopt.GN_DIRECT
@@ -69,7 +70,7 @@ def _ensure_tensor(x):
 inf = float('inf')
 Closure = Callable[[bool], Any]
 
-class NLOptWrapper(Optimizer):
+class NLOptWrapper(WrapperBase):
     """Use nlopt as pytorch optimizer, with gradient supplied by pytorch autograd.
     Note that this performs full minimization on each step,
     so usually you would want to perform a single step, although performing multiple steps will refine the
@@ -96,7 +97,7 @@ class NLOptWrapper(Optimizer):
         algorithm: int | _ALGOS_LITERAL,
         lb: float | None = None,
         ub: float | None = None,
-        maxeval: int | None = 10000, # None can stall on some algos and because they are threaded C you can't even interrupt them
+        maxeval: int | None = None, # None can stall on some algos and because they are threaded C you can't even interrupt them
         stopval: float | None = None,
         ftol_rel: float | None = None,
         ftol_abs: float | None = None,
@@ -104,6 +105,9 @@ class NLOptWrapper(Optimizer):
         xtol_abs: float | None = None,
         maxtime: float | None = None,
     ):
+        if all(i is None for i in (maxeval, stopval, ftol_abs, ftol_rel, xtol_abs, xtol_rel)):
+            raise RuntimeError("Specify at least one stopping criterion")
+
         defaults = dict(lb=lb, ub=ub)
         super().__init__(params, defaults)
 
@@ -119,7 +123,7 @@ class NLOptWrapper(Optimizer):
 
         self._last_loss = None
 
-    def _f(self, x: np.ndarray, grad: np.ndarray, closure, params: TensorList):
+    def _objective(self, x: np.ndarray, grad: np.ndarray, closure, params: TensorList):
         if self.raised:
             if self.opt is not None: self.opt.force_stop()
             return np.inf
@@ -132,7 +136,7 @@ class NLOptWrapper(Optimizer):
             if grad.size > 0:
                 with torch.enable_grad(): loss = closure()
                 self._last_loss = _ensure_float(loss)
-                grad[:] = params.ensure_grad_().grad.to_vec().reshape(grad.shape).detach().cpu().numpy()
+                grad[:] = params.ensure_grad_().grad.to_vec().reshape(grad.shape).numpy(force=True)
                 return self._last_loss
 
             self._last_loss = _ensure_float(closure(False))
@@ -147,25 +151,15 @@ class NLOptWrapper(Optimizer):
     def step(self, closure: Closure): # pylint: disable = signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
         self.e = None
         self.raised = False
-        params = self.get_params()
-
-        # make bounds
-        lb, ub = self.group_vals('lb', 'ub', cls=list)
-        lower = []
-        upper = []
-        for p, l, u in zip(params, lb, ub):
-            if l is None: l = -inf
-            if u is None: u = inf
-            lower.extend([l] * p.numel())
-            upper.extend([u] * p.numel())
-
-        x0 = params.to_vec().detach().cpu().numpy().astype(np.float64)
+        params = TensorList(self._get_params())
+        x0 = params.to_vec().numpy(force=True)
+        lb,ub = self._get_lb_ub(ld = {None: -np.inf}, ud = {None: np.inf})
 
         self.opt = nlopt.opt(self.algorithm, x0.size)
         self.opt.set_exceptions_enabled(False) # required
         self.opt.set_min_objective(partial(self._f, closure = closure, params = params))
-        self.opt.set_lower_bounds(lower)
-        self.opt.set_upper_bounds(upper)
+        self.opt.set_lower_bounds(lb)
+        self.opt.set_upper_bounds(ub)
 
         if self.maxeval is not None: self.opt.set_maxeval(self.maxeval)
         if self.stopval is not None: self.opt.set_stopval(self.stopval)
@@ -184,7 +178,7 @@ class NLOptWrapper(Optimizer):
         except Exception as e:
             raise e from None
 
-        if x is not None: params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        if x is not None: params.from_vec_(torch.as_tensor(x, device = params[0].device, dtype=params[0].dtype))
         if self.e is not None: raise self.e from None
 
         if self._last_loss is None or x is None: return closure(False)

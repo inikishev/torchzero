@@ -6,7 +6,7 @@ import torch
 
 import nevergrad as ng
 
-from ...utils import Optimizer
+from .wrapper import WrapperBase
 
 
 def _ensure_float(x) -> float:
@@ -14,7 +14,7 @@ def _ensure_float(x) -> float:
     if isinstance(x, np.ndarray): return float(x.item())
     return float(x)
 
-class NevergradWrapper(Optimizer):
+class NevergradWrapper(WrapperBase):
     """Use nevergrad optimizer as pytorch optimizer.
     Note that it is recommended to specify `budget` to the number of iterations you expect to run,
     as some nevergrad optimizers will error without it.
@@ -72,7 +72,7 @@ class NevergradWrapper(Optimizer):
 
     @torch.no_grad
     def step(self, closure): # pylint:disable=signature-differs # pyright:ignore[reportIncompatibleMethodOverride]
-        params = self.get_params()
+        params = self._get_params()
         if self.opt is None:
             ng_params = []
             for group in self.param_groups:
@@ -95,7 +95,7 @@ class NevergradWrapper(Optimizer):
 
         x: ng.p.Tuple = self.opt.ask() # type:ignore
         for cur, new in zip(params, x):
-            cur.set_(torch.from_numpy(new.value).to(dtype=cur.dtype, device=cur.device, copy=False).reshape_as(cur)) # type:ignore
+            cur.set_(torch.as_tensor(new.value, dtype=cur.dtype, device=cur.device).reshape_as(cur)) # type:ignore
 
         loss = closure(False)
         self.opt.tell(x, _ensure_float(loss))

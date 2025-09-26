@@ -1567,13 +1567,6 @@ def test_where(simple_tl: TensorList):
     assert_tl_allclose(result_module, expected_tl)
 
 
-    # Test inplace where_ (needs TensorList other)
-    tl_copy = simple_tl.clone()
-    result_inplace = tl_copy.where_(condition_tl, other_tl)
-    assert result_inplace is tl_copy
-    assert_tl_allclose(tl_copy, expected_tl)
-
-
 def test_masked_fill(simple_tl: TensorList):
     mask_tl = simple_tl.lt(0)
     fill_value_scalar = 99.0

@@ -1,23 +1,16 @@
-import typing
-from collections import abc
-
-import numpy as np
+import optuna
 import torch
 
-import optuna
+from ...utils import TensorList, tofloat, totensor
+from .wrapper import WrapperBase
 
-from ...utils import Optimizer, totensor, tofloat
 
 def silence_optuna():
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-def _ensure_float(x) -> float:
-    if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return float(x.item())
-    return float(x)
 
 
-class OptunaSampler(Optimizer):
+class OptunaSampler(WrapperBase):
     """Optimize your next SOTA model using hyperparameter optimization.
 
     Note - optuna is surprisingly scalable to large number of parameters (up to 10,000), despite literally requiring a for-loop because it only supports scalars. Default TPESampler is good for BBO. Maybe not for NNs...
@@ -38,7 +31,7 @@ class OptunaSampler(Optimizer):
         silence: bool = True,
     ):
         if silence: silence_optuna()
-        super().__init__(params, lb=lb, ub=ub)
+        super().__init__(params, dict(lb=lb, ub=ub))
 
         if isinstance(sampler, type): sampler = sampler()
         self.sampler = sampler
@@ -47,7 +40,7 @@ class OptunaSampler(Optimizer):
     @torch.no_grad
     def step(self, closure):
 
-        params = self.get_params()
+        params = TensorList(self._get_params())
         if self.study is None:
             self.study = optuna.create_study(sampler=self.sampler)
 

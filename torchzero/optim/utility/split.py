@@ -3,7 +3,8 @@ from collections.abc import Callable, Iterable
 
 import torch
 
-from ...utils import flatten, get_params
+from ...utils import flatten
+from ...utils.optimizer import get_params
 
 class Split(torch.optim.Optimizer):
     """Steps will all `optimizers`, also has a check that they have no duplicate parameters.

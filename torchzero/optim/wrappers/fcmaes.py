@@ -9,20 +9,15 @@ import fcmaes
 import fcmaes.optimizer
 import fcmaes.retry
 
-from ...utils import Optimizer, TensorList
+from ...utils import TensorList
+from .wrapper import WrapperBase
 
 Closure = Callable[[bool], Any]
-
-
-def _ensure_float(x) -> float:
-    if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return float(x.item())
-    return float(x)
 
 def silence_fcmaes():
     fcmaes.retry.logger.disable('fcmaes')
 
-class FcmaesWrapper(Optimizer):
+class FcmaesWrapper(WrapperBase):
     """Use fcmaes as pytorch optimizer. Particularly fcmaes has BITEOPT which appears to win in many benchmarks.
 
     Note that this performs full minimization on each step, so only perform one step with this.
@@ -61,37 +56,33 @@ class FcmaesWrapper(Optimizer):
         popsize: int | None = 31,
         capacity: int | None = 500,
         stop_fitness: float | None = -np.inf,
-        statistic_num: int | None = 0
+        statistic_num: int | None = 0,
+        silence: bool = True,
     ):
-        super().__init__(params, lb=lb, ub=ub)
-        silence_fcmaes()
+        super().__init__(params, dict(lb=lb,ub=ub))
+        if silence:
+            silence_fcmaes()
         kwargs = locals().copy()
         del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
         self._kwargs = kwargs
         self._kwargs['workers'] = 1
+        self.e = None
+        self.raised = False
 
     def _objective(self, x: np.ndarray, params: TensorList, closure) -> float:
         if self.raised: return np.inf
         try:
-            params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-            return _ensure_float(closure(False))
+            return self._f(x, params, closure)
         except Exception as e:
-            # ha ha, I found a way to make exceptions work in fcmaes and scipy direct
+            # makes exceptions work in fcmaes and scipy direct
             self.e = e
             self.raised = True
             return np.inf
 
     @torch.no_grad
     def step(self, closure: Closure):
-        self.raised = False
-        self.e = None
-
-        params = self.get_params()
-
-        lb, ub = self.group_vals('lb', 'ub', cls=list)
-        bounds = []
-        for p, l, u in zip(params, lb, ub):
-            bounds.extend([[l, u]] * p.numel())
+        params = TensorList(self._get_params())
+        bounds = self._get_bounds()
 
         res = fcmaes.retry.minimize(
             partial(self._objective, params=params, closure=closure), # pyright:ignore[reportArgumentType]
@@ -99,7 +90,7 @@ class FcmaesWrapper(Optimizer):
             **self._kwargs
         )
 
-        params.from_vec_(torch.from_numpy(res.x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+        params.from_vec_(torch.as_tensor(res.x, device = params[0].device, dtype=params[0].dtype))
 
         if self.e is not None: raise self.e from None
         return res.fun

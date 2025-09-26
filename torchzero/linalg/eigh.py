@@ -15,7 +15,9 @@ def nystrom_approximation(
     generator = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Computes Nyström approximation to positive-semidefinite A factored as Q L Q^T (truncatd eigenvalue decomp),
-    returns (L, Q). A is (n,n), then Q is (n, rank); L is a vector - diagonal of (rank, rank)"""
+    returns ``(L, Q)``.
+
+    A is ``(m,m)``, then Q is ``(m, rank)``; L is a ``(rank, )`` vector - diagonal of ``(rank, rank)``"""
     # basis
     O = torch.randn((ndim, rank), device=device, dtype=dtype, generator=generator) # Gaussian test matrix
     O, _ = torch.linalg.qr(O) # Thin QR decomposition # pylint:disable=not-callable
