@@ -48,21 +48,22 @@ class Adagrad(TensorTransform):
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         torch._foreach_addcmul_([state["accumulator"] for state in states], tensors, tensors)
+        self.increment_counter("step", start=0)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         tensors_ = TensorList(tensors)
+        step = self.global_state["step"] # 0 on first apply
         eps, alpha, lr_decay = unpack_dicts(settings, "eps", "alpha", "lr_decay", cls=NumberList)
-        step = self.increment_counter("step", start=0) + 1
 
         accumulator = [state["accumulator"] for state in states]
-        accumulator = TensorList(self.inner_tensors_step(
+        accumulator = TensorList(self.inner_step_tensors(
             "accumulator", tensors=accumulator, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
-        denom = accumulator + eps
+        denom = accumulator.sqrt().add_(eps)
         tensors_ /= denom
 
-        clr = alpha / (1 + (step - 1) * lr_decay)
+        clr = alpha / (1 + step * lr_decay)
         tensors_.lazy_mul_(clr)
 
         return tensors_
@@ -265,7 +266,7 @@ class FullMatrixAdagrad(TensorTransform):
         state['step'] = step + 1
 
         accumulator: torch.Tensor = state['accumulator']
-        accumulator = self.inner_tensors_step("accumulator", [accumulator], clone=True, must_exist=False)[0]
+        accumulator = self.inner_step_tensors("accumulator", [accumulator], clone=True, must_exist=False)[0]
 
         precond_freq = setting['precond_freq']
         reg = setting['reg']

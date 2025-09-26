@@ -21,7 +21,7 @@ class _EvalCounterClosure:
 
     def __call__(self, *args, **kwargs):
         if self.closure is None:
-            raise RuntimeError("One of the modules requires closure to be passed to the step method")
+            raise RuntimeError("closure is None in _EvalCounterClosure, and this can't happen")
 
         v = self.closure(*args, **kwargs)
 
@@ -192,8 +192,13 @@ class Modular(torch.optim.Optimizer):
 
         # create Objective
         params = [p for g in self.param_groups for p in g['params'] if p.requires_grad]
+
+        counter_closure = None
+        if closure is not None:
+            counter_closure = _EvalCounterClosure(self, closure)
+
         objective = Objective(
-            params=params, closure=_EvalCounterClosure(self, closure), model=self.model,
+            params=params, closure=counter_closure, model=self.model,
             current_step=self.current_step, modular=self, loss=loss, storage=kwargs
         )
 

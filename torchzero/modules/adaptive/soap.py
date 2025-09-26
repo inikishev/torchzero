@@ -3,7 +3,7 @@ import warnings
 
 import torch
 
-from ...core import TensorTransform
+from ...core import TensorTransform, Chainable
 from ...utils import unpack_dicts, unpack_states, TensorList, NumberList
 from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
 from ...linalg import torch_linalg
@@ -156,12 +156,14 @@ class SOAP(TensorTransform):
         debias: bool = True,
         alpha: float = 1,
         bias_correction: bool = True,
+
+        inner: Chainable | None = None,
     ):
         defaults = locals().copy()
         del defaults['self']
 
         super().__init__(defaults)
-
+        self.set_child("inner", inner)
 
     @torch.no_grad
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
@@ -197,9 +199,7 @@ class SOAP(TensorTransform):
         state['step'] = 0
 
 
-    # no update because
-    # 1. to avoid running merge_dims twice
-    # 2. because there isn't any good place to put `inner`.
+    # no update to avoid running merge_dims twice
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -208,23 +208,27 @@ class SOAP(TensorTransform):
         # because they are used to update preconditioner at the end
 
         steps = [s["step"] for s in states]
-        if any(s is None for s in steps):
+        if any(s == 0 for s in steps):
             # skip 1st update so to avoid using current gradient in the projection
             # I scale it instead to avoid issues with further modules
             return TensorList(tensors).clamp(-0.1, 0.1)
 
-        fs = settings[0]
-        projected = []
 
+        fs = settings[0]
+        merged = []
+        projected = []
         # ---------------------------------- project --------------------------------- #
-        for dir, state, setting in zip(tensors, states, settings):
+
+        for tensor, state, setting in zip(tensors, states, settings):
             if setting["merge_small"]:
-                dir, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(dir, setting["max_dim"])
+                tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
+
+            merged.append(tensor)
 
             if state['GG'] is not None:
-                dir = project(dir, state['Q'])
+                tensor = project(tensor, state['Q'])
 
-            projected.append(dir)
+            projected.append(tensor)
 
         # ------------------------ run adam in projected space ----------------------- #
         exp_avg_proj, exp_avg_sq_proj = unpack_states(states, tensors, "exp_avg_proj", "exp_avg_sq_proj", must_exist=True, cls=TensorList)
@@ -250,7 +254,22 @@ class SOAP(TensorTransform):
 
         # -------------------------- update preconditioners -------------------------- #
         # Update is done after the gradient step to avoid using current gradients in the projection.
-        for tensor, state, setting in zip(tensors, states, settings):
+
+        # inner step
+        if "inner" in self.children:
+            tensors = self.inner_step_tensors("inner", tensors, clone=False,
+                                              params=params, grads=grads,loss=loss)
+
+            # we now have to re-merge small dims on updated tensors
+            merged = []
+            for tensor, state, setting in zip(tensors, states, settings):
+                if setting["merge_small"]:
+                    tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(
+                        tensor, setting["max_dim"]
+                    )
+
+
+        for tensor, state, setting in zip(merged, states, settings):
             if state['GG'] is not None:
 
                 # lerp covariances
@@ -277,8 +296,9 @@ class SOAP(TensorTransform):
 
         # ------------------------- bias-corrected step size ------------------------- #
         if fs["debias"]:
-            bias_correction1 = 1.0 - beta1 ** steps
-            bias_correction2 = 1.0 - beta2 ** steps
+            steps1 = [s+1 for s in steps]
+            bias_correction1 = 1.0 - beta1 ** steps1
+            bias_correction2 = 1.0 - beta2 ** steps1
             alpha = alpha * (bias_correction2 ** .5) / bias_correction1
 
         torch._foreach_mul_(dirs, alpha)

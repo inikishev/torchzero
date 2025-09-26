@@ -106,9 +106,9 @@ class Adan(TensorTransform):
         m, v, n = unpack_states(states, tensors, 'm', 'v', 'n')
 
         # -------------------------------- transforms -------------------------------- #
-        m = TensorList(self.inner_tensors_step("m", m, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
-        v = TensorList(self.inner_tensors_step("v", v, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
-        n = TensorList(self.inner_tensors_step("n", n, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+        m = TensorList(self.inner_step_tensors("m", m, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+        v = TensorList(self.inner_step_tensors("v", v, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+        n = TensorList(self.inner_step_tensors("n", n, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
         # ---------------------------------- update ---------------------------------- #
         return adan_apply_(m_=m, v_=v, n_=n, beta1=beta1, beta2=beta2, beta3=beta3, eps=eps, step=step+1)

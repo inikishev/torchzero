@@ -150,10 +150,10 @@ class SophiaH(Transform):
             D_exp_avg = D_exp_avg / bias_correction2
 
         # -------------------------------- transforms -------------------------------- #
-        exp_avg = TensorList(self.inner_tensors_step(
+        exp_avg = TensorList(self.inner_step_tensors(
             "exp_avg", tensors=exp_avg, clone=True, objective=objective, must_exist=False))
 
-        D_exp_avg = TensorList(self.inner_tensors_step(
+        D_exp_avg = TensorList(self.inner_step_tensors(
             "D_exp_avg", tensors=D_exp_avg, clone=True, objective=objective, must_exist=False))
 
         # ------------------------------ compute update ------------------------------ #

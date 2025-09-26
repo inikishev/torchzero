@@ -1,16 +1,11 @@
-import warnings
-from collections.abc import Callable
-from functools import partial
-from typing import Literal
-
 import torch
 
-from ...core import Chainable, Module, step, Objective, HessianMethod
+from ...core import Chainable, Transform, HessianMethod
 from ...utils import TensorList, vec_to_tensors
-from ...linalg.linear_operator import DenseWithInverse, Dense
+from ...linalg.linear_operator import DenseWithInverse
 
 
-class InverseFreeNewton(Module):
+class InverseFreeNewton(Transform):
     """Inverse-free newton's method
 
     Reference
@@ -25,22 +20,18 @@ class InverseFreeNewton(Module):
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
-        super().__init__(defaults)
-
-        if inner is not None:
-            self.set_child('inner', inner)
+        super().__init__(defaults, inner=inner)
 
     @torch.no_grad
-    def update(self, objective):
-        update_freq = self.defaults['update_freq']
-
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
+        update_freq = fs['update_freq']
+        step = self.increment_counter("step", 0)
 
         if step % update_freq == 0:
             _, _, H = objective.hessian(
-                hessian_method=self.defaults['hessian_method'],
-                h=self.defaults['h'],
+                hessian_method=fs['hessian_method'],
+                h=fs['h'],
                 at_x0=True
             )
 
@@ -61,18 +52,10 @@ class InverseFreeNewton(Module):
                 self.global_state['Y'] = Y @ I2
 
 
-    def apply(self, objective):
+    def apply_states(self, objective, states, settings):
         Y = self.global_state["Y"]
-        params = objective.params
-
-        # -------------------------------- inner step -------------------------------- #
-        objective = self.inner_step("inner", objective, must_exist=False)
-        update = objective.get_updates()
-        g = torch.cat([t.ravel() for t in update])
-
-        # ----------------------------------- solve ---------------------------------- #
-        objective.updates = vec_to_tensors(Y@g, params)
-
+        g = torch.cat([t.ravel() for t in objective.get_updates()])
+        objective.updates = vec_to_tensors(Y@g, objective.params)
         return objective
 
     def get_H(self,objective=...):

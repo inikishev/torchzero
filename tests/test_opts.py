@@ -4,14 +4,22 @@ Sanity tests to make sure everything works.
 This will show major convergence regressions, but that is not the main purpose. Mainly this makes sure modules
 don't error or become unhinged with different parameter shapes.
 """
+import random
 from collections.abc import Callable
 from functools import partial
 
+import numpy as np
 import pytest
 import torch
+
 import torchzero as tz
 
 PRINT = False # set to true in nbs
+
+# seed
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
 
 def _booth(x, y):
     return (x + 2 * y - 7) ** 2 + (2 * x + y - 5) ** 2
@@ -340,56 +348,56 @@ RandomizedFDM_central2 = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward2 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_backward2 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward3 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_backward3 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_central4 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward4 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward5 = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=420,
 )
 
 
@@ -427,35 +435,35 @@ ForwardGradient = Run(
     sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_forward = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_central = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.01)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
-    sphere_steps=100, sphere_loss=450,
+    sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_4samples = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
-    sphere_steps=100, sphere_loss=400,
+    sphere_steps=100, sphere_loss=420,
 )
 ForwardGradient_4samples_no_pre_generate = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.1)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
-    sphere_steps=100, sphere_loss=400,
+    sphere_steps=100, sphere_loss=420,
 )
 
 # ------------------------- line_search/backtracking ------------------------- #

@@ -24,24 +24,23 @@ if TYPE_CHECKING:
     from .module import Module
 
 def _closure_backward(closure, params, backward, retain_graph, create_graph):
-    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``,
-    within ``torch.enable_grad()`` or ``torch.no_grad()`` context depending on ``backward``.
+    """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``.
 
     Returns loss and sets ``param.grad`` attributes.
+
+    If ``backward=True``, this uses ``torch.enable_grad()`` context.
     """
     if not backward:
-        with torch.no_grad():
-            return closure(False)
+        return closure(False)
 
-    if not (retain_graph or create_graph):
-        with torch.enable_grad():
+    with torch.enable_grad():
+        if not (retain_graph or create_graph):
             return closure()
 
-    # zero grad (because closure called with backward=False)
-    for p in params: p.grad = None
+        # zero grad (because closure called with backward=False)
+        for p in params: p.grad = None
 
-    # loss
-    with torch.enable_grad():
+        # loss
         loss = closure(False).ravel()
 
         # grad
@@ -52,13 +51,13 @@ def _closure_backward(closure, params, backward, retain_graph, create_graph):
             create_graph=create_graph,
             allow_unused=True,
             materialize_grads=True,
-        )
+    )
 
     # set p.grad
     for p,g in zip(params,grad): p.grad = g
     return loss
 
-
+@torch.enable_grad
 def _closure_loss_grad(closure, params, retain_graph, create_graph) -> tuple[torch.Tensor, list[torch.Tensor]]:
     """Calls closure with specified ``backward``, ``retain_graph`` and ``create_graph``
     within ``torch.enable_grad()``context.
@@ -69,14 +68,13 @@ def _closure_loss_grad(closure, params, retain_graph, create_graph) -> tuple[tor
 
     # use torch.autograd.grad
     if retain_graph or create_graph:
-        with torch.enable_grad():
-            loss = closure(False).ravel()
-            return loss, list(
-                torch.autograd.grad(loss, params, retain_graph=retain_graph, create_graph=create_graph, allow_unused=True, materialize_grads=True)
-            )
+        loss = closure(False).ravel()
+        return loss, list(
+            torch.autograd.grad(loss, params, retain_graph=retain_graph, create_graph=create_graph, allow_unused=True, materialize_grads=True)
+        )
 
     # use backward
-    with torch.enable_grad(): loss = closure()
+    loss = closure()
     return loss, [p.grad if p.grad is not None else torch.zeros_like(p) for p in params]
 
 HVPMethod = Literal["batched_autograd", "autograd", "fd_forward", "fd_central"]
@@ -243,6 +241,8 @@ class Objective:
         """Returns the loss at current parameters, computing it if it hasn't been computed already
         and assigning ``objective.loss``.Do not call this at perturbed parameters.
         Backward always sets grads to None before recomputing.
+
+        If ``backward==True``, closure is called within ``torch.enable_grad()``
         """
 
         # at non-x0 point just call closure and return
@@ -281,7 +281,7 @@ class Objective:
             if self.closure is None: raise RuntimeError("closure is None")
 
             self.loss = self.loss_approx = _closure_backward(
-                closure=self.closure, params=self.params, backward=backward, retain_graph=retain_graph, create_graph=create_graph
+                closure=self.closure, params=self.params, backward=True, retain_graph=retain_graph, create_graph=create_graph
             )
             self.grads = [p.grad if p.grad is not None else torch.zeros_like(p) for p in self.params]
 
@@ -300,9 +300,7 @@ class Objective:
         return self.loss # type:ignore
 
     def get_grads(self, retain_graph: bool | None = None, create_graph: bool = False, at_x0: bool = True) -> list[torch.Tensor]:
-        """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning
-        ``objective.grad`` and potentially ``objective.loss``. Do not call this at perturbed parameters."""
-
+        """Returns the gradient at initial parameters, computing it if it hasn't been computed already and assigning ``objective.grad`` and potentially ``objective.loss``. Do not call this at perturbed parameters."""
         # at non-x0 point just call closure and return grads
         if not at_x0:
             _, grads = _closure_loss_grad(self.closure, self.params, retain_graph=retain_graph, create_graph=create_graph)

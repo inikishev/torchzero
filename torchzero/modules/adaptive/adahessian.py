@@ -190,10 +190,10 @@ class AdaHessian(Transform):
             D_exp_avg_sq = D_exp_avg_sq / bias_correction2
 
         # -------------------------------- transforms -------------------------------- #
-        exp_avg = TensorList(self.inner_tensors_step(
+        exp_avg = TensorList(self.inner_step_tensors(
             "exp_avg", tensors=exp_avg, clone=True, objective=objective, must_exist=False))
 
-        D_exp_avg_sq = TensorList(self.inner_tensors_step(
+        D_exp_avg_sq = TensorList(self.inner_step_tensors(
             "D_exp_avg_sq", tensors=D_exp_avg_sq, clone=True, objective=objective, must_exist=False))
 
         # ------------------------------ compute update ------------------------------ #

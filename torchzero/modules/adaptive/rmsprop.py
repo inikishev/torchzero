@@ -53,24 +53,19 @@ class RMSprop(TensorTransform):
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
-        step = self.increment_counter("step", start = 0)
+        self.increment_counter("step", start = 0)
         fs = settings[0]
 
         exp_avg_sq = unpack_states(states, tensors, "exp_avg_sq", cls=TensorList)
 
         # update exponential average
         smoothing = NumberList(s["smoothing"] for s in settings)
-        exp_avg_sq.mul_(smoothing).addcmul(tensors, tensors, value=1-smoothing)
+        exp_avg_sq.mul_(smoothing).addcmul_(tensors, tensors, value=1-smoothing)
 
-        # center
+        # update mean estimate if centered
         if fs["centered"]:
-            exp_avg = unpack_states(states, tensors, "exp_avg_sq", cls=TensorList)
+            exp_avg = unpack_states(states, tensors, "exp_avg", cls=TensorList)
             exp_avg.lerp_(tensors, 1-smoothing)
-
-            if fs["debias"]:
-                bias_correction = 1 - (smoothing ** (step + 1))
-                exp_avg = exp_avg / bias_correction
-            exp_avg_sq = exp_avg_sq.addcmul(exp_avg, exp_avg, value=-1)
 
         # amsgrad
         if fs["amsgrad"]:
@@ -86,12 +81,31 @@ class RMSprop(TensorTransform):
 
         if fs["amsgrad"]: key = "max_exp_avg_sq"
         else: key = "exp_avg_sq"
-        exp_avg_sq = [s[key] for s in states]
-        exp_avg_sq = TensorList(self.inner_tensors_step("exp_avg_sq", exp_avg_sq, clone=True, must_exist=False))
+        exp_avg_sq = TensorList(s[key] for s in states)
 
+        # load mean estimate if centered
+        exp_avg = None
+        if fs['centered']:
+            exp_avg = TensorList(s["exp_avg"] for s in states)
+
+        # debias exp_avg_sq and exp_avg
         if fs["debias"]:
             smoothing = NumberList(s["smoothing"] for s in settings)
             bias_correction = 1 - (smoothing ** (step + 1))
             exp_avg_sq = exp_avg_sq / bias_correction
+
+            if fs['centered']:
+                assert exp_avg is not None
+                exp_avg = exp_avg / bias_correction
+
+        # apply transform to potentially debiased exp_avg_sq
+        exp_avg_sq = TensorList(self.inner_step_tensors(
+            "exp_avg_sq", exp_avg_sq, params=params, grads=grads, loss=loss, clone=True, must_exist=False
+        ))
+
+        # center
+        if fs["centered"]:
+            assert exp_avg is not None
+            exp_avg_sq = exp_avg_sq.addcmul(exp_avg, exp_avg, value=-1)
 
         return tensors.div_(exp_avg_sq.sqrt().add_(eps))

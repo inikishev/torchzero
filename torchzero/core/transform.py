@@ -274,7 +274,6 @@ class TensorTransform(Transform):
 
     @final
     def update_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
-        """Updates ``states``. This should not modify ``objective.update``. Loss can be accessed by ``objective.get_loss()``."""
         tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
 
         # initialize before the first update
@@ -301,7 +300,6 @@ class TensorTransform(Transform):
 
     @final
     def apply_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> "Objective":
-        """Updates ``objective`` using ``states`` and returns it."""
         tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
         # note: _gather tensors will re-cat again if `_concat_params`, this is necessary because objective
         # may have been modified in functional logic, there is no way to know if that happened

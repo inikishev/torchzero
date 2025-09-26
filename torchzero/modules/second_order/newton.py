@@ -39,8 +39,9 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
     except torch.linalg.LinAlgError:
         return None
 
-def _newton_step(objective: Objective, H: torch.Tensor, damping:float, inner: Module | None, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None) -> torch.Tensor:
-    """returns the update tensor, then do vec_to_tensor(update, params)"""
+def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None, inner: Module | None = None) -> torch.Tensor:
+    """INNER SHOULD BE NONE IN MOST CASES! Because Transform already has inner.
+    Returns the update tensor, then do vec_to_tensor(update, params)"""
     if damping != 0:
         H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
 

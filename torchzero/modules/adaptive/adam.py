@@ -69,10 +69,10 @@ class Adam(TensorTransform):
         beta1, beta2, alpha, eps = unpack_dicts(settings, 'beta1', 'beta2', 'alpha', 'eps', cls=NumberList)
 
         # -------------------------------- transforms -------------------------------- #
-        exp_avg = TensorList(self.inner_tensors_step(
+        exp_avg = TensorList(self.inner_step_tensors(
             "exp_avg", tensors=exp_avg, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
-        exp_avg_sq = TensorList(self.inner_tensors_step(
+        exp_avg_sq = TensorList(self.inner_step_tensors(
             "exp_avg_sq", tensors=exp_avg_sq, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
         # ---------------------------------- debias ---------------------------------- #

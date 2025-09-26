@@ -1,10 +1,9 @@
 from collections.abc import Callable
-from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, HessianMethod
-from ...utils import TensorList, vec_to_tensors
+from ...core import Chainable, Transform, HessianMethod
+from ...utils import TensorList, vec_to_tensors, unpack_states
 from ..functional import safe_clip
 from .newton import _get_H, _newton_step
 
@@ -25,7 +24,7 @@ def _eigval_fn(J: torch.Tensor, fn) -> torch.Tensor:
     L, Q = torch.linalg.eigh(J) # pylint:disable=not-callable
     return (Q * L.unsqueeze(-2)) @ Q.mH
 
-class ImprovedNewton(Module):
+class ImprovedNewton(Transform):
     """Improved Newton's Method (INM).
 
     Reference:
@@ -45,33 +44,28 @@ class ImprovedNewton(Module):
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
-        super().__init__(defaults)
-
-
-        if inner is not None:
-            self.set_child("inner", inner)
+        super().__init__(defaults, inner=inner)
 
     @torch.no_grad
-    def update(self, objective):
-        update_freq = self.defaults['update_freq']
-
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
+        update_freq = fs['update_freq']
+        step = self.increment_counter("step", 0)
 
         if step % update_freq == 0:
             _, f_list, J = objective.hessian(
-                hessian_method=self.defaults['hessian_method'],
-                h=self.defaults['h'],
+                hessian_method=fs['hessian_method'],
+                h=fs['h'],
                 at_x0=True
             )
             if f_list is None: f_list = objective.get_grads()
 
             f = torch.cat([t.ravel() for t in f_list])
-            J = _eigval_fn(J, self.defaults["eigval_fn"])
+            J = _eigval_fn(J, fs["eigval_fn"])
 
             x_list = TensorList(objective.params)
             f_list = TensorList(objective.get_grads())
-            x_prev, f_prev = self.get_state(objective.params, "x_prev", "f_prev", cls=TensorList)
+            x_prev, f_prev = unpack_states(states, objective.params, "x_prev", "f_prev", cls=TensorList)
 
             # initialize on 1st step, do Newton step
             if step == 0:
@@ -90,19 +84,20 @@ class ImprovedNewton(Module):
 
 
     @torch.no_grad
-    def apply(self, objective):
-        params = objective.params
+    def apply_states(self, objective, states, settings):
+        fs = settings[0]
+
         update = _newton_step(
             objective=objective,
             H = self.global_state["P"],
-            damping=self.defaults["damping"],
-            inner=self.children.get("inner", None),
-            H_tfm=self.defaults["H_tfm"],
+            damping=fs["damping"],
+            inner=None,
+            H_tfm=fs["H_tfm"],
             eigval_fn=None, # it is applied in `update`
-            use_lstsq=self.defaults["use_lstsq"],
+            use_lstsq=fs["use_lstsq"],
         )
 
-        objective.updates = vec_to_tensors(update, params)
+        objective.updates = vec_to_tensors(update, objective.params)
 
         return objective
 

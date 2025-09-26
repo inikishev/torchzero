@@ -150,7 +150,7 @@ class ClipValueByEMA(TensorTransform):
         exp_avg = unpack_states(states, tensors, 'exp_avg')
 
         exp_avg = TensorList(
-            self.inner_tensors_step("exp_avg", exp_avg, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
+            self.inner_step_tensors("exp_avg", exp_avg, clone=True, params=params, grads=grads, loss=loss, must_exist=False))
 
         tensors.clip_(-exp_avg, exp_avg)
         return tensors

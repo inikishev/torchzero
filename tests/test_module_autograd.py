@@ -517,7 +517,9 @@ _HESSIAN_METHODS = [
     "fd",
     "fd_full",
 ]
-if find_spec("thoad") is not None: _HESSIAN_METHODS.append("thoad")
+
+# if find_spec("thoad") is not None: _HESSIAN_METHODS.append("thoad")
+# SqueezeBackward4 is not supported.
 
 @pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("at_x0", [True, False])

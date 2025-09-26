@@ -101,7 +101,7 @@ class Module(ABC):
         return child.step(objective)
 
 
-    def inner_tensors_step(
+    def inner_step_tensors(
         self,
         key: str,
         tensors: list[torch.Tensor],

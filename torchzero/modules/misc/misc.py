@@ -130,7 +130,7 @@ class LastAbsoluteRatio(TensorTransform):
 class GradSign(TensorTransform):
     """Copies gradient sign to update."""
     def __init__(self):
-        super().__init__()
+        super().__init__(uses_grad=True)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -140,7 +140,7 @@ class GradSign(TensorTransform):
 class UpdateSign(TensorTransform):
     """Outputs gradient with sign copied from the update."""
     def __init__(self):
-        super().__init__()
+        super().__init__(uses_grad=True)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -151,7 +151,7 @@ class GraftToGrad(TensorTransform):
     """Grafts update to the gradient, that is update is rescaled to have the same norm as the gradient."""
     def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -163,7 +163,7 @@ class GraftGradToUpdate(TensorTransform):
     """Outputs gradient grafted to update, that is gradient rescaled to have the same norm as the update."""
     def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_grad=True)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -173,7 +173,7 @@ class GraftGradToUpdate(TensorTransform):
 
 
 class GraftToParams(TensorTransform):
-    """Grafts update to the parameters, that is update is rescaled to have the same norm as the parameters, but no smaller than :code:`eps`."""
+    """Grafts update to the parameters, that is update is rescaled to have the same norm as the parameters, but no smaller than ``eps``."""
     def __init__(self, tensorwise:bool=False, ord:Metrics=2, eps:float = 1e-4):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults)
@@ -184,7 +184,7 @@ class GraftToParams(TensorTransform):
         return TensorList(tensors).graft_(params, tensorwise=tensorwise, ord=ord, eps=eps)
 
 class Relative(TensorTransform):
-    """Multiplies update by absolute parameter values to make it relative to their magnitude, :code:`min_value` is minimum allowed value to avoid getting stuck at 0."""
+    """Multiplies update by absolute parameter values to make it relative to their magnitude, ``min_value`` is minimum allowed value to avoid getting stuck at 0."""
     def __init__(self, min_value:float = 1e-4):
         defaults = dict(min_value=min_value)
         super().__init__(defaults)
@@ -196,7 +196,7 @@ class Relative(TensorTransform):
         return tensors
 
 class FillLoss(Module):
-    """Outputs tensors filled with loss value times :code:`alpha`"""
+    """Outputs tensors filled with loss value times ``alpha``"""
     def __init__(self, alpha: float = 1, backward: bool = True):
         defaults = dict(alpha=alpha, backward=backward)
         super().__init__(defaults)
@@ -208,33 +208,33 @@ class FillLoss(Module):
         objective.updates = [torch.full_like(p, loss*a) for p,a in zip(objective.params, alpha)]
         return objective
 
-class MulByLoss(Module):
-    """Multiplies update by loss times :code:`alpha`"""
+class MulByLoss(TensorTransform):
+    """Multiplies update by loss times ``alpha``"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-16, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_loss=True)
 
     @torch.no_grad
-    def apply(self, objective):
-        alpha, min_value = self.get_settings(objective.params, 'alpha', 'min_value')
-        loss = objective.get_loss(backward=self.defaults['backward'])
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        assert loss is not None
+        alpha, min_value = unpack_dicts(settings, 'alpha', 'min_value')
         mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_mul_(objective.updates, mul)
-        return objective
+        torch._foreach_mul_(tensors, mul)
+        return tensors
 
-class DivByLoss(Module):
+class DivByLoss(TensorTransform):
     """Divides update by loss times ``alpha``"""
     def __init__(self, alpha: float = 1, min_value:float = 1e-16, backward: bool = True):
         defaults = dict(alpha=alpha, min_value=min_value, backward=backward)
-        super().__init__(defaults)
+        super().__init__(defaults, uses_loss=True)
 
     @torch.no_grad
-    def apply(self, objective):
-        alpha, min_value = self.get_settings(objective.params, 'alpha', 'min_value')
-        loss = objective.get_loss(backward=self.defaults['backward'])
-        mul = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
-        torch._foreach_div_(objective.updates, mul)
-        return objective
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        assert loss is not None
+        alpha, min_value = unpack_dicts(settings, 'alpha', 'min_value')
+        denom = [max(loss*a, mv) for a,mv in zip(alpha, min_value)]
+        torch._foreach_div_(tensors, denom)
+        return tensors
 
 
 class NoiseSign(TensorTransform):

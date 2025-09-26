@@ -195,11 +195,11 @@ class LMAdagrad(TensorTransform):
         L = state['L']
         if "L" in self.children:
             if not self._concat_params: raise RuntimeError("L/U transforms can only be used with concat_params=True")
-            L = self.inner_tensors_step("L", [L], clone=True)[0]
+            L = self.inner_step_tensors("L", [L], clone=True)[0]
 
         if "U" in self.children:
             if not self._concat_params: raise RuntimeError("L/U transforms can only be used with concat_params=True")
-            U = self.inner_tensors_step("U", [U], clone=True)[0]
+            U = self.inner_step_tensors("U", [U], clone=True)[0]
 
         # ------------------------------- precondition ------------------------------- #
         update = lm_adagrad_apply(tensor.view(-1), U, L).view_as(tensor)
