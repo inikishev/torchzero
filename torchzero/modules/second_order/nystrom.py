@@ -182,7 +182,7 @@ class NystromPCG(Transform):
     """
     def __init__(
         self,
-        sketch_size: int,
+        rank: int,
         maxiter=None,
         tol=1e-8,
         reg: float = 1e-6,
@@ -243,7 +243,7 @@ class NystromPCG(Transform):
 
         L = self.global_state["L"]
         Q = self.global_state["Q"]
-        x = nystrom_pcg(L=L, Q=Q, A_mv=objective.poptemp(), b=torch.cat([t.ravel() for t in b]),
+        x = nystrom_pcg(L=L, Q=Q, A_mv=H_mv, b=torch.cat([t.ravel() for t in b]),
                         reg=fs['reg'], tol=fs["tol"], maxiter=fs["maxiter"])
 
         # -------------------------------- set update -------------------------------- #

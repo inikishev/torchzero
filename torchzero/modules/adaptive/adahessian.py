@@ -36,11 +36,6 @@ def _block_average(x: torch.Tensor, block_size: int | None, enable: bool):
     return x
 
 
-def _rademacher_like(tensor, p = 0.5, generator = None):
-    """p is probability of a 1, other values will be -1."""
-    return torch.bernoulli(torch.full_like(tensor, p), generator = generator).mul_(2).sub_(1)
-
-
 class AdaHessian(Transform):
     """AdaHessian: An Adaptive Second Order Optimizer for Machine Learning (https://arxiv.org/abs/2006.00719)
 
@@ -145,10 +140,9 @@ class AdaHessian(Transform):
 
         exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq', cls=TensorList)
 
-        step = self.increment_counter("step", start=0) # 0 on 1st update
-
         # ---------------------------- hutchinson hessian ---------------------------- #
         fs = settings[0]
+        step = self.increment_counter("step", start=0) # 0 on 1st update
         update_freq = fs['update_freq']
 
         if step % update_freq == 0:
@@ -178,16 +172,15 @@ class AdaHessian(Transform):
         params = objective.params
 
         beta1, beta2, eps, hessian_power = unpack_dicts(settings, 'beta1', 'beta2', 'eps', 'hessian_power', cls=NumberList)
-        exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq')
+        exp_avg, D_exp_avg_sq = unpack_states(states, params, 'exp_avg', 'D_exp_avg_sq', cls=TensorList)
 
         # ---------------------------------- debias ---------------------------------- #
         if settings[0]["debias"]:
-            num_Ds = self.global_state["num_Ds"]
-            bias_correction1 = 1.0 - (beta1 ** num_Ds)
-            bias_correction2 = 1.0 - (beta2 ** num_Ds)
-
+            bias_correction1 = 1.0 - (beta1 ** (self.global_state["step"] + 1))
+            bias_correction2 = 1.0 - (beta2 ** self.global_state["num_Ds"])
             exp_avg = exp_avg / bias_correction1
             D_exp_avg_sq = D_exp_avg_sq / bias_correction2
+
 
         # -------------------------------- transforms -------------------------------- #
         exp_avg = TensorList(self.inner_step_tensors(

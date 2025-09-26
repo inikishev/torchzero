@@ -6,6 +6,7 @@ import torch
 from ...core import Chainable, TensorTransform
 
 def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping):
+    """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
     else:
@@ -40,11 +41,18 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
     except torch.linalg.LinAlgError:
         return None, None
 
-def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor):
-    Z = U.T @ g
-    return (U * L.rsqrt()) @ Z
+def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor, exp_avg_proj: torch.Tensor | None, beta:float):
+    z = U.T @ g
+
+    if beta != 0:
+        if exp_avg_proj is None: exp_avg_proj = torch.zeros_like(z)
+        exp_avg_proj.lerp_(z, weight=1-beta)
+        z = exp_avg_proj
+
+    return (U * L.rsqrt()) @ z, exp_avg_proj
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
+    if value is None: return
     if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
     else:
         if state_[key] is None or state_[key].shape != value.shape: state_[key] = value
@@ -61,6 +69,7 @@ class LMAdagrad(TensorTransform):
 
     Args:
         history_size (int, optional): number of past gradients to store. Defaults to 10.
+        beta (float, optional): beta for momentum maintained in whitened space. Defaults to 0.0.
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
         damping (float, optional): damping value. Defaults to 1e-4.
         rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
@@ -114,6 +123,7 @@ class LMAdagrad(TensorTransform):
     def __init__(
         self,
         history_size: int = 100,
+        beta: float = 0.0,
         update_freq: int = 1,
         damping: float = 1e-4,
         rdamping: float = 0,
@@ -134,6 +144,7 @@ class LMAdagrad(TensorTransform):
 
         self.set_child("U", U_tfm)
         self.set_child("L", L_tfm)
+
 
     @torch.no_grad
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
@@ -177,9 +188,23 @@ class LMAdagrad(TensorTransform):
 
         step = state.get('step', 0)
         if step % update_freq == 0 and len(history) != 0:
+
+            # if maintaining momentum, unproject exp_avg before updating factors and reproject
+            exp_avg_proj = state.get("exp_avg_proj", None)
+            exp_avg = None
+            if exp_avg_proj is not None and "U" in state:
+                exp_avg = state["U"] @ exp_avg_proj
+
+            # update factors
             U, L = lm_adagrad_update(history, damping=damping, rdamping=rdamping)
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, L_beta, 'L', L)
+
+            # re-project exp_avg with new factors
+            if U is not None and exp_avg_proj is not None:
+                assert exp_avg is not None
+                state["exp_avg_proj"] = U.T @ exp_avg
+
 
         if len(history) != 0:
             state['step'] = step + 1 # do not increment if no history (gathering s_ks and y_ks)
@@ -202,6 +227,8 @@ class LMAdagrad(TensorTransform):
             U = self.inner_step_tensors("U", [U], clone=True)[0]
 
         # ------------------------------- precondition ------------------------------- #
-        update = lm_adagrad_apply(tensor.view(-1), U, L).view_as(tensor)
-        return update
+        g = tensor.view(-1)
+        exp_avg_proj = state.get("exp_avg_proj", None)
+        update, state["exp_avg_proj"] = lm_adagrad_apply(g, U, L, exp_avg_proj, beta=setting["beta"])
+        return update.view_as(tensor)
 

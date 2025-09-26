@@ -90,7 +90,7 @@ class SophiaH(Transform):
         D_exp_avg_tfm: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
+        del defaults['self'], defaults['exp_avg_tfm'], defaults["D_exp_avg_tfm"]
         super().__init__(defaults)
 
         self.set_child('exp_avg', exp_avg_tfm)
@@ -124,7 +124,7 @@ class SophiaH(Transform):
                 generator = self.get_generator(params[0].device, fs["seed"]),
             )
 
-            D_exp_avg.mul_(beta2).addcmul_(D, D, value=1-beta2)
+            D_exp_avg.lerp_(D, weight=1-beta2)
 
         # --------------------------------- momentum --------------------------------- #
         tensors = objective.get_updates() # do this after hutchinson to not disturb autograd
@@ -142,9 +142,8 @@ class SophiaH(Transform):
 
         # ---------------------------------- debias ---------------------------------- #
         if settings[0]["debias"]:
-            num_Ds = self.global_state["num_Ds"]
-            bias_correction1 = 1.0 - (beta1 ** num_Ds)
-            bias_correction2 = 1.0 - (beta2 ** num_Ds)
+            bias_correction1 = 1.0 - (beta1 ** (self.global_state["step"] + 1))
+            bias_correction2 = 1.0 - (beta2 ** self.global_state["num_Ds"])
 
             exp_avg = exp_avg / bias_correction1
             D_exp_avg = D_exp_avg / bias_correction2
