@@ -43,7 +43,7 @@ def _chain_step(objective: "Objective", modules: "Sequence[Module]"):
     """steps with ``modules`` and returns updated objective, this is used within ``step`` and within ``Chain.step``"""
     # step
     for i, module in enumerate(modules):
-        if i!=0: objective = objective.clone(clone_update=False)
+        if i!=0: objective = objective.clone(clone_updates=False)
 
         objective = module.step(objective)
         if objective.stop: break

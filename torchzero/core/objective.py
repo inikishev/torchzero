@@ -333,7 +333,7 @@ class Objective:
         if self.updates is None: self.updates = [g.clone() for g in self.get_grads()]
         return self.updates
 
-    def clone(self, clone_update: bool, parent: "Objective | None" = None):
+    def clone(self, clone_updates: bool, parent: "Objective | None" = None):
         """Creates a shallow copy of this ``Objective``, update can optionally be deep-copied (via ``torch.clone``).
 
         This copies over all attributes except ``temp``.
@@ -346,7 +346,7 @@ class Objective:
             parent=parent, modular=self.modular, loss=self.loss, storage=self.storage
         )
 
-        if clone_update and self.updates is not None:
+        if clone_updates and self.updates is not None:
             copy.updates = [u.clone() for u in self.updates]
         else:
             copy.updates = self.updates

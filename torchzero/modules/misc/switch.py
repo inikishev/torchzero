@@ -54,7 +54,7 @@ class Alternate(Module):
         module = self.children[f'module_{current_module_idx}']
 
         # step
-        objective = module.step(objective.clone(clone_update=False))
+        objective = module.step(objective.clone(clone_updates=False))
 
         # number of steps until next module
         steps = self.defaults['steps']

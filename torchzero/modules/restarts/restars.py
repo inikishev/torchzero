@@ -51,13 +51,13 @@ class RestartStrategyBase(Module, ABC):
         # don't check here because it was check in `update`
         modules = self.children.get('modules', None)
         if modules is None: return objective
-        return modules.apply(objective.clone(clone_update=False))
+        return modules.apply(objective.clone(clone_updates=False))
 
     @final
     def step(self, objective):
         modules = self._reset_on_condition(objective)
         if modules is None: return objective
-        return modules.step(objective.clone(clone_update=False))
+        return modules.step(objective.clone(clone_updates=False))
 
 
 
@@ -237,7 +237,7 @@ class BirginMartinezRestart(Module):
 
     def apply(self, objective):
         module = self.children['module']
-        objective = module.apply(objective.clone(clone_update=False))
+        objective = module.apply(objective.clone(clone_updates=False))
 
         cond = self.defaults['cond']
         g = TensorList(objective.get_grads())

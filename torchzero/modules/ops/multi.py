@@ -44,7 +44,7 @@ class MultiOperationBase(Module, ABC):
         for k,v in self.operands.items():
             if k in self.children:
                 v: Module
-                updated_obj = v.step(objective.clone(clone_update=True))
+                updated_obj = v.step(objective.clone(clone_updates=True))
                 processed_operands[k] = updated_obj.get_updates()
                 objective.update_attrs_from_clone_(updated_obj) # update loss, grad, etc if this module calculated them
 

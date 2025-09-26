@@ -166,7 +166,7 @@ class ProjectionBase(Module, ABC):
                 current=current,
             ))
 
-        projected_obj = objective.clone(clone_update=False, parent=objective)
+        projected_obj = objective.clone(clone_updates=False, parent=objective)
 
         closure = objective.closure
 
@@ -275,7 +275,7 @@ class ProjectionBase(Module, ABC):
                 set_storage_(p, torch.empty(0, device=p.device, dtype=p.dtype))
 
         # --------------------------------- unproject -------------------------------- #
-        unprojected_obj = projected_obj.clone(clone_update=False)
+        unprojected_obj = projected_obj.clone(clone_updates=False)
         unprojected_obj.closure = objective.closure
         unprojected_obj.params = objective.params
         unprojected_obj.grads = objective.grads # this may also be set by projected_var since it has var as parent

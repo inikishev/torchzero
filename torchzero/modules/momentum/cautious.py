@@ -145,10 +145,10 @@ class IntermoduleCautious(Module):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.step(objective.clone(clone_update=True))
+        main_var = main.step(objective.clone(clone_updates=True))
         objective.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.step(objective.clone(clone_update=True))
+        compare_var = compare.step(objective.clone(clone_updates=True))
         objective.update_attrs_from_clone_(compare_var)
 
         mode, normalize, eps = itemgetter('mode', 'normalize', 'eps')(self.defaults)
@@ -241,10 +241,10 @@ class ScaleModulesByCosineSimilarity(Module):
         main = self.children['main']
         compare = self.children['compare']
 
-        main_var = main.step(objective.clone(clone_update=True))
+        main_var = main.step(objective.clone(clone_updates=True))
         objective.update_attrs_from_clone_(main_var)
 
-        compare_var = compare.step(objective.clone(clone_update=True))
+        compare_var = compare.step(objective.clone(clone_updates=True))
         objective.update_attrs_from_clone_(compare_var)
 
         m = TensorList(main_var.get_updates())

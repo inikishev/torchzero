@@ -78,7 +78,7 @@ class Reformulation(Module, ABC):
                 return loss
 
             # set it to a new Objective object
-            modified_objective = objective.clone(clone_update=False)
+            modified_objective = objective.clone(clone_updates=False)
             modified_objective.closure = modified_closure
 
             # update the child

@@ -22,7 +22,7 @@ def _split(
     if objective.updates is not None:
         split_update = [u for i,u in enumerate(objective.updates) if i in idxs]
 
-    split_obj = objective.clone(clone_update=False, parent=objective)
+    split_obj = objective.clone(clone_updates=False, parent=objective)
     split_obj.params = split_params
     split_obj.grads = split_grad
     split_obj.updates = split_update

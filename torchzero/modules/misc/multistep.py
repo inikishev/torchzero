@@ -165,7 +165,7 @@ class Online(Module):
         p_prev = self.get_state(params, 'p_prev', cls=TensorList)
 
         module = self.children['module']
-        var_c = objective.clone(clone_update=False)
+        var_c = objective.clone(clone_updates=False)
 
         # on 1st step just step and store previous params
         if step == 1:
@@ -190,7 +190,7 @@ class Online(Module):
     @torch.no_grad
     def apply(self, objective):
         module = self.children['module']
-        return module.apply(objective.clone(clone_update=False))
+        return module.apply(objective.clone(clone_updates=False))
 
     def get_H(self, objective):
         return self.children['module'].get_H(objective)
