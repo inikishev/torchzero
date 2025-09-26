@@ -3,17 +3,17 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
-from .transform import Transform
 from .objective import Objective
 
 if TYPE_CHECKING:
     from .module import Module
+    from .transform import Transform
 
 
 
 def update(
     objective: "Objective",
-    module: "Module",
+    module: "Transform",
     states: list[dict[str, Any]] | None = None,
     settings: Sequence[Mapping[str, Any]] | None = None,
 ) -> None:
@@ -23,13 +23,11 @@ def update(
 
     else:
         assert settings is not None
-        if not isinstance(module, Transform):
-            raise RuntimeError("`module` must be a subclass of `Transform` in order to use custom states and settings")
         module.update_states(objective, states, settings)
 
 def apply(
     objective: "Objective",
-    module: "Module",
+    module: "Transform",
     states: list[dict[str, Any]] | None = None,
     settings: Sequence[Mapping[str, Any]] | None = None,
 ) -> "Objective":
@@ -39,8 +37,6 @@ def apply(
 
     else:
         assert settings is not None
-        if not isinstance(module, Transform):
-            raise RuntimeError("`module` must be a subclass of `Transform` in order to use custom states and settings")
         return module.apply_states(objective, states, settings)
 
 def _chain_step(objective: "Objective", modules: "Sequence[Module]"):

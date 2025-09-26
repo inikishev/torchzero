@@ -4,7 +4,6 @@ from functools import partial
 import pytest
 import torch
 from torchzero.utils.optimizer import (
-    Optimizer,
     get_group_vals,
     get_params,
     get_state_vals,

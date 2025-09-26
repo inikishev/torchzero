@@ -1593,7 +1593,6 @@ def test_select_set_(simple_tl: TensorList):
     mask_tl = simple_tl.gt(0.5)
     value_scalar = -1.0
     value_list_scalar = [-1.0, -2.0, -3.0]
-    value_tl = simple_tl.clone().mul_(0.1)
 
     # Set with scalar value
     tl_copy_scalar = simple_tl.clone()

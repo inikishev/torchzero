@@ -1,4 +1,3 @@
-from operator import itemgetter
 from typing import Literal
 
 import torch

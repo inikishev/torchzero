@@ -3,9 +3,8 @@ from functools import partial
 
 import torch
 
-from ...core.module import Module, Objective
+from ...core import Module, Objective
 from ...utils import tofloat
-
 
 
 def _reset_except_self(objective: Objective, modules, self: Module):

@@ -1,6 +1,6 @@
 import pytest
 import torch
-from torchzero.core.module import Objective
+from torchzero.core import Objective
 from torchzero.utils.tensorlist import TensorList
 
 @torch.no_grad

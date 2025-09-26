@@ -8,4 +8,3 @@ from .orthogonalize import zeropower_via_eigh, zeropower_via_newtonschulz5, zero
 from .qr import qr_householder
 from .solve import cg, nystrom_sketch_and_solve, nystrom_pcg
 from .eigh import nystrom_approximation
-from .svd import randomized_svd

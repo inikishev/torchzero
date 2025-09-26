@@ -283,8 +283,8 @@ ClipNormGrowth_additive = Run(
     sphere_steps=10, sphere_loss=10,
 )
 ClipNormGrowth_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(parameterwise=False), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(parameterwise=False), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=10,
@@ -735,8 +735,8 @@ Lion = Run(
 )
 # ---------------------------- optimizers/shampoo ---------------------------- #
 Shampoo = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.02, merge_invariant=False,
     sphere_steps=20, sphere_loss=1, # merge and unmerge lrs are very different so need to test convergence separately somewhere

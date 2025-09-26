@@ -56,6 +56,7 @@ class Reformulation(Module, ABC):
 
         objective.closure = modified_closure
 
+    def apply(self, objective): return objective
 
     def step(self, objective):
 

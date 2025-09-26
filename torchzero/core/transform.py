@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from operator import itemgetter
-from typing import Any, final, cast
+from typing import Any, final, cast, TYPE_CHECKING
 
 import torch
 
-from .chain import Chainable
 from .module import Module
 from ..utils import vec_to_tensors, safe_dict_update_
-from .objective import Objective
+
+if TYPE_CHECKING:
+    from .chain import Chainable
+    from .objective import Objective
 
 
 class Transform(Module):
@@ -19,7 +21,7 @@ class Transform(Module):
 
     To use, subclass this and override ``update_states`` and ``apply_states``.
     """
-    def __init__(self, defaults: dict[str, Any] | None = None, update_freq: int = 1, inner: Chainable | None = None):
+    def __init__(self, defaults: dict[str, Any] | None = None, update_freq: int = 1, inner: "Chainable | None" = None):
 
         # store update_freq in defaults so that it is scheduleable
         if defaults is None: defaults = {}
@@ -32,24 +34,40 @@ class Transform(Module):
             self.set_child("inner", inner)
 
     # settings shouldn't mutate, so they are typed as Sequence[Mapping]
-    def update_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
+    def update_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
         """Updates ``states``. This should not modify ``objective.update``."""
 
     @abstractmethod
-    def apply_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> Objective:
+    def apply_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> "Objective":
         """Updates ``objective`` using ``states``."""
 
+    def _get_states_settings(self, objective: "Objective") -> tuple[list, tuple]:
+        # itemgetter is faster
+        # but need to make sure it returns a tuple, as if there is a single param, it returns the value
+        getter = itemgetter(*objective.params)
+        is_single = len(objective.params) == 1
+        states = getter(self.state)
+        settings = getter(self.settings)
+
+        if is_single:
+            states = [states, ]
+            settings = (settings, )
+
+        else:
+            states = list(states) # itemgetter returns tuple
+
+        return states, settings
+
     @final
-    def update(self, objective:Objective):
+    def update(self, objective:"Objective"):
         step = self.increment_counter("__step", 0)
 
         if step % self.defaults["update_freq"] == 0:
-            states = itemgetter(objective.params)(self.state)
-            settings = itemgetter(objective.params)(self.settings)
+            states, settings = self._get_states_settings(objective)
             self.update_states(objective=objective, states=states, settings=settings)
 
     @final
-    def apply(self, objective: Objective):
+    def apply(self, objective: "Objective"):
 
         # inner step
         if "inner" in self.children:
@@ -59,9 +77,7 @@ class Transform(Module):
             objective = inner.apply(objective)
 
         # apply and return
-        states = itemgetter(objective.params)(self.state)
-        settings = itemgetter(objective.params)(self.settings)
-
+        states, settings = self._get_states_settings(objective)
         return self.apply_states(objective=objective, states=states, settings=settings)
 
 
@@ -106,7 +122,7 @@ class TensorTransform(Transform):
         concat_params: bool = False,
         uses_grad: bool = False,
         uses_loss: bool = False,
-        inner: Chainable | None = None,
+        inner: "Chainable | None" = None,
     ):
         super().__init__(defaults, update_freq=update_freq, inner=inner)
 
@@ -213,7 +229,7 @@ class TensorTransform(Transform):
 
         return ret
 
-    def _get_grads_loss(self, objective: Objective):
+    def _get_grads_loss(self, objective: "Objective"):
         """evaluates grads and loss only if needed"""
 
         if self._uses_grad: grads = objective.get_grads()
@@ -225,7 +241,7 @@ class TensorTransform(Transform):
         return grads, loss
 
     @torch.no_grad
-    def _get_cat_updates_params_grads(self, objective: Objective, grads: list[torch.Tensor] | None):
+    def _get_cat_updates_params_grads(self, objective: "Objective", grads: list[torch.Tensor] | None):
         assert self._concat_params
 
         cat_updates = [torch.cat([u.ravel() for u in objective.get_updates()])]
@@ -236,7 +252,7 @@ class TensorTransform(Transform):
 
         return cat_updates, cat_params, cat_grads
 
-    def _gather_tensors(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]):
+    def _gather_tensors(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]):
         """returns everything for ``multi_tensor_*``. Concatenates if ```self._concat_params``.
         evaluates grads and loss if ``self._uses_grad`` and ``self._uses_loss``"""
 
@@ -257,7 +273,7 @@ class TensorTransform(Transform):
         return tensors, params, grads, loss, states, settings
 
     @final
-    def update_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
+    def update_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
         """Updates ``states``. This should not modify ``objective.update``. Loss can be accessed by ``objective.get_loss()``."""
         tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
 
@@ -284,7 +300,7 @@ class TensorTransform(Transform):
         )
 
     @final
-    def apply_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> Objective:
+    def apply_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> "Objective":
         """Updates ``objective`` using ``states`` and returns it."""
         tensors, params, grads, loss, states, settings = self._gather_tensors(objective, states, settings)
         # note: _gather tensors will re-cat again if `_concat_params`, this is necessary because objective

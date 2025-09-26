@@ -214,8 +214,8 @@ class MirroredClip(BinaryOperationBase):
         min = -value if isinstance(value, (int,float)) else [-v for v in value]
         return TensorList(update).clamp_(min=min,  max=value)
 
-class GraftToUpdate(BinaryOperationBase):
-    """Outputs tensors rescaled to have the same norm as ``magnitude(tensors)``."""
+class GraftInputToOutput(BinaryOperationBase):
+    """Outputs ``tensors`` rescaled to have the same norm as ``magnitude(tensors)``."""
     def __init__(self, magnitude: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)
         super().__init__(defaults, magnitude=magnitude)
@@ -225,8 +225,8 @@ class GraftToUpdate(BinaryOperationBase):
         tensorwise, ord, eps = itemgetter('tensorwise','ord','eps')(self.defaults)
         return TensorList(update).graft_(magnitude, tensorwise=tensorwise, ord=ord, eps=eps)
 
-class RGraft(BinaryOperationBase):
-    """Outputs ``magnitude(tensors)`` rescaled to have the same norm as tensors"""
+class GraftOutputToInput(BinaryOperationBase):
+    """Outputs ``magnitude(tensors)`` rescaled to have the same norm as ``tensors``"""
 
     def __init__(self, direction: Chainable, tensorwise:bool=True, ord:float=2, eps:float = 1e-6):
         defaults = dict(tensorwise=tensorwise, ord=ord, eps=eps)

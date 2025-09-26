@@ -219,8 +219,8 @@ def test_adagrad_hyperparams(initial_accumulator_value, eps, lr):
 
 @pytest.mark.parametrize('tensorwise', [True, False])
 def test_graft(tensorwise):
-    graft1 = lambda p: tz.Modular(p, tz.m.GraftModules(tz.m.LBFGS(), tz.m.RMSprop(), tensorwise=tensorwise), tz.m.LR(1e-1))
-    graft2 = lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.Graft([tz.m.Grad(), tz.m.RMSprop()], tensorwise=tensorwise), tz.m.LR(1e-1))
+    graft1 = lambda p: tz.Modular(p, tz.m.Graft(tz.m.LBFGS(), tz.m.RMSprop(), tensorwise=tensorwise), tz.m.LR(1e-1))
+    graft2 = lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.GraftInputToOutput([tz.m.Grad(), tz.m.RMSprop()], tensorwise=tensorwise), tz.m.LR(1e-1))
     _assert_identical_opts([graft1, graft2], merge=True, use_closure=True, device='cpu', steps=10)
     for fn in [graft1, graft2]:
         if tensorwise: _assert_identical_closure(fn, merge=True, device='cpu', steps=10)

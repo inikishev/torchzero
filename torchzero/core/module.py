@@ -2,7 +2,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, overload
+from typing import Any, overload, TYPE_CHECKING
 
 import torch
 
@@ -10,7 +10,9 @@ from ..linalg.linear_operator import LinearOperator
 from ..utils.optimizer import Init, ListLike, get_state_vals
 from ..utils.params import Params, _make_param_groups
 from .functional import step_tensors
-from .objective import Objective
+
+if TYPE_CHECKING:
+    from .objective import Objective
 
 
 class Module(ABC):
@@ -88,7 +90,7 @@ class Module(ABC):
         key: str,
         objective: "Objective",
         must_exist: bool = True,
-    ) -> Objective:
+    ) -> "Objective":
         """Passes ``objective`` to child and returns it."""
         child = self.children.get(key, None)
 
@@ -108,7 +110,7 @@ class Module(ABC):
         grads: Sequence[torch.Tensor] | None = None,
         loss: torch.Tensor | None = None,
         closure: Callable | None = None,
-        objective: Objective | None = None,
+        objective: "Objective | None" = None,
         must_exist: bool = True
     ) -> list[torch.Tensor]:
         """Steps with child module. Can be used to apply transforms to any internal buffers.
@@ -160,7 +162,6 @@ class Module(ABC):
 
     def get_settings(self, params: Sequence[torch.Tensor], key: str | list[str] | tuple[str,...], key2: str | None = None,
                      *keys: str, cls: type[ListLike] = list) -> ListLike | list[ListLike]:
-        # if isinstance(params, Objective): params = params.params
         return get_state_vals(self.settings, params, key, key2, *keys, must_exist=True, cls=cls) # pyright:ignore[reportArgumentType]
 
 
@@ -230,12 +231,7 @@ class Module(ABC):
             - if state_keys has multiple keys and keys has a single key, return cls.
             - if state_keys has multiple keys and keys has multiple keys, return list of cls.
         """
-        # if isinstance(params, Objective): params = params.params
         return get_state_vals(self.state, params, key, key2, *keys, must_exist=must_exist, init=init, cls=cls) # pyright:ignore[reportArgumentType]
-
-    # def first_setting(self, *keys:str, params:Sequence[torch.Tensor]):
-    #     # if isinstance(params, Objective): params = params.params
-    #     return itemgetter(*keys)(self.settings[params[0]])
 
     def clear_state_keys(self, *keys:str):
         for s in self.state.values():
@@ -323,11 +319,11 @@ class Module(ABC):
     def increment_counter(self, key: str, start: int):
         """first value is ``start``"""
         value = self.global_state.get(key, start - 1) + 1
-        self.global_state["key"] = value
+        self.global_state[key] = value
         return value
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
-    def update(self, objective:Objective) -> None:
+    def update(self, objective:"Objective") -> None:
         """Updates internal state of this module. This should not modify ``objective.update``.
 
         Specifying ``update`` and ``apply`` methods is optional and allows certain meta-modules to be used,
@@ -340,7 +336,7 @@ class Module(ABC):
         """
 
     @abstractmethod
-    def apply(self, objective: Objective) -> Objective:
+    def apply(self, objective: "Objective") -> "Objective":
         """Updates ``objective`` using the internal state of this module.
 
         If ``update`` method is defined, ``apply`` shouldn't modify the internal state of this module if possible.
@@ -356,12 +352,12 @@ class Module(ABC):
         # if apply is empty, it should be defined explicitly.
         raise NotImplementedError(f"{self.__class__.__name__} doesn't implement `apply`.")
 
-    def step(self, objective: Objective) -> Objective:
+    def step(self, objective: "Objective") -> "Objective":
         """Perform a step with this module. Calls ``update``, then ``apply``."""
         self.update(objective)
         return self.apply(objective)
 
-    def get_H(self, objective: Objective) -> LinearOperator | None:
+    def get_H(self, objective: "Objective") -> LinearOperator | None:
         """returns a ``LinearOperator`` corresponding to hessian or hessian approximation.
         The hessian approximation is assumed to be for all parameters concatenated to a vector."""
         # if this method is not defined it searches in children
