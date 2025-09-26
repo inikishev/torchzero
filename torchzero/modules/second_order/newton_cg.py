@@ -4,13 +4,13 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Module, HVPMethod
-from ...utils import TensorList, as_tensorlist, tofloat
+from ...core import Chainable, Transform, HVPMethod
+from ...utils import TensorList, tofloat, unpack_dicts, unpack_states
 from ...linalg.solve import cg, find_within_trust_radius, minres
 from ..trust_region.trust_region import default_radius
 
 
-class NewtonCG(Module):
+class NewtonCG(Transform):
     """Newton's method with a matrix-free conjugate gradient or minimial-residual solver.
 
     Notes:
@@ -80,74 +80,71 @@ class NewtonCG(Module):
         tol: float = 1e-8,
         reg: float = 1e-8,
         hvp_method: HVPMethod = "autograd",
-        solver: Literal['cg', 'minres', 'minres_npc'] = 'cg',
+        solver: Literal['cg', 'minres'] = 'cg',
+        npc_terminate: bool = False,
         h: float = 1e-3, # tuned 1e-4 or 1e-3
         miniter:int = 1,
         warm_start=False,
+        warm_beta:float=0,
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
-        super().__init__(defaults,)
-
-        if inner is not None:
-            self.set_child('inner', inner)
+        super().__init__(defaults, inner=inner)
 
         self._num_hvps = 0
         self._num_hvps_last_step = 0
 
     @torch.no_grad
-    def apply(self, objective):
-        params = TensorList(objective.params)
-        closure = objective.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
-
-        settings = self.settings[params[0]]
-        tol = settings['tol']
-        reg = settings['reg']
-        maxiter = settings['maxiter']
-        hvp_method = settings['hvp_method']
-        solver = settings['solver'].lower().strip()
-        h = settings['h']
-        warm_start = settings['warm_start']
-
-        self._num_hvps_last_step = 0
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
+        hvp_method = fs['hvp_method']
+        h = fs['h']
 
         # ---------------------- Hessian vector product function --------------------- #
         _, H_mv = objective.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        objective.temp = H_mv
 
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        self._num_hvps_last_step = 0
+        H_mv = objective.poptemp()
 
-        # -------------------------------- inner step -------------------------------- #
-        objective = self.inner_step("inner", objective, must_exist=False)
-        b = TensorList(objective.get_updates())
+        fs = settings[0]
+        tol = fs['tol']
+        reg = fs['reg']
+        maxiter = fs['maxiter']
+        solver = fs['solver'].lower().strip()
+        warm_start = fs['warm_start']
+        npc_terminate = fs["npc_terminate"]
 
         # ---------------------------------- run cg ---------------------------------- #
         x0 = None
-        if warm_start: x0 = self.get_state(params, 'prev_x', cls=TensorList) # initialized to 0 which is default anyway
+        if warm_start:
+            x0 = unpack_states(states, objective.params, 'prev_x', cls=TensorList)
+
+        b = TensorList(objective.get_updates())
 
         if solver == 'cg':
-            d, _ = cg(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, miniter=self.defaults["miniter"],reg=reg)
+            d, _ = cg(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter,
+                      miniter=fs["miniter"], reg=reg, npc_terminate=npc_terminate)
 
         elif solver == 'minres':
-            d = minres(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=False)
-
-        elif solver == 'minres_npc':
-            d = minres(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=True)
+            d = minres(A_mv=H_mv, b=b, x0=x0, tol=tol, maxiter=maxiter, reg=reg, npc_terminate=npc_terminate)
 
         else:
             raise ValueError(f"Unknown solver {solver}")
 
         if warm_start:
             assert x0 is not None
-            x0.copy_(d)
+            x0.lerp_(d, weight = 1-fs["warm_beta"])
 
         objective.updates = d
-
         self._num_hvps += self._num_hvps_last_step
         return objective
 
 
-class NewtonCGSteihaug(Module):
+class NewtonCGSteihaug(Transform):
     """Newton's method with trust region and a matrix-free Steihaug-Toint conjugate gradient solver.
 
     Notes:
@@ -241,45 +238,51 @@ class NewtonCGSteihaug(Module):
     ):
         defaults = locals().copy()
         del defaults['self'], defaults['inner']
-        super().__init__(defaults,)
-
-        if inner is not None:
-            self.set_child('inner', inner)
+        super().__init__(defaults, inner=inner)
 
         self._num_hvps = 0
         self._num_hvps_last_step = 0
 
+
     @torch.no_grad
-    def apply(self, objective):
-        params = TensorList(objective.params)
-        closure = objective.closure
-        if closure is None: raise RuntimeError('NewtonCG requires closure')
-
-        tol = self.defaults['tol'] * self.global_state.get('tol_mul', 1)
-        solver = self.defaults['solver'].lower().strip()
-
-        (reg, maxiter, hvp_method, h, max_attempts, boundary_tol,
-         eta, nplus, nminus, rho_good, rho_bad, init, npc_terminate,
-         miniter, max_history, adapt_tol) = itemgetter(
-             "reg", "maxiter", "hvp_method", "h", "max_attempts", "boundary_tol",
-             "eta", "nplus", "nminus", "rho_good", "rho_bad", "init", "npc_terminate",
-             "miniter", "max_history", "adapt_tol",
-        )(self.defaults)
-
-        self._num_hvps_last_step = 0
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
+        hvp_method = fs['hvp_method']
+        h = fs['h']
 
         # ---------------------- Hessian vector product function --------------------- #
         _, H_mv = objective.list_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        objective.temp = H_mv
 
-        # -------------------------------- inner step -------------------------------- #
-        objective = self.inner_step("inner", objective, must_exist=False)
-        b = TensorList(objective.get_updates())
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        self._num_hvps_last_step = 0
+
+        H_mv = objective.poptemp()
+        params = TensorList(objective.params)
+        fs = settings[0]
+
+        tol = fs['tol'] * self.global_state.get('tol_mul', 1)
+        solver = fs['solver'].lower().strip()
+
+        reg=fs["reg"]
+        maxiter=fs["maxiter"]
+        max_attempts=fs["max_attempts"]
+        init=fs["init"]
+        npc_terminate=fs["npc_terminate"]
+        miniter=fs["miniter"]
+        max_history=fs["max_history"]
+        adapt_tol=fs["adapt_tol"]
+
 
         # ------------------------------- trust region ------------------------------- #
         success = False
         d = None
-        x0 = [p.clone() for p in params]
+        orig_params = [p.clone() for p in params]
+        b = TensorList(objective.get_updates())
         solution = None
+        closure = objective.closure
+        assert closure is not None
 
         while not success:
             max_attempts -= 1
@@ -288,7 +291,7 @@ class NewtonCGSteihaug(Module):
             trust_radius = self.global_state.get('trust_radius', init)
 
             # -------------- make sure trust radius isn't too small or large ------------- #
-            finfo = torch.finfo(x0[0].dtype)
+            finfo = torch.finfo(orig_params[0].dtype)
             if trust_radius < finfo.tiny * 2:
                 trust_radius = self.global_state['trust_radius'] = init
                 if adapt_tol:
@@ -324,24 +327,24 @@ class NewtonCGSteihaug(Module):
 
             # ---------------------------- update trust radius --------------------------- #
             self.global_state["trust_radius"], success = default_radius(
-                params=params,
-                closure=closure,
-                f=tofloat(objective.get_loss(False)),
-                g=b,
-                H=H_mv,
-                d=d,
-                trust_radius=trust_radius,
-                eta=eta,
-                nplus=nplus,
-                nminus=nminus,
-                rho_good=rho_good,
-                rho_bad=rho_bad,
-                boundary_tol=boundary_tol,
+                params = params,
+                closure = closure,
+                f = tofloat(objective.get_loss(False)),
+                g = b,
+                H = H_mv,
+                d = d,
+                trust_radius = trust_radius,
+                eta = fs["eta"],
+                nplus = fs["nplus"],
+                nminus = fs["nminus"],
+                rho_good = fs["rho_good"],
+                rho_bad = fs["rho_bad"],
+                boundary_tol = fs["boundary_tol"],
 
-                init=init, # init isn't used because check_overflow=False
-                state=self.global_state, # not used
-                settings=self.defaults, # not used
-                check_overflow=False, # this is checked manually to adapt tolerance
+                init = cast(int, None), # init isn't used because check_overflow=False
+                state = cast(dict, None), # not used
+                settings = cast(dict, None), # not used
+                check_overflow = False, # this is checked manually to adapt tolerance
             )
 
         # --------------------------- assign new direction --------------------------- #

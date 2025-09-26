@@ -25,7 +25,7 @@ class Transform(Module):
 
         # store update_freq in defaults so that it is scheduleable
         if defaults is None: defaults = {}
-        safe_dict_update_(defaults, {"update_freq": update_freq})
+        safe_dict_update_(defaults, {"__update_freq": update_freq})
 
         super().__init__(defaults)
 
@@ -62,7 +62,7 @@ class Transform(Module):
     def update(self, objective:"Objective"):
         step = self.increment_counter("__step", 0)
 
-        if step % self.defaults["update_freq"] == 0:
+        if step % self.settings[objective.params[0]]["__update_freq"] == 0:
             states, settings = self._get_states_settings(objective)
             self.update_states(objective=objective, states=states, settings=settings)
 
@@ -72,9 +72,7 @@ class Transform(Module):
         # inner step
         if "inner" in self.children:
             inner = self.children["inner"]
-
-            inner.update(objective)
-            objective = inner.apply(objective)
+            objective = inner.step(objective)
 
         # apply and return
         states, settings = self._get_states_settings(objective)

@@ -13,7 +13,7 @@ def update_shampoo_preconditioner_(
     accumulators_: list[torch.Tensor | None],
     preconditioners_: list[torch.Tensor | None],
     step: int,
-    update_freq: int,
+    precond_freq: int,
     matrix_power: float | None,
     beta: float | None,
     reg: float,
@@ -27,13 +27,12 @@ def update_shampoo_preconditioner_(
         if beta is None: accumulator.add_(torch.tensordot(grad, grad, (axes, axes))) # pyright:ignore[reportArgumentType]
         else: accumulator.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
 
-        if step % update_freq == 0:
+        if step % precond_freq == 0:
             if reg != 0:
                 accumulator = accumulator + torch.eye(accumulator.size(0), device=accumulator.device, dtype=accumulator.dtype).mul_(reg)
 
             if matrix_power is None: matrix_power = -1 / max(grad.ndim, 2)
             set_storage_(preconditioner, _matrix_power(accumulator, matrix_power, method=matrix_power_method))
-
 
 def apply_shampoo_preconditioner(
     tensor: torch.Tensor,
@@ -137,7 +136,7 @@ class Shampoo(TensorTransform):
     def __init__(
         self,
         reg: float = 1e-12,
-        update_freq: int = 10,
+        precond_freq: int = 10,
         matrix_power: float | None = None,
         merge_small: bool = True,
         max_dim: int = 10_000,
@@ -165,13 +164,13 @@ class Shampoo(TensorTransform):
         else:
             max_dim = setting["max_dim"]
             state['accumulators'] = [
-                torch.zeros(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
+                torch.eye(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
             ]
             state['preconditioners'] = [
-                torch.zeros(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
+                torch.eye(s, dtype=tensor.dtype, device=tensor.device) if 1<s<max_dim else None for s in tensor.shape
             ]
 
-        # either scalar parameter, 1d with precondition_1d=False, or too big, then basic diagonal preconditioner is used.
+        # either scalar parameter, 1d with precondition_1d=False, or too big, then diagonal preconditioner is used.
         if len([i is not None for i in state['accumulators']]) == 0:
             state['diagonal_accumulator'] = torch.zeros_like(tensor)
 
@@ -191,16 +190,17 @@ class Shampoo(TensorTransform):
                 accumulators_=state['accumulators'],
                 preconditioners_=state['preconditioners'],
                 step=state['step'],
-                update_freq=setting["update_freq"],
+                precond_freq=setting["precond_freq"],
                 matrix_power=setting["matrix_power"],
                 beta=setting["beta"],
                 reg=setting["reg"],
                 matrix_power_method=setting["matrix_power_method"],
             )
 
-        state["step"] += 1
-        if state["step"] % setting["update_freq"] == 0:
+        if state["step"] % setting["precond_freq"] == 0:
             state["num_GTG"] += 1
+
+        state["step"] += 1
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -213,7 +213,7 @@ class Shampoo(TensorTransform):
             dir = apply_shampoo_preconditioner(tensor, preconditioners_=state['preconditioners'])
 
         if setting["merge_small"]:
-            dir = _unmerge_small_dims(tensor, state['flat_sizes'], state['sort_idxs'])
+            dir = _unmerge_small_dims(dir, state['flat_sizes'], state['sort_idxs'])
 
         if setting['beta_debias'] and setting["beta"] is not None:
             bias_correction = 1 - (setting["beta"] ** state["num_GTG"])

@@ -117,10 +117,16 @@ class SOAP(TensorTransform):
             Whether to precondition 1d params (SOAP paper sets this to False). Defaults to True.
         eps (float, optional):
             epsilon for dividing first momentum by second. Defaults to 1e-8.
+        debias (bool, optional):
+            enables adam bias correction. Defaults to True.
+        proj_exp_avg (bool, optional):
+            if True, maintains exponential average of gradients (momentum) in projected space.
+            If False - in original space Defaults to True.
         alpha (float, optional):
             learning rate. Defaults to 1.
-        bias_correction (bool, optional):
-            enables adam bias correction. Defaults to True.
+        inner (Chainable | None, optional):
+            output of this module is projected and Adam will run on it, but preconditioners are updated
+            from original gradients.
 
     ### Examples:
     SOAP:
@@ -154,13 +160,13 @@ class SOAP(TensorTransform):
         precondition_1d: bool = True,
         eps: float = 1e-8,
         debias: bool = True,
+        proj_exp_avg: bool = True,
         alpha: float = 1,
-        bias_correction: bool = True,
 
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self']
+        del defaults['self'], defaults["inner"]
 
         super().__init__(defaults)
         self.set_child("inner", inner)
@@ -211,7 +217,9 @@ class SOAP(TensorTransform):
         if any(s == 0 for s in steps):
             # skip 1st update so to avoid using current gradient in the projection
             # I scale it instead to avoid issues with further modules
+            for s in states: s["step"] += 1
             return TensorList(tensors).clamp(-0.1, 0.1)
+            # return TensorList(tensors).zero_()
 
 
         fs = settings[0]
@@ -232,9 +240,22 @@ class SOAP(TensorTransform):
 
         # ------------------------ run adam in projected space ----------------------- #
         exp_avg_proj, exp_avg_sq_proj = unpack_states(states, tensors, "exp_avg_proj", "exp_avg_sq_proj", must_exist=True, cls=TensorList)
-
         alpha, beta1, beta2, eps = unpack_dicts(settings, "alpha", "beta1", "beta2", "eps", cls=NumberList)
-        exp_avg_proj.lerp_(projected, weight=1-beta1)
+
+        # lerp exp_avg in projected space
+        if fs["proj_exp_avg"]:
+            exp_avg_proj.lerp_(projected, weight=1-beta1)
+
+        # or lerp in original space and project
+        else:
+            exp_avg = exp_avg_proj
+            exp_avg.lerp_(merged, weight=1-beta1)
+            exp_avg_proj = []
+            for t, state, setting in zip(exp_avg, states, settings):
+                if state['GG'] is not None:
+                    t = project(t, state["Q"])
+                exp_avg_proj.append(t)
+
         exp_avg_sq_proj.mul_(beta2).addcmul_(projected, projected, value=1-beta2)
 
         denom = exp_avg_sq_proj.sqrt().add_(eps)
@@ -252,10 +273,7 @@ class SOAP(TensorTransform):
             dirs.append(dir)
 
 
-        # -------------------------- update preconditioners -------------------------- #
-        # Update is done after the gradient step to avoid using current gradients in the projection.
-
-        # inner step
+        # -------------------------------- inner step -------------------------------- #
         if "inner" in self.children:
             tensors = self.inner_step_tensors("inner", tensors, clone=False,
                                               params=params, grads=grads,loss=loss)
@@ -267,6 +285,8 @@ class SOAP(TensorTransform):
                     tensor, _, _ = _merge_small_dims(tensor, setting["max_dim"])
                     merged.append(tensor)
 
+        # -------------------------- update preconditioners -------------------------- #
+        # Update is done after the gradient step to avoid using current gradients in the projection.
 
         for tensor, state, setting in zip(merged, states, settings):
             if state['GG'] is not None:
@@ -274,18 +294,23 @@ class SOAP(TensorTransform):
                 # lerp covariances
                 update_soap_covariances_(tensor, state['GG'], beta=setting["shampoo_beta"])
 
-                if state['step'] % setting['precond_freq'] == 0:
+                # (state['step'] - 1) since we start updating on 2nd step
+                if (state['step'] - 1) % setting['precond_freq'] == 0:
 
-                    # unproject exp_avg before updating
-                    exp_avg = project_back(state["exp_avg_proj"], state["Q"])
+                    # unproject exp_avg before updating if it is maintained projected
+                    exp_avg = None
+                    if fs["proj_exp_avg"]:
+                        exp_avg = project_back(state["exp_avg_proj"], state["Q"])
 
                     # update projection matrix and exp_avg_sq_proj
-                    exp_avg_sq_proj = state["exp_avg_sq_proj"]
                     try:
-                        state['Q'], state['exp_avg_sq_proj'] = get_orthogonal_matrix_QR(exp_avg_sq_proj, state['GG'], state['Q'])
+                        state['Q'], state['exp_avg_sq_proj'] = get_orthogonal_matrix_QR(
+                            state["exp_avg_sq_proj"], state['GG'], state['Q'])
 
-                        # re-project exp_avg
-                        state["exp_avg_proj"] = project(exp_avg, state["Q"])
+                        # re-project exp_avg if it is maintained projected
+                        if fs["proj_exp_avg"]:
+                            assert exp_avg is not None
+                            state["exp_avg_proj"] = project(exp_avg, state["Q"])
 
                     except torch.linalg.LinAlgError:
                         pass

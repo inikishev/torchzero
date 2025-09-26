@@ -3,7 +3,7 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, Objective, HessianMethod
+from ...core import Chainable, Transform, Objective, HessianMethod, Module
 from ...utils import vec_to_tensors
 from ...linalg.linear_operator import Dense, DenseWithInverse
 
@@ -39,15 +39,12 @@ def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_n
     except torch.linalg.LinAlgError:
         return None
 
-def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None, inner: Module | None = None) -> torch.Tensor:
+def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, eigval_fn, use_lstsq:bool, g_proj: Callable | None = None, no_inner: Module | None = None) -> torch.Tensor:
     """INNER SHOULD BE NONE IN MOST CASES! Because Transform already has inner.
     Returns the update tensor, then do vec_to_tensor(update, params)"""
-    if damping != 0:
-        H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
-
     # -------------------------------- inner step -------------------------------- #
-    if inner is not None:
-        objective = inner.step(objective)
+    if no_inner is not None:
+        objective = no_inner.step(objective)
 
     update = objective.get_updates()
 
@@ -56,6 +53,9 @@ def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, ei
 
     # ----------------------------------- solve ---------------------------------- #
     update = None
+
+    if damping != 0:
+        H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
 
     if H_tfm is not None:
         ret = H_tfm(H, g)
@@ -91,7 +91,7 @@ def _get_H(H: torch.Tensor, eigval_fn):
 
     return Dense(H)
 
-class Newton(Module):
+class Newton(Transform):
     """Exact newton's method via autograd.
 
     Newton's method produces a direction jumping to the stationary point of quadratic approximation of the target function.
@@ -225,40 +225,34 @@ class Newton(Module):
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
-        super().__init__(defaults)
-
-        if inner is not None:
-            self.set_child('inner', inner)
+        del defaults['self'], defaults['update_freq'], defaults["inner"]
+        super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def update(self, objective):
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
 
-        if step % self.defaults['update_freq'] == 0:
-
-            _, _, self.global_state['H'] = objective.hessian(
-                hessian_method=self.defaults['hessian_method'],
-                h=self.defaults['h'],
-                at_x0=True
-            )
+        _, _, self.global_state['H'] = objective.hessian(
+            hessian_method=fs['hessian_method'],
+            h=fs['h'],
+            at_x0=True
+        )
 
     @torch.no_grad
-    def apply(self, objective):
+    def apply_states(self, objective, states, settings):
         params = objective.params
+        fs = settings[0]
+
         update = _newton_step(
             objective=objective,
             H = self.global_state["H"],
-            damping=self.defaults["damping"],
-            inner=self.children.get("inner", None),
-            H_tfm=self.defaults["H_tfm"],
-            eigval_fn=self.defaults["eigval_fn"],
-            use_lstsq=self.defaults["use_lstsq"],
+            damping = fs["damping"],
+            H_tfm = fs["H_tfm"],
+            eigval_fn = fs["eigval_fn"],
+            use_lstsq = fs["use_lstsq"],
         )
 
         objective.updates = vec_to_tensors(update, params)
-
         return objective
 
     def get_H(self,objective=...):

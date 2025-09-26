@@ -5,8 +5,8 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step, HVPMethod
-from ...utils import Distributions, TensorList, vec_to_tensors
+from ...core import Chainable, Transform, HVPMethod
+from ...utils import vec_to_tensors
 from ...linalg.linear_operator import Sketched
 
 from .newton import _newton_step
@@ -30,7 +30,7 @@ def _rademacher_sketch(m, n, dtype, device, generator):
     rademacher = torch.bernoulli(torch.full((m,n), 0.5), generator = generator).mul_(2).sub_(1)
     return rademacher.mul_(1 / math.sqrt(m))
 
-class SubspaceNewton(Module):
+class SubspaceNewton(Transform):
     """Subspace Newton. Performs a Newton step in a subspace (random or spanned by past gradients).
 
     Args:
@@ -109,124 +109,115 @@ class SubspaceNewton(Module):
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
-        super().__init__(defaults)
-
-        if inner is not None:
-            self.set_child("inner", inner)
+        del defaults['self'], defaults['inner'], defaults["update_freq"]
+        super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def update(self, objective):
-        step = self.global_state.get('step', 0)
-        self.global_state['step'] = step + 1
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
+        params = objective.params
+        generator = self.get_generator(params[0].device, fs["seed"])
 
-        if step % self.defaults['update_freq'] == 0:
+        ndim = sum(p.numel() for p in params)
 
-            closure = objective.closure
-            if closure is None:
-                raise RuntimeError("RSN requires closure")
-            params = objective.params
-            generator = self.get_generator(params[0].device, self.defaults["seed"])
+        device=params[0].device
+        dtype=params[0].dtype
 
-            ndim = sum(p.numel() for p in params)
+        # sample sketch matrix S: (ndim, sketch_size)
+        sketch_size = min(fs["sketch_size"], ndim)
+        sketch_type = fs["sketch_type"]
+        hvp_method = fs["hvp_method"]
 
-            device=params[0].device
-            dtype=params[0].dtype
+        if sketch_type in ('normal', 'gaussian'):
+            S = _gaussian_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
-            # sample sketch matrix S: (ndim, sketch_size)
-            sketch_size = min(self.defaults["sketch_size"], ndim)
-            sketch_type = self.defaults["sketch_type"]
-            hvp_method = self.defaults["hvp_method"]
+        elif sketch_type == "rademacher":
+            S = _rademacher_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
-            if sketch_type in ('normal', 'gaussian'):
-                S = _gaussian_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+        elif sketch_type == 'orthonormal':
+            S = _orthonormal_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
-            elif sketch_type == "rademacher":
-                S = _rademacher_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+        elif sketch_type == 'common_directions':
+            # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
+            g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
+            g = torch.cat([t.ravel() for t in g_list])
 
-            elif sketch_type == 'orthonormal':
-                S = _orthonormal_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+            # initialize directions deque
+            if "directions" not in self.global_state:
 
-            elif sketch_type == 'common_directions':
-                # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
-                g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
-                g = torch.cat([t.ravel() for t in g_list])
-
-                # initialize directions deque
-                if "directions" not in self.global_state:
-
+                g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
+                if g_norm < torch.finfo(g.dtype).tiny * 2:
+                    g = torch.randn_like(g)
                     g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
-                    if g_norm < torch.finfo(g.dtype).tiny * 2:
-                        g = torch.randn_like(g)
-                        g_norm = torch.linalg.vector_norm(g) # pylint:disable=not-callable
 
-                    self.global_state["directions"] = deque([g / g_norm], maxlen=sketch_size)
-                    S = self.global_state["directions"][0].unsqueeze(1)
+                self.global_state["directions"] = deque([g / g_norm], maxlen=sketch_size)
+                S = self.global_state["directions"][0].unsqueeze(1)
 
-                # add new steepest descent direction orthonormal to existing columns
-                else:
-                    S = torch.stack(tuple(self.global_state["directions"]), dim=1)
-                    p = g - S @ (S.T @ g)
-                    p_norm = torch.linalg.vector_norm(p) # pylint:disable=not-callable
-                    if p_norm > torch.finfo(p.dtype).tiny * 2:
-                        p = p / p_norm
-                        self.global_state["directions"].append(p)
-                        S = torch.cat([S, p.unsqueeze(1)], dim=1)
-
-            elif sketch_type == "mixed":
-                g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
-                g = torch.cat([t.ravel() for t in g_list])
-
-                # initialize state
-                if "slow_ema" not in self.global_state:
-                    self.global_state["slow_ema"] = torch.randn_like(g) * 1e-2
-                    self.global_state["fast_ema"] = torch.randn_like(g) * 1e-2
-                    self.global_state["p_prev"] = torch.randn_like(g)
-
-                # previous update direction
-                p_cur = torch.cat([t.ravel() for t in params])
-                prev_dir = p_cur - self.global_state["p_prev"]
-                self.global_state["p_prev"] = p_cur
-
-                # EMAs
-                slow_ema = self.global_state["slow_ema"]
-                fast_ema = self.global_state["fast_ema"]
-                slow_ema.lerp_(g, 0.001)
-                fast_ema.lerp_(g, 0.1)
-
-                # form and orthogonalize sketching matrix
-                S = torch.stack([g, slow_ema, fast_ema, prev_dir], dim=1)
-                if sketch_size > 4:
-                    S_random = _gaussian_sketch(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator)
-                    S = torch.cat([S, S_random], dim=1)
-
-                S = _qr_orthonormalize(S)
-
+            # add new steepest descent direction orthonormal to existing columns
             else:
-                raise ValueError(f'Unknown sketch_type {sketch_type}')
+                S = torch.stack(tuple(self.global_state["directions"]), dim=1)
+                p = g - S @ (S.T @ g)
+                p_norm = torch.linalg.vector_norm(p) # pylint:disable=not-callable
+                if p_norm > torch.finfo(p.dtype).tiny * 2:
+                    p = p / p_norm
+                    self.global_state["directions"].append(p)
+                    S = torch.cat([S, p.unsqueeze(1)], dim=1)
 
-            # form sketched hessian
-            HS, _ = objective.hessian_matrix_product(S, rgrad=None, at_x0=True, hvp_method=self.defaults["hvp_method"], h=self.defaults["h"])
-            H_sketched = S.T @ HS
+        elif sketch_type == "mixed":
+            g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
+            g = torch.cat([t.ravel() for t in g_list])
 
-            self.global_state["H_sketched"] = H_sketched
-            self.global_state["S"] = S
+            # initialize state
+            if "slow_ema" not in self.global_state:
+                self.global_state["slow_ema"] = torch.randn_like(g) * 1e-2
+                self.global_state["fast_ema"] = torch.randn_like(g) * 1e-2
+                self.global_state["p_prev"] = torch.randn_like(g)
 
-    def apply(self, objective):
+            # previous update direction
+            p_cur = torch.cat([t.ravel() for t in params])
+            prev_dir = p_cur - self.global_state["p_prev"]
+            self.global_state["p_prev"] = p_cur
+
+            # EMAs
+            slow_ema = self.global_state["slow_ema"]
+            fast_ema = self.global_state["fast_ema"]
+            slow_ema.lerp_(g, 0.001)
+            fast_ema.lerp_(g, 0.1)
+
+            # form and orthogonalize sketching matrix
+            S = torch.stack([g, slow_ema, fast_ema, prev_dir], dim=1)
+            if sketch_size > 4:
+                S_random = _gaussian_sketch(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator)
+                S = torch.cat([S, S_random], dim=1)
+
+            S = _qr_orthonormalize(S)
+
+        else:
+            raise ValueError(f'Unknown sketch_type {sketch_type}')
+
+        # form sketched hessian
+        HS, _ = objective.hessian_matrix_product(S, rgrad=None, at_x0=True,
+                                                 hvp_method=fs["hvp_method"], h=fs["h"])
+        H_sketched = S.T @ HS
+
+        self.global_state["H_sketched"] = H_sketched
+        self.global_state["S"] = S
+
+    def apply_states(self, objective, states, settings):
         S: torch.Tensor = self.global_state["S"]
+
         d_proj = _newton_step(
             objective=objective,
             H=self.global_state["H_sketched"],
             damping=self.defaults["damping"],
-            inner=self.children.get("inner", None),
             H_tfm=self.defaults["H_tfm"],
             eigval_fn=self.defaults["eigval_fn"],
             use_lstsq=self.defaults["use_lstsq"],
             g_proj = lambda g: S.T @ g
         )
+
         d = S @ d_proj
         objective.updates = vec_to_tensors(d, objective.params)
-
         return objective
 
     def get_H(self, objective=...):

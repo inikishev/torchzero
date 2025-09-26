@@ -1,19 +1,15 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from contextlib import nullcontext
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import numpy as np
 import torch
 
-from ...core import Chainable, DerivativesMethod, Module, Objective, step
-from ...utils import TensorList, vec_to_tensors, vec_to_tensors_
-from ...utils.derivatives import (
-    flatten_jacobian,
-    jacobian_wrt,
-)
+from ...core import Chainable, DerivativesMethod, Objective, Transform
+from ...utils import TensorList, vec_to_tensors
 
 
-class HigherOrderMethodBase(Module, ABC):
+class HigherOrderMethodBase(Transform, ABC):
     def __init__(self, defaults: dict | None = None, derivatives_method: DerivativesMethod = 'batched_autograd'):
         self._derivatives_method: DerivativesMethod = derivatives_method
         super().__init__(defaults)
@@ -24,11 +20,12 @@ class HigherOrderMethodBase(Module, ABC):
         x: torch.Tensor,
         evaluate: Callable[[torch.Tensor, int], tuple[torch.Tensor, ...]],
         objective: Objective,
+        setting: Mapping[str, Any],
     ) -> torch.Tensor:
         """"""
 
     @torch.no_grad
-    def apply(self, objective):
+    def apply_states(self, objective, states, settings):
         params = TensorList(objective.params)
 
         closure = objective.closure
@@ -37,10 +34,10 @@ class HigherOrderMethodBase(Module, ABC):
 
         def evaluate(x, order) -> tuple[torch.Tensor, ...]:
             """order=0 - returns (loss,), order=1 - returns (loss, grad), order=2 - returns (loss, grad, hessian), etc."""
-            return objective.derivatives_at(x, order,method=derivatives_method)
+            return objective.derivatives_at(x, order, method=derivatives_method)
 
         x = torch.cat([p.ravel() for p in params])
-        dir = self.one_iteration(x, evaluate, objective)
+        dir = self.one_iteration(x, evaluate, objective, settings[0])
         objective.updates = vec_to_tensors(dir, objective.params)
         return objective
 
@@ -77,12 +74,11 @@ class SixthOrder3P(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, objective):
-        settings = self.defaults
-        lstsq = settings['lstsq']
+    @torch.no_grad
+    def one_iteration(self, x, evaluate, objective, setting):
         def f(x): return evaluate(x, 1)[1]
         def f_j(x): return evaluate(x, 2)[1:]
-        x_star = sixth_order_3p(x, f, f_j, lstsq)
+        x_star = sixth_order_3p(x, f, f_j, setting['lstsq'])
         return x - x_star
 
 # I don't think it works (I tested root finding with this and it goes all over the place)
@@ -144,11 +140,10 @@ class SixthOrder5P(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, objective):
-        settings = self.defaults
-        lstsq = settings['lstsq']
+    @torch.no_grad
+    def one_iteration(self, x, evaluate, objective, setting):
         def f_j(x): return evaluate(x, 2)[1:]
-        x_star = sixth_order_5p(x, f_j, lstsq)
+        x_star = sixth_order_5p(x, f_j, setting['lstsq'])
         return x - x_star
 
 # 2f 1J 2 solves
@@ -167,12 +162,11 @@ class TwoPointNewton(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, objective):
-        settings = self.defaults
-        lstsq = settings['lstsq']
+    @torch.no_grad
+    def one_iteration(self, x, evaluate, objective, setting):
         def f(x): return evaluate(x, 1)[1]
         def f_j(x): return evaluate(x, 2)[1:]
-        x_star = two_point_newton(x, f, f_j, lstsq)
+        x_star = two_point_newton(x, f, f_j, setting['lstsq'])
         return x - x_star
 
 #3f 2J 1inv
@@ -195,11 +189,10 @@ class SixthOrder3PM2(HigherOrderMethodBase):
         defaults=dict(lstsq=lstsq)
         super().__init__(defaults=defaults, derivatives_method=derivatives_method)
 
-    def one_iteration(self, x, evaluate, objective):
-        settings = self.defaults
-        lstsq = settings['lstsq']
+    @torch.no_grad
+    def one_iteration(self, x, evaluate, objective, setting):
         def f_j(x): return evaluate(x, 2)[1:]
         def f(x): return evaluate(x, 1)[1]
-        x_star = sixth_order_3pm2(x, f, f_j, lstsq)
+        x_star = sixth_order_3pm2(x, f, f_j, setting['lstsq'])
         return x - x_star
 

@@ -728,10 +728,11 @@ Adam = Run(
 # ------------------------------ optimizers/soap ----------------------------- #
 SOAP = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.SOAP(), tz.m.LR(0.4)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SOAP(), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SOAP(precond_freq=1), tz.m.LR(1)),
     needs_closure=False,
+    # merge and unmerge lrs are very different so need to test convergence separately somewhere
     func='rosen', steps=50, loss=4, merge_invariant=False,
-    sphere_steps=20, sphere_loss=25, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=20, sphere_loss=25,
 )
 # ------------------------------ optimizers/lion ----------------------------- #
 Lion = Run(
@@ -746,8 +747,9 @@ Shampoo = Run(
     func_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
     sphere_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
+    # merge and unmerge lrs are very different so need to test convergence separately somewhere
     func='booth', steps=50, loss=0.02, merge_invariant=False,
-    sphere_steps=20, sphere_loss=1, # merge and unmerge lrs are very different so need to test convergence separately somewhere
+    sphere_steps=20, sphere_loss=1,
 )
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #

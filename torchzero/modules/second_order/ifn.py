@@ -18,38 +18,34 @@ class InverseFreeNewton(Transform):
         h: float = 1e-3,
         inner: Chainable | None = None,
     ):
-        defaults = locals().copy()
-        del defaults['self'], defaults['inner']
-        super().__init__(defaults, inner=inner)
+        defaults = dict(hessian_method=hessian_method, h=h)
+        super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
     def update_states(self, objective, states, settings):
         fs = settings[0]
-        update_freq = fs['update_freq']
-        step = self.increment_counter("step", 0)
 
-        if step % update_freq == 0:
-            _, _, H = objective.hessian(
-                hessian_method=fs['hessian_method'],
-                h=fs['h'],
-                at_x0=True
-            )
+        _, _, H = objective.hessian(
+            hessian_method=fs['hessian_method'],
+            h=fs['h'],
+            at_x0=True
+        )
 
-            self.global_state["H"] = H
+        self.global_state["H"] = H
 
-            # inverse free part
-            if 'Y' not in self.global_state:
-                num = H.T
-                denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
+        # inverse free part
+        if 'Y' not in self.global_state:
+            num = H.T
+            denom = (torch.linalg.norm(H, 1) * torch.linalg.norm(H, float('inf'))) # pylint:disable=not-callable
 
-                finfo = torch.finfo(H.dtype)
-                self.global_state['Y'] = num.div_(denom.clip(min=finfo.tiny * 2, max=finfo.max / 2))
+            finfo = torch.finfo(H.dtype)
+            self.global_state['Y'] = num.div_(denom.clip(min=finfo.tiny * 2, max=finfo.max / 2))
 
-            else:
-                Y = self.global_state['Y']
-                I2 = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
-                I2 -= H @ Y
-                self.global_state['Y'] = Y @ I2
+        else:
+            Y = self.global_state['Y']
+            I2 = torch.eye(Y.size(0), device=Y.device, dtype=Y.dtype).mul_(2)
+            I2 -= H @ Y
+            self.global_state['Y'] = Y @ I2
 
 
     def apply_states(self, objective, states, settings):
