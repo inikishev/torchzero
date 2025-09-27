@@ -111,7 +111,7 @@ def svd(A: torch.Tensor, full_matrices=True, driver=None, retry_float64:bool=Fal
         U, S, Vh = svd(A.to(torch.float64), full_matrices=full_matrices, driver=driver, retry_float64=False)
         return _SVDTuple(U=U.to(dtype), S=S.to(dtype), Vh=Vh.to(dtype))
 
-def solve(A: torch.Tensor, B: torch.Tensor, left:bool=True, retry_float64:bool=False):
+def solve(A: torch.Tensor, B: torch.Tensor, left:bool=True, retry_float64:bool=False) -> torch.Tensor:
     """I think this uses LU"""
     try:
         return torch.linalg.solve(A, B, left=left) # pylint:disable=not-callable
@@ -121,3 +121,48 @@ def solve(A: torch.Tensor, B: torch.Tensor, left:bool=True, retry_float64:bool=F
         dtype = A.dtype
         if dtype == torch.float64: raise e
         return solve(A.to(torch.float64), B.to(torch.float64), left=left, retry_float64=False).to(dtype)
+
+class _SolveExTuple(NamedTuple):
+    result: torch.Tensor
+    info: int
+
+def solve_ex(A: torch.Tensor, B: torch.Tensor, left:bool=True, retry_float64:bool=False) -> _SolveExTuple:
+    """I think this uses LU"""
+    result, info = torch.linalg.solve_ex(A, B, left=left) # pylint:disable=not-callable
+
+    if info != 0:
+        if not retry_float64: return _SolveExTuple(result, info)
+        dtype = A.dtype
+        if dtype == torch.float64: return _SolveExTuple(result, info)
+        result, info = solve_ex(A.to(torch.float64), B.to(torch.float64), retry_float64=False)
+        return _SolveExTuple(result.to(dtype), info)
+
+    return _SolveExTuple(result, info)
+
+def inv(A: torch.Tensor, retry_float64:bool=False) -> torch.Tensor:
+    try:
+        return torch.linalg.inv(A) # pylint:disable=not-callable
+
+    except torch.linalg.LinAlgError as e:
+        if not retry_float64: raise e
+        dtype = A.dtype
+        if dtype == torch.float64: raise e
+        return inv(A.to(torch.float64), retry_float64=False).to(dtype)
+
+
+class _InvExTuple(NamedTuple):
+    inverse: torch.Tensor
+    info: int
+
+def inv_ex(A: torch.Tensor, *, check_errors=False, retry_float64:bool=False) -> _InvExTuple:
+    """this retries in float64 but on fail info will be not 0"""
+    inverse, info = torch.linalg.inv_ex(A, check_errors=check_errors) # pylint:disable=not-callable
+
+    if info != 0:
+        if not retry_float64: return _InvExTuple(inverse, info)
+        dtype = A.dtype
+        if dtype == torch.float64: return _InvExTuple(inverse, info)
+        inverse, info = inv_ex(A.to(torch.float64), retry_float64=False)
+        return _InvExTuple(inverse.to(dtype), info)
+
+    return _InvExTuple(inverse, info)

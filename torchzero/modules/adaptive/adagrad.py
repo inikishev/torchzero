@@ -224,7 +224,7 @@ class FullMatrixAdagrad(TensorTransform):
         beta_debias: bool=True,
         init: Literal["identity", "zeros", "GGT"] = "identity",
         matrix_power: float = -1/2,
-        matrix_power_method: MatrixPowerMethod = "eigh",
+        matrix_power_method: MatrixPowerMethod = "eigh_abs",
         concat_params=True,
 
         inner: Chainable | None = None,

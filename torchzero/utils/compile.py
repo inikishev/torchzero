@@ -38,11 +38,11 @@ class _MaybeCompiledFunc:
 _optional_compiler = _OptionalCompiler()
 """this holds .enable attribute, set to True to enable compiling for a few functions that benefit from it."""
 
-def optional_compile(enable: bool=True):
+def enable_compilation(enable: bool=True):
     """`enable` is False by default. When True, certain functions will be compiled, which may not work on some systems like Windows, but it usually improves performance."""
     _optional_compiler.enable = enable
 
-def enable_compilation(fn): return _optional_compiler.enable_compilation(fn)
+def allow_compile(fn): return _optional_compiler.enable_compilation(fn)
 
 def benchmark_compile_cuda(fn, n: int, **kwargs):
     # warmup

@@ -142,7 +142,7 @@ class Shampoo(TensorTransform):
         max_dim: int = 10_000,
         precondition_1d: bool = True,
         adagrad_eps: float = 1e-8,
-        matrix_power_method: MatrixPowerMethod = "eigh",
+        matrix_power_method: MatrixPowerMethod = "eigh_abs",
         beta: float | None = None,
         beta_debias: bool = True,
 

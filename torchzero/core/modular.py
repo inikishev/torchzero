@@ -34,16 +34,16 @@ class _EvalCounterClosure:
 
 
 def flatten_modules(*modules: Chainable) -> list[Module]:
-    unrolled = []
+    flat = []
 
     for m in modules:
         if isinstance(m, Module):
-            unrolled.append(m)
-            unrolled.extend(flatten_modules(list(m.children.values())))
+            flat.append(m)
+            flat.extend(flatten_modules(list(m.children.values())))
         else:
-            unrolled.extend(flatten_modules(*m))
+            flat.extend(flatten_modules(*m))
 
-    return unrolled
+    return flat
 
 
 # have to inherit from Modular to support lr schedulers

@@ -4,8 +4,9 @@ import warnings
 
 import torch
 from ...core import Chainable, TensorTransform
+from ...linalg import torch_linalg
 
-def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping):
+def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
@@ -17,24 +18,17 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
         MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype).mul_(damping))
 
     try:
-        try:
-            L, Q = torch.linalg.eigh(MTM) # pylint:disable=not-callable
-        except torch.linalg.LinAlgError as e:
-            dtype = MTM.dtype
-            if dtype == torch.float64: raise e
-            L, Q = torch.linalg.eigh(MTM.to(torch.float64)) # pylint:disable=not-callable
-            L = L.to(dtype); Q = Q.to(dtype)
+        L, Q = torch_linalg.eigh(MTM, retry_float64=True)
+        L_max = L.amax()
 
-        tol = torch.finfo(M.dtype).eps * L.amax() # remove small eigenvalues
-        indices = L > tol
+        indices = L > tol * L_max # remove small eigenvalues
         L = L[indices]
         Q = Q[:, indices]
 
         U = (M @ Q) * L.rsqrt()
 
         if rdamping != 0:
-            rdamping *= torch.linalg.vector_norm(L) # pylint:disable=not-callable
-            L.add_(rdamping)
+            L.add_(rdamping * L_max)
 
         return U, L
 
@@ -75,12 +69,9 @@ class LMAdagrad(TensorTransform):
         rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
         order (int, optional):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
-        true_damping (bool, optional):
-            If True, damping is added to squared singular values to mimic Adagrad. Defaults to True.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
         L_beta (float | None, optional): momentum for L (too unstable, don't use). Defaults to None.
-        interval (int, optional): Interval between gradients that are added to history (2 means every second gradient is used). Defaults to 1.
-        concat_params (bool, optional): if True, treats all parameters as a single vector, meaning it will also whiten inter-parameters. Defaults to True.
+        concat_params (bool, optional): if True, treats all parameters as a single vector. Defaults to True.
         inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
 
     ## Examples:
@@ -127,8 +118,8 @@ class LMAdagrad(TensorTransform):
         update_freq: int = 1,
         damping: float = 1e-4,
         rdamping: float = 0,
+        tol: float = 1e-7,
         order: int = 1,
-        true_damping: bool = True,
         U_beta: float | None = None,
         L_beta: float | None = None,
         concat_params: bool = True,
@@ -196,7 +187,7 @@ class LMAdagrad(TensorTransform):
                 exp_avg = state["U"] @ exp_avg_proj
 
             # update factors
-            U, L = lm_adagrad_update(history, damping=damping, rdamping=rdamping)
+            U, L = lm_adagrad_update(history, damping=damping, rdamping=rdamping, tol=setting["tol"])
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, L_beta, 'L', L)
 

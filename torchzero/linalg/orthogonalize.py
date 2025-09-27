@@ -1,7 +1,7 @@
 from typing import Literal
 import torch
 
-from ..utils.compile import enable_compilation
+from ..utils.compile import allow_compile
 from . import torch_linalg
 
 # zeropower_via_newtonschulz5 from:
@@ -16,7 +16,7 @@ _NS_COEFFS = (
     (2.8366, -3.0525, 1.2012)
 )
 
-@enable_compilation
+@allow_compile
 def zeropower_via_newtonschulz5(G: torch.Tensor, coeffs=_NS_COEFFS) -> torch.Tensor:
     """
     Applies to last 2 dims - so usually reverse_dims should be applied to G before and after.

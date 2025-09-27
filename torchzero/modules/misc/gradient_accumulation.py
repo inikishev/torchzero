@@ -42,13 +42,13 @@ class GradientAccumulation(Module):
         accumulator = self.get_state(objective.params, 'accumulator')
         settings = self.defaults
         n = settings['n']; mean = settings['mean']; stop = settings['stop']
-        step = self.global_state['step'] = self.global_state.get('step', 0) + 1
+        step = self.increment_counter("step", 0)
 
         # add update to accumulator
         torch._foreach_add_(accumulator, objective.get_updates())
 
         # step with accumulated updates
-        if step % n == 0:
+        if (step + 1) % n == 0:
             if mean:
                 torch._foreach_div_(accumulator, n)
 

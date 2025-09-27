@@ -20,8 +20,9 @@ def matrix_power_svd(A: torch.Tensor, power: float) -> torch.Tensor:
     if power % 2 != 0: S.clip_(min = torch.finfo(A.dtype).tiny * 2)
     return (U * S.pow_(power).unsqueeze(-2)) @ Vh
 
-MatrixPowerMethod = Literal["eigh", "svd"]
-def matrix_power(A: torch.Tensor, power: float, method: MatrixPowerMethod = "eigh") -> torch.Tensor:
+MatrixPowerMethod = Literal["eigh", "eigh_abs", "svd"]
+def matrix_power(A: torch.Tensor, power: float, method: MatrixPowerMethod = "eigh_abs") -> torch.Tensor:
     if method == "eigh": return matrix_power_eigh(A, power)
+    if method == "eigh_abs": return matrix_power_eigh(A, power, abs=True)
     if method == "svd": return matrix_power_svd(A, power)
     raise ValueError(method)

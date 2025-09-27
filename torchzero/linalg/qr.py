@@ -1,9 +1,9 @@
 from typing import Literal
 import torch
-from ..utils.compile import enable_compilation
+from ..utils.compile import allow_compile
 
 # reference - https://www.cs.cornell.edu/~bindel/class/cs6210-f09/lec18.pdf
-@enable_compilation
+@allow_compile
 def _get_w_tau(R: torch.Tensor, i: int, eps: float):
     R_ii = R[...,i,i]
     R_below = R[...,i:,i]
@@ -18,7 +18,7 @@ def _get_w_tau(R: torch.Tensor, i: int, eps: float):
     tau = torch.where(degenerate, 1, tau)
     return w, tau
 
-@enable_compilation
+@allow_compile
 def _qr_householder_complete(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
@@ -35,7 +35,7 @@ def _qr_householder_complete(A:torch.Tensor):
 
     return Q, R
 
-@enable_compilation
+@allow_compile
 def _qr_householder_reduced(A:torch.Tensor):
     *b,m,n = A.shape
     k = min(m,n)
