@@ -761,18 +761,18 @@ BFGS = Run(
     sphere_steps=10, sphere_loss=1e-10,
 )
 SR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_restart=True, scale_first=True), tz.m.StrongWolfe(fallback=False)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(fallback=False)),
+    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_restart=True), tz.m.StrongWolfe(c2=0.1)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(c2=0.1)),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-12, merge_invariant=True,
     # this reaches 1e-13 on github so don't change to 0
     sphere_steps=10, sphere_loss=0,
 )
 SSVM = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_restart=True), tz.m.StrongWolfe(fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1, ptol_restart=True), tz.m.StrongWolfe(fallback=True)),
+    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
-    func='rosen', steps=50, loss=0.2, merge_invariant=True,
+    func='rosen', steps=50, loss=0.002, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 

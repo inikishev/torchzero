@@ -149,12 +149,13 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         if ys > tiny and yy > tiny: return yy/ys
         return None
 
-    def reset_P(self, P: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]) -> None:
+    def reset_P(self, P: torch.Tensor, s:torch.Tensor, y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]) -> None:
         """resets ``P`` which is either B or H"""
         set_storage_(P, self.initialize_P(s.numel(), device=P.device, dtype=P.dtype, is_inverse=inverse))
         if init_scale == 'auto':
             init_scale = self.auto_initial_scale(s,y)
             state["scaled"] = init_scale is not None
+
         if init_scale is not None and init_scale != 1:
             if inverse: P /= init_scale
             else: P *= init_scale
