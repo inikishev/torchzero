@@ -62,9 +62,10 @@ class GradApproximator(Module, ABC):
             return spsa_grads, None, loss_plus
     ```
     """
-    def __init__(self, defaults: dict[str, Any] | None = None, target: GradTarget = 'closure'):
+    def __init__(self, defaults: dict[str, Any] | None = None, return_approx_loss:bool=False, target: GradTarget = 'closure'):
         super().__init__(defaults)
         self._target: GradTarget = target
+        self._return_approx_loss = return_approx_loss
 
     @abstractmethod
     def approximate(self, closure: Callable, params: list[torch.Tensor], loss: torch.Tensor | None) -> tuple[Iterable[torch.Tensor], torch.Tensor | None, torch.Tensor | None]:
@@ -75,7 +76,7 @@ class GradApproximator(Module, ABC):
         evaluate gradients at multiple points. This is useful for example to pre-generate new random perturbations."""
 
     @torch.no_grad
-    def apply(self, objective):
+    def update(self, objective):
         self.pre_step(objective)
 
         if objective.closure is None: raise RuntimeError("Gradient approximation requires closure")
@@ -88,11 +89,14 @@ class GradApproximator(Module, ABC):
                     # set loss to None because closure might be evaluated at different points
                     grad, l, l_approx = self.approximate(closure=closure, params=params, loss=None)
                     for p, g in zip(params, grad): p.grad = g
-                    return l if l is not None else closure(False)
+                    if l is not None: return l
+                    if self._return_approx_loss and l_approx is not None: return l_approx
+                    return closure(False)
+
                 return closure(False)
 
             objective.closure = approx_closure
-            return objective
+            return
 
         # if var.grad is not None:
         #     warnings.warn('Using grad approximator when `var.grad` is already set.')
@@ -102,6 +106,9 @@ class GradApproximator(Module, ABC):
         if self._target == 'grad': objective.grads = list(grad)
         elif self._target == 'update': objective.updates = list(grad)
         else: raise ValueError(self._target)
+        return
+
+    def apply(self, objective):
         return objective
 
 _FD_Formula = Literal['forward', 'forward2', 'backward', 'backward2', 'central', 'central2', 'central3', 'forward3', 'backward3', 'central4', 'forward4', 'forward5', 'bspsa4']

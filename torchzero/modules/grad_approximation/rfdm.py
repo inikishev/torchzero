@@ -223,12 +223,13 @@ class RandomizedFDM(GradApproximator):
         n_samples: int = 1,
         formula: _FD_Formula = "central",
         distribution: Distributions = "rademacher",
-        pre_generate = True,
+        pre_generate: bool = True,
+        return_approx_loss: bool = False,
         seed: int | None | torch.Generator = None,
         target: GradTarget = "closure",
     ):
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution, pre_generate=pre_generate, seed=seed)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, return_approx_loss=return_approx_loss, target=target)
 
 
     def pre_step(self, objective):
@@ -346,11 +347,12 @@ class RDSA(RandomizedFDM):
         n_samples: int = 1,
         formula: _FD_Formula = "central2",
         distribution: Distributions = "gaussian",
-        pre_generate = True,
+        pre_generate: bool = True,
+        return_approx_loss: bool = False,
         target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed)
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed, return_approx_loss=return_approx_loss)
 
 class GaussianSmoothing(RandomizedFDM):
     """
@@ -380,11 +382,12 @@ class GaussianSmoothing(RandomizedFDM):
         n_samples: int = 100,
         formula: _FD_Formula = "forward2",
         distribution: Distributions = "gaussian",
-        pre_generate = True,
+        pre_generate: bool = True,
+        return_approx_loss: bool = False,
         target: GradTarget = "closure",
         seed: int | None | torch.Generator = None,
     ):
-        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed)
+        super().__init__(h=h, n_samples=n_samples,formula=formula,distribution=distribution,pre_generate=pre_generate,target=target,seed=seed, return_approx_loss=return_approx_loss)
 
 class MeZO(GradApproximator):
     """Gradient approximation via memory-efficient zeroth order optimizer (MeZO) - https://arxiv.org/abs/2305.17333.
@@ -406,10 +409,10 @@ class MeZO(GradApproximator):
     """
 
     def __init__(self, h: float=1e-3, n_samples: int = 1, formula: _FD_Formula = 'central2',
-                 distribution: Distributions = 'rademacher', target: GradTarget = 'closure'):
+                 distribution: Distributions = 'rademacher', return_approx_loss: bool = False, target: GradTarget = 'closure'):
 
         defaults = dict(h=h, formula=formula, n_samples=n_samples, distribution=distribution)
-        super().__init__(defaults, target=target)
+        super().__init__(defaults, return_approx_loss=return_approx_loss, target=target)
 
     def _seeded_perturbation(self, params: list[torch.Tensor], distribution, seed, h):
         prt = TensorList(params).sample_like(
