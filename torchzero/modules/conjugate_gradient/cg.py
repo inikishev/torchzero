@@ -68,7 +68,7 @@ class ConguateGradientBase(TensorTransform, ABC):
         self.increment_counter("step", start=0)
 
         # initialize on first step
-        if self.global_state.get('stage', "first step") == "first update":
+        if self.global_state.get('stage', "first update") == "first update":
             g_prev, d_prev = unpack_states(states, tensors, 'g_prev', 'd_prev', cls=TensorList)
             d_prev.copy_(tensors)
             g_prev.copy_(tensors)

@@ -127,8 +127,6 @@ class NystromSketchAndSolve(Transform):
 
 class NystromPCG(Transform):
     """Newton's method with a Nyström-preconditioned conjugate gradient solver.
-    This tends to outperform NewtonCG but requires tuning sketch size.
-    An adaptive version exists in https://arxiv.org/abs/2110.02820, I might implement it too at some point.
 
     Notes:
         - This module requires the a closure passed to the optimizer step,
