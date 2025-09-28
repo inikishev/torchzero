@@ -105,9 +105,15 @@ class NLOptWrapper(WrapperBase):
         xtol_rel: float | None = None,
         xtol_abs: float | None = None,
         maxtime: float | None = None,
+        require_criterion: bool = True,
     ):
-        if all(i is None for i in (maxeval, stopval, ftol_abs, ftol_rel, xtol_abs, xtol_rel)):
-            raise RuntimeError("Specify at least one stopping criterion")
+        if require_criterion:
+            if all(i is None for i in (maxeval, stopval, ftol_abs, ftol_rel, xtol_abs, xtol_rel)):
+                raise RuntimeError(
+                    "Specify at least one stopping criterion out of "
+                    "(maxeval, stopval, ftol_rel, ftol_abs, xtol_rel, xtol_abs, maxtime). "
+                    "Pass `require_criterion=False` to suppress this error."
+                )
 
         defaults = dict(lb=lb, ub=ub)
         super().__init__(params, defaults)
