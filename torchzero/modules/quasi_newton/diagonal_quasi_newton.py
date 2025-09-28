@@ -9,7 +9,7 @@ from .quasi_newton import (
     _InverseHessianUpdateStrategyDefaults,
 )
 
-from ..functional import safe_clip
+from ..opt_utils import safe_clip
 
 
 def diagonal_bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):

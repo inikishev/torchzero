@@ -10,7 +10,7 @@ import torch
 
 from ...core import Module,  Objective
 from ...utils import tofloat, set_storage_
-from ..functional import clip_by_finfo
+from ..opt_utils import clip_by_finfo
 
 
 class MaxLineSearchItersReached(Exception): pass

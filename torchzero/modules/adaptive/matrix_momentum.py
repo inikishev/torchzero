@@ -4,7 +4,7 @@ import torch
 
 from ...core import Chainable, Transform, HVPMethod
 from ...utils import NumberList, TensorList, unpack_states, unpack_dicts
-from ..functional import initial_step_size
+from ..opt_utils import initial_step_size
 
 
 class MatrixMomentum(Transform):

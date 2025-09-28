@@ -4,7 +4,7 @@ import torch
 
 from ...core import Chainable, Module,  Transform, TensorTransform, step, Objective
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states, generic_ne
-from ..functional import ema_
+from ..opt_utils import ema_
 from ..momentum.momentum import nag_
 
 

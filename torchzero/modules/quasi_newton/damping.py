@@ -5,7 +5,7 @@ import torch
 
 from ...utils import TensorList
 from ...linalg.linear_operator import DenseInverse, LinearOperator
-from ..functional import safe_clip
+from ..opt_utils import safe_clip
 
 
 class DampingStrategy(Protocol):

@@ -7,7 +7,7 @@ from ...core import Chainable, TensorTransform
 
 from ...utils import TensorList, safe_dict_update_, unpack_dicts, unpack_states
 from ..quasi_newton.quasi_newton import HessianUpdateStrategy
-from ..functional import safe_clip
+from ..opt_utils import safe_clip
 
 
 class ConguateGradientBase(TensorTransform, ABC):

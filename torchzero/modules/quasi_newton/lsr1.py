@@ -7,7 +7,7 @@ import torch
 from ...core import Chainable, Module, TensorTransform, Objective, step
 from ...utils import NumberList, TensorList, as_tensorlist, generic_finfo_tiny, unpack_states, vec_to_tensors_
 from ...linalg.linear_operator import LinearOperator
-from ..functional import initial_step_size
+from ..opt_utils import initial_step_size
 from .damping import DampingStrategyType, apply_damping
 
 

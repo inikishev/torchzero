@@ -8,7 +8,7 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...utils import NumberList, TensorList, tofloat, unpack_dicts, unpack_states
 from ...linalg.linear_operator import ScaledIdentity
-from ..functional import epsilon_step_size
+from ..opt_utils import epsilon_step_size
 
 def _acceptable_alpha(alpha, param:torch.Tensor):
     finfo = torch.finfo(param.dtype)

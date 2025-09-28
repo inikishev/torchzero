@@ -6,7 +6,7 @@ import torch
 
 from ...core import  TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..functional import (
+from ..opt_utils import (
     centered_ema_sq_,
     debias,
     debias_second_momentum,

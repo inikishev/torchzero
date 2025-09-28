@@ -4,7 +4,7 @@ import torch
 
 from ...core import Chainable, Transform, HessianMethod
 from ...utils import TensorList, vec_to_tensors, unpack_states
-from ..functional import safe_clip
+from ..opt_utils import safe_clip
 from .newton import _get_H, _newton_step
 
 @torch.no_grad

@@ -8,7 +8,7 @@ import torch
 from ...core import Chainable, Module, TensorTransform, Transform
 from ...utils import TensorList, set_storage_, unpack_states, safe_dict_update_
 from ...linalg import linear_operator
-from ..functional import initial_step_size, safe_clip
+from ..opt_utils import initial_step_size, safe_clip
 
 
 

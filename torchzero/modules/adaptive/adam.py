@@ -2,7 +2,7 @@ import torch
 
 from ...core import Chainable, Module, TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..functional import debiased_step_size
+from ..opt_utils import debiased_step_size
 
 
 class Adam(TensorTransform):
