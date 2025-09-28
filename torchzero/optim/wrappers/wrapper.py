@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from ...utils import TensorList
+from ...utils import TensorList, tonumpy
 from ...utils.derivatives import (
     flatten_jacobian,
     jacobian_and_hessian_mat_wrt,
@@ -23,6 +23,15 @@ class WrapperBase(torch.optim.Optimizer):
         params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
 
         return float(closure(False))
+
+    @torch.no_grad
+    def _fs(self, x: np.ndarray, params: list[torch.Tensor], closure) -> np.ndarray:
+        # set params to x
+        params = TensorList(params)
+        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
+
+        return tonumpy(closure(False)).reshape(-1)
+
 
     @torch.no_grad
     def _f_g(self, x: np.ndarray, params: list[torch.Tensor], closure) -> tuple[float, np.ndarray]:
