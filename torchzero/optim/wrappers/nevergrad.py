@@ -55,15 +55,6 @@ class NevergradWrapper(WrapperBase):
         mutable_sigma = False,
         use_init = True,
     ):
-        """_summary_
-
-        Args:
-            params (_type_): _description_
-            opt_cls (type[ng.optimizers.base.Optimizer] | abc.Callable[..., ng.optimizers.base.Optimizer]): _description_
-            budget (int | None, optional): _description_. Defaults to None.
-            mutable_sigma (bool, optional): _description_. Defaults to False.
-            use_init (bool, optional): _description_. Defaults to True.
-        """
         defaults = dict(lb=lb, ub=ub, use_init=use_init, mutable_sigma=mutable_sigma)
         super().__init__(params, defaults)
         self.opt_cls = opt_cls
