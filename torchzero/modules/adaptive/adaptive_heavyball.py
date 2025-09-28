@@ -30,7 +30,7 @@ class AdaptiveHeavyBall(TensorTransform):
     """
     def __init__(self, f_star: float = 0):
         defaults = dict(f_star=f_star)
-        super().__init__(defaults, uses_grad=False, uses_loss=True)
+        super().__init__(defaults, uses_loss=True)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

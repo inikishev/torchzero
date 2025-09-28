@@ -29,7 +29,7 @@ class CD(Module):
             whether to use three points (three function evaluatins) to determine descent direction.
             if False, uses two points, but then ``adaptive`` can't be used. Defaults to True.
     """
-    def __init__(self, h:float=1e-3, grad:bool=True, adaptive:bool=True, index:Literal['cyclic', 'cyclic2', 'random']="cyclic2", threepoint:bool=True,):
+    def __init__(self, h:float=1e-3, grad:bool=False, adaptive:bool=True, index:Literal['cyclic', 'cyclic2', 'random']="cyclic2", threepoint:bool=True,):
         defaults = dict(h=h, grad=grad, adaptive=adaptive, index=index, threepoint=threepoint)
         super().__init__(defaults)
 

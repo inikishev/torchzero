@@ -233,7 +233,7 @@ class TensorTransform(Transform):
         if self._uses_grad: grads = objective.get_grads()
         else: grads = None # better explicitly set to None rather than objective.grads because it shouldn't be used
 
-        if self._uses_loss: loss = objective.get_loss(backward=False)
+        if self._uses_loss: loss = objective.get_loss(backward=True)
         else: loss = None
 
         return grads, loss
