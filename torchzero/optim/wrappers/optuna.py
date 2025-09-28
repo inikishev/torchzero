@@ -45,6 +45,7 @@ class OptunaSampler(WrapperBase):
             self.study = optuna.create_study(sampler=self.sampler)
 
         # some optuna samplers use torch
+        # and require torch.enable_grad
         with torch.enable_grad():
             trial = self.study.ask()
 
@@ -58,6 +59,7 @@ class OptunaSampler(WrapperBase):
         params.from_vec_(vec)
 
         loss = closure()
+
         with torch.enable_grad(): self.study.tell(trial, tofloat(torch.nan_to_num(totensor(loss), 1e32)))
 
         return loss

@@ -141,12 +141,13 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         return H
 
     # ------------------------------ common methods ------------------------------ #
-    def auto_initial_scale(self, s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float:
+    def auto_initial_scale(self, s:torch.Tensor,y:torch.Tensor) -> torch.Tensor | float | None:
         """returns multiplier to B on 2nd step if ``init_scale='auto'``. H should be divided by this!"""
         ys = y.dot(s)
         yy = y.dot(y)
-        if ys != 0 and yy != 0: return yy/ys
-        return 1
+        tiny = torch.finfo(ys.dtype).tiny * 2
+        if ys > tiny and yy > tiny: return yy/ys
+        return None
 
     def reset_P(self, P: torch.Tensor, s:torch.Tensor,y:torch.Tensor, inverse:bool, init_scale: Any, state:dict[str,Any]) -> None:
         """resets ``P`` which is either B or H"""
@@ -182,6 +183,7 @@ class HessianUpdateStrategy(TensorTransform, ABC):
             state['f_prev'] = loss
             state['p_prev'] = p.clone()
             state['g_prev'] = g.clone()
+            state["scaled"] = False
             return
 
         state['f'] = loss
@@ -205,9 +207,12 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         if gtol is not None and y.abs().max() <= gtol:
             return
 
-        if step == 2 and init_scale == 'auto':
-            if inverse: M /= self.auto_initial_scale(s,y)
-            else: M *= self.auto_initial_scale(s,y)
+        if (not state["scaled"]) and (init_scale == 'auto'):
+            scale = self.auto_initial_scale(s,y)
+            if scale is not None:
+                state["scaled"] = True
+                if inverse: M /= self.auto_initial_scale(s,y)
+                else: M *= self.auto_initial_scale(s,y)
 
         beta = setting['beta']
         if beta is not None and beta != 0: M = M.clone() # because all of them update it in-place
