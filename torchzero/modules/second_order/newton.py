@@ -4,13 +4,13 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Transform, Objective, HessianMethod, Module
-from ...utils import vec_to_tensors
+from ...utils import vec_to_tensors, vec_to_tensors_
 from ...linalg.linear_operator import Dense, DenseWithInverse
-
+from ...linalg import torch_linalg
 
 def _lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
-        x, info = torch.linalg.solve_ex(H, g) # pylint:disable=not-callable
+        x, info = torch_linalg.solve_ex(H, g, retry_float64=True)
         if info == 0: return x
         return None
     except RuntimeError:
@@ -25,9 +25,10 @@ def _cholesky_solve(H: torch.Tensor, g: torch.Tensor):
 def _least_squares_solve(H: torch.Tensor, g: torch.Tensor):
     return torch.linalg.lstsq(H, g)[0] # pylint:disable=not-callable
 
+
 def _eigh_solve(H: torch.Tensor, g: torch.Tensor, tfm: Callable | None, search_negative: bool):
     try:
-        L, Q = torch.linalg.eigh(H) # pylint:disable=not-callable
+        L, Q = torch_linalg.eigh(H, retry_float64=True)
         if tfm is not None: L = tfm(L)
         if search_negative and L[0] < 0:
             neg_mask = L < 0
@@ -46,13 +47,11 @@ def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, ei
     if no_inner is not None:
         objective = no_inner.step(objective)
 
-    update = objective.get_updates()
-
-    g = torch.cat([t.ravel() for t in update])
+    g = torch.cat([t.ravel() for t in objective.get_updates()])
     if g_proj is not None: g = g_proj(g)
 
     # ----------------------------------- solve ---------------------------------- #
-    update = None
+    dir = None
 
     if damping != 0:
         H = H + torch.eye(H.size(-1), dtype=H.dtype, device=H.device).mul_(damping)
@@ -61,21 +60,21 @@ def _newton_step(objective: Objective, H: torch.Tensor, damping:float, H_tfm, ei
         ret = H_tfm(H, g)
 
         if isinstance(ret, torch.Tensor):
-            update = ret
+            dir = ret
 
         else: # returns (H, is_inv)
             H, is_inv = ret
-            if is_inv: update = H @ g
+            if is_inv: dir = H @ g
 
     if eigval_fn is not None:
-        update = _eigh_solve(H, g, eigval_fn, search_negative=False)
+        dir = _eigh_solve(H, g, eigval_fn, search_negative=False)
 
-    if update is None and use_lstsq: update = _least_squares_solve(H, g)
-    if update is None: update = _cholesky_solve(H, g)
-    if update is None: update = _lu_solve(H, g)
-    if update is None: update = _least_squares_solve(H, g)
+    if dir is None and use_lstsq: dir = _least_squares_solve(H, g)
+    if dir is None: dir = _cholesky_solve(H, g)
+    if dir is None: dir = _lu_solve(H, g)
+    if dir is None: dir = _least_squares_solve(H, g)
 
-    return update
+    return dir
 
 def _get_H(H: torch.Tensor, eigval_fn):
     if eigval_fn is not None:
@@ -92,10 +91,11 @@ def _get_H(H: torch.Tensor, eigval_fn):
     return Dense(H)
 
 class Newton(Transform):
-    """Exact newton's method via autograd.
+    """Exact Newton's method via autograd.
 
     Newton's method produces a direction jumping to the stationary point of quadratic approximation of the target function.
     The update rule is given by ``(H + yI)⁻¹g``, where ``H`` is the hessian and ``g`` is the gradient, ``y`` is the ``damping`` parameter.
+
     ``g`` can be output of another module, if it is specifed in ``inner`` argument.
 
     Note:
@@ -107,15 +107,13 @@ class Newton(Transform):
         The closure must accept a ``backward`` argument (refer to documentation).
 
     Args:
-        damping (float, optional): tikhonov regularizer value. Set this to 0 when using trust region. Defaults to 0.
-        search_negative (bool, Optional):
-            if True, whenever a negative eigenvalue is detected,
-            search direction is proposed along weighted sum of eigenvectors corresponding to negative eigenvalues.
-        use_lstsq (bool, Optional):
-            if True, least squares will be used to solve the linear system, this may generate reasonable directions
-            when hessian is not invertible. If False, tries cholesky, if it fails tries LU, and then least squares.
-            If ``eigval_fn`` is specified, eigendecomposition will always be used to solve the linear system and this
-            argument will be ignored.
+        damping (float, optional): tikhonov regularizer value. Defaults to 0.
+        update_freq (int, optional):
+            updates hessian every ``update_freq`` steps. If this value is large,
+            consider using ``tz.m.Chord`` which also pre-computes hessian inverse. Defaults to 1.
+        eigval_fn (Callable | None, optional):
+            optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
+            If this is specified, eigendecomposition will be used to invert the hessian.
         H_tfm (Callable | None, optional):
             optional hessian transforms, takes in two arguments - `(hessian, gradient)`.
 
@@ -125,9 +123,6 @@ class Newton(Transform):
             Or it returns a single tensor which is used as the update.
 
             Defaults to None.
-        eigval_fn (Callable | None, optional):
-            optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
-            If this is specified, eigendecomposition will be used to invert the hessian.
         hessian_method (str):
             Determines how hessian is computed.
 
@@ -143,6 +138,11 @@ class Newton(Transform):
             Defaults to ``"batched_autograd"``.
         h (float, optional):
             finite difference step size for "fd_forward" and "fd_central".
+        use_lstsq (bool, Optional):
+            if True, least squares will be used to solve the linear system, this may generate reasonable directions
+            when hessian is not invertible. If False, tries cholesky, if it fails tries LU, and then least squares.
+            If ``eigval_fn`` is specified, eigendecomposition will always be used to solve the linear system and this
+            argument will be ignored.
         inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
 
     # See also
@@ -170,14 +170,8 @@ class Newton(Transform):
     Standard Newton's method does not handle non-convexity well without some modifications.
     This is because it jumps to the stationary point, which may be the maxima of the quadratic approximation.
 
-    The first modification to handle non-convexity is to modify the eignevalues to be positive,
+    A modification to handle non-convexity is to modify the eignevalues to be positive,
     for example by setting ``eigval_fn = lambda L: L.abs().clip(min=1e-4)``.
-
-    Second modification is ``search_negative=True``, which will search along a negative curvature direction if one is detected.
-    This also requires an eigendecomposition.
-
-    The Newton direction can also be forced to be a descent direction by using ``tz.m.GradSign()`` or ``tz.m.Cautious``,
-    but that may be significantly less efficient.
 
     # Examples:
 
@@ -187,6 +181,16 @@ class Newton(Transform):
     opt = tz.Modular(
         model.parameters(),
         tz.m.Newton(),
+        tz.m.Backtracking()
+    )
+    ```
+
+    Newton's method for non-convex optimization.
+
+    ```py
+    opt = tz.Modular(
+        model.parameters(),
+        tz.m.Newton(eigval_fn = lambda L: L.abs().clip(min=1e-4)),
         tz.m.Backtracking()
     )
     ```
@@ -216,12 +220,12 @@ class Newton(Transform):
     def __init__(
         self,
         damping: float = 0,
-        use_lstsq: bool = False,
         update_freq: int = 1,
-        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         hessian_method: HessianMethod = "batched_autograd",
         h: float = 1e-3,
+        use_lstsq: bool = False,
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
@@ -258,3 +262,93 @@ class Newton(Transform):
     def get_H(self,objective=...):
         return _get_H(self.global_state["H"], self.defaults["eigval_fn"])
 
+
+class Chord(Transform):
+    """Chord method. This computes hessian and it's inverse at initial solution and then re-uses it. It is possible to re-compute hessian every ``update_freq`` steps if it is specified.
+
+    ``Newton`` computes hessian every ``update_freq`` steps and solves a linear system ``Hx = g`` on each step.
+
+    ``Chord`` computes hessian and hessian inverse every ``update_freq`` steps and computes ``H^-1 @ g`` on each step
+    with pre-computed ``H^-1``.
+
+    Therefore ``Chord`` may be more efficient if ``update_freq`` is None or a large number.
+    If ``update_freq = 1``, this is equivalent to Newton's method, but less efficient.
+
+    Args:
+        damping (float, optional): tikhonov regularizer value. Defaults to 0.
+        update_freq (int, optional):
+            updates hessian and hessian inverse every ``update_freq`` steps.
+            If None, hessian is calculated once at the beginning. Defaults to None.
+        eigval_fn (Callable | None, optional):
+            optional eigenvalues transform, for example ``torch.abs`` or ``lambda L: torch.clip(L, min=1e-8)``.
+            If this is specified, eigendecomposition will be used to invert the hessian.
+        hessian_method (str):
+            Determines how hessian is computed.
+
+            - ``"batched_autograd"`` - uses autograd to compute ``ndim`` batched hessian-vector products. Faster than ``"autograd"`` but uses more memory.
+            - ``"autograd"`` - uses autograd to compute ``ndim`` hessian-vector products using for loop. Slower than ``"batched_autograd"`` but uses less memory.
+            - ``"functional_revrev"`` - uses ``torch.autograd.functional`` with "reverse-over-reverse" strategy and a for-loop. This is generally equivalent to ``"autograd"``.
+            - ``"functional_fwdrev"`` - uses ``torch.autograd.functional`` with vectorized "forward-over-reverse" strategy. Faster than ``"functional_fwdrev"`` but uses more memory (``"batched_autograd"`` seems to be faster)
+            - ``"func"`` - uses ``torch.func.hessian`` which uses "forward-over-reverse" strategy. This method is the fastest and is recommended, however it is more restrictive and fails with some operators which is why it isn't the default.
+            - ``"gfd_forward"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a less accurate forward formula which requires one extra gradient evaluation per hessian-vector product.
+            - ``"gfd_central"`` - computes ``ndim`` hessian-vector products via gradient finite difference using a more accurate central formula which requires two gradient evaluations per hessian-vector product.
+            - ``"fd"`` - uses function values to estimate gradient and hessian via finite difference. This uses less evaluations than chaining ``"gfd_*"`` after ``tz.m.FDM``.
+
+            Defaults to ``"batched_autograd"``.
+        h (float, optional):
+            finite difference step size for "fd_forward" and "fd_central".
+        inner (Chainable | None, optional): modules to apply hessian preconditioner to. Defaults to None.
+    """
+    def __init__(
+        self,
+        damping: float = 0,
+        update_freq: int | None = None,
+        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        hessian_method: HessianMethod = "batched_autograd",
+        h: float = 1e-3,
+        inner: Chainable | None = None,
+    ):
+        defaults = locals().copy()
+        del defaults['self'], defaults["inner"]
+        super().__init__(defaults, inner=inner)
+
+    @torch.no_grad
+    def update_states(self, objective, states, settings):
+        step = self.increment_counter("step", 0)
+        fs = settings[0]
+        update_freq = fs["update_freq"]
+
+        # update on first step, or if `update_freq` triggers
+        if ("H" not in self.global_state) or ((update_freq is not None) and (step % update_freq == 0)):
+            _, _, H = objective.hessian(
+                hessian_method=fs['hessian_method'],
+                h=fs['h'],
+                at_x0=True
+            )
+
+            if fs["damping"] != 0:
+                H += torch.eye(H.size(0), device=H.device, dtype=H.dtype).mul_(fs["damping"])
+
+            if fs["eigval_fn"] is not None:
+                eigval_fn = fs["eigval_fn"]
+                L, Q = torch_linalg.eigh(H, retry_float64=True)
+                L = eigval_fn(L)
+                H = (Q * L.unsqueeze(-2)) @ Q.mH
+                H_inv = (Q * L.reciprocal().unsqueeze(-2)) @ Q.mH
+
+            else:
+                H_inv, _ = torch_linalg.inv_ex(H, retry_float64=True)
+
+            self.global_state["H"] = H
+            self.global_state["H_inv"] = H_inv
+
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        updates = objective.get_updates()
+        g = torch.cat([t.ravel() for t in objective.get_updates()])
+        dir = self.global_state["H_inv"] @ g
+        vec_to_tensors_(dir, updates)
+        return objective
+
+    def get_H(self,objective=...):
+        return DenseWithInverse(self.global_state["H"], self.global_state["H_inv"])
