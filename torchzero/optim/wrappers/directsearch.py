@@ -10,11 +10,6 @@ from directsearch.ds import DEFAULT_PARAMS
 from ...utils import TensorList
 from .wrapper import WrapperBase
 
-def _ensure_float(x):
-    if isinstance(x, torch.Tensor): return x.detach().cpu().item()
-    if isinstance(x, np.ndarray): return x.item()
-    return float(x)
-
 Closure = Callable[[bool], Any]
 
 
@@ -128,19 +123,13 @@ class DirectSearchDS(WrapperBase):
         del kwargs['self'], kwargs['params'], kwargs['__class__']
         self._kwargs = kwargs
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure):
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return _ensure_float(closure(False))
-
     @torch.no_grad
     def step(self, closure: Closure):
         params = TensorList(self._get_params())
         x0 = params.to_vec().numpy(force=True)
 
-        x0 = params.to_vec().detach().cpu().numpy()
-
         res = directsearch.solve_directsearch(
-            partial(self._objective, params = params, closure = closure),
+            partial(self._f, params = params, closure = closure),
             x0 = x0,
             **self._kwargs
         )
@@ -169,17 +158,13 @@ class DirectSearchProbabilistic(WrapperBase):
         del kwargs['self'], kwargs['params'], kwargs['__class__']
         self._kwargs = kwargs
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure):
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return _ensure_float(closure(False))
-
     @torch.no_grad
     def step(self, closure: Closure):
         params = TensorList(self._get_params())
         x0 = params.to_vec().numpy(force=True)
 
         res = directsearch.solve_probabilistic_directsearch(
-            partial(self._objective, params = params, closure = closure),
+            partial(self._f, params = params, closure = closure),
             x0 = x0,
             **self._kwargs
         )
@@ -212,17 +197,13 @@ class DirectSearchSubspace(WrapperBase):
         del kwargs['self'], kwargs['params'], kwargs['__class__']
         self._kwargs = kwargs
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure):
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return _ensure_float(closure(False))
-
     @torch.no_grad
     def step(self, closure: Closure):
         params = TensorList(self._get_params())
         x0 = params.to_vec().numpy(force=True)
 
         res = directsearch.solve_subspace_directsearch(
-            partial(self._objective, params = params, closure = closure),
+            partial(self._f, params = params, closure = closure),
             x0 = x0,
             **self._kwargs
         )
@@ -248,17 +229,13 @@ class DirectSearchSTP(WrapperBase):
         del kwargs['self'], kwargs['params'], kwargs['__class__']
         self._kwargs = kwargs
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure):
-        params.from_vec_(torch.from_numpy(x).to(device = params[0].device, dtype=params[0].dtype, copy=False))
-        return _ensure_float(closure(False))
-
     @torch.no_grad
     def step(self, closure: Closure):
         params = TensorList(self._get_params())
         x0 = params.to_vec().numpy(force=True)
 
         res = directsearch.solve_stp(
-            partial(self._objective, params = params, closure = closure),
+            partial(self._f, params = params, closure = closure),
             x0 = x0,
             **self._kwargs
         )

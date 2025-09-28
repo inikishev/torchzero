@@ -66,9 +66,6 @@ class WrapperBase(torch.optim.Optimizer):
     def _get_params(self) -> list[torch.Tensor]:
         return [p for g in self.param_groups for p in g["params"]]
 
-    def _get_x0(self) -> np.ndarray:
-        return torch.cat([p.ravel() for p in self._get_params()]).numpy(force=True)
-
     def _get_per_parameter_lb_ub(self):
         # get per-parameter lb and ub
         lb = []
