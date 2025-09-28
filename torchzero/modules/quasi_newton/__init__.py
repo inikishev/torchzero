@@ -30,4 +30,4 @@ from .quasi_newton import (
     ThomasOptimalMethod,
 )
 
-from .sg2 import SG2, SPSA2
+from .sg2 import SG2
