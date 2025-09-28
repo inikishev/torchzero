@@ -37,7 +37,7 @@ class FcmaesWrapper(WrapperBase):
             CMA-ES population size used for all CMA-ES runs.
             Not used for differential evolution.
             Ignored if parameter optimizer is defined. Defaults to 31.
-        capacity (int | None, optional): capacity of the evaluation store.. Defaults to 500.
+        capacity (int | None, optional): capacity of the evaluation store. Defaults to 500.
         stop_fitness (float | None, optional):
             Limit for fitness value. optimization runs terminate if this value is reached. Defaults to -np.inf.
         statistic_num (int | None, optional):
@@ -63,35 +63,23 @@ class FcmaesWrapper(WrapperBase):
         if silence:
             silence_fcmaes()
         kwargs = locals().copy()
-        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
+        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__'], kwargs["silence"]
         self._kwargs = kwargs
         self._kwargs['workers'] = 1
-        self.e = None
-        self.raised = False
 
-    def _objective(self, x: np.ndarray, params: TensorList, closure) -> float:
-        if self.raised: return np.inf
-        try:
-            return self._f(x, params, closure)
-        except Exception as e:
-            # makes exceptions work in fcmaes and scipy direct
-            self.e = e
-            self.raised = True
-            return np.inf
 
     @torch.no_grad
     def step(self, closure: Closure):
+
         params = TensorList(self._get_params())
         bounds = self._get_bounds()
 
         res = fcmaes.retry.minimize(
-            partial(self._objective, params=params, closure=closure), # pyright:ignore[reportArgumentType]
+            partial(self._f, params=params, closure=closure), # pyright:ignore[reportArgumentType]
             bounds=bounds, # pyright:ignore[reportArgumentType]
             **self._kwargs
         )
 
         params.from_vec_(torch.as_tensor(res.x, device = params[0].device, dtype=params[0].dtype))
-
-        if self.e is not None: raise self.e from None
         return res.fun
 
