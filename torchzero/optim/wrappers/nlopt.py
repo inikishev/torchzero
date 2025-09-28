@@ -1,3 +1,4 @@
+import warnings
 from typing import Literal, Any
 from collections.abc import Mapping, Callable
 from functools import partial
@@ -112,9 +113,9 @@ class NLOptWrapper(WrapperBase):
         super().__init__(params, defaults)
 
         self.opt: nlopt.opt | None = None
+        self.algorithm_name: str | int = algorithm
         if isinstance(algorithm, str): algorithm = getattr(nlopt, algorithm.upper())
         self.algorithm: int = algorithm # type:ignore
-        self.algorithm_name: str | None = None
 
         self.maxeval = maxeval; self.stopval = stopval
         self.ftol_rel = ftol_rel; self.ftol_abs = ftol_abs
@@ -136,7 +137,7 @@ class NLOptWrapper(WrapperBase):
             if grad.size > 0:
                 with torch.enable_grad(): loss = closure()
                 self._last_loss = _ensure_float(loss)
-                grad[:] = params.ensure_grad_().grad.to_vec().reshape(grad.shape).numpy(force=True)
+                grad[:] = params.grad.fill_none_(reference=params).to_vec().reshape(grad.shape).numpy(force=True)
                 return self._last_loss
 
             self._last_loss = _ensure_float(closure(False))
@@ -153,13 +154,18 @@ class NLOptWrapper(WrapperBase):
         self.raised = False
         params = TensorList(self._get_params())
         x0 = params.to_vec().numpy(force=True)
-        lb,ub = self._get_lb_ub(ld = {None: -np.inf}, ud = {None: np.inf})
+
+        plb, pub = self._get_per_parameter_lb_ub()
+        if all(i is None for i in plb) and all(i is None for i in pub):
+            lb = ub = None
+        else:
+            lb, ub = self._get_lb_ub(ld = {None: -np.inf}, ud = {None: np.inf})
 
         self.opt = nlopt.opt(self.algorithm, x0.size)
         self.opt.set_exceptions_enabled(False) # required
-        self.opt.set_min_objective(partial(self._f, closure = closure, params = params))
-        self.opt.set_lower_bounds(lb)
-        self.opt.set_upper_bounds(ub)
+        self.opt.set_min_objective(partial(self._objective, closure = closure, params = params))
+        if lb is not None: self.opt.set_lower_bounds(np.asarray(lb, dtype=x0.dtype))
+        if ub is not None: self.opt.set_upper_bounds(np.asarray(ub, dtype=x0.dtype))
 
         if self.maxeval is not None: self.opt.set_maxeval(self.maxeval)
         if self.stopval is not None: self.opt.set_stopval(self.stopval)
@@ -173,8 +179,8 @@ class NLOptWrapper(WrapperBase):
         x = None
         try:
             x = self.opt.optimize(x0)
-        except SystemError:
-            pass
+        # except SystemError as s:
+        #     warnings.warn(f"{self.algorithm_name} raised {s}")
         except Exception as e:
             raise e from None
 
