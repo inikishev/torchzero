@@ -6,7 +6,7 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg
 
-def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, tol):
+def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
@@ -19,11 +19,19 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
 
     try:
         L, Q = torch_linalg.eigh(MTM, retry_float64=True)
-        L_max = L.amax()
 
-        indices = L > tol * L_max # remove small eigenvalues
-        L = L[indices]
-        Q = Q[:, indices]
+        # truncate to top n largest eigenvalues
+        if truncate is not None and truncate > 0:
+            # L is ordered in ascending order
+            L = L[-truncate:]
+            Q = Q[:, -truncate:]
+
+        # remove small eigenvalues relative to largest
+        L_max = L.amax()
+        indices = L > tol * L_max
+        if indices.any():
+            L = L[indices]
+            Q = Q[:, indices]
 
         U = (M @ Q) * L.rsqrt()
 
@@ -47,7 +55,7 @@ def lm_adagrad_apply(g: torch.Tensor, U: torch.Tensor, L: torch.Tensor, exp_avg_
 
 def maybe_lerp_(state_: dict, beta: float | None, key, value: Any):
     if value is None: return
-    if (key not in state_) or (beta is None) or (not isinstance(value, torch.Tensor)): state_[key] = value
+    if (key not in state_) or (beta is None): state_[key] = value
     else:
         if state_[key] is None or state_[key].shape != value.shape: state_[key] = value
         else: state_[key].lerp_(value, 1-beta)
@@ -67,6 +75,9 @@ class LMAdagrad(TensorTransform):
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
         damping (float, optional): damping value. Defaults to 1e-4.
         rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
+        rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
+        truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
+        tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
         order (int, optional):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
@@ -118,6 +129,7 @@ class LMAdagrad(TensorTransform):
         update_freq: int = 1,
         damping: float = 1e-4,
         rdamping: float = 0,
+        truncate: int | None = None,
         tol: float = 1e-7,
         order: int = 1,
         U_beta: float | None = None,
@@ -142,8 +154,6 @@ class LMAdagrad(TensorTransform):
         order = setting['order']
         history_size = setting['history_size']
         update_freq = setting['update_freq']
-        damping = setting['damping']
-        rdamping = setting['rdamping']
         U_beta = setting['U_beta']
         L_beta = setting['L_beta']
 
@@ -187,7 +197,13 @@ class LMAdagrad(TensorTransform):
                 exp_avg = state["U"] @ exp_avg_proj
 
             # update factors
-            U, L = lm_adagrad_update(history, damping=damping, rdamping=rdamping, tol=setting["tol"])
+            U, L = lm_adagrad_update(
+                history,
+                damping=setting["damping"],
+                rdamping=setting["rdamping"],
+                truncate=setting["truncate"],
+                tol=setting["tol"],
+            )
             maybe_lerp_(state, U_beta, 'U', U)
             maybe_lerp_(state, L_beta, 'L', L)
 

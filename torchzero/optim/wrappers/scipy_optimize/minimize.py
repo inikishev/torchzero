@@ -14,7 +14,7 @@ Closure = Callable[[bool], Any]
 
 def _use_jac_hess_hessp(method, jac, hess, use_hessp):
     # those methods can't use hessp
-    if (method is not None) or (method.lower() not in ("newton-cg", "trust-ncg", "trust-krylov", "trust-constr")):
+    if (method is None) or (method.lower() not in ("newton-cg", "trust-ncg", "trust-krylov", "trust-constr")):
         use_hessp = False
 
     # those use gradients
@@ -118,13 +118,16 @@ class ScipyMinimize(WrapperBase):
         # determine hess argument
         hess = self.hess
         hessp = None
-        if self.hess == 'autograd':
+        if hess == 'autograd':
             if self.use_hess_autograd:
                 if self.use_hessp:
                     hessp = partial(self._hessp, params=params, closure=closure)
                     hess = None
                 else:
                     hess = partial(self._hess, params=params, closure=closure)
+            # hess = 'autograd' but method doesn't use hess
+            else:
+                hess = None
 
 
         if self.method is not None and (self.method.lower() == 'tnc' or self.method.lower() == 'slsqp'):

@@ -33,7 +33,6 @@ class WrapperBase(torch.optim.Optimizer):
         # compute value and derivatives
         with torch.enable_grad():
             value = closure()
-            value.backward()
             g = params.grad.fill_none(reference=params).to_vec()
         return float(value), g.numpy(force=True)
 
@@ -84,6 +83,7 @@ class WrapperBase(torch.optim.Optimizer):
 
         # get per-parameter lb and ub
         lb, ub = self._get_per_parameter_lb_ub()
+        if all(i is None for i in lb) and all(i is None for i in ub): return None
 
         params = self._get_params()
         bounds = []

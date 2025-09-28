@@ -28,6 +28,8 @@ class ScipyBasinHopping(WrapperBase):
         disp: bool = False,
         niter_success: int | None = None,
         rng: int | np.random.Generator | None = None,
+        lb:float | None = None,
+        ub:float | None = None,
         method: Literal['nelder-mead', 'powell', 'cg', 'bfgs', 'newton-cg',
                     'l-bfgs-b', 'tnc', 'cobyla', 'cobyqa', 'slsqp',
                     'trust-constr', 'dogleg', 'trust-ncg', 'trust-exact',
@@ -40,14 +42,15 @@ class ScipyBasinHopping(WrapperBase):
         target_accept_rate: float = 0.5,
         stepwise_factor: float = 0.9
     ):
-        super().__init__(params, {})
+        super().__init__(params, dict(lb=lb, ub=ub))
 
         kwargs = locals().copy()
         del kwargs['self'], kwargs['params'], kwargs['__class__'], kwargs["minimizer_kwargs"]
         del kwargs['method'], kwargs["jac"], kwargs['hess'], kwargs['use_hessp']
+        del kwargs["lb"], kwargs["ub"]
         self._kwargs = kwargs
 
-        self.minimizer_kwargs = minimizer_kwargs
+        self._minimizer_kwargs = minimizer_kwargs
         self.method = method
         self.hess = hess
         self.jac, self.use_jac_autograd, self.use_hess_autograd, self.use_hessp = _use_jac_hess_hessp(method, jac, hess, use_hessp)
@@ -81,20 +84,24 @@ class ScipyBasinHopping(WrapperBase):
         # determine hess argument
         hess = self.hess
         hessp = None
-        if self.hess == 'autograd':
+        if hess == 'autograd':
             if self.use_hess_autograd:
                 if self.use_hessp:
                     hessp = partial(self._hessp, params=params, closure=closure)
                     hess = None
                 else:
                     hess = partial(self._hess, params=params, closure=closure)
+            # hess = 'autograd' but method doesn't use hess
+            else:
+                hess = None
 
 
         if self.method is not None and (self.method.lower() == 'tnc' or self.method.lower() == 'slsqp'):
             x0 = x0.astype(np.float64) # those methods error without this
 
-        minimizer_kwargs = self.minimizer_kwargs.copy() if self.minimizer_kwargs is not None else {}
+        minimizer_kwargs = self._minimizer_kwargs.copy() if self._minimizer_kwargs is not None else {}
         minimizer_kwargs.setdefault("method", self.method)
+        minimizer_kwargs.setdefault("jac", self.jac)
         minimizer_kwargs.setdefault("hess", hess)
         minimizer_kwargs.setdefault("hessp", hessp)
         minimizer_kwargs.setdefault("bounds", bounds)

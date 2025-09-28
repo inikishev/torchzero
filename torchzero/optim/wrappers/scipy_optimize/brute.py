@@ -20,7 +20,6 @@ class ScipyBrute(WrapperBase):
         lb: float,
         ub: float,
         Ns: int = 20,
-        full_output: int = 0,
         finish = scipy.optimize.fmin,
         disp: bool = False,
         workers: int = 1
@@ -37,14 +36,13 @@ class ScipyBrute(WrapperBase):
         bounds = self._get_bounds()
         assert bounds is not None
 
-        res = scipy.optimize.brute(
+        res,fval,grid,Jout = scipy.optimize.brute(
             partial(self._f, params = params, closure = closure),
             ranges=bounds,
+            full_output=True,
             **self._kwargs
         )
 
-        x = res[0]
-        fval = res[1]
-        params.from_vec_(torch.as_tensor(x, device = params[0].device, dtype=params[0].dtype))
+        params.from_vec_(torch.as_tensor(res, device = params[0].device, dtype=params[0].dtype))
 
         return fval
