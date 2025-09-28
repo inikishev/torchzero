@@ -78,7 +78,7 @@ class NLOptWrapper(WrapperBase):
     solution.
 
     Args:
-        params: iterable of parameters to optimize or dicts defining parameter groups.
+        params (Iterable): iterable of parameters to optimize or dicts defining parameter groups.
         algorithm (int | _ALGOS_LITERAL): optimization algorithm from https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/
         maxeval (int | None):
             maximum allowed function evaluations, set to None to disable. But some stopping criterion

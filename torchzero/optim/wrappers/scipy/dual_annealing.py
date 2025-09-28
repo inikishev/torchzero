@@ -41,8 +41,8 @@ class ScipyDualAnnealing(WrapperBase):
         super().__init__(params, dict(lb=lb, ub=ub))
 
         kwargs = locals().copy()
-        del kwargs['self'], kwargs['params'], kwargs['lb'], kwargs['ub'], kwargs['__class__']
-        del kwargs["method"], kwargs["jac"], kwargs["hess"], kwargs["use_hessp"], kwargs["minimizer_kwargs"]
+        for k in ["self", "params", "lb", "ub", "__class__", "method", "jac", "hess", "use_hessp", "minimizer_kwargs"]:
+            del kwargs[k]
         self._kwargs = kwargs
 
         self._minimizer_kwargs = minimizer_kwargs
