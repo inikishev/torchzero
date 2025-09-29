@@ -97,30 +97,30 @@ def _assert_identical_device(opt_fn: Callable, merge: bool, use_closure: bool, s
 @pytest.mark.parametrize('amsgrad', [True, False])
 def test_adam(amsgrad):
     torch_fn = lambda p: torch.optim.Adam(p, lr=1, amsgrad=amsgrad)
-    tz_fn = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad))
-    tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1)) # test LR fusing
-    tz_fn3 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1), tz.m.Add(1), tz.m.Sub(1))
-    tz_fn4 = lambda p: tz.Modular(p, tz.m.Adam(amsgrad=amsgrad), tz.m.Add(1), tz.m.Sub(1), tz.m.LR(1))
-    tz_fn5 = lambda p: tz.Modular(p, tz.m.Clone(), tz.m.Adam(amsgrad=amsgrad))
-    tz_fn_ops = lambda p: tz.Modular(
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.Adam(amsgrad=amsgrad))
+    tz_fn2 = lambda p: tz.Optimizer(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1)) # test LR fusing
+    tz_fn3 = lambda p: tz.Optimizer(p, tz.m.Adam(amsgrad=amsgrad), tz.m.LR(1), tz.m.Add(1), tz.m.Sub(1))
+    tz_fn4 = lambda p: tz.Optimizer(p, tz.m.Adam(amsgrad=amsgrad), tz.m.Add(1), tz.m.Sub(1), tz.m.LR(1))
+    tz_fn5 = lambda p: tz.Optimizer(p, tz.m.Clone(), tz.m.Adam(amsgrad=amsgrad))
+    tz_fn_ops = lambda p: tz.Optimizer(
         p,
         tz.m.DivModules(
             tz.m.EMA(0.9, debiased=True),
             [tz.m.SqrtEMASquared(0.999, debiased=True, amsgrad=amsgrad), tz.m.Add(1e-8)]
         ))
-    tz_fn_ops2 = lambda p: tz.Modular(
+    tz_fn_ops2 = lambda p: tz.Optimizer(
         p,
         tz.m.DivModules(
             [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9)],
             [tz.m.EMASquared(0.999, amsgrad=amsgrad), tz.m.Sqrt(), tz.m.Debias2(beta=0.999), tz.m.Add(1e-8)]
         ))
-    tz_fn_ops3 = lambda p: tz.Modular(
+    tz_fn_ops3 = lambda p: tz.Optimizer(
         p,
         tz.m.DivModules(
             [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9, beta2=0.999)],
             [tz.m.EMASquared(0.999, amsgrad=amsgrad), tz.m.Sqrt(), tz.m.Add(1e-8)]
         ))
-    tz_fn_ops4 = lambda p: tz.Modular(
+    tz_fn_ops4 = lambda p: tz.Optimizer(
         p,
         tz.m.DivModules(
             [tz.m.EMA(0.9), tz.m.Debias(beta1=0.9)],
@@ -145,19 +145,19 @@ def test_adam(amsgrad):
 @pytest.mark.parametrize('amsgrad', [True, False])
 @pytest.mark.parametrize('lr', [0.1, 1])
 def test_adam_hyperparams(beta1, beta2, eps, amsgrad, lr):
-    tz_fn = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad), tz.m.LR(lr))
-    tz_fn2 = lambda p: tz.Modular(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad, alpha=lr))
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad), tz.m.LR(lr))
+    tz_fn2 = lambda p: tz.Optimizer(p, tz.m.Adam(beta1, beta2, eps, amsgrad=amsgrad, alpha=lr))
     _assert_identical_opts([tz_fn, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
 
 @pytest.mark.parametrize('centered', [True, False])
 def test_rmsprop(centered):
     torch_fn = lambda p: torch.optim.RMSprop(p, 1, centered=centered)
-    tz_fn = lambda p: tz.Modular(p, tz.m.RMSprop(centered=centered, init='zeros'))
-    tz_fn2 = lambda p: tz.Modular(
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.RMSprop(centered=centered, init='zeros'))
+    tz_fn2 = lambda p: tz.Optimizer(
         p,
         tz.m.Div([tz.m.CenteredSqrtEMASquared(0.99) if centered else tz.m.SqrtEMASquared(0.99), tz.m.Add(1e-8)]),
     )
-    tz_fn3 = lambda p: tz.Modular(
+    tz_fn3 = lambda p: tz.Optimizer(
         p,
         tz.m.Div([tz.m.CenteredEMASquared(0.99) if centered else tz.m.EMASquared(0.99), tz.m.Sqrt(), tz.m.Add(1e-8)]),
     )
@@ -173,7 +173,7 @@ def test_rmsprop(centered):
 @pytest.mark.parametrize('centered', [True, False])
 @pytest.mark.parametrize('lr', [0.1, 1])
 def test_rmsprop_hyperparams(beta, eps, centered, lr):
-    tz_fn = lambda p: tz.Modular(p, tz.m.RMSprop(beta, eps, centered, init='zeros'), tz.m.LR(lr))
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.RMSprop(beta, eps, centered, init='zeros'), tz.m.LR(lr))
     torch_fn = lambda p: torch.optim.RMSprop(p, lr, beta, eps=eps, centered=centered)
     _assert_identical_opts([torch_fn, tz_fn], merge=True, use_closure=True, device='cpu', steps=10)
 
@@ -185,7 +185,7 @@ def test_rmsprop_hyperparams(beta, eps, centered, lr):
 @pytest.mark.parametrize('ub', [50, 1.5])
 @pytest.mark.parametrize('lr', [0.1, 1])
 def test_rprop(nplus, nminus, lb, ub, lr):
-    tz_fn = lambda p: tz.Modular(p, tz.m.LR(lr), tz.m.Rprop(nplus, nminus, lb, ub, alpha=lr, backtrack=False))
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.LR(lr), tz.m.Rprop(nplus, nminus, lb, ub, alpha=lr, backtrack=False))
     torch_fn = lambda p: torch.optim.Rprop(p, lr, (nminus, nplus), (lb, ub))
     _assert_identical_opts([torch_fn, tz_fn], merge=True, use_closure=True, device='cpu', steps=30)
     _assert_identical_merge_closure(tz_fn, 'cpu', 30)
@@ -193,8 +193,8 @@ def test_rprop(nplus, nminus, lb, ub, lr):
 
 def test_adagrad():
     torch_fn = lambda p: torch.optim.Adagrad(p, 1)
-    tz_fn = lambda p: tz.Modular(p, tz.m.Adagrad(), tz.m.LR(1))
-    tz_fn2 = lambda p: tz.Modular(
+    tz_fn = lambda p: tz.Optimizer(p, tz.m.Adagrad(), tz.m.LR(1))
+    tz_fn2 = lambda p: tz.Optimizer(
         p,
         tz.m.Div([tz.m.Pow(2), tz.m.AccumulateSum(), tz.m.Sqrt(), tz.m.Add(1e-10)]),
     )
@@ -212,15 +212,15 @@ def test_adagrad():
 @pytest.mark.parametrize('lr', [0.1, 1])
 def test_adagrad_hyperparams(initial_accumulator_value, eps, lr):
     torch_fn = lambda p: torch.optim.Adagrad(p, lr, initial_accumulator_value=initial_accumulator_value, eps=eps)
-    tz_fn1 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps), tz.m.LR(lr))
-    tz_fn2 = lambda p: tz.Modular(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps, alpha=lr))
+    tz_fn1 = lambda p: tz.Optimizer(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps), tz.m.LR(lr))
+    tz_fn2 = lambda p: tz.Optimizer(p, tz.m.Adagrad(initial_accumulator_value=initial_accumulator_value, eps=eps, alpha=lr))
     _assert_identical_opts([torch_fn, tz_fn1, tz_fn2], merge=True, use_closure=True, device='cpu', steps=10)
 
 
 @pytest.mark.parametrize('tensorwise', [True, False])
 def test_graft(tensorwise):
-    graft1 = lambda p: tz.Modular(p, tz.m.Graft(tz.m.LBFGS(), tz.m.RMSprop(), tensorwise=tensorwise), tz.m.LR(1e-1))
-    graft2 = lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.GraftInputToOutput([tz.m.Grad(), tz.m.RMSprop()], tensorwise=tensorwise), tz.m.LR(1e-1))
+    graft1 = lambda p: tz.Optimizer(p, tz.m.Graft(tz.m.LBFGS(), tz.m.RMSprop(), tensorwise=tensorwise), tz.m.LR(1e-1))
+    graft2 = lambda p: tz.Optimizer(p, tz.m.LBFGS(), tz.m.GraftInputToOutput([tz.m.Grad(), tz.m.RMSprop()], tensorwise=tensorwise), tz.m.LR(1e-1))
     _assert_identical_opts([graft1, graft2], merge=True, use_closure=True, device='cpu', steps=10)
     for fn in [graft1, graft2]:
         if tensorwise: _assert_identical_closure(fn, merge=True, device='cpu', steps=10)

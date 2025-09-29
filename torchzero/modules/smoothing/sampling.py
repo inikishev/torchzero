@@ -7,7 +7,7 @@ from typing import Literal, cast
 
 import torch
 
-from ...core import Chainable, Modular, Module, Objective
+from ...core import Chainable, Optimizer, Module, Objective
 from ...core.reformulation import Reformulation
 from ...utils import Distributions, NumberList, TensorList
 from ..termination import TerminationCriteriaBase, make_termination_criteria

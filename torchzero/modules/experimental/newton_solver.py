@@ -3,7 +3,7 @@ from typing import Any
 
 import torch
 
-from ...core import Chainable, Modular, Module, step, HVPMethod
+from ...core import Chainable, Optimizer, Module, step, HVPMethod
 from ...utils import TensorList
 from ..quasi_newton import LBFGS
 
@@ -12,7 +12,7 @@ class NewtonSolver(Module):
     """Matrix free newton via with any custom solver (this is for testing, use NewtonCG or NystromPCG)."""
     def __init__(
         self,
-        solver: Callable[[list[torch.Tensor]], Any] = lambda p: Modular(p, LBFGS()),
+        solver: Callable[[list[torch.Tensor]], Any] = lambda p: Optimizer(p, LBFGS()),
         maxiter=None,
         maxiter1=None,
         tol:float | None=1e-3,

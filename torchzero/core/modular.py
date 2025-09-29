@@ -15,7 +15,7 @@ from .objective import Objective
 class _EvalCounterClosure:
     """keeps track of how many times closure has been evaluated, and sets closure return"""
     __slots__ = ("modular", "closure")
-    def __init__(self, modular: "Modular", closure):
+    def __init__(self, modular: "Optimizer", closure):
         self.modular = modular
         self.closure = closure
 
@@ -48,7 +48,7 @@ def flatten_modules(*modules: Chainable) -> list[Module]:
 
 # have to inherit from Modular to support lr schedulers
 # although Accelerate doesn't work due to converting param_groups to a dict
-class Modular(torch.optim.Optimizer):
+class Optimizer(torch.optim.Optimizer):
     """Chains multiple modules into an optimizer.
 
     Args:

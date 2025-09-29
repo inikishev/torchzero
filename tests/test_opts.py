@@ -54,7 +54,7 @@ class _TestModel(torch.nn.Module):
     def forward(self):
         return torch.sum(torch.stack([p.pow(2).sum() for p in self.params]))
 
-def _run_objective(opt: tz.Modular, objective: Callable, use_closure: bool, steps: int, clear: bool):
+def _run_objective(opt: tz.Optimizer, objective: Callable, use_closure: bool, steps: int, clear: bool):
     """generic function to run opt on objective and return lowest recorded loss"""
     losses = []
     for i in range(steps):
@@ -176,50 +176,50 @@ class Run:
 # ---------------------------------------------------------------------------- #
 # ----------------------------- clipping/clipping ---------------------------- #
 ClipValue = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipValue(1), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipValue(1), tz.m.LR(1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipValue(1), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipValue(1), tz.m.LR(1)),
     needs_closure=False,
     func='booth', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=50,
 )
 ClipNorm = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNorm(1), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNorm(1), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNorm(1), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNorm(1), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=2, merge_invariant=False,
     sphere_steps=10, sphere_loss=0,
 )
 ClipNorm_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNorm(1, dim='global'), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNorm(1, dim='global'), tz.m.LR(3)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNorm(1, dim='global'), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNorm(1, dim='global'), tz.m.LR(3)),
     needs_closure=False,
     func='booth', steps=50, loss=2, merge_invariant=True,
     sphere_steps=10, sphere_loss=2,
 )
 Normalize = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Normalize(1), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Normalize(1), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Normalize(1), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Normalize(1), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=2, merge_invariant=False,
     sphere_steps=10, sphere_loss=15,
 )
 Normalize_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Normalize(1, dim='global'), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Normalize(1, dim='global'), tz.m.LR(4)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Normalize(1, dim='global'), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Normalize(1, dim='global'), tz.m.LR(4)),
     needs_closure=False,
     func='booth', steps=50, loss=2, merge_invariant=True,
     sphere_steps=10, sphere_loss=2,
 )
 Centralize = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Centralize(min_size=3), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Centralize(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Centralize(min_size=3), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Centralize(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=False,
     sphere_steps=10, sphere_loss=10,
 )
 Centralize_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Centralize(min_size=3, dim='global'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Centralize(dim='global'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Centralize(min_size=3, dim='global'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Centralize(dim='global'), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=1, loss=1000, merge_invariant=True,
     sphere_steps=10, sphere_loss=10,
@@ -227,72 +227,72 @@ Centralize_global = Run(
 
 # --------------------------- clipping/ema_clipping -------------------------- #
 ClipNormByEMA = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormByEMA(), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormByEMA(), tz.m.LR(5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormByEMA(), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormByEMA(), tz.m.LR(5)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-5, merge_invariant=False,
     sphere_steps=10, sphere_loss=0.1,
 )
 ClipNormByEMA_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormByEMA(tensorwise=False), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormByEMA(tensorwise=False), tz.m.LR(5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormByEMA(tensorwise=False), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormByEMA(tensorwise=False), tz.m.LR(5)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-5, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
 )
 NormalizeByEMA = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NormalizeByEMA(), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NormalizeByEMA(), tz.m.LR(5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.NormalizeByEMA(), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.NormalizeByEMA(), tz.m.LR(5)),
     needs_closure=False,
     func='booth', steps=50, loss=1, merge_invariant=False,
     sphere_steps=10, sphere_loss=0.1,
 )
 NormalizeByEMA_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NormalizeByEMA(tensorwise=False), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NormalizeByEMA(tensorwise=False), tz.m.LR(5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.NormalizeByEMA(tensorwise=False), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.NormalizeByEMA(tensorwise=False), tz.m.LR(5)),
     needs_closure=False,
     func='booth', steps=50, loss=1, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
 )
 ClipValueByEMA = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipValueByEMA(), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipValueByEMA(), tz.m.LR(4)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueByEMA(), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueByEMA(), tz.m.LR(4)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-5, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.03,
 )
 # ------------------------- clipping/growth_clipping ------------------------- #
 ClipValueGrowth = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipValueGrowth(), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipValueGrowth(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueGrowth(), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueGrowth(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=100,
 )
 ClipValueGrowth_additive = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipValueGrowth(add=1, mul=None), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipValueGrowth(add=1, mul=None), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueGrowth(add=1, mul=None), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipValueGrowth(add=1, mul=None), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=10,
 )
 ClipNormGrowth = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=False,
     sphere_steps=10, sphere_loss=10,
 )
 ClipNormGrowth_additive = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(add=1,mul=None), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(add=1,mul=None), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(add=1,mul=None), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(add=1,mul=None), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=False,
     sphere_steps=10, sphere_loss=10,
 )
 ClipNormGrowth_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ClipNormGrowth(tensorwise=False), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=10,
@@ -300,43 +300,43 @@ ClipNormGrowth_global = Run(
 
 # -------------------------- grad_approximation/fdm -------------------------- #
 FDM_central2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central2'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='central2'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_forward2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='forward2'), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_backward2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='backward2'), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_forward3 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='forward3'), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_backward3 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='backward3'), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
 )
 FDM_central4 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.FDM(formula='central4'), tz.m.LR(0.1)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=2, sphere_loss=340,
@@ -344,57 +344,57 @@ FDM_central4 = Run(
 
 # -------------------------- grad_approximation/rfdm ------------------------- #
 RandomizedFDM_central2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward2', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_backward2 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='backward2', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward3 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward3', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_backward3 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='backward3', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_central4 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='central4', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward4 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward4', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
 )
 RandomizedFDM_forward5 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(formula='forward5', seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=10, merge_invariant=True,
     sphere_steps=200, sphere_loss=420,
@@ -402,65 +402,65 @@ RandomizedFDM_forward5 = Run(
 
 
 RandomizedFDM_4samples = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, seed=0), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(n_samples=4, seed=0), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(n_samples=4, seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-5, merge_invariant=True,
     sphere_steps=100, sphere_loss=400,
 )
 RandomizedFDM_4samples_no_pre_generate = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomizedFDM(n_samples=4, pre_generate=False, seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-5, merge_invariant=True,
     sphere_steps=100, sphere_loss=400,
 )
 MeZO = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MeZO(), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MeZO(), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MeZO(), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MeZO(), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=5, merge_invariant=True,
     sphere_steps=100, sphere_loss=450,
 )
 MeZO_4samples = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MeZO(n_samples=4), tz.m.LR(0.02)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MeZO(n_samples=4), tz.m.LR(0.005)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MeZO(n_samples=4), tz.m.LR(0.02)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MeZO(n_samples=4), tz.m.LR(0.005)),
     needs_closure=True,
     func='booth', steps=50, loss=1, merge_invariant=True,
     sphere_steps=100, sphere_loss=250,
 )
 # -------------------- grad_approximation/forward_gradient ------------------- #
 ForwardGradient = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
     sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0, jvp_method='forward'), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
     sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_central = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(seed=0, jvp_method='central'), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=40, merge_invariant=True,
     sphere_steps=200, sphere_loss=450,
 )
 ForwardGradient_4samples = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(n_samples=4, seed=0), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
     sphere_steps=100, sphere_loss=420,
 )
 ForwardGradient_4samples_no_pre_generate = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.001)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ForwardGradient(n_samples=4, seed=0, pre_generate=False), tz.m.LR(0.001)),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
     sphere_steps=100, sphere_loss=420,
@@ -468,23 +468,23 @@ ForwardGradient_4samples_no_pre_generate = Run(
 
 # ------------------------- line_search/backtracking ------------------------- #
 Backtracking = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Backtracking()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Backtracking()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Backtracking()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Backtracking()),
     needs_closure=True,
     func='booth', steps=50, loss=0, merge_invariant=True,
     sphere_steps=2, sphere_loss=0,
 )
 AdaptiveBacktracking = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.AdaptiveBacktracking()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.AdaptiveBacktracking()),
     needs_closure=True,
     func='booth', steps=50, loss=1e-11, merge_invariant=True,
     sphere_steps=2, sphere_loss=1e-10,
 )
 # ----------------------------- line_search/scipy ---------------------------- #
 ScipyMinimizeScalar = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ScipyMinimizeScalar(maxiter=10)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.AdaptiveBacktracking(maxiter=10)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ScipyMinimizeScalar(maxiter=10)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.AdaptiveBacktracking(maxiter=10)),
     needs_closure=True,
     func='booth', steps=50, loss=1e-2, merge_invariant=True,
     sphere_steps=2, sphere_loss=0,
@@ -492,8 +492,8 @@ ScipyMinimizeScalar = Run(
 
 # ------------------------- line_search/strong_wolfe ------------------------- #
 StrongWolfe = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.StrongWolfe()),
     needs_closure=True,
     func='booth', steps=50, loss=0, merge_invariant=True,
     sphere_steps=2, sphere_loss=0,
@@ -501,44 +501,44 @@ StrongWolfe = Run(
 
 # ----------------------------------- lr/lr ---------------------------------- #
 LR = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 StepSize = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.StepSize(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.StepSize(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.StepSize(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.StepSize(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 Warmup = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Warmup(steps=50, end_lr=0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Warmup(steps=10)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Warmup(steps=50, end_lr=0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Warmup(steps=10)),
     needs_closure=False,
     func='booth', steps=50, loss=0.003, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 # ------------------------------- lr/step_size ------------------------------- #
 PolyakStepSize = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.PolyakStepSize()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.PolyakStepSize()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.PolyakStepSize()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.PolyakStepSize()),
     needs_closure=True,
     func='booth', steps=50, loss=1e-7, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.002,
 )
 RandomStepSize = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomStepSize(0,0.1, seed=0)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomStepSize(0,0.1, seed=0)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomStepSize(0,0.1, seed=0)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomStepSize(0,0.1, seed=0)),
     needs_closure=False,
     func='booth', steps=50, loss=0.0005, merge_invariant=True,
     sphere_steps=10, sphere_loss=100,
 )
 RandomStepSize_parameterwise = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.RandomStepSize(0,0.1, parameterwise=True, seed=0)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.RandomStepSize(0,0.1, parameterwise=True, seed=0)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.RandomStepSize(0,0.1, parameterwise=True, seed=0)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.RandomStepSize(0,0.1, parameterwise=True, seed=0)),
     needs_closure=False,
     func='booth', steps=50, loss=0.0005, merge_invariant=False,
     sphere_steps=10, sphere_loss=100,
@@ -546,22 +546,22 @@ RandomStepSize_parameterwise = Run(
 
 # ---------------------------- momentum/averaging ---------------------------- #
 Averaging = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Averaging(10), tz.m.LR(0.02)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Averaging(10), tz.m.LR(0.2)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Averaging(10), tz.m.LR(0.02)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Averaging(10), tz.m.LR(0.2)),
     needs_closure=False,
     func='booth', steps=50, loss=0.5, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 WeightedAveraging = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.WeightedAveraging([1,0.75,0.5,0.25,0]), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.WeightedAveraging([1,0.75,0.5,0.25,0]), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.WeightedAveraging([1,0.75,0.5,0.25,0]), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.WeightedAveraging([1,0.75,0.5,0.25,0]), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=1, merge_invariant=True,
     sphere_steps=10, sphere_loss=2,
 )
 MedianAveraging = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MedianAveraging(10), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MedianAveraging(10), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MedianAveraging(10), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MedianAveraging(10), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.005, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
@@ -569,36 +569,36 @@ MedianAveraging = Run(
 
 # ----------------------------- momentum/cautious ---------------------------- #
 Cautious = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.Cautious(), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.Cautious(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.Cautious(), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.Cautious(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.003, merge_invariant=True,
     sphere_steps=10, sphere_loss=2,
 )
 UpdateGradientSignConsistency = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.Mul(tz.m.UpdateGradientSignConsistency()), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.Mul(tz.m.UpdateGradientSignConsistency()), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.Mul(tz.m.UpdateGradientSignConsistency()), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.Mul(tz.m.UpdateGradientSignConsistency()), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.003, merge_invariant=True,
     sphere_steps=10, sphere_loss=2,
 )
 IntermoduleCautious = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.IntermoduleCautious(tz.m.NAG(), tz.m.BFGS(ptol_restart=True)), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-4, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
 )
 ScaleByGradCosineSimilarity = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.ScaleByGradCosineSimilarity(), tz.m.LR(0.01)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(0.9), tz.m.ScaleByGradCosineSimilarity(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.ScaleByGradCosineSimilarity(), tz.m.LR(0.01)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(0.9), tz.m.ScaleByGradCosineSimilarity(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
 )
 ScaleModulesByCosineSimilarity = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.ScaleModulesByCosineSimilarity(tz.m.HeavyBall(0.9), tz.m.BFGS(ptol_restart=True)),tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0.005, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
@@ -606,66 +606,66 @@ ScaleModulesByCosineSimilarity = Run(
 
 # ------------------------- momentum/matrix_momentum ------------------------- #
 MatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_forward'),),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward')),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_forward'),),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward')),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.01,
 )
 MatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_central')),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central')),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.01, hvp_method='fd_central')),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central')),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.01,
 )
 MatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.01, hvp_method='autograd')),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd')),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.01, hvp_method='autograd')),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd')),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.01,
 )
 
 AdaptiveMatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 AdaptiveMatrixMomentum_central = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 AdaptiveMatrixMomentum_autograd = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='autograd', adaptive=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd', adaptive=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='autograd', adaptive=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd', adaptive=True)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 
 StochasticAdaptiveMatrixMomentum_forward = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_forward', adaptive=True, adapt_freq=1)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 StochasticAdaptiveMatrixMomentum_central = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='fd_central', adaptive=True, adapt_freq=1)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
 )
 StochasticAdaptiveMatrixMomentum_autograd = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.05, hvp_method='autograd', adaptive=True, adapt_freq=1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd', adaptive=True, adapt_freq=1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.05, hvp_method='autograd', adaptive=True, adapt_freq=1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.MatrixMomentum(0.5, hvp_method='autograd', adaptive=True, adapt_freq=1)),
     needs_closure=True,
     func='booth', steps=50, loss=0.05, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.05,
@@ -674,44 +674,44 @@ StochasticAdaptiveMatrixMomentum_autograd = Run(
 # EMA, momentum are covered by test_identical
 # --------------------------------- ops/misc --------------------------------- #
 Previous = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Previous(10), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Previous(3), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Previous(10), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Previous(3), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=15, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 GradSign = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.GradSign(), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.GradSign(), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.GradSign(), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.GradSign(), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.0002, merge_invariant=True,
     sphere_steps=10, sphere_loss=0.1,
 )
 UpdateSign = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.UpdateSign(), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.UpdateSign(), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.UpdateSign(), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.UpdateSign(), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.01, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
 )
 GradAccumulation = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.05)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.05)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.GradientAccumulation(n=10), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=25, merge_invariant=True,
     sphere_steps=20, sphere_loss=1e-11,
 )
 NegateOnLossIncrease = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.02), tz.m.NegateOnLossIncrease(True),),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.HeavyBall(), tz.m.LR(0.1), tz.m.NegateOnLossIncrease(True),),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.LR(0.02), tz.m.NegateOnLossIncrease(True),),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.HeavyBall(), tz.m.LR(0.1), tz.m.NegateOnLossIncrease(True),),
     needs_closure=True,
     func='booth', steps=50, loss=0.1, merge_invariant=True,
     sphere_steps=20, sphere_loss=0.001,
 )
 # -------------------------------- misc/switch ------------------------------- #
 Alternate = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Alternate(tz.m.Adagrad(), tz.m.Adam(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=1, merge_invariant=True,
     sphere_steps=20, sphere_loss=20,
@@ -719,16 +719,16 @@ Alternate = Run(
 
 # ------------------------------ optimizers/adam ----------------------------- #
 Adam = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Adam(), tz.m.LR(0.5)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Adam(), tz.m.LR(0.2)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Adam(), tz.m.LR(0.5)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Adam(), tz.m.LR(0.2)),
     needs_closure=False,
     func='rosen', steps=50, loss=4, merge_invariant=True,
     sphere_steps=20, sphere_loss=4,
 )
 # ------------------------------ optimizers/soap ----------------------------- #
 SOAP = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SOAP(), tz.m.LR(0.4)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SOAP(precond_freq=1), tz.m.LR(1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(), tz.m.LR(0.4)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(precond_freq=1), tz.m.LR(1)),
     needs_closure=False,
     # merge and unmerge lrs are very different so need to test convergence separately somewhere
     func='rosen', steps=50, loss=4, merge_invariant=False,
@@ -736,16 +736,16 @@ SOAP = Run(
 )
 # ------------------------------ optimizers/lion ----------------------------- #
 Lion = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Lion(), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Lion(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Lion(), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Lion(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=0, merge_invariant=True,
     sphere_steps=20, sphere_loss=25,
 )
 # ---------------------------- optimizers/shampoo ---------------------------- #
 Shampoo = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(4)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Graft(tz.m.Shampoo(), tz.m.RMSprop()), tz.m.LR(0.1)),
     needs_closure=False,
     # merge and unmerge lrs are very different so need to test convergence separately somewhere
     func='booth', steps=50, loss=0.02, merge_invariant=False,
@@ -754,23 +754,23 @@ Shampoo = Run(
 
 # ------------------------- quasi_newton/quasi_newton ------------------------ #
 BFGS = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.BFGS(ptol_restart=True), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-10, merge_invariant=True,
     sphere_steps=10, sphere_loss=1e-10,
 )
 SR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SR1(ptol_restart=True), tz.m.StrongWolfe(c2=0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(c2=0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.SR1(ptol_restart=True), tz.m.StrongWolfe(c2=0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SR1(scale_first=True), tz.m.StrongWolfe(c2=0.1)),
     needs_closure=True,
     func='rosen', steps=50, loss=1e-12, merge_invariant=True,
     # this reaches 1e-13 on github so don't change to 0
     sphere_steps=10, sphere_loss=0,
 )
 SSVM = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SSVM(1), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     # this reaches 0.12 on github so don't change to 0.002
     func='rosen', steps=50, loss=0.2, merge_invariant=True,
@@ -779,8 +779,8 @@ SSVM = Run(
 
 # ---------------------------- quasi_newton/lbfgs ---------------------------- #
 LBFGS = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LBFGS(), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LBFGS(), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LBFGS(), tz.m.StrongWolfe()),
     needs_closure=True,
     func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
@@ -788,8 +788,8 @@ LBFGS = Run(
 
 # ----------------------------- quasi_newton/lsr1 ---------------------------- #
 LSR1 = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.1, fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.1, fallback=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.1, fallback=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LSR1(), tz.m.StrongWolfe(c2=0.1, fallback=True)),
     needs_closure=True,
     func='rosen', steps=50, loss=0, merge_invariant=True,
     sphere_steps=10, sphere_loss=0,
@@ -806,8 +806,8 @@ LSR1 = Run(
 
 # ---------------------------- second_order/newton --------------------------- #
 Newton = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Newton(), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     func='rosen', steps=20, loss=1e-7, merge_invariant=True,
     sphere_steps=2, sphere_loss=1e-9,
@@ -815,8 +815,8 @@ Newton = Run(
 
 # --------------------------- second_order/newton_cg -------------------------- #
 NewtonCG = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.NewtonCG(), tz.m.StrongWolfe(fallback=True)),
     needs_closure=True,
     func='rosen', steps=20, loss=1e-10, merge_invariant=True,
     sphere_steps=2, sphere_loss=3e-4,
@@ -824,8 +824,8 @@ NewtonCG = Run(
 
 # ---------------------------- smoothing/gaussian ---------------------------- #
 GaussianHomotopy = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1e-1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.GradientSampling([tz.m.BFGS(), tz.m.Backtracking()], 1e-1, 10, termination=tz.m.TerminateByUpdateNorm(1e-1), seed=0)),
     needs_closure=True,
     func='booth', steps=20, loss=0.01, merge_invariant=True,
     sphere_steps=10, sphere_loss=1,
@@ -833,16 +833,16 @@ GaussianHomotopy = Run(
 
 # ---------------------------- smoothing/laplacian --------------------------- #
 LaplacianSmoothing = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(min_numel=1), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(min_numel=1), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LaplacianSmoothing(min_numel=1), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LaplacianSmoothing(min_numel=1), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.4, merge_invariant=False,
     sphere_steps=10, sphere_loss=3,
 )
 
 LaplacianSmoothing_global = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(layerwise=False), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LaplacianSmoothing(layerwise=False), tz.m.LR(0.5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LaplacianSmoothing(layerwise=False), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LaplacianSmoothing(layerwise=False), tz.m.LR(0.5)),
     needs_closure=False,
     func='booth', steps=50, loss=0.4, merge_invariant=True,
     sphere_steps=10, sphere_loss=3,
@@ -850,8 +850,8 @@ LaplacianSmoothing_global = Run(
 
 # -------------------------- wrappers/optim_wrapper -------------------------- #
 Wrap = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Wrap(torch.optim.Adam, lr=1), tz.m.LR(0.5)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Wrap(torch.optim.Adam, lr=1), tz.m.LR(0.2)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Wrap(torch.optim.Adam, lr=1), tz.m.LR(0.5)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Wrap(torch.optim.Adam, lr=1), tz.m.LR(0.2)),
     needs_closure=False,
     func='rosen', steps=50, loss=4, merge_invariant=True,
     sphere_steps=20, sphere_loss=4,
@@ -859,15 +859,15 @@ Wrap = Run(
 
 # --------------------------- second_order/nystrom --------------------------- #
 NystromSketchAndSolve = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(2, seed=0), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NystromSketchAndSolve(10, seed=0), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.NystromSketchAndSolve(2, seed=0), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.NystromSketchAndSolve(10, seed=0), tz.m.StrongWolfe()),
     needs_closure=True,
     func='booth', steps=3, loss=1e-6, merge_invariant=True,
     sphere_steps=10, sphere_loss=1e-12,
 )
 NystromPCG = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.NystromPCG(2, seed=0), tz.m.StrongWolfe()),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.NystromPCG(10, seed=0), tz.m.StrongWolfe()),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.NystromPCG(2, seed=0), tz.m.StrongWolfe()),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.NystromPCG(10, seed=0), tz.m.StrongWolfe()),
     needs_closure=True,
     func='ill', steps=2, loss=1e-5, merge_invariant=True,
     sphere_steps=2, sphere_loss=1e-9,
@@ -875,8 +875,8 @@ NystromPCG = Run(
 
 # ---------------------------- optimizers/sophia_h --------------------------- #
 SophiaH = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.SophiaH(seed=0), tz.m.LR(0.1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.SophiaH(seed=0), tz.m.LR(0.3)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.SophiaH(seed=0), tz.m.LR(0.1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SophiaH(seed=0), tz.m.LR(0.3)),
     needs_closure=True,
     func='ill', steps=50, loss=0.02, merge_invariant=True,
     sphere_steps=10, sphere_loss=40,
@@ -884,8 +884,8 @@ SophiaH = Run(
 
 # -------------------------- higher_order ------------------------- #
 HigherOrderNewton = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.experimental.HigherOrderNewton(trust_method=None)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.experimental.HigherOrderNewton(2, trust_method=None)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.experimental.HigherOrderNewton(trust_method=None)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.experimental.HigherOrderNewton(2, trust_method=None)),
     needs_closure=True,
     func='rosen', steps=1, loss=2e-10, merge_invariant=True,
     sphere_steps=1, sphere_loss=1e-10,
@@ -893,8 +893,8 @@ HigherOrderNewton = Run(
 
 # ---------------------------- optimizers/ladagrad --------------------------- #
 LMAdagrad = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(4)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.LMAdagrad(), tz.m.LR(5)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.LMAdagrad(), tz.m.LR(4)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.LMAdagrad(), tz.m.LR(5)),
     needs_closure=False,
     func='booth', steps=50, loss=1e-6, merge_invariant=True,
     sphere_steps=20, sphere_loss=1e-9,
@@ -902,8 +902,8 @@ LMAdagrad = Run(
 
 # ------------------------------ optimizers/adan ----------------------------- #
 Adan = Run(
-    func_opt=lambda p: tz.Modular(p, tz.m.Adan(), tz.m.LR(1)),
-    sphere_opt=lambda p: tz.Modular(p, tz.m.Adan(), tz.m.LR(0.1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.Adan(), tz.m.LR(1)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.Adan(), tz.m.LR(0.1)),
     needs_closure=False,
     func='booth', steps=50, loss=60, merge_invariant=True,
     sphere_steps=20, sphere_loss=60,
@@ -914,8 +914,8 @@ for CG in (tz.m.PolakRibiere, tz.m.FletcherReeves, tz.m.HestenesStiefel, tz.m.Da
     for func_steps,sphere_steps_ in ([3,2], [10,10]): # CG should converge on 2D quadratic after 2nd step
         # but also test 10 to make sure it doesn't explode after converging
         Run(
-            func_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
-            sphere_opt=lambda p: tz.Modular(p, CG(), tz.m.StrongWolfe(c2=0.1)),
+            func_opt=lambda p: tz.Optimizer(p, CG(), tz.m.StrongWolfe(c2=0.1)),
+            sphere_opt=lambda p: tz.Optimizer(p, CG(), tz.m.StrongWolfe(c2=0.1)),
             needs_closure=True,
             func='lstsq', steps=func_steps, loss=1e-10, merge_invariant=True,
             sphere_steps=sphere_steps_, sphere_loss=0,
@@ -948,8 +948,8 @@ for QN in (
     tz.m.SSVM,
 ):
     Run(
-        func_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
-        sphere_opt=lambda p: tz.Modular(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
+        func_opt=lambda p: tz.Optimizer(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
+        sphere_opt=lambda p: tz.Optimizer(p, QN(scale_first=False, ptol_restart=True), tz.m.StrongWolfe()),
         needs_closure=True,
         func='lstsq', steps=50, loss=1e-10, merge_invariant=True,
         sphere_steps=10, sphere_loss=1e-20,

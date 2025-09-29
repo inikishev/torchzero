@@ -3,7 +3,7 @@ import math
 from typing import Literal
 import torch
 
-from ...core import Modular, Module, Objective, Chainable
+from ...core import Optimizer, Module, Objective, Chainable
 from ...utils import NumberList, TensorList
 
 

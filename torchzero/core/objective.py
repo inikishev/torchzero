@@ -20,7 +20,7 @@ from ..utils.derivatives import (
 from ..utils.thoad_tools import thoad_derivatives, thoad_single_tensor, lazy_thoad
 
 if TYPE_CHECKING:
-    from .modular import Modular
+    from .modular import Optimizer
     from .module import Module
 
 def _closure_backward(closure, params, backward, retain_graph, create_graph):
@@ -154,7 +154,7 @@ class Objective:
         model: torch.nn.Module | None = None,
         current_step: int = 0,
         parent: "Objective | None" = None,
-        modular: "Modular | None" = None,
+        modular: "Optimizer | None" = None,
         storage: dict | None = None,
     ):
         self.params: list[torch.Tensor] = list(params)
@@ -175,7 +175,7 @@ class Objective:
         Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
         e.g. when projecting."""
 
-        self.modular: "Modular | None" = modular
+        self.modular: "Optimizer | None" = modular
         """Top-level ``Modular`` optimizer, ``None`` if it wasn't specified."""
 
         self.updates: list[torch.Tensor] | None = None

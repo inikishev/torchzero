@@ -10,8 +10,10 @@ from ...linalg.orthogonalize import orthogonalize as _orthogonalize, Orthogonali
 def reverse_dims(t:torch.Tensor):
     return t.permute(*reversed(range(t.ndim)))
 
-def _is_at_least_2d(p: torch.Tensor):
-    if (p.ndim >= 2) and (p.size(0) > 1) and (p.size(1) > 1): return True
+def _is_at_least_2d(p: torch.Tensor, channel_first:bool):
+    if p.ndim < 2: return False
+    if channel_first and (p.size(0) > 1) and (p.size(1) > 1): return True
+    if (not channel_first) and (p.size(-2) > 1) and (p.size(-1) > 1): return True
     return False
 
 def _orthogonalize_format(
@@ -19,6 +21,7 @@ def _orthogonalize_format(
     method: OrthogonalizeMethod,
     channel_first: bool,
 ):
+    """orthogonalize either 1st two dims if channel first or last two otherwise"""
     if channel_first:
         return reverse_dims(_orthogonalize(reverse_dims(tensor), method=method))
 
@@ -69,7 +72,7 @@ def orthogonalize_grads_(
             are considered batch dimensions.
     """
     for p in params:
-        if (p.grad is not None) and _is_at_least_2d(p.grad):
+        if (p.grad is not None) and _is_at_least_2d(p.grad, channel_first=channel_first):
             X = _orthogonalize_format(p.grad, method=method, channel_first=channel_first)
             if dual_norm_correction: X = _dual_norm_correction(X, p.grad, channel_first=False)
             p.grad.set_(X.view_as(p)) # pyright:ignore[reportArgumentType]
@@ -131,7 +134,7 @@ class Orthogonalize(TensorTransform):
 
         if not orthogonalize: return tensor
 
-        if _is_at_least_2d(tensor):
+        if _is_at_least_2d(tensor, channel_first=channel_first):
 
             X = _orthogonalize_format(tensor, method, channel_first=channel_first)
 
@@ -173,7 +176,7 @@ class MuonAdjustLR(Transform):
         alphas = [s['alpha'] for s in settings]
         channel_first = [s["channel_first=channel_first"] for s in settings]
         tensors_alphas = [
-            (t, adjust_lr_for_muon(a, t.shape, cf)) for t, a, cf in zip(tensors, alphas, channel_first) if _is_at_least_2d(t)
+            (t, adjust_lr_for_muon(a, t.shape, cf)) for t, a, cf in zip(tensors, alphas, channel_first) if _is_at_least_2d(t, channel_first=cf)
         ]
         tensors = [i[0] for i in tensors_alphas]
         a = [i[1] for i in alphas]
