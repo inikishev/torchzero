@@ -21,6 +21,51 @@ from .psgd import (
 
 # matches
 class KronNewton(Transform):
+    """Kron hessian preconditioner from Preconditioned Stochastic Gradient Descent (see https://github.com/lixilinx/psgd_torch)
+
+    Args:
+        max_dim (int, optional): dimensions with size larger than this use diagonal preconditioner. Defaults to 10_000.
+        max_skew (float, optional):
+            if memory used by full preconditioner (dim^2) is larger than total number of elements in a parameter times ``max_skew``, it uses a diagonal preconditioner. Defaults to 1.0.
+        init_scale (float | None, optional):
+            initial scale of the preconditioner. If None, determined based on a heuristic. Defaults to None.
+        lr_preconditioner (float, optional): learning rate of the preconditioner. Defaults to 0.1.
+        betaL (float, optional): EMA factor for the L-smoothness constant wrt Q. Defaults to 0.9.
+        damping (float, optional): adds small noise to gradient when updating the preconditioner. Defaults to 1e-9.
+        grad_clip_max_amp (float, optional): clips amplitude of the update. Defaults to float("inf").
+        update_probability (float, optional): probability of updating preconditioner on each step. Defaults to 1.0.
+        dQ (str, optional): geometry for preconditioner update. Defaults to "Q0.5EQ1.5".
+        balance_probability (float, optional):
+            probablility of balancing the dynamic ranges of the factors of Q to avoid over/under-flow on each step. Defaults to 0.01.
+        hvp_method (HVPMethod, optional): how to compute hessian-vector products. Defaults to 'autograd'.
+        h (float, optional):
+            if ``hvp_method`` is ``"fd_central"`` or ``"fd_forward"``, controls finite difference step size.
+            Defaults to 1e-3.
+        distribution (Distributions, optional):
+            distribution for random vectors for hessian-vector products. Defaults to 'normal'.
+        inner (Chainable | None, optional): preconditioning will be applied to output of this module. Defaults to None.
+
+
+    ###Examples:
+
+    Pure PSGD Kron Newton:
+    ```py
+    optimizer = tz.Modular(
+        model.parameters(),
+        tz.m.KronNewton(),
+        tz.m.LR(1e-3),
+    )
+    ```
+
+    Applying preconditioner to momentum:
+    ```py
+    optimizer = tz.Modular(
+        model.parameters(),
+        tz.m.KronNewton(inner=tz.m.EMA(0.9)),
+        tz.m.LR(1e-3),
+    )
+    ```
+    """
     def __init__(
         self,
         max_dim: int = 10_000,
