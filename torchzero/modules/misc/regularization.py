@@ -23,7 +23,7 @@ class Dropout(Transform):
     Gradient dropout.
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Dropout(0.5),
         tz.m.Adam(),
@@ -34,7 +34,7 @@ class Dropout(Transform):
     Update dropout.
 
     ``python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.Dropout(0.5),

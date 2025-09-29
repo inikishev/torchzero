@@ -43,7 +43,7 @@ class InfinityNormTrustRegion(TrustRegionBase):
 
         .. code-block:: python
 
-            opt = tz.Modular(
+            opt = tz.Optimizer(
                 model.parameters(),
                 tz.m.InfinityNormTrustRegion(hess_module=tz.m.BFGS(inverse=False)),
             )

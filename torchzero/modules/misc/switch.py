@@ -19,7 +19,7 @@ class Alternate(Module):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Alternate(
             tz.m.Adam(),
@@ -89,7 +89,7 @@ class Switch(Alternate):
     Start with Adam, switch to L-BFGS after 1000th step and Truncated Newton on 2000th step.
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Switch(
             [tz.m.Adam(), tz.m.LR(1e-3)],

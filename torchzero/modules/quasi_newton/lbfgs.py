@@ -188,7 +188,7 @@ class LBFGS(TensorTransform):
 
     L-BFGS with line search
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LBFGS(100),
         tz.m.Backtracking()
@@ -197,7 +197,7 @@ class LBFGS(TensorTransform):
 
     L-BFGS with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.TrustCG(tz.m.LBFGS())
     )

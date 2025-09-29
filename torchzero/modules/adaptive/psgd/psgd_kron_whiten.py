@@ -44,7 +44,7 @@ class KronWhiten(TensorTransform):
 
     Pure PSGD Kron:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.KronWhiten(),
         tz.m.LR(1e-3),
@@ -53,7 +53,7 @@ class KronWhiten(TensorTransform):
 
     Momentum into preconditioner (whitens momentum):
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.EMA(0.9),
         tz.m.KronWhiten(),
@@ -63,7 +63,7 @@ class KronWhiten(TensorTransform):
 
     Updating the preconditioner from gradients and applying it to momentum:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.KronWhiten(inner=tz.m.EMA(0.9)),
         tz.m.LR(1e-3),

@@ -86,7 +86,7 @@ class AdaHessian(Transform):
     Using AdaHessian:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.AdaHessian(),
         tz.m.LR(0.1)
@@ -97,7 +97,7 @@ class AdaHessian(Transform):
     Turn off AdaHessian's first momentum to get just the preconditioning. Here is an example of applying
     AdaHessian preconditioning to nesterov momentum (``tz.m.NAG``):
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.AdaHessian(beta1=0, inner=tz.m.NAG(0.9)),
         tz.m.LR(0.1)

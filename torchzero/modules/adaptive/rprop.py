@@ -304,7 +304,7 @@ class SignConsistencyMask(TensorTransform):
     GD that skips update for weights where gradient sign changed compared to previous gradient.
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Mul(tz.m.SignConsistencyMask()),
         tz.m.LR(1e-2)
@@ -334,7 +334,7 @@ class SignConsistencyLRs(TensorTransform):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Mul(tz.m.SignConsistencyLRs()),
         tz.m.LR(1e-2)

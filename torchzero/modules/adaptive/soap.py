@@ -132,7 +132,7 @@ class SOAP(TensorTransform):
     SOAP:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SOAP(),
         tz.m.LR(1e-3)
@@ -141,7 +141,7 @@ class SOAP(TensorTransform):
     Stabilized SOAP:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SOAP(),
         tz.m.NormalizeByEMA(max_ema_growth=1.2),

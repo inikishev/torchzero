@@ -342,7 +342,7 @@ class SaveBest(Module):
         return (1 - x)**2 + (100 * (y - x**2))**2
 
     xy = torch.tensor((-1.1, 2.5), requires_grad=True)
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         [xy],
         tz.m.NAG(0.999),
         tz.m.LR(1e-6),

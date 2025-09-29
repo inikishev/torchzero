@@ -46,7 +46,7 @@ class DenseNewton(Transform):
 
     Pure Dense Newton PSGD:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.DenseNewton(),
         tz.m.LR(1e-3),
@@ -55,7 +55,7 @@ class DenseNewton(Transform):
 
     Applying preconditioner to momentum:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.DenseNewton(inner=tz.m.EMA(0.9)),
         tz.m.LR(1e-3),

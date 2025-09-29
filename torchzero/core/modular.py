@@ -46,7 +46,7 @@ def flatten_modules(*modules: Chainable) -> list[Module]:
     return flat
 
 
-# have to inherit from Modular to support lr schedulers
+# have to inherit from Optimizer to support lr schedulers
 # although Accelerate doesn't work due to converting param_groups to a dict
 class Optimizer(torch.optim.Optimizer):
     """Chains multiple modules into an optimizer.
@@ -62,7 +62,7 @@ class Optimizer(torch.optim.Optimizer):
     param_groups: list[ChainMap[str, Any]] # pyright:ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, params: Params | torch.nn.Module, *modules: Module):
-        if len(modules) == 0: raise RuntimeError("Empty list of modules passed to `Modular`")
+        if len(modules) == 0: raise RuntimeError("Empty list of modules passed to `Optimizer`")
         self.model: torch.nn.Module | None = None
         """The model whose parameters are being optimized, if a model instance was passed to `__init__`."""
         if isinstance(params, torch.nn.Module):
@@ -229,5 +229,5 @@ class Optimizer(torch.optim.Optimizer):
         return self._closure_return
 
     def __repr__(self):
-        return f'Modular({", ".join(str(m) for m in self.modules)})'
+        return f'Optimizer({", ".join(str(m) for m in self.modules)})'
 

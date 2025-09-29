@@ -178,7 +178,7 @@ class Newton(Transform):
     Newton's method with backtracking line search
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Newton(),
         tz.m.Backtracking()
@@ -188,7 +188,7 @@ class Newton(Transform):
     Newton's method for non-convex optimization.
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Newton(eigval_fn = lambda L: L.abs().clip(min=1e-4)),
         tz.m.Backtracking()
@@ -198,7 +198,7 @@ class Newton(Transform):
     Newton preconditioning applied to momentum
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Newton(inner=tz.m.EMA(0.9)),
         tz.m.LR(0.1)
@@ -209,7 +209,7 @@ class Newton(Transform):
     but if you wanted to see how diagonal newton behaves or compares to full newton, you can use this.
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Newton(H_tfm = lambda H, g: g/H.diag()),
         tz.m.Backtracking()

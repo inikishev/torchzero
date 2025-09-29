@@ -74,7 +74,7 @@ class LaplacianSmoothing(TensorTransform):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LaplacianSmoothing(),
         tz.m.LR(1e-2),

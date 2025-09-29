@@ -44,7 +44,7 @@ class LevenbergMarquardt(TrustRegionBase):
     Gauss-Newton with Levenberg-Marquardt trust-region
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.GaussNewton()),
     )
@@ -52,7 +52,7 @@ class LevenbergMarquardt(TrustRegionBase):
 
     LM-SR1
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False)),
     )

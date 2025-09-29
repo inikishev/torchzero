@@ -99,7 +99,7 @@ class MSAMMomentum(TensorTransform):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.MSAM(1e-3)
     )
@@ -109,7 +109,7 @@ class MSAMMomentum(TensorTransform):
     To make Adam_MSAM and such, use the ``tz.m.MSAMObjective`` module.
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.RMSprop(0.999, inner=tz.m.MSAM(1e-3)),
         tz.m.Debias(0.9, 0.999),
@@ -166,7 +166,7 @@ class MSAM(Transform):
     AdamW-MSAM
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         bench.parameters(),
         tz.m.MSAMObjective(
             [tz.m.Adam(), tz.m.WeightDecay(1e-3), tz.m.LR(1e-3)],

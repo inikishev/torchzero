@@ -57,7 +57,7 @@ class NewtonCG(Transform):
     Newton-CG with a backtracking line search:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NewtonCG(),
         tz.m.Backtracking()
@@ -66,7 +66,7 @@ class NewtonCG(Transform):
 
     Truncated Newton method (useful for large-scale problems):
     ```
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NewtonCG(maxiter=10),
         tz.m.Backtracking()
@@ -198,7 +198,7 @@ class NewtonCGSteihaug(Transform):
     Trust-region Newton-CG:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NewtonCGSteihaug(),
     )

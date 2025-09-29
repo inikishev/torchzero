@@ -96,7 +96,7 @@ def step_tensors(
     objective.updates = list(tensors)
 
     # step with modules
-    # this won't update parameters in-place because objective.Modular is None
+    # this won't update parameters in-place because objective.Optimizer is None
     objective = _chain_step(objective, modules)
 
     # return updates

@@ -90,7 +90,7 @@ class LMAdagrad(TensorTransform):
     Limited-memory Adagrad
 
     ```python
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.LMAdagrad(),
         tz.m.LR(0.1)
@@ -99,7 +99,7 @@ class LMAdagrad(TensorTransform):
     Adam with L-Adagrad preconditioner (for debiasing second beta is 0.999 arbitrarily)
 
     ```python
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.LMAdagrad(inner=tz.m.EMA()),
         tz.m.Debias(0.9, 0.999),
@@ -110,7 +110,7 @@ class LMAdagrad(TensorTransform):
     Stable Adam with L-Adagrad preconditioner (this is what I would recommend)
 
     ```python
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.LMAdagrad(inner=tz.m.EMA()),
         tz.m.Debias(0.9, 0.999),

@@ -51,7 +51,7 @@ class Warmup(TensorTransform):
 
         .. code-block:: python
 
-            opt = tz.Modular(
+            opt = tz.Optimizer(
                 model.parameters(),
                 tz.m.Adam(),
                 tz.m.LR(1e-2),
@@ -90,7 +90,7 @@ class WarmupNormClip(TensorTransform):
 
         .. code-block:: python
 
-            opt = tz.Modular(
+            opt = tz.Optimizer(
                 model.parameters(),
                 tz.m.Adam(),
                 tz.m.WarmupNormClip(steps=1000)

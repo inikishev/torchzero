@@ -73,7 +73,7 @@ class SubspaceNewton(Transform):
 
     RSN with line search
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.RSN(),
         tz.m.Backtracking()
@@ -82,7 +82,7 @@ class SubspaceNewton(Transform):
 
     RSN with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.RSN()),
     )

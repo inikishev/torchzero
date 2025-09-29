@@ -48,7 +48,7 @@ class ESGD(Transform):
     Using ESGD:
 ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ESGD(),
         tz.m.LR(0.1)
@@ -59,7 +59,7 @@ class ESGD(Transform):
     ESGD preconditioning to nesterov momentum (:code:`tz.m.NAG`):
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ESGD(beta1=0, inner=tz.m.NAG(0.9)),
         tz.m.LR(0.1)

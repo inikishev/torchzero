@@ -50,7 +50,7 @@ class KronNewton(Transform):
 
     Pure PSGD Kron Newton:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.KronNewton(),
         tz.m.LR(1e-3),
@@ -59,7 +59,7 @@ class KronNewton(Transform):
 
     Applying preconditioner to momentum:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.KronNewton(inner=tz.m.EMA(0.9)),
         tz.m.LR(1e-3),

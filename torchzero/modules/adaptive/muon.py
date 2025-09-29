@@ -103,7 +103,7 @@ class Orthogonalize(TensorTransform):
 
     standard Muon with Adam fallback
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.head.parameters(),
         tz.m.Split(
             # apply muon only to 2D+ parameters

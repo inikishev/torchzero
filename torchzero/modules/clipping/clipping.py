@@ -161,7 +161,7 @@ class ClipValue(TensorTransform):
 
     Gradient clipping:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ClipValue(1),
         tz.m.Adam(),
@@ -171,7 +171,7 @@ class ClipValue(TensorTransform):
 
     Update clipping:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.ClipValue(1),
@@ -211,7 +211,7 @@ class ClipNorm(TensorTransform):
 
     Gradient norm clipping:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ClipNorm(1),
         tz.m.Adam(),
@@ -221,7 +221,7 @@ class ClipNorm(TensorTransform):
 
     Update norm clipping:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.ClipNorm(1),
@@ -277,7 +277,7 @@ class Normalize(TensorTransform):
     Examples:
     Gradient normalization:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Normalize(1),
         tz.m.Adam(),
@@ -288,7 +288,7 @@ class Normalize(TensorTransform):
     Update normalization:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.Normalize(1),
@@ -378,7 +378,7 @@ class Centralize(TensorTransform):
 
     Standard gradient centralization:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Centralize(dim=0),
         tz.m.LR(1e-2),

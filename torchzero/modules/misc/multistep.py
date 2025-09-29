@@ -129,7 +129,7 @@ class Online(Module):
 
     Online L-BFGS with Backtracking line search
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Online(tz.m.LBFGS()),
         tz.m.Backtracking()
@@ -138,7 +138,7 @@ class Online(Module):
 
     Online L-BFGS trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.TrustCG(tz.m.Online(tz.m.LBFGS()))
     )

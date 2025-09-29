@@ -154,8 +154,8 @@ class Run:
     Holds arguments for a test.
 
     Args:
-        func_opt (Callable): opt for test function e.g. :code:`lambda p: tz.Modular(p, tz.m.Adam())`
-        sphere_opt (Callable): opt for sphere e.g. :code:`lambda p: tz.Modular(p, tz.m.Adam(), tz.m.LR(0.1))`
+        func_opt (Callable): opt for test function e.g. :code:`lambda p: tz.Optimizer(p, tz.m.Adam())`
+        sphere_opt (Callable): opt for sphere e.g. :code:`lambda p: tz.Optimizer(p, tz.m.Adam(), tz.m.LR(0.1))`
         needs_closure (bool): set to True if opt_fn requires closure
         func (str): what test function to use ("booth", "rosen", "ill")
         steps (int): number of steps to run test function for.
@@ -797,8 +797,8 @@ LSR1 = Run(
 
 # # ---------------------------- quasi_newton/olbfgs --------------------------- #
 # OnlineLBFGS = Run(
-#     func_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
-#     sphere_opt=lambda p: tz.Modular(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
+#     func_opt=lambda p: tz.Optimizer(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
+#     sphere_opt=lambda p: tz.Optimizer(p, tz.m.OnlineLBFGS(), tz.m.StrongWolfe()),
 #     needs_closure=True,
 #     func='rosen', steps=50, loss=0, merge_invariant=True,
 #     sphere_steps=10, sphere_loss=0,

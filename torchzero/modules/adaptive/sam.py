@@ -31,7 +31,7 @@ class SAM(Transform):
     SAM-SGD:
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SAM(),
         tz.m.LR(1e-2)
@@ -41,7 +41,7 @@ class SAM(Transform):
     SAM-Adam:
 
     ```
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SAM(),
         tz.m.Adam(),
@@ -149,7 +149,7 @@ class ASAM(SAM):
     ASAM-SGD:
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ASAM(),
         tz.m.LR(1e-2)
@@ -159,7 +159,7 @@ class ASAM(SAM):
     ASAM-Adam:
 
     ```
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.ASAM(),
         tz.m.Adam(),

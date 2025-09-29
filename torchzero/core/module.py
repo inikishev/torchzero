@@ -35,7 +35,7 @@ class Module(ABC):
 
         # settings are stored like state in per-tensor defaultdict, with per-parameter overrides possible
         # 0 - this module specific per-parameter setting overrides set via `set_param_groups` - highest priority
-        # 1 - global per-parameter setting overrides in param_groups passed to Modular - medium priority
+        # 1 - global per-parameter setting overrides in param_groups passed to Optimizer - medium priority
         # 2 - `defaults` - lowest priority
         self.settings: defaultdict[torch.Tensor, ChainMap[str, Any]] = defaultdict(lambda: ChainMap({}, {}, self.defaults))
         """per-parameter settings."""
@@ -273,7 +273,7 @@ class Module(ABC):
         return state_dict
 
     def _load_state_dict(self, state_dict: dict[str, Any], id_to_tensor: dict[int, torch.Tensor]):
-        """loads state_dict, ``id_to_tensor`` is passed by ``Modular``"""
+        """loads state_dict, ``id_to_tensor`` is passed by ``Optimizer``"""
         # load state
         state = state_dict['state']
         self.state.clear()

@@ -135,13 +135,13 @@ class Objective:
         model (torch.nn.Module | None, optional):
             ``torch.nn.Module`` object, needed for a few modules that require access to the model. Defaults to None.
         current_step (int, optional):
-            number of times ``Modular.step()`` has been called, starting at 0. Defaults to 0.
+            number of times ``Optimizer.step()`` has been called, starting at 0. Defaults to 0.
         parent (Objective | None, optional):
             parent ``Objective`` object. When ``self.get_grad()`` is called, it will also set ``parent.grad``.
             Same with ``self.get_loss()``. This is useful when ``self.params`` are different from ``parent.params``,
             e.g. when projecting. Defaults to None.
-        modular (Modular | None, optional):
-            Top-level ``Modular`` optimizer. Defaults to None.
+        modular (Optimizer | None, optional):
+            Top-level ``Optimizer`` optimizer. Defaults to None.
         storage (dict | None, optional):
             additional kwargs passed to ``step`` to control some module-specific behavior. Defaults to None.
 
@@ -176,7 +176,7 @@ class Objective:
         e.g. when projecting."""
 
         self.modular: "Optimizer | None" = modular
-        """Top-level ``Modular`` optimizer, ``None`` if it wasn't specified."""
+        """Top-level ``Optimizer`` optimizer, ``None`` if it wasn't specified."""
 
         self.updates: list[torch.Tensor] | None = None
         """
@@ -222,7 +222,7 @@ class Objective:
         # """Storage for any other data, such as hessian estimates, etc."""
 
         self.attrs: dict = {}
-        """attributes, ``Modular.attrs`` is updated with this after each step.
+        """attributes, ``Optimizer.attrs`` is updated with this after each step.
         This attribute should always be modified in-place"""
 
         if storage is None: storage = {}
@@ -231,7 +231,7 @@ class Objective:
         This attribute should always be modified in-place"""
 
         self.should_terminate: bool | None = None
-        """termination criteria, ``Modular.should_terminate`` is set to this after each step if not ``None``"""
+        """termination criteria, ``Optimizer.should_terminate`` is set to this after each step if not ``None``"""
 
         self.temp: Any = cast(Any, None)
         """temporary storage, ``Module.update`` can set this and ``Module.apply`` access via ``objective.poptemp()``.

@@ -60,7 +60,7 @@ class Adan(TensorTransform):
 
     Example:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adan(),
         tz.m.LR(1e-3),

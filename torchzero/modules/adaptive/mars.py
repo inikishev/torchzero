@@ -35,7 +35,7 @@ class MARSCorrection(TensorTransform):
 
     Mars-AdamW
     ```python
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.MARSCorrection(beta=0.95),
         tz.m.Adam(beta1=0.95, beta2=0.99),
@@ -46,7 +46,7 @@ class MARSCorrection(TensorTransform):
 
     Mars-Lion
     ```python
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.MARSCorrection(beta=0.9),
         tz.m.Lion(beta1=0.9),

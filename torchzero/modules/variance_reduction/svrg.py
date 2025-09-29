@@ -44,7 +44,7 @@ class SVRG(Module):
     ## Examples:
     SVRG-LBFGS
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SVRG(len(dataloader)),
         tz.m.LBFGS(),
@@ -54,7 +54,7 @@ class SVRG(Module):
 
     For extra variance reduction one can use Online versions of algorithms, although it won't always help.
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SVRG(len(dataloader)),
         tz.m.Online(tz.m.LBFGS()),
@@ -63,7 +63,7 @@ class SVRG(Module):
 
     Variance reduction can also be applied to gradient estimators.
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SPSA(),
         tz.m.SVRG(100),

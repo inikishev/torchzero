@@ -106,12 +106,12 @@ class FDM(GradApproximator):
     plain FDM:
 
     ```python
-    fdm = tz.Modular(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
+    fdm = tz.Optimizer(model.parameters(), tz.m.FDM(), tz.m.LR(1e-2))
     ```
 
     Any gradient-based method can use FDM-estimated gradients.
     ```python
-    fdm_ncg = tz.Modular(
+    fdm_ncg = tz.Optimizer(
         model.parameters(),
         tz.m.FDM(),
         # set hvp_method to "forward" so that it

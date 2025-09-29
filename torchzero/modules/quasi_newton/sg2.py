@@ -23,7 +23,7 @@ class SG2(Transform):
 
     2SPSA (second-order SPSA)
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SPSA(),
         tz.m.SG2(),
@@ -33,7 +33,7 @@ class SG2(Transform):
 
     SG2 with line search
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SG2(),
         tz.m.Backtracking()
@@ -42,7 +42,7 @@ class SG2(Transform):
 
     SG2 with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.SG2(beta=0.75. n_samples=4)),
     )
@@ -164,7 +164,7 @@ class SG2(Transform):
 
 #     SPSA2 with line search
 #     ```python
-#     opt = tz.Modular(
+#     opt = tz.Optimizer(
 #         model.parameters(),
 #         tz.m.SPSA2(),
 #         tz.m.Backtracking()
@@ -173,7 +173,7 @@ class SG2(Transform):
 
 #     SPSA2 with trust region
 #     ```python
-#     opt = tz.Modular(
+#     opt = tz.Optimizer(
 #         model.parameters(),
 #         tz.m.LevenbergMarquardt(tz.m.SPSA2()),
 #     )

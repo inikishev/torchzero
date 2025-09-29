@@ -33,7 +33,7 @@ class LRAWhiten(TensorTransform):
 
     Pure PSGD LRA:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.LRAWhiten(),
         tz.m.LR(1e-3),
@@ -42,7 +42,7 @@ class LRAWhiten(TensorTransform):
 
     Momentum into preconditioner (whitens momentum):
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.EMA(0.9),
         tz.m.LRAWhiten(),
@@ -52,7 +52,7 @@ class LRAWhiten(TensorTransform):
 
     Updating the preconditioner from gradients and applying it to momentum:
     ```py
-    optimizer = tz.Modular(
+    optimizer = tz.Optimizer(
         model.parameters(),
         tz.m.LRAWhiten(inner=tz.m.EMA(0.9)),
         tz.m.LR(1e-3),

@@ -174,7 +174,7 @@ class RandomizedFDM(GradApproximator):
 
     SPSA is randomized FDM with rademacher distribution and central formula.
     ```py
-    spsa = tz.Modular(
+    spsa = tz.Optimizer(
         model.parameters(),
         tz.m.RandomizedFDM(formula="fd_central", distribution="rademacher"),
         tz.m.LR(1e-2)
@@ -185,7 +185,7 @@ class RandomizedFDM(GradApproximator):
 
     RDSA is randomized FDM with usually gaussian distribution and central formula.
     ```
-    rdsa = tz.Modular(
+    rdsa = tz.Optimizer(
         model.parameters(),
         tz.m.RandomizedFDM(formula="fd_central", distribution="gaussian"),
         tz.m.LR(1e-2)
@@ -196,7 +196,7 @@ class RandomizedFDM(GradApproximator):
 
     GS uses many gaussian samples with possibly a larger finite difference step size.
     ```
-    gs = tz.Modular(
+    gs = tz.Optimizer(
         model.parameters(),
         tz.m.RandomizedFDM(n_samples=100, distribution="gaussian", formula="forward2", h=1e-1),
         tz.m.NewtonCG(hvp_method="forward"),
@@ -208,7 +208,7 @@ class RandomizedFDM(GradApproximator):
 
     Momentum might help by reducing the variance of the estimated gradients.
     ```
-    momentum_spsa = tz.Modular(
+    momentum_spsa = tz.Optimizer(
         model.parameters(),
         tz.m.RandomizedFDM(),
         tz.m.HeavyBall(0.9),

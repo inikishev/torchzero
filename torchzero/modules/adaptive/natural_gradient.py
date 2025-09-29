@@ -41,7 +41,7 @@ class NaturalGradient(Transform):
     y = torch.randn(64, 10)
 
     model = nn.Sequential(nn.Linear(20, 64), nn.ELU(), nn.Linear(64, 10))
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NaturalGradient(),
         tz.m.LR(3e-2)
@@ -61,7 +61,7 @@ class NaturalGradient(Transform):
     y = torch.randn(64, 10)
 
     model = nn.Sequential(nn.Linear(20, 64), nn.ELU(), nn.Linear(64, 10))
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NaturalGradient(),
         tz.m.LR(3e-2)
@@ -84,7 +84,7 @@ class NaturalGradient(Transform):
         return torch.stack([(1 - x1).abs(), (10 * (x2 - x1**2).abs())])
 
     X = torch.tensor([-1.1, 2.5], requires_grad=True)
-    opt = tz.Modular([X], tz.m.NaturalGradient(sqrt=True, gn_grad=True), tz.m.LR(0.05))
+    opt = tz.Optimizer([X], tz.m.NaturalGradient(sqrt=True, gn_grad=True), tz.m.LR(0.05))
 
     for iter in range(200):
         losses = rosenbrock(X)

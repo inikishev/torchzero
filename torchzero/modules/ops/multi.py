@@ -144,7 +144,7 @@ class Graft(MultiOperationBase):
 
     Shampoo grafted to Adam
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.GraftModules(
             direction = tz.m.Shampoo(),

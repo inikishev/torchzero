@@ -68,7 +68,7 @@ class GaussNewton(Module):
         return torch.stack([(1 - x1), 100 * (x2 - x1**2)])
 
     X = torch.tensor([-1.1, 2.5], requires_grad=True)
-    opt = tz.Modular([X], tz.m.GaussNewton(), tz.m.Backtracking())
+    opt = tz.Optimizer([X], tz.m.GaussNewton(), tz.m.Backtracking())
 
     # define the closure for line search
     def closure(backward=True):
@@ -86,7 +86,7 @@ class GaussNewton(Module):
     y = torch.randn(64, 10)
 
     model = nn.Sequential(nn.Linear(20, 64), nn.ELU(), nn.Linear(64, 10))
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.TrustCG(tz.m.GaussNewton()),
     )

@@ -57,7 +57,7 @@ class Cautious(TensorTransform):
     Cautious Adam
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         bench.parameters(),
         tz.m.Adam(),
         tz.m.Cautious(),
@@ -173,7 +173,7 @@ class ScaleByGradCosineSimilarity(TensorTransform):
 
     Scaled Adam
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         bench.parameters(),
         tz.m.Adam(),
         tz.m.ScaleByGradCosineSimilarity(),
@@ -211,7 +211,7 @@ class ScaleModulesByCosineSimilarity(Module):
 
     Adam scaled by similarity to RMSprop
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         bench.parameters(),
         tz.m.ScaleModulesByCosineSimilarity(
             main = tz.m.Adam(),

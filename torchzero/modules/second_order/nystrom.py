@@ -40,7 +40,7 @@ class NystromSketchAndSolve(Transform):
     NystromSketchAndSolve with backtracking line search
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NystromSketchAndSolve(100),
         tz.m.Backtracking()
@@ -50,7 +50,7 @@ class NystromSketchAndSolve(Transform):
     Trust region NystromSketchAndSolve
 
     ```py
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquadt(tz.m.NystromSketchAndSolve(100)),
     )
@@ -167,7 +167,7 @@ class NystromPCG(Transform):
     NystromPCG with backtracking line search
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NystromPCG(10),
         tz.m.Backtracking()

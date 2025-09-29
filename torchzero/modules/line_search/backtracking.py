@@ -77,7 +77,7 @@ class Backtracking(LineSearchBase):
     Gradient descent with backtracking line search:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Backtracking()
     )
@@ -85,7 +85,7 @@ class Backtracking(LineSearchBase):
 
     L-BFGS with backtracking line search:
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LBFGS(),
         tz.m.Backtracking()

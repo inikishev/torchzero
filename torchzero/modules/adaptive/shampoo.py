@@ -112,7 +112,7 @@ class Shampoo(TensorTransform):
     Shampoo grafted to Adam
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.GraftModules(
             direction = tz.m.Shampoo(),
@@ -125,7 +125,7 @@ class Shampoo(TensorTransform):
     Adam with Shampoo preconditioner
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Shampoo(beta=0.999, inner=tz.m.EMA(0.9)),
         tz.m.Debias(0.9, 0.999),

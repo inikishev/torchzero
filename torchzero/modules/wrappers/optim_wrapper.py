@@ -11,7 +11,7 @@ class Wrap(Module):
     Wraps a pytorch optimizer to use it as a module.
 
     Note:
-        Custom param groups are supported only by ``set_param_groups``, settings passed to Modular will be applied to all parameters.
+        Custom param groups are supported only by ``set_param_groups``, settings passed to Optimizer will be applied to all parameters.
 
     Args:
         opt_fn (Callable[..., torch.optim.Optimizer] | torch.optim.Optimizer):
@@ -21,7 +21,7 @@ class Wrap(Module):
         **kwargs:
             Extra args to be passed to opt_fn. The function is called as ``opt_fn(parameters, *args, **kwargs)``.
         use_param_groups:
-            Whether to pass settings passed to Modular to the wrapped optimizer.
+            Whether to pass settings passed to Optimizer to the wrapped optimizer.
 
             Note that settings to the first parameter are used for all parameters,
             so if you specified per-parameter settings, they will be ignored.
@@ -32,7 +32,7 @@ class Wrap(Module):
     ```python
 
     from pytorch_optimizer import StableAdamW
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Wrap(StableAdamW, lr=1),
         tz.m.Cautious(),
@@ -83,7 +83,7 @@ class Wrap(Module):
 
                 # settings passed in `set_param_groups` are the highest priority
                 # schedulers will override defaults but not settings passed in `set_param_groups`
-                # this is consistent with how Modular does it.
+                # this is consistent with how Optimizer does it.
                 if self._custom_param_groups is not None:
                     setting = {k:v for k,v in setting if k not in self._custom_param_groups[0]}
 

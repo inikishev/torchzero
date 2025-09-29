@@ -20,10 +20,10 @@ pip install git+https://github.com/inikishev/torchzero
 
 ## How to use
 
-Each module represents a distinct step in the optimization process. Construct a ``tz.Modular`` optimizer with the desired modules and use as any other pytorch optimizer:
+Each module represents a distinct step in the optimization process. Construct a ``tz.Optimizer`` optimizer with the desired modules and use as any other pytorch optimizer:
 
 ```py
-optimizer = tz.Modular(
+optimizer = tz.Optimizer(
     model.parameters(),
     tz.m.ClipValue(1),
     tz.m.Adam(),
@@ -51,7 +51,7 @@ model = nn.Sequential(nn.Linear(10, 10), nn.ELU(), nn.Linear(10, 1))
 inputs = torch.randn(100,10)
 targets = torch.randn(100, 1)
 
-optimizer = tz.Modular(
+optimizer = tz.Optimizer(
     model.parameters(),
     tz.m.CubicRegularization(tz.m.Newton()),
 )

@@ -436,7 +436,7 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
     BFGS with backtracking line search:
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.BFGS(),
         tz.m.Backtracking()
@@ -445,7 +445,7 @@ class BFGS(_InverseHessianUpdateStrategyDefaults):
 
     BFGS with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.BFGS(inverse=False)),
     )
@@ -513,7 +513,7 @@ class SR1(_InverseHessianUpdateStrategyDefaults):
 
     SR1 with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LevenbergMarquardt(tz.m.SR1(inverse=False)),
     )
@@ -1023,7 +1023,7 @@ class GradientCorrection(TensorTransform):
     L-BFGS with gradient correction
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.LBFGS(inner=tz.m.GradientCorrection()),
         tz.m.Backtracking()

@@ -47,7 +47,7 @@ class TrustCG(TrustRegionBase):
 
         .. code-block:: python
 
-            opt = tz.Modular(
+            opt = tz.Optimizer(
                 model.parameters(),
                 tz.m.TrustCG(hess_module=tz.m.SR1(inverse=False)),
             )

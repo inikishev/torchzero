@@ -110,7 +110,7 @@ class LSR1(TensorTransform):
 
     L-SR1 with line search
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SR1(),
         tz.m.StrongWolfe(c2=0.1, fallback=True)
@@ -119,7 +119,7 @@ class LSR1(TensorTransform):
 
     L-SR1 with trust region
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.TrustCG(tz.m.LSR1())
     )

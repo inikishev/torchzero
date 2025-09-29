@@ -33,7 +33,7 @@ class WeightDecay(TensorTransform):
 
     Adam with non-decoupled weight decay
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.WeightDecay(1e-3),
         tz.m.Adam(),
@@ -44,7 +44,7 @@ class WeightDecay(TensorTransform):
     Adam with decoupled weight decay that still scales with learning rate
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.WeightDecay(1e-3),
@@ -54,7 +54,7 @@ class WeightDecay(TensorTransform):
 
     Adam with fully decoupled weight decay that doesn't scale with learning rate
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.LR(1e-3),
@@ -93,7 +93,7 @@ class RelativeWeightDecay(TensorTransform):
 
     Adam with non-decoupled relative weight decay
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.RelativeWeightDecay(1e-1),
         tz.m.Adam(),
@@ -103,7 +103,7 @@ class RelativeWeightDecay(TensorTransform):
 
     Adam with decoupled relative weight decay
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.Adam(),
         tz.m.RelativeWeightDecay(1e-1),

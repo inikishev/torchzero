@@ -24,10 +24,10 @@ pip install git+https://github.com/inikishev/torchzero
 
 Each module represents a distinct step in the optimization process. See list of modules on the [wiki](https://inikishev.github.io/torchzero/API/).
 
-Construct a ``tz.Modular`` optimizer with the desired modules and use as any other pytorch optimizer:
+Construct a ``tz.Optimizer`` optimizer with the desired modules and use as any other pytorch optimizer:
 
 ```py
-optimizer = tz.Modular(
+optimizer = tz.Optimizer(
     model.parameters(),
     tz.m.ClipValue(1),
     tz.m.Adam(),
@@ -55,7 +55,7 @@ model = nn.Sequential(nn.Linear(10, 10), nn.ELU(), nn.Linear(10, 1))
 inputs = torch.randn(100,10)
 targets = torch.randn(100, 1)
 
-optimizer = tz.Modular(
+optimizer = tz.Optimizer(
     model.parameters(),
     tz.m.CubicRegularization(tz.m.Newton()),
 )
@@ -100,7 +100,7 @@ def closure(backward=True):
         loss.backward()
     return loss
 
-opt = tz.Modular([X], tz.m.NewtonCGSteihaug())
+opt = tz.Optimizer([X], tz.m.NewtonCGSteihaug())
 for step in range(24):
     loss = opt.step(closure)
     print(f'{step} - {loss}')

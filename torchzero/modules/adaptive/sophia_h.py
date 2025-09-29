@@ -50,7 +50,7 @@ class SophiaH(Transform):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SophiaH(),
         tz.m.LR(0.1)
@@ -63,7 +63,7 @@ class SophiaH(Transform):
 
     ```python
 
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.SophiaH(beta1=0, inner=tz.m.NAG(0.96)),
         tz.m.LR(0.1)

@@ -81,7 +81,7 @@ class Split(Module):
     Muon with Adam fallback using same hyperparams as https://github.com/KellerJordan/Muon
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.NAG(0.95),
         tz.m.Split(

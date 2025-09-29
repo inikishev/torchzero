@@ -24,7 +24,7 @@ class GradientAccumulation(Module):
     Adam with gradients accumulated for 16 batches.
 
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.GradientAccumulation(),
         tz.m.Adam(),

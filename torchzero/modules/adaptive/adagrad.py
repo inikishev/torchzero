@@ -190,7 +190,7 @@ class FullMatrixAdagrad(TensorTransform):
 
     Plain full-matrix adagrad
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.FullMatrixAdagrd(),
         tz.m.LR(1e-2),
@@ -199,7 +199,7 @@ class FullMatrixAdagrad(TensorTransform):
 
     Full-matrix RMSprop
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.FullMatrixAdagrad(beta=0.99),
         tz.m.LR(1e-2),
@@ -208,7 +208,7 @@ class FullMatrixAdagrad(TensorTransform):
 
     Full-matrix Adam
     ```python
-    opt = tz.Modular(
+    opt = tz.Optimizer(
         model.parameters(),
         tz.m.FullMatrixAdagrad(beta=0.999, inner=tz.m.EMA(0.9)),
         tz.m.Debias(0.9, 0.999),
