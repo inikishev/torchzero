@@ -224,7 +224,7 @@ class MBS:
             if not at_least_one_evaluated:
                 if self.rounding is None: break
                 self.rounding += 1
-                if self.rounding == 10: break
+                if self.rounding == 100: break
 
         # create dict[float, tuple[float,...]]
         ret = {}
@@ -263,7 +263,7 @@ def mbs_minimize(
     """minimize univariate function via MBS.
 
     Args:
-        fn (function): _description_
+        fn (function): objective function that accepts a float and returns a float or a sequence of floats to minimize.
         step (float, optional): expansion step size. Defaults to 1.
         num_candidates (int, optional): number of best points to sample new points around on each iteration. Defaults to 2.
         num_binary (int, optional): maximum number of new points sampled via binary search. Defaults to 7.
