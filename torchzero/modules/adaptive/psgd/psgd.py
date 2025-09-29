@@ -1,6 +1,6 @@
+# pylint:disable=not-callable
 # this file is from https://github.com/lixilinx/psgd_torch/blob/master/psgd.py ver from Sept., 2025
-# unmodified except this comment
-# other files import from this
+# with few minor modifications (like passing Q balancing probability)
 """
 The new PSGD-Kron Newton/Whitening preconditioners support five kinds of local coordinates for updating Q:
 
@@ -240,7 +240,7 @@ def balance_kron_precond(Q):
             q.mul_(gmean/norms[i])
 
 
-def update_precond_kron_eq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9):
+def update_precond_kron_eq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, balance_prob=0.01):
     """
     The raw function for updating the Kron preconditioner Q and Lipschitz smoothness constant L with pair (V, Hvp),
     where Q is update as dQ = E*Q,
@@ -280,7 +280,7 @@ def update_precond_kron_eq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9):
             L[i].copy_(torch.max(betaL*L[i] + (1 - betaL)*ell, ell))
             q.sub_(lr/L[i] * torch.triu(term1 - term2) @ q)
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
@@ -292,15 +292,15 @@ def precond_grad_kron(QL, exprs, G):
     return exprP(*[q.conj() for q in Q], *Q, G)
 
 
-def update_precond_kron_whiten_eq(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_eq(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron preconditioner Q as dQ = E*Q.
     """
     V = torch.randn_like(G)
-    update_precond_kron_eq(QL, exprs, V, G + damping*V, lr=lr, betaL=betaL)
+    update_precond_kron_eq(QL, exprs, V, G + damping*V, lr=lr, betaL=betaL, balance_prob=balance_prob)
 
 
-def update_precond_kron_whiten_qep(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_qep(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=...):
     """
     Update the Kron preconditioner Q as dQ = Q*E*P.
     """
@@ -327,7 +327,7 @@ def update_precond_kron_whiten_qep(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9
             q.sub_(lr/L[i] * (term1 - term2) @ q)
 
 
-def update_precond_kron_whiten_qeq(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_qeq(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron preconditioner Q as dQ = Q*E*Q.
     """
@@ -349,11 +349,11 @@ def update_precond_kron_whiten_qeq(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9
             L[i].copy_(torch.max(betaL*L[i] + (1 - betaL)*ell, ell))
             q.sub_(lr/L[i] * (q @ term1 - q * term2))
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_whiten_q0p5eq1p5(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_q0p5eq1p5(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron preconditioner Q as dQ = Q^0.5 * E * Q^1.5.
     """
@@ -376,11 +376,11 @@ def update_precond_kron_whiten_q0p5eq1p5(QL, exprs, G, lr=0.1, betaL=0.9, dampin
             q.sub_(lr/L[i] * (term1 @ q - term2 * q))
             procrustes_step(q)
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_whiten_quad(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_quad(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron preconditioner Q with a quadratic form.
     """
@@ -405,11 +405,11 @@ def update_precond_kron_whiten_quad(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-
             p = p - lr/2/L[i] * (p @ term1 - p * term2)
             q.copy_((p + p.H)/2) # p must be symmetric/hermitian
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_whiten_quad4p(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_whiten_quad4p(QL, exprs, G, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Almost the same as function update_precond_kron_whiten_quad except that fitting P directly.
     This is the only case that we fit P directly (Q here is P). Vulnerable to numerical errors.
@@ -435,7 +435,7 @@ def update_precond_kron_whiten_quad4p(QL, exprs, G, lr=0.1, betaL=0.9, damping=1
             p = p - lr/L[i] * (p @ term1 - p * term2)
             q.copy_((p + p.H)/2) # p must be symmetric/hermitian
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
@@ -558,14 +558,14 @@ class KronWhiten:
         return closure_returns
 
 
-def update_precond_kron_newton_eq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_eq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron Newton-type preconditioner Q as dQ = E*Q with a pair of vector and hvp, (V, Hvp).
     """
-    update_precond_kron_eq(QL, exprs, V, Hvp + damping*torch.randn_like(Hvp), lr=lr, betaL=betaL)
+    update_precond_kron_eq(QL, exprs, V, Hvp + damping*torch.randn_like(Hvp), lr=lr, betaL=betaL, balance_prob=balance_prob)
 
 
-def update_precond_kron_newton_qep(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_qep(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=...):
     """
     Update the Kron Newton-type preconditioner Q as dQ = Q*E*P with a pair of vector and hvp, (V, Hvp).
     """
@@ -591,7 +591,7 @@ def update_precond_kron_newton_qep(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping
             q.sub_(lr/L[i] * (term1 - term2) @ q)
 
 
-def update_precond_kron_newton_qeq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_qeq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron Newton-type preconditioner Q as dQ = Q*E*Q with a pair of vector and hvp, (V, Hvp).
     """
@@ -611,11 +611,11 @@ def update_precond_kron_newton_qeq(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping
             L[i].copy_(torch.max(betaL*L[i] + (1 - betaL)*ell, ell))
             q.sub_(lr/L[i] * q @ (term1 - term2))
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_newton_q0p5eq1p5(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_q0p5eq1p5(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron Newton-type preconditioner Q as dQ = Q^0.5 * E * Q^1.5 with a pair of vector and hvp, (V, Hvp).
     """
@@ -636,11 +636,11 @@ def update_precond_kron_newton_q0p5eq1p5(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, d
             q.sub_(lr/L[i] * (term1 - term2) @ q)
             procrustes_step(q)
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_newton_quad(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_quad(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Update the Kron Newton-type preconditioner Q with a quadratic form for dQ and pair of vector and hvp, (V, Hvp).
     """
@@ -664,11 +664,11 @@ def update_precond_kron_newton_quad(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, dampin
             p = p - p @ err     # p = p - lr/L[i]/2 * p @ (term1 - term2)
             q.copy_((p + p.H)/2) # p must be symmetric or hermitian
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 
-def update_precond_kron_newton_quad4p(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9):
+def update_precond_kron_newton_quad4p(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damping=1e-9, balance_prob=0.01):
     """
     Almost the same as function update_precond_kron_newton_quad except that we fit P directly.
     This is the only case that fits P directly (Q here is P). It's vulnerable to numerical errors.
@@ -693,7 +693,7 @@ def update_precond_kron_newton_quad4p(QL, exprs, V, Hvp, lr=0.1, betaL=0.9, damp
             p = p - p @ err     # p = p - lr/L[i] * p @ (term1 - term2)
             q.copy_((p + p.H)/2) # p must be symmetric or hermitian
 
-    if torch.rand([]) < 0.01: # balance factors of Q
+    if torch.rand([]) < balance_prob: # balance factors of Q
         balance_kron_precond(Q)
 
 

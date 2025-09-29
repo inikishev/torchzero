@@ -32,6 +32,7 @@ class KronWhiten(TensorTransform):
         grad_clip_max_amp: float = float("inf"),
         update_probability: float= 1.0,
         dQ: Literal["QEP", "EQ", "QEQ", "QUAD",  "Q0.5EQ1.5", "Q0p5EQ1p5", "QUAD4P"] = "Q0.5EQ1.5",
+        balance_probability: float = 0.01,
 
         inner: Chainable | None = None,
     ):
@@ -104,6 +105,7 @@ class KronWhiten(TensorTransform):
                     lr=setting["lr_preconditioner"],
                     betaL=setting["betaL"],
                     damping=setting["damping"],
+                    balance_prob=setting["balance_probability"]
                 )
 
     @torch.no_grad
