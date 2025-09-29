@@ -8,8 +8,8 @@ from ...core import Chainable, Module, Objective
 from ...utils import TensorList
 from ..termination import TerminationCriteriaBase
 
-def _reset_except_self(optimizer, var, self: Module):
-    for m in optimizer.unrolled_modules:
+def _reset_except_self(objective, modules, self: Module):
+    for m in modules:
         if m is not self:
             m.reset()
 
@@ -26,15 +26,15 @@ class RestartStrategyBase(Module, ABC):
             self.set_child('modules', modules)
 
     @abstractmethod
-    def should_reset(self, var: Objective) -> bool:
+    def should_reset(self, objective: Objective) -> bool:
         """returns whether reset should occur"""
 
-    def _reset_on_condition(self, var):
+    def _reset_on_condition(self, objective: Objective):
         modules = self.children.get('modules', None)
 
-        if self.should_reset(var):
+        if self.should_reset(objective):
             if modules is None:
-                var.post_step_hooks.append(partial(_reset_except_self, self=self))
+                objective.post_step_hooks.append(partial(_reset_except_self, self=self))
             else:
                 modules.reset()
 
@@ -78,11 +78,11 @@ class RestartOnStuck(RestartStrategyBase):
         super().__init__(defaults, modules)
 
     @torch.no_grad
-    def should_reset(self, var):
+    def should_reset(self, objective):
         step = self.global_state.get('step', 0)
         self.global_state['step'] = step + 1
 
-        params = TensorList(var.params)
+        params = TensorList(objective.params)
         tol = self.defaults['tol']
         if tol is None: tol = torch.finfo(params[0].dtype).tiny * 2
         n_tol = self.defaults['n_tol']
@@ -124,12 +124,12 @@ class RestartEvery(RestartStrategyBase):
         defaults = dict(steps=steps)
         super().__init__(defaults, modules)
 
-    def should_reset(self, var):
+    def should_reset(self, objective):
         step = self.global_state.get('step', 0) + 1
         self.global_state['step'] = step
 
         n = self.defaults['steps']
-        if isinstance(n, str): n = sum(p.numel() for p in var.params if p.requires_grad)
+        if isinstance(n, str): n = sum(p.numel() for p in objective.params if p.requires_grad)
 
         # reset every n steps
         if step % n == 0:
@@ -143,9 +143,9 @@ class RestartOnTerminationCriteria(RestartStrategyBase):
         super().__init__(None, modules)
         self.set_child('criteria', criteria)
 
-    def should_reset(self, var):
+    def should_reset(self, objective):
         criteria = cast(TerminationCriteriaBase, self.children['criteria'])
-        return criteria.should_terminate(var)
+        return criteria.should_terminate(objective)
 
 class PowellRestart(RestartStrategyBase):
     """Powell's two restarting criterions for conjugate gradient methods.
@@ -171,14 +171,14 @@ class PowellRestart(RestartStrategyBase):
         defaults=dict(cond1=cond1, cond2=cond2)
         super().__init__(defaults, modules)
 
-    def should_reset(self, var):
-        g = TensorList(var.get_grads())
+    def should_reset(self, objective):
+        g = TensorList(objective.get_grads())
         cond1 = self.defaults['cond1']; cond2 = self.defaults['cond2']
 
         # -------------------------------- initialize -------------------------------- #
         if 'initialized' not in self.global_state:
             self.global_state['initialized'] = 0
-            g_prev = self.get_state(var.params, 'g_prev', init=g)
+            g_prev = self.get_state(objective.params, 'g_prev', init=g)
             return False
 
         g_g = g.dot(g)
@@ -186,7 +186,7 @@ class PowellRestart(RestartStrategyBase):
         reset = False
         # ------------------------------- 1st condition ------------------------------ #
         if cond1 is not None:
-            g_prev = self.get_state(var.params, 'g_prev', must_exist=True, cls=TensorList)
+            g_prev = self.get_state(objective.params, 'g_prev', must_exist=True, cls=TensorList)
             g_g_prev = g_prev.dot(g)
 
             if g_g_prev.abs() >= cond1 * g_g:
@@ -194,7 +194,7 @@ class PowellRestart(RestartStrategyBase):
 
         # ------------------------------- 2nd condition ------------------------------ #
         if (cond2 is not None) and (not reset):
-            d_g = TensorList(var.get_updates()).dot(g)
+            d_g = TensorList(objective.get_updates()).dot(g)
             if (-1-cond2) * g_g < d_g < (-1 + cond2) * g_g:
                 reset = True
 

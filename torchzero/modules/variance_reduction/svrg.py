@@ -8,8 +8,7 @@ from ...utils import tofloat
 
 
 def _reset_except_self(objective: Objective, modules, self: Module):
-    assert objective.modular is not None
-    for m in objective.modular.flat_modules:
+    for m in modules:
         if m is not self:
             m.reset()
 

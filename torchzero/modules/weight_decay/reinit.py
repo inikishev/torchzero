@@ -6,8 +6,8 @@ from ...core import Module
 from ...utils import NumberList, TensorList
 
 
-def _reset_except_self(optimizer, var, self: Module):
-    for m in optimizer.unrolled_modules:
+def _reset_except_self(objective, modules, self: Module):
+    for m in modules:
         if m is not self:
             m.reset()
 
