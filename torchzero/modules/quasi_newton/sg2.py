@@ -9,10 +9,9 @@ def sg2_(
     delta_g: torch.Tensor,
     cd: torch.Tensor,
 ) -> torch.Tensor:
-    """cd is c * perturbation, and must be multiplied by two if hessian estimate is two-sided
-    (or divide delta_g by two)."""
+    """cd is c * perturbation."""
 
-    M = torch.outer(1.0 / cd, delta_g)
+    M = torch.outer(0.5 / cd, delta_g)
     H_hat = 0.5 * (M + M.T)
 
     return H_hat
@@ -45,7 +44,7 @@ class SG2(Transform):
     ```python
     opt = tz.Modular(
         model.parameters(),
-        tz.m.LevenbergMarquardt(tz.m.SG2()),
+        tz.m.LevenbergMarquardt(tz.m.SG2(beta=0.75. n_samples=4)),
     )
     ```
 
@@ -58,13 +57,12 @@ class SG2(Transform):
         beta: float | None = None,
         damping: float = 0,
         eigval_fn=None,
-        one_sided: bool = False, # one-sided hessian
         use_lstsq: bool = True,
         seed=None,
         update_freq: int = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(n_samples=n_samples, h=h, beta=beta, damping=damping, eigval_fn=eigval_fn, one_sided=one_sided, seed=seed, use_lstsq=use_lstsq)
+        defaults = dict(n_samples=n_samples, h=h, beta=beta, damping=damping, eigval_fn=eigval_fn, seed=seed, use_lstsq=use_lstsq)
         super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -87,27 +85,17 @@ class SG2(Transform):
             # generate perturbation
             cd = params.rademacher_like(generator=generator).mul_(h)
 
-            # one sided
-            if fs["one_sided"]:
-                g_0 = TensorList(objective.get_grads())
-                params.add_(cd)
-                closure()
+            # two sided hessian approximation
+            params.add_(cd)
+            closure()
+            g_p = params.grad.fill_none_(params)
 
-                g_p = params.grad.fill_none_(params)
-                delta_g = (g_p - g_0) * 2
+            params.copy_(x_0)
+            params.sub_(cd)
+            closure()
+            g_n = params.grad.fill_none_(params)
 
-            # two sided
-            else:
-                params.add_(cd)
-                closure()
-                g_p = params.grad.fill_none_(params)
-
-                params.copy_(x_0)
-                params.sub_(cd)
-                closure()
-                g_n = params.grad.fill_none_(params)
-
-                delta_g = g_p - g_n
+            delta_g = g_p - g_n
 
             # restore params
             params.set_(x_0)
@@ -138,6 +126,7 @@ class SG2(Transform):
     @torch.no_grad
     def apply_states(self, objective, states, settings):
         fs = settings[0]
+
         dir = _newton_step(
             objective=objective,
             H = self.global_state["H"],

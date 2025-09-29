@@ -152,10 +152,10 @@ class NaturalGradient(Transform):
         if sqrt:
             # this computes U, S <- SVD(M), then calculate update as U S^-1 Uᵀg,
             # but it computes it through eigendecompotision
-            U, L = lm_adagrad_update(G.H, reg, 0)
+            U, L = lm_adagrad_update(G.H, damping=reg, rdamping=1e-12, truncate=0, tol=1e-12)
             if U is None or L is None: return objective
 
-            v = lm_adagrad_apply(self.global_state["g"], U, L)
+            v,_ = lm_adagrad_apply(self.global_state["g"], U, L, exp_avg_proj=None, beta=0)
             objective.updates = vec_to_tensors(v, params)
             return objective
 
