@@ -30,6 +30,8 @@ jobs:
       - run: |
           pip install --upgrade pip
           pip install pytest scipy mkdocs mkdocs-material mkdocs-autorefs mkdocs-jupyter mkdocstrings mkdocstrings-python
+          python -m pip install scipy
+          python -m pip install opt_einsum
           python -m pip install git+https://github.com/inikishev/torchzero.git
           python -m pip install git+https://github.com/my-unlisted-repos/visualbench.git
 
