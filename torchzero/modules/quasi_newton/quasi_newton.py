@@ -376,21 +376,20 @@ def bfgs_B_(B:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
     B += term1.sub_(term2)
     return B
 
-def bfgs_H_(H:torch.Tensor, s: torch.Tensor, y:torch.Tensor, tol: float):
+
+def bfgs_H_(H: torch.Tensor, s: torch.Tensor, y: torch.Tensor, tol: float):
     sy = s.dot(y)
     if sy <= tol: return H
 
-    sy_sq = safe_clip(sy**2)
+    rho = 1.0 / sy
+    Hy = H @ y
 
-    Hy = H@y
-    scale1 = (sy + y.dot(Hy)) / sy_sq
-    term1 = s.outer(s).mul_(scale1)
+    term1 = (s.outer(s)).mul_(rho * (1 + rho * y.dot(Hy)))
+    term2 = (Hy.outer(s) + s.outer(Hy)).mul_(rho)
 
-    num2 = (Hy.outer(s)).add_(s.outer(y @ H))
-    term2 = num2.div_(sy)
-
-    H += term1.sub_(term2)
+    H.add_(term1).sub_(term2)
     return H
+
 
 class BFGS(_InverseHessianUpdateStrategyDefaults):
     """Broyden–Fletcher–Goldfarb–Shanno Quasi-Newton method. This is usually the most stable quasi-newton method.

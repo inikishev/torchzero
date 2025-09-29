@@ -20,18 +20,18 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
     try:
         L, Q = torch_linalg.eigh(MTM, retry_float64=True)
 
-        # truncate to top n largest eigenvalues
-        if truncate is not None and truncate > 0:
-            # L is ordered in ascending order
-            L = L[-truncate:]
-            Q = Q[:, -truncate:]
-
         # remove small eigenvalues relative to largest
         L_max = L.amax()
         indices = L > tol * L_max
         if indices.any():
             L = L[indices]
             Q = Q[:, indices]
+
+        # truncate to top n largest eigenvalues
+        if truncate is not None and truncate > 0:
+            # L is ordered in ascending order
+            L = L[-truncate:]
+            Q = Q[:, -truncate:]
 
         U = (M @ Q) * L.rsqrt()
 
