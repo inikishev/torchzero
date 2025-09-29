@@ -1,4 +1,4 @@
-from .adagrad import Adagrad, FullMatrixAdagrad, AdagradNorm
+from .adagrad import Adagrad, AdagradNorm, FullMatrixAdagrad
 
 # from .curveball import CurveBall
 # from .spectral import SpectralPreconditioner
@@ -8,14 +8,21 @@ from .adan import Adan
 from .adaptive_heavyball import AdaptiveHeavyBall
 from .aegd import AEGD
 from .esgd import ESGD
-from .lmadagrad import LMAdagrad
 from .lion import Lion
+from .lmadagrad import LMAdagrad
 from .mars import MARSCorrection
 from .matrix_momentum import MatrixMomentum
-from .msam import MSAMMomentum, MSAM
+from .msam import MSAM, MSAMMomentum
 from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize_grads_
 from .natural_gradient import NaturalGradient
 from .orthograd import OrthoGrad, orthograd_
+from .psgd import (
+    DenseNewton,
+    KronNewton,
+    KronWhiten,
+    LRANewton,
+    LRAWhiten,
+)
 from .rmsprop import RMSprop
 from .rprop import (
     BacktrackOnSignChange,
