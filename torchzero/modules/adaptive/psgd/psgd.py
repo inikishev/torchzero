@@ -38,9 +38,17 @@ Xi-Lin Li, lixilinx@gmail.com; last updated in Sept., 2025.
 Main refs: https://arxiv.org/abs/1512.04202; https://arxiv.org/abs/2402.11858.
 """
 
-import opt_einsum
+from typing import TYPE_CHECKING, cast
+
 import torch
 
+from ....utils.python_tools import LazyLoader
+
+opt_einsum = LazyLoader("opt_einsum")
+
+if TYPE_CHECKING:
+    import opt_einsum as _opt_einsum
+    opt_einsum = cast(_opt_einsum, opt_einsum)
 
 def norm_lower_bound_spd(A, k=32, half_iters=2):
     """
