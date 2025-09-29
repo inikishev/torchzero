@@ -5,8 +5,15 @@ on:
     branches:
       - master
       - main
+
 permissions:
   contents: write
+
+# this should fix it when it doesn't work so that it now works
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
