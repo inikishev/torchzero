@@ -5,7 +5,7 @@ from ...core import Chainable, TensorTransform
 from ...linalg import (
     OrthogonalizeMethod,
     nystrom_approximation,
-    orthogonalize,
+    orthogonalize, regularize_eig,
     torch_linalg,
 )
 from ...linalg.linear_operator import Eigendecomposition
@@ -55,34 +55,6 @@ def weighted_eigen_plus_rank1_mm(
 
     return w1 * sketch1 + w2 * sketch2
 
-def eig_regularize(
-    D: torch.Tensor,
-    P: torch.Tensor,
-    rank: int | None,
-    tol: float,
-    damping: float,
-    rdamping: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-
-    # remove small eigenvalues relative to largest
-    P_max = D.amax()
-    indices = D > tol * P_max
-    if indices.any():
-        D = D[indices]
-        P = P[:, indices]
-
-    # truncate to rank (P is ordered in ascending order)
-    # this is skipped in matmul if truncate is None
-    if rank is not None:
-        D = D[-rank:]
-        P = P[:, -rank:]
-
-    # damping
-    d = damping + rdamping * P_max
-    if d != 0:
-        D += d
-
-    return D, P
 
 def adanystrom_update(
     D1: torch.Tensor,
@@ -97,7 +69,7 @@ def adanystrom_update(
     rdamping: float,
     orthogonalize_method: OrthogonalizeMethod,
 
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """computes the Nyström approximation of ``(w1 * A1 + w2 * A2)``,
     where ``A1`` is an eigendecomposition, ``A2`` is symmetric rank 1.
 
@@ -133,7 +105,11 @@ def adanystrom_update(
     except torch.linalg.LinAlgError:
         return D1, P1
 
-    D, P = eig_regularize(D=D, P=P, rank=rank, tol=tol, damping=damping, rdamping=rdamping)
+    D, P = regularize_eig(L=D, Q=P, truncate=rank, tol=tol, damping=damping, rdamping=rdamping)
+
+    if D is None or P is None:
+        return D1, P1
+
     return D, Q @ P
 
 
@@ -255,14 +231,18 @@ class AdaNystrom(TensorTransform):
         P = state["P"]
 
         # regularize for matmul
-        D, P = eig_regularize(
-            D=D,
-            P=P,
-            rank=setting["mm_truncate"],
+        D, P = regularize_eig(
+            L=D,
+            Q=P,
+            truncate=setting["mm_truncate"],
             tol=setting["mm_tol"],
             damping=setting["mm_damping"],
             rdamping=setting["mm_rdamping"],
         )
+
+        if D is None or P is None:
+            return tensor.clip(-0.1, 0.1)
+
         D = D.clip(min=torch.finfo(D.dtype).tiny * 2)
 
         nystrom_reg = setting["nystrom_reg"]

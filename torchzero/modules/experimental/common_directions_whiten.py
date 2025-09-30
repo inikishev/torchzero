@@ -4,10 +4,8 @@ from typing import Literal
 import torch
 
 from torchzero.core import Chainable, TensorTransform
-from torchzero.linalg import matrix_power_eigh, torch_linalg, orthogonalize, OrthogonalizeMethod
+from torchzero.linalg import matrix_power_eigh, torch_linalg, orthogonalize, OrthogonalizeMethod, regularize_eig
 from torchzero.utils import TensorList, vec_to_tensors_
-
-from .adanystrom import eig_regularize
 
 
 def update_subspace_preconditioner_(
@@ -33,7 +31,11 @@ def apply_subspace_preconditioner(
     rdamping: float,
 ):
     L, Q = torch_linalg.eigh(accumulator, retry_float64=True)
-    L, Q = eig_regularize(L, Q, rank=truncate, tol=tol, damping=damping, rdamping=rdamping)
+    L, Q = regularize_eig(L=L, Q=Q, truncate=truncate, tol=tol, damping=damping, rdamping=rdamping)
+
+    if L is None or Q is None:
+        return tensor.clip(-0.1, 0.1)
+
     preconditioner = (Q * L.rsqrt().unsqueeze(-2)) @ Q.mH
 
     tensor_projected = basis.T @ tensor # k

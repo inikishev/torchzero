@@ -4,7 +4,7 @@ import warnings
 
 import torch
 from ...core import Chainable, TensorTransform
-from ...linalg import torch_linalg
+from ...linalg import torch_linalg, regularize_eig
 
 def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
@@ -19,24 +19,17 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
 
     try:
         L, Q = torch_linalg.eigh(MTM, retry_float64=True)
+        L, Q = regularize_eig(L, Q, truncate=truncate, tol=tol, damping=damping, rdamping=0)
 
-        # remove small eigenvalues relative to largest
-        L_max = L.amax()
-        indices = L > tol * L_max
-        if indices.any():
-            L = L[indices]
-            Q = Q[:, indices]
-
-        # truncate to top n largest eigenvalues
-        if truncate is not None and truncate > 0:
-            # L is ordered in ascending order
-            L = L[-truncate:]
-            Q = Q[:, -truncate:]
+        if L is None or Q is None: # this means there are no finite eigenvalues
+            return None, None
 
         U = (M @ Q) * L.rsqrt()
 
+        # this damping is added after computing U, this is why I didn't use one in linalg.regularize_eig
+        # that's because we damp singular values this way
         if rdamping != 0:
-            L.add_(rdamping * L_max)
+            L.add_(rdamping * L[-1]) # L is sorted in ascending order
 
         return U, L
 

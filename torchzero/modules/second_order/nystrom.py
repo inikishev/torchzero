@@ -1,10 +1,11 @@
+import warnings
 from typing import Literal
 
 import torch
 
 from ...core import Chainable, Transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
-from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg
+from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg, regularize_eig, OrthogonalizeMethod
 from ...linalg.linear_operator import Eigendecomposition, ScaledIdentity
 
 class NystromSketchAndSolve(Transform):
@@ -19,7 +20,18 @@ class NystromSketchAndSolve(Transform):
 
     Args:
         rank (int): size of the sketch, this many hessian-vector products will be evaluated per step.
-        reg (float, optional): regularization parameter. Defaults to 1e-3.
+        reg (float | None, optional):
+            scale of identity matrix added to hessian. Note that if this is specified, nystrom sketch-and-solve
+            is used to compute ``(Q diag(L) Q.T + reg*I)x = b``. It is very unstable when ``reg`` is small,
+            i.e. smaller than 1e-4. If this is None,``(Q diag(L) Q.T)x = b`` is computed by simply taking
+            reciprocal of eigenvalues. Defaults to 1e-3.
+        eigv_tol (float, optional):
+            all eigenvalues smaller than largest eigenvalue times ``eigv_tol`` are removed. Defaults to None.
+        truncate (int | None, optional):
+            keeps top ``truncate`` eigenvalues. Defaults to None.
+        damping (float, optional): scalar added to eigenvalues. Defaults to 0.
+        rdamping (float, optional): scalar multiplied by largest eigenvalue and added to eigenvalues. Defaults to 0.
+        update_freq (int, optional): frequency of updating preconditioner. Defaults to 1.
         hvp_method (str, optional):
             Determines how Hessian-vector products are computed.
 
@@ -64,10 +76,15 @@ class NystromSketchAndSolve(Transform):
     def __init__(
         self,
         rank: int,
-        reg: float = 1e-3,
+        reg: float | None = 1e-3,
+        eigv_tol: float = 0,
+        truncate: int | None = None,
+        damping: float = 0,
+        rdamping: float = 0,
+        update_freq: int = 1,
+        orthogonalize_method: OrthogonalizeMethod = 'qr',
         hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-3,
-        update_freq: int = 1,
         inner: Chainable | None = None,
         seed: int | None = None,
     ):
@@ -92,25 +109,53 @@ class NystromSketchAndSolve(Transform):
 
         generator = self.get_generator(params[0].device, seed=fs['seed'])
         try:
-            L, Q = nystrom_approximation(A_mv=H_mv, A_mm=H_mm, ndim=ndim, rank=fs['rank'],
-                                        dtype=dtype, device=device, generator=generator)
+            # compute the approximation
+            L, Q = nystrom_approximation(
+                A_mv=H_mv,
+                A_mm=H_mm,
+                ndim=ndim,
+                rank=min(fs["rank"], ndim),
+                eigv_tol=fs["eigv_tol"],
+                orthogonalize_method=fs["orthogonalize_method"],
+                dtype=dtype,
+                device=device,
+                generator=generator,
+            )
 
-            self.global_state["L"] = L
-            self.global_state["Q"] = Q
-        except torch.linalg.LinAlgError:
-            pass
+            # regularize
+            L, Q = regularize_eig(
+                L=L,
+                Q=Q,
+                truncate=fs["truncate"],
+                tol=fs["eigv_tol"],
+                damping=fs["damping"],
+                rdamping=fs["rdamping"],
+            )
+
+            # store
+            if L is not None:
+                self.global_state["L"] = L
+                self.global_state["Q"] = Q
+
+        except torch.linalg.LinAlgError as e:
+            warnings.warn(f"Nystrom approximation failed with: {e}")
 
     def apply_states(self, objective, states, settings):
-        fs = settings[0]
-        b = objective.get_updates()
-
-        # ----------------------------------- solve ---------------------------------- #
         if "L" not in self.global_state:
             return objective
 
+        fs = settings[0]
+        updates = objective.get_updates()
+        b=torch.cat([t.ravel() for t in updates])
+
+        # ----------------------------------- solve ---------------------------------- #
         L = self.global_state["L"]
         Q = self.global_state["Q"]
-        x = nystrom_sketch_and_solve(L=L, Q=Q, b=torch.cat([t.ravel() for t in b]), reg=fs["reg"])
+
+        if fs["reg"] is None:
+            x = Q @ ((Q.mH @ b) / L)
+        else:
+            x = nystrom_sketch_and_solve(L=L, Q=Q, b=b, reg=fs["reg"])
 
         # -------------------------------- set update -------------------------------- #
         objective.updates = vec_to_tensors(x, reference=objective.params)
@@ -136,7 +181,7 @@ class NystromPCG(Transform):
         - In most cases NystromPCG should be the first module in the chain because it relies on autograd. Use the ``inner`` argument if you wish to apply Newton preconditioning to another module's output.
 
     Args:
-        sketch_size (int):
+        rank (int):
             size of the sketch for preconditioning, this many hessian-vector products will be evaluated before
             running the conjugate gradient solver. Larger value improves the preconditioning and speeds up
             conjugate gradient.
@@ -185,6 +230,8 @@ class NystromPCG(Transform):
         tol=1e-8,
         reg: float = 1e-6,
         update_freq: int = 1, # here update_freq is within update_states
+        eigv_tol: float = 0,
+        orthogonalize_method: OrthogonalizeMethod = 'qr',
         hvp_method: HVPMethod = "batched_autograd",
         h=1e-3,
         inner: Chainable | None = None,
@@ -200,31 +247,36 @@ class NystromPCG(Transform):
 
         # ---------------------- Hessian vector product function --------------------- #
         # this should run on every update_states
-        hvp_method = fs['hvp_method']
-        h = fs['h']
-        _, H_mv, H_mm = objective.tensor_Hvp_function(hvp_method=hvp_method, h=h, at_x0=True)
+        _, H_mv, H_mm = objective.tensor_Hvp_function(hvp_method=fs['hvp_method'], h=fs['h'], at_x0=True)
         objective.temp = H_mv
 
         # --------------------------- update preconditioner -------------------------- #
         step = self.increment_counter("step", 0)
-        update_freq = self.defaults["update_freq"]
+        if step % fs["update_freq"] == 0:
 
-        if step % update_freq == 0:
-
-            rank = fs['rank']
             ndim = sum(t.numel() for t in objective.params)
             device = objective.params[0].device
             dtype = objective.params[0].dtype
             generator = self.get_generator(device, seed=fs['seed'])
 
             try:
-                L, Q = nystrom_approximation(A_mv=None, A_mm=H_mm, ndim=ndim, rank=rank,
-                                            dtype=dtype, device=device, generator=generator)
+                L, Q = nystrom_approximation(
+                    A_mv=None,
+                    A_mm=H_mm,
+                    ndim=ndim,
+                    rank=min(fs["rank"], ndim),
+                    eigv_tol=fs["eigv_tol"],
+                    orthogonalize_method=fs["orthogonalize_method"],
+                    dtype=dtype,
+                    device=device,
+                    generator=generator,
+                )
 
                 self.global_state["L"] = L
                 self.global_state["Q"] = Q
-            except torch.linalg.LinAlgError:
-                pass
+
+            except torch.linalg.LinAlgError as e:
+                warnings.warn(f"Nystrom approximation failed with: {e}")
 
     @torch.no_grad
     def apply_states(self, objective, states, settings):
@@ -241,6 +293,7 @@ class NystromPCG(Transform):
 
         L = self.global_state["L"]
         Q = self.global_state["Q"]
+
         x = nystrom_pcg(L=L, Q=Q, A_mv=H_mv, b=torch.cat([t.ravel() for t in b]),
                         reg=fs['reg'], tol=fs["tol"], maxiter=fs["maxiter"])
 

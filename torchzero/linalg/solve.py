@@ -25,15 +25,13 @@ def _make_A_mv_reg(A_mv: Callable, reg):
 
 def _identity(x): return x
 
-# TODO this is used in NystromSketchAndSolve
-# I need to add alternative to it where it just shifts eigenvalues by reg and uses their reciprocal
 def nystrom_sketch_and_solve(
     L: torch.Tensor,
     Q: torch.Tensor,
     b: torch.Tensor,
     reg: float = 1e-3,
 ) -> torch.Tensor:
-    """Solves (Q diag(L) Q.T + reg*I)x = b. Becomes super unstable with reg smaller than like 1e-5.
+    """Solves ``(Q diag(L) Q.T + reg*I)x = b``. Becomes super unstable with reg smaller than like 1e-5.
 
     Args:
         L (torch.Tensor): eigenvalues, like from ``nystrom_approximation``
