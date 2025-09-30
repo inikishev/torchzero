@@ -8,6 +8,7 @@ import torch
 from ...core import Chainable, Transform, HVPMethod
 from ...utils import vec_to_tensors
 from ...linalg.linear_operator import Sketched
+from ...linalg.orthogonalize import zeropower_via_newtonschulz5
 
 from .newton import _newton_step
 
@@ -19,6 +20,7 @@ def _qr_orthonormalize(A:torch.Tensor):
 
     q, _ = torch.linalg.qr(A) # pylint:disable=not-callable
     return q
+
 
 def _orthonormal_sketch(m, n, dtype, device, generator):
     return _qr_orthonormalize(torch.randn(m, n, dtype=dtype, device=device, generator=generator))

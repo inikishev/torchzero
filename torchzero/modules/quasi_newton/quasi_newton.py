@@ -106,11 +106,12 @@ class HessianUpdateStrategy(TensorTransform, ABC):
         scale_first: bool = False,
         concat_params: bool = True,
         inverse: bool = True,
+        uses_loss: bool = False,
         inner: Chainable | None = None,
     ):
         if defaults is None: defaults = {}
         safe_dict_update_(defaults, dict(init_scale=init_scale, tol=tol, ptol=ptol, ptol_restart=ptol_restart, gtol=gtol, inverse=inverse, beta=beta, restart_interval=restart_interval, scale_first=scale_first))
-        super().__init__(defaults, uses_grad=False, concat_params=concat_params, update_freq=update_freq, inner=inner)
+        super().__init__(defaults, uses_loss=uses_loss, concat_params=concat_params, update_freq=update_freq, inner=inner)
 
     def reset_for_online(self):
         super().reset_for_online()
@@ -1162,6 +1163,7 @@ class NewSSM(HessianUpdateStrategy):
             scale_first=scale_first,
             concat_params=concat_params,
             inverse=True,
+            uses_loss=True,
             inner=inner,
         )
     def update_H(self, H, s, y, p, g, p_prev, g_prev, state, setting):

@@ -76,7 +76,7 @@ class NystromSketchAndSolve(Transform):
     def __init__(
         self,
         rank: int,
-        reg: float | None = 1e-3,
+        reg: float | None = 1e-2,
         eigv_tol: float = 0,
         truncate: int | None = None,
         damping: float = 0,
