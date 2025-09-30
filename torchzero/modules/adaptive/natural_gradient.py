@@ -99,18 +99,25 @@ class NaturalGradient(Transform):
     @torch.no_grad
     def update_states(self, objective, states, settings):
         params = objective.params
+        closure = objective.closure
         fs = settings[0]
         batched = fs['batched']
         gn_grad = fs['gn_grad']
 
-        closure = objective.closure
-        assert closure is not None
+        # compute per-sample losses
+        f = objective.loss
+        if f is None:
+            assert closure is not None
+            with torch.enable_grad():
 
+                f = objective.get_loss(backward=False) # n_out
+                assert isinstance(f, torch.Tensor)
+
+        # compute per-sample gradients
         with torch.enable_grad():
-            f = objective.get_loss(backward=False) # n_out
-            assert isinstance(f, torch.Tensor)
             G_list = jacobian_wrt([f.ravel()], params, batched=batched)
 
+        # set scalar loss and it's grad to objective
         objective.loss = f.sum()
         G = self.global_state["G"] = flatten_jacobian(G_list) # (n_samples, ndim)
 
@@ -123,8 +130,10 @@ class NaturalGradient(Transform):
         objective.grads = vec_to_tensors(g, params)
 
         # set closure to calculate scalar value for line searches etc
-        if objective.closure is not None:
+        if closure is not None:
+
             def ngd_closure(backward=True):
+
                 if backward:
                     objective.zero_grad()
                     with torch.enable_grad():

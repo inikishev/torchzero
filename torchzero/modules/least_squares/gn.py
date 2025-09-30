@@ -108,26 +108,31 @@ class GaussNewton(Module):
     @torch.no_grad
     def update(self, objective):
         params = objective.params
+        closure = objective.closure
         batched = self.defaults['batched']
 
-        closure = objective.closure
-        assert closure is not None
+        # compute residuals
+        r = objective.loss
+        if r is None:
+            assert closure is not None
+            with torch.enable_grad():
+                r = objective.get_loss(backward=False) # n_residuals
+                assert isinstance(r, torch.Tensor)
 
-        # gauss newton direction
+        # compute jacobian
         with torch.enable_grad():
-            r = objective.get_loss(backward=False) # nresiduals
-            assert isinstance(r, torch.Tensor)
             J_list = jacobian_wrt([r.ravel()], params, batched=batched)
 
+        # set sum of squares scalar loss and it's gradient to objective
         objective.loss = r.pow(2).sum()
 
-        J = self.global_state["J"] = flatten_jacobian(J_list) # (nresiduals, ndim)
+        J = self.global_state["J"] = flatten_jacobian(J_list) # (n_residuals, ndim)
         Jr = J.T @ r.detach() # (ndim)
 
         # if there are more residuals, solve (J^T J)x = J^T r, so we need Jr
         # otherwise solve (J J^T)z = r and set x = J^T z, so we need r
-        nresiduals, ndim = J.shape
-        if nresiduals >= ndim or "inner" in self.children:
+        n_residuals, ndim = J.shape
+        if n_residuals >= ndim or "inner" in self.children:
             self.global_state["Jr"] = Jr
 
         else:
@@ -136,8 +141,9 @@ class GaussNewton(Module):
         objective.grads = vec_to_tensors(Jr, objective.params)
 
         # set closure to calculate sum of squares for line searches etc
-        if objective.closure is not None:
+        if closure is not None:
             def sos_closure(backward=True):
+
                 if backward:
                     objective.zero_grad()
                     with torch.enable_grad():
