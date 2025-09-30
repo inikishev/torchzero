@@ -39,11 +39,11 @@ class SubspaceNewton(Transform):
         sketch_size (int):
             size of the random sketch. This many hessian-vector products will need to be evaluated each step.
         sketch_type (str, optional):
+            - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt (default).
             - "orthonormal" - random orthonormal basis. Orthonormality is necessary to use linear operator based modules such as trust region, but it can be slower to compute.
             - "rademacher" - approximately orthonormal scaled random rademacher basis.
             - "gaussian" - random gaussian (not orthonormal) basis.
-            - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt.
-            - "mixed" - random orthonormal basis but with four directions set to gradient, slow and fast gradient EMAs, and previous update direction (default).
+            - "mixed" - random orthonormal basis but with four directions set to gradient, slow and fast gradient EMAs, and previous update direction.
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
             How to compute hessian-matrix product:
@@ -99,7 +99,7 @@ class SubspaceNewton(Transform):
     def __init__(
         self,
         sketch_size: int,
-        sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "mixed",
+        sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "common_directions",
         damping:float=0,
         hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-2,
