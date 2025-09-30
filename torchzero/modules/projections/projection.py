@@ -149,8 +149,11 @@ class ProjectionBase(Module, ABC):
             Iterable[torch.Tensor]: unprojected tensors of the same shape as params
         """
 
+    def update(self, objective: Objective): raise RuntimeError("projections don't support update/apply")
+    def apply(self, objective: Objective): raise RuntimeError("projections don't support update/apply")
+
     @torch.no_grad
-    def apply(self, objective: Objective):
+    def step(self, objective: Objective):
         params = objective.params
         settings = [self.settings[p] for p in params]
 
@@ -266,7 +269,7 @@ class ProjectionBase(Module, ABC):
 
         # ----------------------------------- step ----------------------------------- #
         projected_obj.params = projected_params
-        projected_obj = self.children['modules'].apply(projected_obj)
+        projected_obj = self.children['modules'].step(projected_obj)
 
         # empty fake params storage
         # this doesn't affect update/grad because it is a different python object, set_ changes storage on an object
