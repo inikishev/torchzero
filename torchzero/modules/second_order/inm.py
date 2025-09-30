@@ -3,9 +3,9 @@ from collections.abc import Callable
 import torch
 
 from ...core import Chainable, Transform, HessianMethod
-from ...utils import TensorList, vec_to_tensors, unpack_states
+from ...utils import TensorList, vec_to_tensors_, unpack_states
 from ..opt_utils import safe_clip
-from .newton import _get_H, _newton_step
+from .newton import _newton_update_state_, _newton_solve, _newton_get_H
 
 @torch.no_grad
 def inm(f:torch.Tensor, J:torch.Tensor, s:torch.Tensor, y:torch.Tensor):
@@ -34,10 +34,10 @@ class ImprovedNewton(Transform):
     def __init__(
         self,
         damping: float = 0,
-        use_lstsq: bool = False,
-        update_freq: int = 1,
-        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        update_freq: int = 1,
+        precompute_inverse: bool | None = None,
+        use_lstsq: bool = False,
         hessian_method: HessianMethod = "batched_autograd",
         h: float = 1e-3,
         inner: Chainable | None = None,
@@ -65,37 +65,45 @@ class ImprovedNewton(Transform):
         x_prev, f_prev = unpack_states(states, objective.params, "x_prev", "f_prev", cls=TensorList)
 
         # initialize on 1st step, do Newton step
-        if "P" not in self.global_state:
+        if "H" not in self.global_state:
             x_prev.copy_(x_list)
             f_prev.copy_(f_list)
-            self.global_state["P"] = J
-            return
+            P = J
 
         # INM update
-        s_list = x_list - x_prev
-        y_list = f_list - f_prev
-        x_prev.copy_(x_list)
-        f_prev.copy_(f_list)
+        else:
+            s_list = x_list - x_prev
+            y_list = f_list - f_prev
+            x_prev.copy_(x_list)
+            f_prev.copy_(f_list)
 
-        self.global_state["P"] = inm(f, J, s=s_list.to_vec(), y=y_list.to_vec())
+            P = inm(f, J, s=s_list.to_vec(), y=y_list.to_vec())
 
+        # update state
+        precompute_inverse = fs["precompute_inverse"]
+        if precompute_inverse is None:
+            precompute_inverse = fs["__update_freq"] >= 10
+
+        _newton_update_state_(
+            H=P,
+            state = self.global_state,
+            damping = fs["damping"],
+            eigval_fn = fs["eigval_fn"],
+            precompute_inverse = precompute_inverse,
+            use_lstsq = fs["use_lstsq"]
+        )
 
     @torch.no_grad
     def apply_states(self, objective, states, settings):
+        updates = objective.get_updates()
         fs = settings[0]
 
-        update = _newton_step(
-            objective = objective,
-            H = self.global_state["P"],
-            damping = fs["damping"],
-            H_tfm = fs["H_tfm"],
-            eigval_fn = None, # it is applied in `update`
-            use_lstsq = fs["use_lstsq"],
-        )
+        b = torch.cat([t.ravel() for t in updates])
+        sol = _newton_solve(b=b, state=self.global_state, use_lstsq=fs["use_lstsq"])
 
-        objective.updates = vec_to_tensors(update, objective.params)
-
+        vec_to_tensors_(sol, updates)
         return objective
 
+
     def get_H(self,objective=...):
-        return _get_H(self.global_state["P"], eigval_fn=None)
+        return _newton_get_H(self.global_state)

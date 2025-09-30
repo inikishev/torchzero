@@ -6,11 +6,10 @@ from typing import Literal
 import torch
 
 from ...core import Chainable, Transform, HVPMethod
-from ...utils import vec_to_tensors
+from ...utils import vec_to_tensors_
 from ...linalg.linear_operator import Sketched
-from ...linalg.orthogonalize import zeropower_via_newtonschulz5
 
-from .newton import _newton_step
+from .newton import _newton_update_state_, _newton_solve
 
 def _qr_orthonormalize(A:torch.Tensor):
     m,n = A.shape
@@ -101,12 +100,12 @@ class SubspaceNewton(Transform):
         sketch_size: int,
         sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "common_directions",
         damping:float=0,
+        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        update_freq: int = 1,
+        precompute_inverse: bool = False,
+        use_lstsq: bool = True,
         hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-2,
-        use_lstsq: bool = True,
-        update_freq: int = 1,
-        H_tfm: Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, bool]] | Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
-        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
         seed: int | None = None,
         inner: Chainable | None = None,
     ):
@@ -202,38 +201,41 @@ class SubspaceNewton(Transform):
                                                  hvp_method=fs["hvp_method"], h=fs["h"])
         H_sketched = S.T @ HS
 
-        self.global_state["H_sketched"] = H_sketched
+        # update state
+        _newton_update_state_(
+            state = self.global_state,
+            H = H_sketched,
+            damping = fs["damping"],
+            eigval_fn = fs["eigval_fn"],
+            precompute_inverse = fs["precompute_inverse"],
+            use_lstsq = fs["use_lstsq"]
+
+        )
+
         self.global_state["S"] = S
 
     def apply_states(self, objective, states, settings):
-        S: torch.Tensor = self.global_state["S"]
+        updates = objective.get_updates()
+        fs = settings[0]
 
-        d_proj = _newton_step(
-            objective=objective,
-            H=self.global_state["H_sketched"],
-            damping=self.defaults["damping"],
-            H_tfm=self.defaults["H_tfm"],
-            eigval_fn=self.defaults["eigval_fn"],
-            use_lstsq=self.defaults["use_lstsq"],
-            g_proj = lambda g: S.T @ g
-        )
+        S = self.global_state["S"]
+        b = torch.cat([t.ravel() for t in updates])
+        b_proj = S.T @ b
+
+        d_proj = _newton_solve(b=b_proj, state=self.global_state, use_lstsq=fs["use_lstsq"])
 
         d = S @ d_proj
-        objective.updates = vec_to_tensors(d, objective.params)
+        vec_to_tensors_(d, updates)
         return objective
 
     def get_H(self, objective=...):
-        eigval_fn = self.defaults["eigval_fn"]
-        H_sketched: torch.Tensor = self.global_state["H_sketched"]
+        if "H" in self.global_state:
+            H_sketched = self.global_state["H"]
+
+        else:
+            L = self.global_state["L"]
+            Q = self.global_state["Q"]
+            H_sketched = Q @ L.diag_embed() @ Q.mH
+
         S: torch.Tensor = self.global_state["S"]
-
-        if eigval_fn is not None:
-            try:
-                L, Q = torch.linalg.eigh(H_sketched) # pylint:disable=not-callable
-                L: torch.Tensor = eigval_fn(L)
-                H_sketched = Q @ L.diag_embed() @ Q.mH
-
-            except torch.linalg.LinAlgError:
-                pass
-
         return Sketched(S, H_sketched)

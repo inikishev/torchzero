@@ -1,8 +1,8 @@
 import torch
 
 from ...core import Chainable, Transform
-from ...utils import TensorList, unpack_dicts, unpack_states, vec_to_tensors
-from ..second_order.newton import _get_H, _newton_step
+from ...utils import TensorList, unpack_dicts, unpack_states, vec_to_tensors_
+from ...linalg.linear_operator import Dense
 
 
 def sg2_(
@@ -53,16 +53,16 @@ class SG2(Transform):
     def __init__(
         self,
         n_samples: int = 1,
-        h: float = 1e-2,
+        n_first_step_samples: int = 10,
+        start_step: int = 10,
         beta: float | None = None,
-        damping: float = 0,
-        eigval_fn=None,
-        use_lstsq: bool = True,
+        damping: float = 1e-4,
+        h: float = 1e-2,
         seed=None,
         update_freq: int = 1,
         inner: Chainable | None = None,
     ):
-        defaults = dict(n_samples=n_samples, h=h, beta=beta, damping=damping, eigval_fn=eigval_fn, seed=seed, use_lstsq=use_lstsq)
+        defaults = dict(n_samples=n_samples, h=h, beta=beta, damping=damping, seed=seed, start_step=start_step, n_first_step_samples=n_first_step_samples)
         super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
@@ -79,8 +79,10 @@ class SG2(Transform):
         h = unpack_dicts(settings, "h")
         x_0 = params.clone()
         n_samples = fs["n_samples"]
+        if k == 0: n_samples = fs["n_first_step_samples"]
         H_hat = None
 
+        # compute new approximation
         for i in range(n_samples):
             # generate perturbation
             cd = params.rademacher_like(generator=generator).mul_(h)
@@ -112,6 +114,11 @@ class SG2(Transform):
         assert H_hat is not None
         if n_samples > 1: H_hat /= n_samples
 
+        # add damping
+        if fs["damping"] != 0:
+            reg = torch.eye(H_hat.size(0), device=H_hat.device, dtype=H_hat.dtype).mul_(fs["damping"])
+            H_hat += reg
+
         # update H
         H = self.global_state.get("H", None)
         if H is None: H = H_hat
@@ -126,166 +133,24 @@ class SG2(Transform):
     @torch.no_grad
     def apply_states(self, objective, states, settings):
         fs = settings[0]
+        updates = objective.get_updates()
 
-        dir = _newton_step(
-            objective=objective,
-            H = self.global_state["H"],
-            damping = fs["damping"],
-            H_tfm=None,
-            eigval_fn=fs["eigval_fn"],
-            use_lstsq=fs["use_lstsq"],
-            g_proj=None,
-        )
+        H: torch.Tensor = self.global_state["H"]
+        k = self.global_state["step"]
+        if k < fs["start_step"]:
+            # don't precondition yet
+            # I guess we can try using trace to scale the update
+            # because it will have horrible scaling otherwise
+            torch._foreach_div_(updates, H.trace())
+            return objective
 
-        objective.updates = vec_to_tensors(dir, objective.params)
+        b = torch.cat([t.ravel() for t in updates])
+        sol = torch.linalg.lstsq(H, b).solution # pylint:disable=not-callable
+
+        vec_to_tensors_(sol, updates)
         return objective
 
-    def get_H(self,objective=...):
-        return _get_H(self.global_state["H"], self.defaults["eigval_fn"])
+    def get_H(self, objective=...):
+        return Dense(self.global_state["H"])
 
 
-
-
-# # two sided
-# # we have g via x + d, x - d
-# # H via g(x + d), g(x - d)
-# # 1 is x, x+2d
-# # 2 is x, x-2d
-# # 5 evals in total
-
-# # one sided
-# # g via x, x + d
-# # 1 is x, x + d
-# # 2 is x, x - d
-# # 3 evals and can use two sided for g_0
-
-# class SPSA2(Module):
-#     """second-order SPSA
-
-#     SPSA2 with line search
-#     ```python
-#     opt = tz.Optimizer(
-#         model.parameters(),
-#         tz.m.SPSA2(),
-#         tz.m.Backtracking()
-#     )
-#     ```
-
-#     SPSA2 with trust region
-#     ```python
-#     opt = tz.Optimizer(
-#         model.parameters(),
-#         tz.m.LevenbergMarquardt(tz.m.SPSA2()),
-#     )
-#     ```
-#     """
-
-#     def __init__(
-#         self,
-#         n_samples: int = 1,
-#         h: float = 1e-2,
-#         beta: float | None = None,
-#         damping: float = 0,
-#         eigval_fn=None,
-#         use_lstsq: bool = True,
-#         seed=None,
-#         inner: Chainable | None = None,
-#     ):
-#         defaults = dict(n_samples=n_samples, h=h, beta=beta, damping=damping, eigval_fn=eigval_fn, seed=seed, use_lstsq=use_lstsq)
-#         super().__init__(defaults)
-
-#         if inner is not None: self.set_child('inner', inner)
-
-#     @torch.no_grad
-#     def update(self, objective):
-#         k = self.global_state.get('step', 0) + 1
-#         self.global_state["step"] = k
-
-#         params = TensorList(objective.params)
-#         closure = objective.closure
-#         if closure is None:
-#             raise RuntimeError("closure is required for SPSA2")
-
-#         generator = self.get_generator(params[0].device, self.defaults["seed"])
-
-#         h = self.get_settings(params, "h")
-#         x_0 = params.clone()
-#         n_samples = self.defaults["n_samples"]
-#         H_hat = None
-#         g_0 = None
-
-#         for i in range(n_samples):
-#             # perturbations for g and H
-#             cd_g = params.rademacher_like(generator=generator).mul_(h)
-#             cd_H = params.rademacher_like(generator=generator).mul_(h)
-
-#             # evaluate 4 points
-#             x_p = x_0 + cd_g
-#             x_n = x_0 - cd_g
-
-#             params.set_(x_p)
-#             f_p = closure(False)
-#             params.add_(cd_H)
-#             f_pp = closure(False)
-
-#             params.set_(x_n)
-#             f_n = closure(False)
-#             params.add_(cd_H)
-#             f_np = closure(False)
-
-#             g_p_vec = (f_pp - f_p) / cd_H
-#             g_n_vec = (f_np - f_n) / cd_H
-#             delta_g = g_p_vec - g_n_vec
-
-#             # restore params
-#             params.set_(x_0)
-
-#             # compute grad
-#             g_i = (f_p - f_n) / (2 * cd_g)
-#             if g_0 is None: g_0 = g_i
-#             else: g_0 += g_i
-
-#             # compute H hat
-#             H_i = sg2_(
-#                 delta_g = delta_g.to_vec().div_(2.0),
-#                 cd = cd_g.to_vec(), # The interval is measured by the original 'cd'
-#             )
-#             if H_hat is None: H_hat = H_i
-#             else: H_hat += H_i
-
-#         assert g_0 is not None and H_hat is not None
-#         if n_samples > 1:
-#             g_0 /= n_samples
-#             H_hat /= n_samples
-
-#         # set grad to approximated grad
-#         objective.grads = g_0
-
-#         # update H
-#         H = self.global_state.get("H", None)
-#         if H is None: H = H_hat
-#         else:
-#             beta = self.defaults["beta"]
-#             if beta is None: beta = k / (k+1)
-#             H.lerp_(H_hat, 1-beta)
-
-#         self.global_state["H"] = H
-
-#     @torch.no_grad
-#     def apply(self, objective):
-#         dir = _newton_step(
-#             objective=objective,
-#             H = self.global_state["H"],
-#             damping = self.defaults["damping"],
-#             inner = self.children.get("inner", None),
-#             H_tfm=None,
-#             eigval_fn=self.defaults["eigval_fn"],
-#             use_lstsq=self.defaults["use_lstsq"],
-#             g_proj=None,
-#         )
-
-#         objective.updates = vec_to_tensors(dir, objective.params)
-#         return objective
-
-#     def get_H(self,objective=...):
-#         return _get_H(self.global_state["H"], self.defaults["eigval_fn"])

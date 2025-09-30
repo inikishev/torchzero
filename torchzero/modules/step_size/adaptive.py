@@ -16,7 +16,7 @@ def _acceptable_alpha(alpha, param:torch.Tensor):
         return False
     return True
 
-def _get_H(self: TensorTransform, var):
+def _get_scaled_identity_H(self: TensorTransform, var):
     n = sum(p.numel() for p in var.params)
     p = var.params[0]
     alpha = self.global_state.get('alpha', 1)
@@ -87,7 +87,7 @@ class PolyakStepSize(TensorTransform):
         return tensors
 
     def get_H(self, objective):
-        return _get_H(self, objective)
+        return _get_scaled_identity_H(self, objective)
 
 
 def _bb_short(s: TensorList, y: TensorList, sy, eps):
@@ -176,7 +176,7 @@ class BarzilaiBorwein(TensorTransform):
         prev_g.copy_(g)
 
     def get_H(self, objective):
-        return _get_H(self, objective)
+        return _get_scaled_identity_H(self, objective)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -288,7 +288,7 @@ class BBStab(TensorTransform):
         prev_g.copy_(g)
 
     def get_H(self, objective):
-        return _get_H(self, objective)
+        return _get_scaled_identity_H(self, objective)
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -384,4 +384,4 @@ class AdGD(TensorTransform):
         return tensors
 
     def get_H(self, objective):
-        return _get_H(self, objective)
+        return _get_scaled_identity_H(self, objective)

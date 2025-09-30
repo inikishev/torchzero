@@ -7,22 +7,21 @@ from typing import Literal
 
 import torch
 
-from ...core import Chainable, Module, step
+from ...core import Chainable, Transform, step
 from ...linalg.linear_operator import Dense
-from ...utils import TensorList, vec_to_tensors
+from ...utils import TensorList, vec_to_tensors_
 from ...utils.derivatives import (
     flatten_jacobian,
     jacobian_wrt,
 )
 from ..second_order.newton import (
-    _cholesky_solve,
-    _eigh_solve,
+    _try_cholesky_solve,
     _least_squares_solve,
-    _lu_solve,
+    _try_lu_solve,
 )
 
 
-class NewtonNewton(Module):
+class NewtonNewton(Transform):
     """Applies Newton-like preconditioning to Newton step.
 
     This is a method that I thought of and then it worked. Here is how it works:
@@ -39,29 +38,27 @@ class NewtonNewton(Module):
         self,
         reg: float = 1e-6,
         order: int = 3,
-        search_negative: bool = False,
         vectorize: bool = True,
-        eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        update_freq: int = 1,
+        inner: Chainable | None = None,
     ):
-        defaults = dict(order=order, reg=reg, vectorize=vectorize, eigval_fn=eigval_fn, search_negative=search_negative)
-        super().__init__(defaults)
+        defaults = dict(order=order, reg=reg, vectorize=vectorize)
+        super().__init__(defaults, update_freq=update_freq, inner=inner)
 
     @torch.no_grad
-    def update(self, objective):
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
 
         params = TensorList(objective.params)
         closure = objective.closure
         if closure is None: raise RuntimeError('NewtonNewton requires closure')
 
-        settings = self.settings[params[0]]
-        reg = settings['reg']
-        vectorize = settings['vectorize']
-        order = settings['order']
-        search_negative = settings['search_negative']
-        eigval_fn = settings['eigval_fn']
+        reg = fs['reg']
+        vectorize = fs['vectorize']
+        order = fs['order']
 
         # ------------------------ calculate grad and hessian ------------------------ #
-        Hs = []
+        P = None
         with torch.enable_grad():
             loss = objective.loss = objective.loss_approx = closure(False)
             g_list = torch.autograd.grad(loss, params, create_graph=True)
@@ -76,28 +73,30 @@ class NewtonNewton(Module):
                 with torch.no_grad() if is_last else nullcontext():
                     H = flatten_jacobian(H_list)
                     if reg != 0: H = H + I * reg
-                    Hs.append(H)
+                    if P is None: P = H
+                    else: P = P @ H
 
-                    x = None
-                    if search_negative or (is_last and eigval_fn is not None):
-                        x = _eigh_solve(H, xp, eigval_fn, search_negative=search_negative)
-                    if x is None: x = _cholesky_solve(H, xp)
-                    if x is None: x = _lu_solve(H, xp)
-                    if x is None: x = _least_squares_solve(H, xp)
-                    xp = x.squeeze()
+                    if not is_last:
+                        x = _try_cholesky_solve(H, xp)
+                        if x is None: x = _try_lu_solve(H, xp)
+                        if x is None: x = _least_squares_solve(H, xp)
+                        xp = x.squeeze()
 
-        self.global_state["Hs"] = Hs
-        self.global_state['xp'] = xp.nan_to_num_(0,0,0)
+        self.global_state["P"] = P
 
     @torch.no_grad
-    def apply(self, objective):
-        params = objective.params
-        xp = self.global_state['xp']
-        objective.updates = vec_to_tensors(xp, params)
+    def apply_states(self, objective, states, settings):
+        updates = objective.get_updates()
+        P = self.global_state['P']
+        b = torch.cat([t.ravel() for t in updates])
+
+        sol = _try_cholesky_solve(P, b)
+        if sol is None: sol = _try_lu_solve(P, b)
+        if sol is None: sol = _least_squares_solve(P, b)
+
+        vec_to_tensors_(sol, updates)
         return objective
 
     @torch.no_grad
     def get_H(self, objective=...):
-        Hs = self.global_state["Hs"]
-        if len(Hs) == 1: return Dense(Hs[0])
-        return Dense(torch.linalg.multi_dot(self.global_state["Hs"])) # pylint:disable=not-callable
+        return Dense(self.global_state["P"])

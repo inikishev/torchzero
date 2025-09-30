@@ -756,7 +756,7 @@ class Objective:
             if g_list is not None and self.grads is None:
                 self.grads = list(g_list)
 
-        return f, g_list, H
+        return f, g_list, H.detach()
 
     @torch.no_grad
     def derivatives(self, order: int, at_x0: bool, method:DerivativesMethod="batched_autograd"):
