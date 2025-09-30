@@ -73,11 +73,10 @@ class LMAdagrad(TensorTransform):
         history_size (int, optional): number of past gradients to store. Defaults to 10.
         beta (float, optional): beta for momentum maintained in whitened space. Defaults to 0.0.
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
-        damping (float, optional): damping value. Defaults to 1e-4.
-        rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
-        rdamping (float, optional): value of damping relative to singular values norm. Defaults to 0.
-        truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
         tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
+        truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
+        damping (float, optional): damping value. Defaults to 1e-4.
+        rdamping (float, optional): value of damping relative to largest eigenvalue. Defaults to 0.
         order (int, optional):
             order=2 means gradient differences are used in place of gradients. Higher order uses higher order differences. Defaults to 1.
         U_beta (float | None, optional): momentum for U (too unstable, don't use). Defaults to None.
@@ -127,10 +126,10 @@ class LMAdagrad(TensorTransform):
         history_size: int = 100,
         beta: float = 0.0,
         update_freq: int = 1,
+        tol: float = 1e-7,
+        truncate: int | None = None,
         damping: float = 1e-4,
         rdamping: float = 0,
-        truncate: int | None = None,
-        tol: float = 1e-7,
         order: int = 1,
         U_beta: float | None = None,
         L_beta: float | None = None,

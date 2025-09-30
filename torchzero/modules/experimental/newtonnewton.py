@@ -34,11 +34,6 @@ class NewtonNewton(Module):
     3. Solve H2 x2 = x for x2.
 
     4. Optionally, repeat (if order is higher than 3.)
-
-    Memory is n^order. It tends to converge faster on convex functions, but can be unstable on non-convex. Orders higher than 3 are usually too unsable and have little benefit.
-
-    3rd order variant can minimize some convex functions with up to 100 variables in less time than Newton's method,
-    this is if pytorch can vectorize hessian computation efficiently.
     """
     def __init__(
         self,
