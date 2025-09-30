@@ -1,10 +1,36 @@
+from typing import Literal, Any
+
 import torch
+
 from torchzero.core import TensorTransform
 from torchzero.utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
-def signed_cbrt(x: TensorList) -> TensorList:
+def signed_cbrt(x: TensorList | Any) -> Any:
     return x.sign() * x.abs().pow(1/3)
+
+def _clip_min_magnitude(x: torch.Tensor, eps: float):
+    return x.sign() * x.abs().clamp(min=eps)
+
+_cubic_adam_mode = Literal["signed_cbrt", "unsigned_cbrt", "halve"]
+
+def _cubic_minimize(A: torch.Tensor | Any, B: torch.Tensor | Any, C: torch.Tensor | Any, eps):
+    """minimizes (A/3)x^3 + (A/2)x^2 + Cx"""
+    discriminant = B**2 - 4 * A * C
+
+    denom = _clip_min_magnitude(2 * A, eps)
+    root = discriminant.clamp(min=0).sqrt_()
+
+    x0 = (-B + root) / denom
+    x1 = (-B - root) / denom
+
+    f0 = (A/3)*x0**3 + (B/2)*x0**2 + C*x0
+    f1 = (A/3)*x1**3 + (B/2)*x1**2 + C*x1
+
+    x_star = x0.where(f0 < f1, x1)
+
+    adam = -C / (B + eps)
+    return adam.where(discriminant < 0, x_star)
 
 def cubic_adam_(
     tensors: TensorList,
@@ -18,6 +44,8 @@ def cubic_adam_(
     eps: float | NumberList,
     debiased: bool,
     step: int,
+
+    mode: _cubic_adam_mode = 'signed_cbrt'
 ):
     exp_avg_.lerp_(tensors, 1-beta1)
     exp_avg_sq_.lerp_(tensors**2, 1-beta2)
@@ -32,25 +60,15 @@ def cubic_adam_(
 
     # adam minimizes ax^2 + bx
     # we are going to minimize ax^3 + bx^2 + cx
-    A = signed_cbrt(m3)
+
+    if mode == "signed_cbrt": A = signed_cbrt(m3)
+    elif mode == "unsigned_cbrt": A = m3.abs().pow(1/3)
+    elif mode == 'halve': A = 0.5 * m3
+    else: raise ValueError(mode)
+
     B = m2.sqrt()
     C = m1
-    discriminant = B.pow(2) - 4 * A * C
-
-    denom = 2 * A
-    root = discriminant.clamp(min=0).sqrt_()
-
-    x0 = (-B + root) / (denom + eps)
-    x1 = (-B - root) / (denom + eps)
-
-    f0 = (A/3)*x0**3 + (B/2)*x0**2 + C*x0
-    f1 = (A/3)*x1**3 + (B/2)*x1**2 + C*x1
-
-    x_star = x0.where(f0 < f1, x1)
-
-    adam = -C / (B + eps)
-    x_star = adam.where(discriminant < 0, x_star)
-
+    x_star = _cubic_minimize(A, B, C, eps)
     return x_star.mul_(-alpha)
 
 class CubicAdam(TensorTransform):
@@ -63,8 +81,10 @@ class CubicAdam(TensorTransform):
         eps: float = 1e-8,
         debiased:bool=True,
         alpha: float = 1.,
+
+        mode: _cubic_adam_mode = 'signed_cbrt'
     ):
-        defaults=dict(beta1=beta1,beta2=beta2,beta3=beta3,eps=eps,debiased=debiased,alpha=alpha)
+        defaults=dict(beta1=beta1,beta2=beta2,beta3=beta3,eps=eps,debiased=debiased,alpha=alpha,mode=mode)
         super().__init__(defaults)
 
     @torch.no_grad
@@ -86,4 +106,6 @@ class CubicAdam(TensorTransform):
             eps=eps,
             debiased=settings[0]['debiased'],
             step=step,
+
+            mode=settings[0]["mode"]
         )

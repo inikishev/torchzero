@@ -240,22 +240,22 @@ class FullMatrixAdagrad(TensorTransform):
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
 
         G = tensor.ravel()
-        GGᵀ = torch.outer(G, G)
+        GGT = torch.outer(G, G)
 
         # initialize
         if "accumulator" not in state:
             init = setting['init']
-            if init == 'identity': state['accumulator'] = torch.eye(GGᵀ.size(0), device=GGᵀ.device, dtype=GGᵀ.dtype)
-            elif init == 'zeros': state['accumulator'] =  torch.zeros_like(GGᵀ)
-            elif init == 'GGT': state['accumulator'] = GGᵀ.clone()
+            if init == 'identity': state['accumulator'] = torch.eye(GGT.size(0), device=GGT.device, dtype=GGT.dtype)
+            elif init == 'zeros': state['accumulator'] =  torch.zeros_like(GGT)
+            elif init == 'GGT': state['accumulator'] = GGT.clone()
             else: raise ValueError(init)
 
         # update
         beta = setting['beta']
         accumulator: torch.Tensor = state["accumulator"]
 
-        if beta is None: accumulator.add_(GGᵀ)
-        else: accumulator.lerp_(GGᵀ, 1-beta)
+        if beta is None: accumulator.add_(GGT)
+        else: accumulator.lerp_(GGT, 1-beta)
 
         # update number of GGᵀ in accumulator for divide
         state['num_GGTs'] = state.get('num_GGTs', 0) + 1

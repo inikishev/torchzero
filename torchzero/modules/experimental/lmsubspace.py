@@ -1,6 +1,7 @@
 import math
 from abc import ABC, abstractmethod
 from collections import deque
+from typing import Literal
 
 import torch
 
@@ -10,7 +11,8 @@ from ...linalg.matrix_power import matrix_power_eigh
 from ...modules.adaptive.lmadagrad import lm_adagrad_update
 from ...modules.quasi_newton.quasi_newton import bfgs_B_, bfgs_H_
 from ...utils import NumberList, TensorList
-from .cubic_adam import cubic_adam_
+from .cubic_adam import cubic_adam_, _cubic_adam_mode, _cubic_minimize, signed_cbrt, _clip_min_magnitude
+
 
 def debiased_step_size(step, beta1, beta2):
     bias_correction1 = 1.0 - (beta1 ** step)
@@ -58,7 +60,7 @@ class SubspaceMomentum(SubspaceOptimizerBase):
         state["exp_avg_proj"] = U_new.T @ (U_old @ state["exp_avg_proj"])
 
 class SubspaceAdam(SubspaceOptimizerBase):
-    """To be used within ``tz.m.experimental.LMSubspace``. Runs Adam in the eigenbasis of LMAdagrad."""
+    """To be used within ``tz.m.experimental.LMSubspace``. Runs Adam in LMAdagrad."""
     def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8):
         self.beta1=beta1
         self.beta2=beta2
@@ -92,12 +94,13 @@ class SubspaceAdam(SubspaceOptimizerBase):
         state["exp_avg_sq_proj"] = C.square() @ state["exp_avg_sq_proj"]
 
 class SubspaceCubicAdam(SubspaceOptimizerBase):
-    """To be used within ``tz.m.experimental.LMSubspace``. Runs cubic Adam (see ``tz.m.experimental.CubicAdam``) in the eigenbasis of LMAdagrad."""
-    def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8):
+    """To be used within ``tz.m.experimental.LMSubspace``. Runs cubic Adam (see ``tz.m.experimental.CubicAdam``) in  LMAdagrad."""
+    def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8, mode: _cubic_adam_mode = 'signed_cbrt'):
         self.beta1 = beta1
         self.beta2 = beta2
         self.beta3 = beta3
         self.eps = eps
+        self.mode: _cubic_adam_mode = mode
         self.current_step = 1
 
     def step(self, g, U, L, state):
@@ -118,6 +121,8 @@ class SubspaceCubicAdam(SubspaceOptimizerBase):
             eps = self.eps,
             debiased = True,
             step = self.current_step,
+
+            mode=self.mode,
         )[0]
 
         return U @ dir
@@ -133,7 +138,7 @@ class SubspaceCubicAdam(SubspaceOptimizerBase):
 
 
 class SubspaceFullMatrixAdam(SubspaceOptimizerBase):
-    """To be used within ``tz.m.experimental.LMSubspace``. Runs full-matrix Adam in the eigenbasis of LMAdagrad."""
+    """To be used within ``tz.m.experimental.LMSubspace``. Runs full-matrix Adam in LMAdagrad."""
     def __init__(self, beta1=0.95, beta2=0.95, eps=1e-8, matrix_power=-1/2, abs=abs):
         self.beta1=beta1
         self.beta2=beta2
@@ -190,9 +195,9 @@ def maybe_lerp(cur: torch.Tensor | None, new: torch.Tensor | None, beta: float |
 
 class LMSubspace(TensorTransform):
     """
-    Use a subspace optimizer in LMAdagrad's eigenbasis (any subclass of ``SubspaceOptimizerBase``).
+    Use a subspace optimizer in LMAdagrad (any subclass of ``SubspaceOptimizerBase``).
 
-    The eigenbasis is of size ``history_size`` variables, usually smaller because small eigenvalues are removed, therefore we can run expensive update rules such as full-matrix whitening. The eigenbasis is already rotated to be diagonal though so whether full-matrix preconditioning is useful is unclear.
+    The subspace is of size ``history_size`` variables, usually smaller because small eigenvalues are removed, therefore we can run expensive update rules such as full-matrix whitening.
 
     The subspace optimizer buffers are reprojected whenever factors are updated (this is why we need special class which defines ``reproject`` method).
 

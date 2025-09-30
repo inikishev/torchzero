@@ -23,5 +23,4 @@ from .reduce_outward_lr import ReduceOutwardLR
 from .scipy_newton_cg import ScipyNewtonCG
 from .spsa1 import SPSA1
 from .structural_projections import BlockPartition, TensorizeProjection
-
 # from dct import DCTProjection
