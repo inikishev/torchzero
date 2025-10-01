@@ -7,7 +7,7 @@ from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg, regularize_eig
 from .lre_optimizers import LREOptimizerBase
 
-def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
+def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
@@ -38,9 +38,9 @@ def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdam
         return None, None
 
 
-class LMAdagrad(TensorTransform):
+class GGT(TensorTransform):
     """
-    Limited-memory full matrix Adagrad.
+    GGT method from https://arxiv.org/pdf/1806.02958
 
     The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U S^-1 Uᵀg.
     But it uses eigendecomposition on MᵀM to get U and S^2 because that is faster when you don't neeed V.
@@ -65,7 +65,7 @@ class LMAdagrad(TensorTransform):
     ```python
     optimizer = tz.Optimizer(
         model.parameters(),
-        tz.m.LMAdagrad(),
+        tz.m.GGT(),
         tz.m.LR(0.1)
     )
     ```
@@ -74,7 +74,7 @@ class LMAdagrad(TensorTransform):
     ```python
     optimizer = tz.Optimizer(
         model.parameters(),
-        tz.m.LMAdagrad(inner=tz.m.EMA()),
+        tz.m.GGT(inner=tz.m.EMA()),
         tz.m.Debias(0.9, 0.999),
         tz.m.LR(0.01)
     )
@@ -85,7 +85,7 @@ class LMAdagrad(TensorTransform):
     ```python
     optimizer = tz.Optimizer(
         model.parameters(),
-        tz.m.LMAdagrad(inner=tz.m.EMA()),
+        tz.m.GGT(inner=tz.m.EMA()),
         tz.m.Debias(0.9, 0.999),
         tz.m.ClipNormByEMA(max_ema_growth=1.2),
         tz.m.LR(0.01)
@@ -133,7 +133,7 @@ class LMAdagrad(TensorTransform):
             L = state.get("L", None)
             U = state.get("U", None)
 
-            L_new, U_new = lm_adagrad_update(
+            L_new, U_new = ggt_update(
                 history,
                 damping=setting["damping"],
                 rdamping=setting["rdamping"],

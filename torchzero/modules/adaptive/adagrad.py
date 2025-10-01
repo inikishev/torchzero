@@ -169,7 +169,7 @@ class FullMatrixAdagrad(TensorTransform):
     """Full-matrix version of Adagrad, can be customized to make RMSprop or Adam (see examples).
 
     Note:
-        A more memory-efficient version equivalent to full matrix Adagrad on last n gradients is implemented in ``tz.m.LMAdagrad``.
+        A more memory-efficient version equivalent to full matrix Adagrad on last n gradients is implemented in ``tz.m.GGT``.
 
     Args:
         reg (float, optional): regularization, scale of identity matrix added to accumulator. Defaults to 1e-12.

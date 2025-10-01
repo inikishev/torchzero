@@ -10,7 +10,7 @@ from .adaptive_heavyball import AdaptiveHeavyBall
 from .aegd import AEGD
 from .esgd import ESGD
 from .lion import Lion
-from .lmadagrad import LMAdagrad
+from .ggt import GGT
 from .mars import MARSCorrection
 from .matrix_momentum import MatrixMomentum
 from .msam import MSAM, MSAMMomentum

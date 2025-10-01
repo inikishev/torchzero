@@ -1,6 +1,6 @@
 """subspace optimizers to be used in a low rank eigenbasis
 
-three opts support this - LMAdagrad and experimental AdaNystrom and Eigengrad
+three opts support this - GGT and experimental AdaNystrom and Eigengrad
 
 I could define repoject on a module but because most opts use per-parameter state that is complicated"""
 
@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import torch
 
-from ...linalg import matrix_power_eigh
+from ...linalg import matrix_power_eigh, torch_linalg
 from .lion import lion_
 
 class LREOptimizerBase(ABC):
@@ -204,7 +204,7 @@ class FullMatrixAdam(LREOptimizerBase):
         state["covariance"] = C @ state["covariance"] @ C.T
 
 class Lion(LREOptimizerBase):
-    """Runs Lion in the low rank eigenbasis (experimental)."""
+    """Runs Lion in the low rank eigenbasis."""
     def __init__(self, beta1=0.9, beta2=0.99, cautious:bool=False):
         self.beta1 = beta1
         self.beta2 = beta2

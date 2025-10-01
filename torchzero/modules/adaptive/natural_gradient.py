@@ -4,7 +4,7 @@ from ...core import Transform
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors
 from ...linalg import linear_operator
-from .lmadagrad import lm_adagrad_update
+from .ggt import ggt_update
 
 class NaturalGradient(Transform):
     """Natural gradient approximated via empirical fisher information matrix.
@@ -161,7 +161,7 @@ class NaturalGradient(Transform):
         if sqrt:
             # this computes U, S <- SVD(M), then calculate update as U S^-1 Uᵀg,
             # but it computes it through eigendecompotision
-            L, U = lm_adagrad_update(G.H, damping=reg, rdamping=1e-16, truncate=0, tol=1e-12)
+            L, U = ggt_update(G.H, damping=reg, rdamping=1e-16, truncate=0, tol=1e-12)
 
             if U is None or L is None:
 
