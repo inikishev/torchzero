@@ -885,7 +885,7 @@ def update_precond_lra(UVd, Luvd, v, h, lr=0.1, betaL=0.9):
     IpVtU = V.t().mm(U)
     IpVtU.diagonal().add_(1) # avoid forming matrix I explicitly
     invQtv = v/d
-    LU, pivots = torch.linalg.lu_factor(lift2single(IpVtU))
+    LU, pivots, _ = torch.linalg.lu_factor_ex(lift2single(IpVtU))
     invQtv = invQtv - V.mm(torch.linalg.lu_solve(LU, pivots, lift2single(U.t().mm(invQtv)), adjoint=True).to(V.dtype))
     invPv  = invQtv - U.mm(torch.linalg.lu_solve(LU, pivots, lift2single(V.t().mm(invQtv))).to(U.dtype))
     invPv = invPv/d

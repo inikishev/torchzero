@@ -1,9 +1,10 @@
-from typing import Literal, Any
+from typing import Any, Literal
 
 import torch
 
-from torchzero.core import TensorTransform
-from torchzero.utils import NumberList, TensorList, unpack_dicts, unpack_states
+from ...core import TensorTransform
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
+from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
 
 
 def signed_cbrt(x: TensorList | Any) -> Any:
@@ -109,3 +110,49 @@ class CubicAdam(TensorTransform):
 
             mode=settings[0]["mode"]
         )
+
+class SubspaceCubicAdam(SubspaceOptimizerBase):
+    """Runs cubic Adam in low rank eigenbasis."""
+    def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8, mode: _cubic_adam_mode = 'signed_cbrt'):
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.beta3 = beta3
+        self.eps = eps
+        self.mode: _cubic_adam_mode = mode
+
+    def step(self, g, L, Q, state):
+        g = Q.T @ g
+
+        if "exp_avg" not in state:
+            state["exp_avg"] = torch.zeros_like(g)
+            state["exp_avg_sq"] = torch.zeros_like(g)
+            state["exp_avg_cu"] = torch.zeros_like(g)
+            state["current_step"] = 1
+
+        dir = cubic_adam_(
+            tensors = TensorList([g]),
+            exp_avg_ = TensorList([state["exp_avg"]]),
+            exp_avg_sq_ = TensorList([state["exp_avg_sq"]]),
+            exp_avg_cu_ = TensorList([state["exp_avg_cu"]]),
+            alpha = 1,
+            beta1 = self.beta1,
+            beta2 = self.beta2,
+            beta3 = self.beta3,
+            eps = self.eps,
+            debiased = True,
+            step = state["current_step"],
+
+            mode=self.mode,
+        )[0]
+
+        state["current_step"] += 1
+        return Q @ dir
+
+    def reproject(self, L_old, Q_old, L_new, Q_new, state):
+        if  "exp_avg" not in state: return
+
+        C = Q_new.T @ Q_old
+
+        state["exp_avg"] = C @ state["exp_avg"]
+        state["exp_avg_sq"] = C.square() @ state["exp_avg_sq"]
+        state["exp_avg_cu"] = C.pow(3) @ state["exp_avg_cu"]

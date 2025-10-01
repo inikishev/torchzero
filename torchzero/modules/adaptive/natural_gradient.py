@@ -4,7 +4,7 @@ from ...core import Transform
 from ...utils.derivatives import jacobian_wrt, flatten_jacobian
 from ...utils import vec_to_tensors
 from ...linalg import linear_operator
-from .lmadagrad import lm_adagrad_apply, lm_adagrad_update
+from .lmadagrad import lm_adagrad_update
 
 class NaturalGradient(Transform):
     """Natural gradient approximated via empirical fisher information matrix.
@@ -161,10 +161,19 @@ class NaturalGradient(Transform):
         if sqrt:
             # this computes U, S <- SVD(M), then calculate update as U S^-1 Uᵀg,
             # but it computes it through eigendecompotision
-            U, L = lm_adagrad_update(G.H, damping=reg, rdamping=1e-12, truncate=0, tol=1e-12)
-            if U is None or L is None: return objective
+            L, U = lm_adagrad_update(G.H, damping=reg, rdamping=1e-16, truncate=0, tol=1e-12)
 
-            v,_ = lm_adagrad_apply(self.global_state["g"], U, L, exp_avg_proj=None, beta=0)
+            if U is None or L is None:
+
+                # fallback to element-wise
+                g = self.global_state["g"]
+                g /= G.square().mean(0).sqrt().add(reg)
+                objective.updates = vec_to_tensors(g, params)
+                return objective
+
+            # whiten
+            z = U.T @ self.global_state["g"]
+            v = (U * L.rsqrt()) @ z
             objective.updates = vec_to_tensors(v, params)
             return objective
 

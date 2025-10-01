@@ -4,6 +4,7 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...linalg.eigh import low_rank_eig_plus_sr1, regularize_eig
 from ...linalg.linear_operator import Eigendecomposition
+from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
 
 class Eigengrad(TensorTransform):
     """we can easily compute rank 1 symmetric update to a low rank eigendecomposition.
@@ -27,9 +28,9 @@ class Eigengrad(TensorTransform):
             added to eigenvalues when computing the update. Defaults to 1e-4.
         mm_rdamping (float, optional):
             added to eigenvalues when computing the update, relative to largest eigenvalue. Defaults to 0.
-        nystrom_reg (float, optional):
+        id_reg (float, optional):
             multiplier to identity matrix added to preconditioner before computing update
-            If this value is given, Nyström sketch-and-solve will be used to compute the update.
+            If this value is given, solution from Nyström sketch-and-solve will be used to compute the update.
             This value can't be too small (i.e. less than 1e-5) or the solver will be very unstable. Defaults to None.
         column_space_tol (float, optional):
             tolerance for deciding if new eigenvector is within column space of the covariance matrix. Defaults to 1e-9.
@@ -51,8 +52,9 @@ class Eigengrad(TensorTransform):
         mm_truncate: int | None = None,
         mm_damping: float = 1e-4,
         mm_rdamping: float = 0,
-        nystrom_reg: float | None = None,
+        id_reg: float | None = None,
         column_space_tol=1e-9,
+        subspace_optimizer: SubspaceOptimizerBase | None = None,
         concat_params: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
@@ -64,68 +66,90 @@ class Eigengrad(TensorTransform):
         super().__init__(defaults, concat_params=concat_params, inner=inner, update_freq=update_freq)
 
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+        state["step"] = state.get("step", 0) + 1
+
         try:
-            state["step"] = state.get("step", 0) + 1
-            if "D" not in state:
+            if "L" not in state:
                 # for uu^T u is eigenvector and u^T u is eigenvalue
                 norm = torch.linalg.vector_norm(tensor).clip(min=torch.finfo(tensor.dtype).tiny * 2) # pylint:disable=not-callable
 
-                state["D"] = tensor.dot(tensor).unsqueeze(0) / norm # (rank,)
-                state["P"] = tensor.unsqueeze(-1) / norm # (m, rank)
+                state["L"] = tensor.dot(tensor).unsqueeze(0) / norm # (rank,)
+                state["Q"] = tensor.unsqueeze(-1) / norm # (m, rank)
 
             else:
                 beta = setting["beta"]
-                D = state["D"]
-                P = state["P"]
+                L = state["L"]
+                Q = state["Q"]
 
-                # decay current eigenvalues
-                D, P = low_rank_eig_plus_sr1(D*beta, P, tensor*(1-beta), tol=setting["column_space_tol"], retry_float64=True)
+                # compute new factors
+                L_new, Q_new = low_rank_eig_plus_sr1(L*beta, Q, tensor*(1-beta), tol=setting["column_space_tol"], retry_float64=True)
 
-                # regularize accumulator
-                D, P = regularize_eig(D, P, truncate=setting["rank"], tol=setting["tol"], damping=setting["damping"], rdamping=setting["rdamping"])
+                # truncate/regularize new factors
+                L_new, Q_new = regularize_eig(L_new, Q_new, truncate=setting["rank"], tol=setting["tol"],
+                                              damping=setting["damping"], rdamping=setting["rdamping"])
+
+                # reproject subspace optimizer
+                subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+                if subspace_optimizer is not None:
+                    if (L_new is not None) and (Q_new is not None):
+                        subspace_state = state["subspace_state"]
+                        subspace_optimizer.reproject(L_old=L, Q_old=Q, L_new=L_new, Q_new=Q_new, state=subspace_state)
 
                 # store
-                state["D"] = D
-                state["P"] = P
+                if L_new is not None: state["L"] = L_new
+                if Q_new is not None: state["Q"] = Q_new
 
         except torch.linalg.LinAlgError:
             pass
 
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
-        if "D" not in state:
+        if "L" not in state:
             return tensor.clip(-0.1, 0.1)
 
-        D = state["D"]
-        P = state["P"]
+        L = state["L"]
+        Q = state["Q"]
+        id_reg = setting["id_reg"]
 
         # debias
         # we don't start from zeros though so maybe this isn't necessary but its just warmup
         beta = setting["beta"]
-        D = D / (1 - beta**state["step"])
+        L = L / (1 - beta**state["step"])
 
         # regularize for matmul
-        D, P = regularize_eig(
-            L=D,
-            Q=P,
+        L, Q = regularize_eig(
+            L=L,
+            Q=Q,
             truncate=setting["mm_truncate"],
             tol=setting["mm_tol"],
             damping=setting["mm_damping"],
             rdamping=setting["mm_rdamping"],
         )
 
-        if D is None or P is None:
-            del state["D"], state["P"]
+        if L is None or Q is None:
+            del state["L"], state["Q"]
             return tensor.clip(-0.1, 0.1)
 
-        D = D.clip(min=torch.finfo(D.dtype).tiny * 2)
+        # step with subspace optimizer
+        subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+        if subspace_optimizer is not None:
+            if (id_reg is not None) and (id_reg != 0):
+                raise RuntimeError("id_reg is not compatible with subspace_optimizer")
 
-        nystrom_reg = setting["nystrom_reg"]
-        if nystrom_reg is None:
-            G = Eigendecomposition(D.sqrt(), P, use_nystrom=False)
+            if "subspace_state" not in state: state["subspace_state"] = {}
+            subspace_state = state["subspace_state"]
+
+            update = subspace_optimizer.step(tensor.ravel(), L=L, Q=Q, state=subspace_state)
+            return update.view_as(tensor)
+
+        # or just whiten
+        L = L.clip(min=torch.finfo(L.dtype).tiny * 2)
+
+        if id_reg is None or id_reg == 0:
+            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=False)
             dir = G.solve(tensor.ravel())
 
         else:
-            G = Eigendecomposition(D.sqrt(), P, use_nystrom=True)
-            dir = G.solve_plus_diag(tensor.ravel(), diag=nystrom_reg)
+            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=True)
+            dir = G.solve_plus_diag(tensor.ravel(), diag=id_reg)
 
         return dir.view_as(tensor)

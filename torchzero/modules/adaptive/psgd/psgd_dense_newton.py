@@ -20,7 +20,7 @@ from .psgd import (
 )
 
 # matches
-class DenseNewton(Transform):
+class PSGDDenseNewton(Transform):
     """Dense hessian preconditioner from Preconditioned Stochastic Gradient Descent (see https://github.com/lixilinx/psgd_torch)
 
     Args:

@@ -20,7 +20,7 @@ from .psgd import (
 )
 
 # matches
-class KronWhiten(TensorTransform):
+class PSGDKronWhiten(TensorTransform):
     """Kron whitening preconditioner from Preconditioned Stochastic Gradient Descent (see https://github.com/lixilinx/psgd_torch)
 
     Args:

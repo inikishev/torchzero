@@ -2,21 +2,12 @@
 from .adanystrom import AdaNystrom
 from .common_directions_whiten import CommonDirectionsWhiten
 from .coordinate_momentum import CoordinateMomentum
-from .cubic_adam import CubicAdam
+from .cubic_adam import CubicAdam, SubspaceCubicAdam
 from .curveball import CurveBall
 from .fft import FFTProjection
 from .gradmin import GradMin
 from .higher_order_newton import HigherOrderNewton
 from .l_infinity import InfinityNormTrustRegion
-from .lmsubspace import (
-    LMSubspace,
-    SubspaceAdam,
-    SubspaceCubicAdam,
-    SubspaceFullMatrixAdam,
-    SubspaceMomentum,
-    SubspaceOptimizerBase,
-    SubspaceWhiten,
-)
 from .newton_solver import NewtonSolver
 from .newtonnewton import NewtonNewton
 from .reduce_outward_lr import ReduceOutwardLR

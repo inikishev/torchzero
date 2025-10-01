@@ -1,4 +1,6 @@
 from . import experimental
+from .adaptive import *
+from .adaptive import subspace_optimizers as sub
 from .clipping import *
 from .conjugate_gradient import *
 from .grad_approximation import *
@@ -7,9 +9,9 @@ from .line_search import *
 from .misc import *
 from .momentum import *
 from .ops import *
-from .adaptive import *
 from .projections import *
 from .quasi_newton import *
+from .restarts import *
 from .second_order import *
 from .smoothing import *
 from .step_size import *
@@ -18,5 +20,4 @@ from .trust_region import *
 from .variance_reduction import *
 from .weight_decay import *
 from .wrappers import *
-from .restarts import *
 from .zeroth_order import *

@@ -4,17 +4,16 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...linalg import (
     OrthogonalizeMethod,
-    nystrom_approximation,
     orthogonalize, regularize_eig,
     torch_linalg,
 )
 from ...linalg.linear_operator import Eigendecomposition
-
+from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
 
 def weighted_eigen_plus_rank1_mm(
-    # A1 = P1 @ diag(D1) @ P1.T
-    D1: torch.Tensor,
-    P1: torch.Tensor,
+    # A1 = Q1 @ diag(L1) @ Q1.T
+    L1: torch.Tensor,
+    Q1: torch.Tensor,
 
     # K2 = v2 @ v2.T
     v2: torch.Tensor,
@@ -33,32 +32,29 @@ def weighted_eigen_plus_rank1_mm(
     Returns ``(n, k)``
 
     Args:
-        D1 (torch.Tensor): eigenvalues of A1, shape ``(rank,)``.
-        P1 (torch.Tensor): eigenvectors of A1, shape ``(n, rank)``.
-        v2 (torch.Tensor): vector such that ``v v^T = A2``, shape ``(n,)`` or ``(n, 1)``.
+        L1 (torch.Tensor): eigenvalues of A1, shape ``(rank,)``.
+        Q1 (torch.Tensor): eigenvectors of A1, shape ``(n, rank)``.
+        v2 (torch.Tensor): vector such that ``v v^T = A2``, shape ``(n,)``.
         B (torch.Tensor): shape ``(n, k)``.
         w1 (float): weight for A1.
         w2 (float): weight for A2.
 
     """
-    if v2.ndim == 1:
-        v2 = v2.unsqueeze(1)
-
     # sketch A1
-    PᵀB = D1.T @ B # (rank, k)
-    DPᵀB = P1.unsqueeze(1) * PᵀB  # (rank, k)
-    sketch1 = D1 @ DPᵀB # (n, k)
+    QTB = Q1.T @ B # (rank, k)
+    LQTB = L1.unsqueeze(1) * QTB  # (rank, k)
+    sketch1 = Q1 @ LQTB  # (n, k)
 
     # skecth A2
-    vB = v2.T @ B
-    sketch2 = v2 @ vB
+    vB = v2 @ B
+    sketch2 = v2.outer(vB)
 
     return w1 * sketch1 + w2 * sketch2
 
 
 def adanystrom_update(
-    D1: torch.Tensor,
-    P1: torch.Tensor,
+    L1: torch.Tensor,
+    Q1: torch.Tensor,
     v2: torch.Tensor,
     w1: float,
     w2: float,
@@ -73,44 +69,44 @@ def adanystrom_update(
     """computes the Nyström approximation of ``(w1 * A1 + w2 * A2)``,
     where ``A1`` is an eigendecomposition, ``A2`` is symmetric rank 1.
 
-    returns D of shape ``(k, )`` and P of shape ``(n, k)``.
+    returns L of shape ``(k, )`` and Q of shape ``(n, k)``.
 
     Args:
-        D1 (torch.Tensor): eigenvalues of A1, shape ``(rank,)``.
-        P1 (torch.Tensor): eigenvectors of A1, shape ``(n, rank)``.
+        L1 (torch.Tensor): eigenvalues of A1, shape ``(rank,)``.
+        Q1 (torch.Tensor): eigenvectors of A1, shape ``(n, rank)``.
         v2 (torch.Tensor): vector such that ``v v^T = A2``, shape ``(n,)`` or ``(n, 1)``.
         w1 (float): weight for A1.
         w2 (float): weight for A2.
     """
-    n = D1.shape[0]
-    device = D1.device
-    dtype = D1.dtype
+    n = Q1.shape[0]
+    device = Q1.device
+    dtype = Q1.dtype
     l = rank + oversampling_p
 
     # gaussian test matrix
-    Ω = torch.randn(n, l, device=device, dtype=dtype)
+    Omega = torch.randn(n, l, device=device, dtype=dtype)
 
     # sketch
-    AΩ = weighted_eigen_plus_rank1_mm(D1, P1, v2, Ω, w1, w2)
-    Q = orthogonalize(AΩ, orthogonalize_method)
+    AOmega = weighted_eigen_plus_rank1_mm(L1, Q1, v2, Omega, w1, w2)
+    Q = orthogonalize(AOmega, orthogonalize_method)
 
-    AQ = weighted_eigen_plus_rank1_mm(D1, P1, v2, Q, w1, w2)
-    AᵀAQ = Q.T @ AQ
+    AQ = weighted_eigen_plus_rank1_mm(L1, Q1, v2, Q, w1, w2)
+    QTAQ = Q.T @ AQ
 
-    W = (AᵀAQ + AᵀAQ.T) / 2.0
+    W = (QTAQ + QTAQ.T) / 2.0
 
     # compute new L and Q
     try:
-        D, P = torch_linalg.eigh(W, retry_float64=True)
+        L_prime, S = torch_linalg.eigh(W, retry_float64=True)
     except torch.linalg.LinAlgError:
-        return D1, P1
+        return L1, Q1
 
-    D, P = regularize_eig(L=D, Q=P, truncate=rank, tol=tol, damping=damping, rdamping=rdamping)
+    L_prime, S = regularize_eig(L=L_prime, Q=S, truncate=rank, tol=tol, damping=damping, rdamping=rdamping)
 
-    if D is None or P is None:
-        return D1, P1
+    if L_prime is None or S is None:
+        return L1, Q1
 
-    return D, Q @ P
+    return L_prime, Q @ S
 
 
 # def adanystrom_update2(
@@ -148,9 +144,9 @@ class AdaNystrom(TensorTransform):
             added to eigenvalues when computing the update. Defaults to 1e-4.
         mm_rdamping (float, optional):
             added to eigenvalues when computing the update, relative to largest eigenvalue. Defaults to 0.
-        nystrom_reg (float, optional):
+        id_reg (float, optional):
             multiplier to identity matrix added to preconditioner before computing update
-            If this value is given, Nyström sketch-and-solve will be used to compute the update.
+            If this value is given, solution from Nyström sketch-and-solve will be used to compute the update.
             This value can't be too small (i.e. less than 1e-5) or the solver will be very unstable. Defaults to None.
         concat_params (bool, optional):
             whether to precondition all parameters at once if True, or each separately if False. Defaults to True.
@@ -160,8 +156,7 @@ class AdaNystrom(TensorTransform):
     def __init__(
         self,
         rank,
-        w1=0.95,
-        w2=0.05,
+        beta=0.95,
         oversampling: int = 10,
         tol: float = 1e-7,
         damping: float = 1e-8,
@@ -170,8 +165,9 @@ class AdaNystrom(TensorTransform):
         mm_truncate: int | None = None,
         mm_damping: float = 1e-4,
         mm_rdamping: float = 0,
-        nystrom_reg: float | None = None,
+        id_reg: float | None = None,
         orthogonalize_method: OrthogonalizeMethod = 'qr',
+        subspace_optimizer: SubspaceOptimizerBase | None = None,
         concat_params: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
@@ -183,17 +179,18 @@ class AdaNystrom(TensorTransform):
         super().__init__(defaults, concat_params=concat_params, inner=inner, update_freq=update_freq)
 
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
+        state["step"] = state.get("step", 0) + 1
         rank = setting["rank"]
         device = tensor.device
         dtype = tensor.dtype
 
         try:
-            if "D" not in state:
-                # use just tensor and zero D and P
+            if "L" not in state:
+                # use just tensor and zero L and Q with zero weight
 
-                state["D"], state["P"] = adanystrom_update(
-                    D1=torch.zeros(tensor.numel(), rank, device=device, dtype=dtype),
-                    P1=torch.zeros(rank, device=device, dtype=dtype),
+                state["L"], state["Q"] = adanystrom_update(
+                    L1=torch.zeros(rank, device=device, dtype=dtype),
+                    Q1=torch.zeros((tensor.numel(), rank), device=device, dtype=dtype),
                     v2=tensor.ravel(),
                     w1=0,
                     w2=1,
@@ -206,10 +203,16 @@ class AdaNystrom(TensorTransform):
                 )
 
             else:
-                w1, w2 = setting["w1"],setting["w2"]
-                state["D"], state["P"] = adanystrom_update(
-                    D1=state["P"],
-                    P1=state["D"],
+                L = state["L"]
+                Q = state["Q"]
+
+                w1 = setting["beta"]
+                w2 = 1 - w1
+
+                # compute new factors
+                L_new, Q_new = adanystrom_update(
+                    L1=L,
+                    Q1=Q,
                     v2=tensor.ravel(),
                     w1=w1,
                     w2=w2,
@@ -220,39 +223,68 @@ class AdaNystrom(TensorTransform):
                     rdamping=setting["rdamping"],
                     orthogonalize_method=setting["orthogonalize_method"],
                 )
+
+                # reproject subspace optimizer
+                subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+                if subspace_optimizer is not None:
+                    if (L_new is not None) and (Q_new is not None):
+                        subspace_state = state["subspace_state"]
+                        subspace_optimizer.reproject(L_old=L, Q_old=Q, L_new=L_new, Q_new=Q_new, state=subspace_state)
+
+                # store
+                if L_new is not None: state["L"] = L_new
+                if Q_new is not None: state["Q"] = Q_new
+
         except torch.linalg.LinAlgError:
             pass
 
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
-        if "D" not in state:
+        if "L" not in state:
             return tensor.clip(-0.1, 0.1)
 
-        D = state["D"]
-        P = state["P"]
+        L = state["L"]
+        Q = state["Q"]
+        id_reg = setting["id_reg"]
+
+        # debias
+        beta = setting["beta"]
+        L = L / (1 - beta**state["step"])
 
         # regularize for matmul
-        D, P = regularize_eig(
-            L=D,
-            Q=P,
+        L, Q = regularize_eig(
+            L=L,
+            Q=Q,
             truncate=setting["mm_truncate"],
             tol=setting["mm_tol"],
             damping=setting["mm_damping"],
             rdamping=setting["mm_rdamping"],
         )
 
-        if D is None or P is None:
-            del state["D"], state["P"]
+        if L is None or Q is None:
+            del state["L"], state["Q"]
             return tensor.clip(-0.1, 0.1)
 
-        D = D.clip(min=torch.finfo(D.dtype).tiny * 2)
+        # step with subspace optimizer
+        subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+        if subspace_optimizer is not None:
+            if (id_reg is not None) and (id_reg != 0):
+                raise RuntimeError("id_reg is not compatible with subspace_optimizer")
 
-        nystrom_reg = setting["nystrom_reg"]
-        if nystrom_reg is None:
-            G = Eigendecomposition(D.sqrt(), P, use_nystrom=False)
+            if "subspace_state" not in state: state["subspace_state"] = {}
+            subspace_state = state["subspace_state"]
+
+            update = subspace_optimizer.step(tensor.ravel(), L=L, Q=Q, state=subspace_state)
+            return update.view_as(tensor)
+
+        # or just whiten
+        L = L.clip(min=torch.finfo(L.dtype).tiny * 2)
+
+        if id_reg is None or id_reg == 0:
+            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=False)
             dir = G.solve(tensor.ravel())
 
         else:
-            G = Eigendecomposition(D.sqrt(), P, use_nystrom=True)
-            dir = G.solve_plus_diag(tensor.ravel(), diag=nystrom_reg)
+            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=True)
+            dir = G.solve_plus_diag(tensor.ravel(), diag=id_reg)
 
         return dir.view_as(tensor)

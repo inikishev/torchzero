@@ -10,7 +10,7 @@ from ._psgd_utils import _initialize_lra_state_
 from .psgd import lift2single, precond_grad_lra, update_precond_lra_whiten
 
 # matches
-class LRAWhiten(TensorTransform):
+class PSGDLRAWhiten(TensorTransform):
     """Low rank whitening preconditioner from Preconditioned Stochastic Gradient Descent (see https://github.com/lixilinx/psgd_torch)
 
     Args:

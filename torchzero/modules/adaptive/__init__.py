@@ -1,3 +1,4 @@
+from . import subspace_optimizers
 from .adagrad import Adagrad, AdagradNorm, FullMatrixAdagrad
 
 # from .curveball import CurveBall
@@ -17,11 +18,11 @@ from .muon import DualNormCorrection, MuonAdjustLR, Orthogonalize, orthogonalize
 from .natural_gradient import NaturalGradient
 from .orthograd import OrthoGrad, orthograd_
 from .psgd import (
-    DenseNewton,
-    KronNewton,
-    KronWhiten,
-    LRANewton,
-    LRAWhiten,
+    PSGDDenseNewton,
+    PSGDKronNewton,
+    PSGDKronWhiten,
+    PSGDLRANewton,
+    PSGDLRAWhiten,
 )
 from .rmsprop import RMSprop
 from .rprop import (

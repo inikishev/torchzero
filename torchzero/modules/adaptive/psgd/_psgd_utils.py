@@ -19,7 +19,7 @@ def _initialize_lra_state_(tensor: torch.Tensor, state, setting):
     V *= 0.1**0.5 / torch.linalg.vector_norm(V)
 
     if setting["init_scale"] is None:
-        warnings.warn("FYI: Will set the preconditioner initial scale on the fly. Recommend to set it manually.")
+        # warnings.warn("FYI: Will set the preconditioner initial scale on the fly. Recommend to set it manually.")
         d = None
     else:
         d = torch.ones(n, 1, dtype=dtype, device=device) * setting["init_scale"]

@@ -11,7 +11,7 @@ from .psgd import lift2single, precond_grad_lra, update_precond_lra_newton
 from ._psgd_utils import _initialize_lra_state_
 
 # matches
-class LRANewton(Transform):
+class PSGDLRANewton(Transform):
     """Low rank hessian preconditioner from Preconditioned Stochastic Gradient Descent (see https://github.com/lixilinx/psgd_torch)
 
     Args:
