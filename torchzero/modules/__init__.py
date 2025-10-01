@@ -1,6 +1,6 @@
 from . import experimental
 from .adaptive import *
-from .adaptive import subspace_optimizers as sub
+from .adaptive import lre_optimizers as sub
 from .clipping import *
 from .conjugate_gradient import *
 from .grad_approximation import *

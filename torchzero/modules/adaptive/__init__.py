@@ -1,4 +1,4 @@
-from . import subspace_optimizers
+from . import lre_optimizers
 from .adagrad import Adagrad, AdagradNorm, FullMatrixAdagrad
 
 # from .curveball import CurveBall

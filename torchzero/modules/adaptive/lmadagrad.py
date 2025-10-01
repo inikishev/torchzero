@@ -5,7 +5,7 @@ import warnings
 import torch
 from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg, regularize_eig
-from .subspace_optimizers import SubspaceOptimizerBase
+from .lre_optimizers import LREOptimizerBase
 
 def lm_adagrad_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
@@ -103,7 +103,7 @@ class LMAdagrad(TensorTransform):
         truncate: int | None = None,
         damping: float = 1e-4,
         rdamping: float = 0,
-        subspace_optimizer: SubspaceOptimizerBase | None = None,
+        subspace_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
 
         inner: Chainable | None = None,
@@ -142,7 +142,7 @@ class LMAdagrad(TensorTransform):
             )
 
             # reproject subspace optimizer
-            subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+            subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
             if subspace_optimizer is not None:
                 if (L is not None) and (U is not None) and (L_new is not None) and (U_new is not None):
                     subspace_state = state["subspace_state"]
@@ -168,7 +168,7 @@ class LMAdagrad(TensorTransform):
         L = state['L']
 
         # step with subspace optimizer
-        subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+        subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
         if subspace_optimizer is not None:
 
             if "subspace_state" not in state: state["subspace_state"] = {}

@@ -4,7 +4,7 @@ import torch
 
 from ...core import TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
+from ..adaptive.lre_optimizers import LREOptimizerBase
 
 
 def signed_cbrt(x: TensorList | Any) -> Any:
@@ -111,7 +111,7 @@ class CubicAdam(TensorTransform):
             mode=settings[0]["mode"]
         )
 
-class SubspaceCubicAdam(SubspaceOptimizerBase):
+class SubspaceCubicAdam(LREOptimizerBase):
     """Runs cubic Adam in low rank eigenbasis."""
     def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8, mode: _cubic_adam_mode = 'signed_cbrt'):
         self.beta1 = beta1

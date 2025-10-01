@@ -12,8 +12,10 @@ import torch
 from ...linalg import matrix_power_eigh
 
 
-class SubspaceOptimizerBase(ABC):
-    """notes:
+class LREOptimizerBase(ABC):
+    """Optimizer to run in a low rank eigenbasis.
+
+    notes:
 
     1. it shouldn't store any states in self, everything should be in state.
     This is because this may be called on multiple parameters in a sequence
@@ -31,12 +33,12 @@ class SubspaceOptimizerBase(ABC):
                   L_new: torch.Tensor, Q_new: torch.Tensor, state: dict) -> None:
         ...
 
-class Whiten(SubspaceOptimizerBase):
+class Whiten(LREOptimizerBase):
     """This simply applies whitening and is equivalent to not running an optimizer in the eigenbasis"""
     def step(self, g, L, Q, state): return (Q * L.rsqrt()) @ (Q.T @ g)
     def reproject(self, L_old, Q_old, L_new, Q_new, state): pass
 
-class EMA(SubspaceOptimizerBase):
+class EMA(LREOptimizerBase):
     """Maintains exponential moving average of gradients in the low rank eigenbasis. Nesterov setting is experimental"""
     def __init__(self, beta=0.9, nesterov:bool=False):
         self.beta = beta
@@ -62,7 +64,7 @@ class EMA(SubspaceOptimizerBase):
         if  "exp_avg" not in state: return
         state["exp_avg"] = Q_new.T @ (Q_old @ state["exp_avg"])
 
-class Adam(SubspaceOptimizerBase):
+class Adam(LREOptimizerBase):
     """Runs Adam in low rank eigenbasis."""
     def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8):
         self.beta1 = beta1
@@ -101,7 +103,7 @@ class Adam(SubspaceOptimizerBase):
         state["exp_avg_sq"] = C.square() @ state["exp_avg_sq"]
 
 
-class FullMatrixAdam(SubspaceOptimizerBase):
+class FullMatrixAdam(LREOptimizerBase):
     """Runs full-matrix Adam in low rank eigenbasis.
     The preconditioner is updated whenever basis is updated"""
     def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8, matrix_power=-1/2, abs=True):

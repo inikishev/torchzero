@@ -4,7 +4,7 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...linalg.eigh import low_rank_eig_plus_sr1, regularize_eig
 from ...linalg.linear_operator import Eigendecomposition
-from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
+from ..adaptive.lre_optimizers import LREOptimizerBase
 
 class Eigengrad(TensorTransform):
     """we can easily compute rank 1 symmetric update to a low rank eigendecomposition.
@@ -54,7 +54,7 @@ class Eigengrad(TensorTransform):
         mm_rdamping: float = 0,
         id_reg: float | None = None,
         column_space_tol=1e-9,
-        subspace_optimizer: SubspaceOptimizerBase | None = None,
+        subspace_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
@@ -89,7 +89,7 @@ class Eigengrad(TensorTransform):
                                               damping=setting["damping"], rdamping=setting["rdamping"])
 
                 # reproject subspace optimizer
-                subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+                subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
                 if subspace_optimizer is not None:
                     if (L_new is not None) and (Q_new is not None):
                         subspace_state = state["subspace_state"]
@@ -130,7 +130,7 @@ class Eigengrad(TensorTransform):
             return tensor.clip(-0.1, 0.1)
 
         # step with subspace optimizer
-        subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+        subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
         if subspace_optimizer is not None:
             if (id_reg is not None) and (id_reg != 0):
                 raise RuntimeError("id_reg is not compatible with subspace_optimizer")

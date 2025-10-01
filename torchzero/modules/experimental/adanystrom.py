@@ -8,7 +8,7 @@ from ...linalg import (
     torch_linalg,
 )
 from ...linalg.linear_operator import Eigendecomposition
-from ..adaptive.subspace_optimizers import SubspaceOptimizerBase
+from ..adaptive.lre_optimizers import LREOptimizerBase
 
 def weighted_eigen_plus_rank1_mm(
     # A1 = Q1 @ diag(L1) @ Q1.T
@@ -167,7 +167,7 @@ class AdaNystrom(TensorTransform):
         mm_rdamping: float = 0,
         id_reg: float | None = None,
         orthogonalize_method: OrthogonalizeMethod = 'qr',
-        subspace_optimizer: SubspaceOptimizerBase | None = None,
+        subspace_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
@@ -225,7 +225,7 @@ class AdaNystrom(TensorTransform):
                 )
 
                 # reproject subspace optimizer
-                subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+                subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
                 if subspace_optimizer is not None:
                     if (L_new is not None) and (Q_new is not None):
                         subspace_state = state["subspace_state"]
@@ -265,7 +265,7 @@ class AdaNystrom(TensorTransform):
             return tensor.clip(-0.1, 0.1)
 
         # step with subspace optimizer
-        subspace_optimizer: SubspaceOptimizerBase | None = setting["subspace_optimizer"]
+        subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
         if subspace_optimizer is not None:
             if (id_reg is not None) and (id_reg != 0):
                 raise RuntimeError("id_reg is not compatible with subspace_optimizer")
