@@ -1,10 +1,11 @@
+from typing import Any
 import torch
 
 from ...core import TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 
-def lion_(tensors: TensorList, exp_avg_: TensorList, beta1, beta2,):
+def lion_(tensors: TensorList | Any, exp_avg_: TensorList | Any, beta1, beta2,):
     update = exp_avg_.lerp(tensors, 1-beta1).sign_()
     exp_avg_.lerp_(tensors, 1-beta2)
     return update

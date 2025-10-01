@@ -43,7 +43,7 @@ class Eigengrad(TensorTransform):
 
     def __init__(
         self,
-        rank: int,
+        rank: int = 100,
         beta=0.95,
         tol: float = 1e-7,
         damping: float = 1e-8,

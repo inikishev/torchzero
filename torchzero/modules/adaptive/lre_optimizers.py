@@ -6,11 +6,12 @@ I could define repoject on a module but because most opts use per-parameter stat
 
 import math
 from abc import ABC, abstractmethod
+from typing import Any, cast
 
 import torch
 
 from ...linalg import matrix_power_eigh
-
+from .lion import lion_
 
 class LREOptimizerBase(ABC):
     """Optimizer to run in a low rank eigenbasis.
@@ -40,9 +41,11 @@ class Whiten(LREOptimizerBase):
 
 class EMA(LREOptimizerBase):
     """Maintains exponential moving average of gradients in the low rank eigenbasis. Nesterov setting is experimental"""
-    def __init__(self, beta=0.9, nesterov:bool=False):
+    def __init__(self, beta=0.9, nesterov:bool=False, cautious:bool=False, whiten:bool=True):
         self.beta = beta
         self.nesterov = nesterov
+        self.whiten = whiten
+        self.cautious = cautious
 
     def step(self, g, L, Q, state):
         g = Q.T @ g
@@ -58,41 +61,65 @@ class EMA(LREOptimizerBase):
         else:
             dir = exp_avg
 
-        return (Q * L.rsqrt()) @ dir
+        if self.cautious:
+            mask = (g * dir) > 0
+            dir *= mask
+
+        if self.whiten: return (Q * L.rsqrt()) @ dir
+        return Q @ dir
 
     def reproject(self, L_old, Q_old, L_new, Q_new, state):
         if  "exp_avg" not in state: return
-        state["exp_avg"] = Q_new.T @ (Q_old @ state["exp_avg"])
+        C = Q_new.T @ Q_old
+        state["exp_avg"] = C @ state["exp_avg"]
+
+
+def adam(g:torch.Tensor, state:dict, beta1, beta2, eps):
+
+    if "exp_avg" not in state:
+        state["exp_avg"] = torch.zeros_like(g)
+        state["exp_avg_sq"] = torch.zeros_like(g)
+        state["current_step"] = 1
+
+    exp_avg = state["exp_avg"]
+    exp_avg_sq = state["exp_avg_sq"]
+    current_step = state["current_step"]
+
+    exp_avg.lerp_(g, 1-beta1)
+    exp_avg_sq.mul_(beta2).addcmul_(g, g, value=1-beta2)
+    denom = exp_avg_sq.sqrt().add_(eps)
+
+    bias_correction1 = 1.0 - (beta1 ** current_step)
+    bias_correction2 = 1.0 - (beta2 ** current_step)
+    alpha = math.sqrt(bias_correction2) / bias_correction1
+    state["current_step"] = current_step + 1
+
+    return (exp_avg * alpha) / denom
+
+def _squared_reproject(C: torch.Tensor, sq: torch.Tensor, exact: bool):
+    if exact:
+        return (C @ sq.diag_embed() @ C.T).diagonal()
+
+    return C.square() @ sq
 
 class Adam(LREOptimizerBase):
     """Runs Adam in low rank eigenbasis."""
-    def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8):
+    def __init__(self, beta1=0.9, beta2=0.95, cautious:bool=False, eps=1e-8, exact_reproject:bool=True):
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
+        self.cautious = cautious
+        self.exact_reproject = exact_reproject
 
     def step(self, g, L, Q, state):
         g = Q.T @ g
 
-        if "exp_avg" not in state:
-            state["exp_avg"] = torch.zeros_like(g)
-            state["exp_avg_sq"] = torch.zeros_like(g)
-            state["current_step"] = 1
+        dir = adam(g, state, self.beta1, self.beta2, self.eps)
 
-        exp_avg = state["exp_avg"]
-        exp_avg_sq = state["exp_avg_sq"]
-        current_step = state["current_step"]
+        if self.cautious:
+            mask = (g * dir) > 0
+            dir *= mask
 
-        exp_avg.lerp_(g, 1-self.beta1)
-        exp_avg_sq.mul_(self.beta2).addcmul_(g, g, value=1-self.beta2)
-        denom = exp_avg_sq.sqrt().add_(self.eps)
-
-        bias_correction1 = 1.0 - (self.beta1 ** current_step)
-        bias_correction2 = 1.0 - (self.beta2 ** current_step)
-        alpha = math.sqrt(bias_correction2) / bias_correction1
-        state["current_step"] = current_step + 1
-
-        dir = (exp_avg * alpha) / denom
         return Q @ dir
 
     def reproject(self, L_old, Q_old, L_new, Q_new, state):
@@ -100,18 +127,19 @@ class Adam(LREOptimizerBase):
         C = Q_new.T @ Q_old
 
         state["exp_avg"] = C @ state["exp_avg"]
-        state["exp_avg_sq"] = C.square() @ state["exp_avg_sq"]
+        state["exp_avg_sq"] = _squared_reproject(C, state["exp_avg_sq"], self.exact_reproject)
 
 
 class FullMatrixAdam(LREOptimizerBase):
     """Runs full-matrix Adam in low rank eigenbasis.
     The preconditioner is updated whenever basis is updated"""
-    def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8, matrix_power=-1/2, abs=True):
+    def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8, matrix_power=-1/2, abs=True, cautious:bool=False):
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
         self.matrix_power = matrix_power
         self.abs = abs
+        self.cautious = cautious
 
     def step(self, g, L, Q, state):
         g = Q.T @ g
@@ -159,6 +187,11 @@ class FullMatrixAdam(LREOptimizerBase):
         state["current_step"] = current_step + 1
         preconditioner = state["preconditioner"]
         dir = preconditioner @ exp_avg
+
+        if self.cautious:
+            mask = (g * dir) > 0
+            dir *= mask
+
         return Q @ dir
 
     def reproject(self, L_old, Q_old, L_new, Q_new, state):
@@ -169,3 +202,98 @@ class FullMatrixAdam(LREOptimizerBase):
         C = Q_new.T @ Q_old
         state["exp_avg"] = C @ state["exp_avg"]
         state["covariance"] = C @ state["covariance"] @ C.T
+
+class Lion(LREOptimizerBase):
+    """Runs Lion in the low rank eigenbasis (experimental)."""
+    def __init__(self, beta1=0.9, beta2=0.99, cautious:bool=False):
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.cautious = cautious
+
+    def step(self, g, L, Q, state):
+        g = Q.T @ g
+
+        if "exp_avg" not in state:
+            state["exp_avg"] = torch.zeros_like(g)
+
+        dir = cast(torch.Tensor, lion_(g, state["exp_avg"], beta1=self.beta1, beta2=self.beta2))
+
+        if self.cautious:
+            mask = (g * dir) > 0
+            dir *= mask
+
+        return Q @ dir
+
+    def reproject(self, L_old, Q_old, L_new, Q_new, state):
+        if "exp_avg" not in state: return
+        C = Q_new.T @ Q_old
+        state["exp_avg"] = C @ state["exp_avg"]
+
+
+class Grams(LREOptimizerBase):
+    """Runs Grams in low rank eigenbasis."""
+    def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8, exact_reproject=True):
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.exact_reproject = exact_reproject
+
+    def step(self, g, L, Q, state):
+        g = Q.T @ g
+        dir = adam(g, state, self.beta1, self.beta2, self.eps)
+        return Q @ dir.copysign(g)
+
+    def reproject(self, L_old, Q_old, L_new, Q_new, state):
+        if  "exp_avg" not in state: return
+        C = Q_new.T @ Q_old
+
+        state["exp_avg"] = C @ state["exp_avg"]
+        state["exp_avg_sq"] = _squared_reproject(C, state["exp_avg_sq"], self.exact_reproject)
+
+
+class LaProp(LREOptimizerBase):
+    """Runs LaProp in low rank eigenbasis."""
+    def __init__(self, beta1=0.9, beta2=0.95, eps=1e-8, cautious:bool=False, exact_reproject=True):
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.cautious = cautious
+        self.exact_reproject = exact_reproject
+
+    def step(self, g, L, Q, state):
+        g = Q.T @ g
+
+        if "exp_avg" not in state:
+            state["exp_avg"] = torch.zeros_like(g)
+            state["exp_avg_sq"] = torch.zeros_like(g)
+            state["current_step"] = 1
+
+        exp_avg = state["exp_avg"]
+        exp_avg_sq = state["exp_avg_sq"]
+        current_step = state["current_step"]
+
+        # update second moments
+        exp_avg_sq.mul_(self.beta2).addcmul_(g, g, value=1-self.beta2)
+        bias_correction2 = 1.0 - (self.beta2 ** current_step)
+
+        # divide by bias corrected second moments
+        dir = g / (exp_avg_sq / bias_correction2).sqrt().add_(self.eps)
+
+        # update first moments and bias correct
+        exp_avg.lerp_(dir, 1-self.beta1)
+        bias_correction1 = 1.0 - (self.beta1 ** current_step)
+        dir = exp_avg / bias_correction1
+
+        if self.cautious:
+            mask = (g * dir) > 0
+            dir *= mask
+
+        state["current_step"] = current_step + 1
+        return Q @ dir
+
+    def reproject(self, L_old, Q_old, L_new, Q_new, state):
+        if  "exp_avg" not in state: return
+        C = Q_new.T @ Q_old
+
+        state["exp_avg"] = C @ state["exp_avg"]
+        state["exp_avg_sq"] = _squared_reproject(C, state["exp_avg_sq"], self.exact_reproject)
