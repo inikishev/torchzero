@@ -89,3 +89,46 @@ def regularize_eig(
         L += d
 
     return L, Q
+
+def low_rank_eig_plus_sr1(
+    L: torch.Tensor,
+    Q: torch.Tensor,
+    u: torch.Tensor,
+    tol: float = 1e-9,
+    retry_float64: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    compute eigendecomposition of Q L Q^T + v v^T where L and Q are of a low rank matrix
+    Q is ``(m, rank)`` and L is ``(rank, )``
+    """
+    z = Q.T @ u  # (rank,)
+
+    # component of u orthogonal to the column space of Q
+    h = u - Q @ z # (m,)
+    beta = torch.linalg.vector_norm(h) # pylint:disable=not-callable
+
+    if beta < tol:
+        # u is already in the column space of Q
+        B = L.diag_embed() + z.outer(z) # (rank, rank)
+        L_prime, S = torch_linalg.eigh(B, retry_float64=retry_float64)
+        Q_prime = Q @ S
+        return L_prime, Q_prime
+
+    else:
+        # normalize the orthogonal component to get a new orthonormal vector
+        v = h / beta # (m, )
+
+        # basis for our new subspace is [Q, v]
+        # B is corrected matrix in new basis:
+        # B = D + w w^T where D = diag(L_diag, 0) and w = [z; beta]
+        D_diag = torch.cat([L, torch.tensor([0.0], device=Q.device, dtype=Q.dtype)])
+        w = torch.cat([z, beta.unsqueeze(0)]) # Shape: (rank+1,)
+        B = D_diag.diag_embed() + w.outer(w)
+
+        L_prime, S = torch_linalg.eigh(B, retry_float64=retry_float64)
+
+        # reconstruct the eigenvectors of the corrected matrix
+        basis = torch.cat([Q, v.unsqueeze(-1)], dim=1) # (m, rank+1)
+        Q_prime = basis @ S # (m, rank+1)
+
+        return L_prime, Q_prime

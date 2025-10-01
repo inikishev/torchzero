@@ -241,6 +241,7 @@ class AdaNystrom(TensorTransform):
         )
 
         if D is None or P is None:
+            del state["D"], state["P"]
             return tensor.clip(-0.1, 0.1)
 
         D = D.clip(min=torch.finfo(D.dtype).tiny * 2)
