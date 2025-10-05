@@ -4,11 +4,14 @@ import torch
 from ...core import Chainable, TensorTransform
 from ...linalg import (
     OrthogonalizeMethod,
-    orthogonalize, regularize_eig,
+    orthogonalize,
+    regularize_eig,
     torch_linalg,
 )
 from ...linalg.linear_operator import Eigendecomposition
 from ..adaptive.lre_optimizers import LREOptimizerBase
+from .eigengrad import _eigengrad_update_state_, eigengrad_apply
+
 
 def weighted_eigen_plus_rank1_mm(
     # A1 = Q1 @ diag(L1) @ Q1.T
@@ -60,7 +63,7 @@ def adanystrom_update(
     w2: float,
     oversampling_p: int,
     rank: int,
-    tol: float,
+    eig_tol: float,
     damping: float,
     rdamping: float,
     orthogonalize_method: OrthogonalizeMethod,
@@ -101,7 +104,7 @@ def adanystrom_update(
     except torch.linalg.LinAlgError:
         return L1, Q1
 
-    L_prime, S = regularize_eig(L=L_prime, Q=S, truncate=rank, tol=tol, damping=damping, rdamping=rdamping)
+    L_prime, S = regularize_eig(L=L_prime, Q=S, truncate=rank, tol=eig_tol, damping=damping, rdamping=rdamping)
 
     if L_prime is None or S is None:
         return L1, Q1
@@ -130,7 +133,7 @@ class AdaNystrom(TensorTransform):
         w1 (float, optional): weight of current covariance matrix. Defaults to 0.95.
         w2 (float, optional): weight of new gradient in covariance matrix. Defaults to 0.05.
         oversampling (int, optional): number of extra random vectors (top rank eigenvalues are kept). Defaults to 10.
-        tol (float, optional):
+        eig_tol (float, optional):
             removes eigenvalues this much smaller than largest eigenvalue when updating the preconditioner. Defaults to 1e-7.
         damping (float, optional):
             added to eigenvalues when updating the preconditioner. Defaults to 1e-8.
@@ -155,19 +158,21 @@ class AdaNystrom(TensorTransform):
     """
     def __init__(
         self,
-        rank,
+        rank:int = 100,
         beta=0.95,
         oversampling: int = 10,
-        tol: float = 1e-7,
-        damping: float = 1e-8,
+        eig_tol: float | None = 1e-32,
+        damping: float = 0,
         rdamping: float = 0,
         mm_tol: float = 0,
         mm_truncate: int | None = None,
-        mm_damping: float = 1e-4,
+        mm_damping: float = 0,
         mm_rdamping: float = 0,
         id_reg: float | None = None,
         orthogonalize_method: OrthogonalizeMethod = 'qr',
-        subspace_optimizer: LREOptimizerBase | None = None,
+        eigenbasis_optimizer: LREOptimizerBase | None = None,
+        orthogonalize_interval: int | None = 100,
+
         concat_params: bool = True,
         update_freq: int = 1,
         inner: Chainable | None = None,
@@ -183,33 +188,37 @@ class AdaNystrom(TensorTransform):
         rank = setting["rank"]
         device = tensor.device
         dtype = tensor.dtype
+        beta = setting["beta"]
 
         try:
             if "L" not in state:
                 # use just tensor and zero L and Q with zero weight
 
-                state["L"], state["Q"] = adanystrom_update(
+                L, Q = adanystrom_update(
                     L1=torch.zeros(rank, device=device, dtype=dtype),
                     Q1=torch.zeros((tensor.numel(), rank), device=device, dtype=dtype),
                     v2=tensor.ravel(),
                     w1=0,
-                    w2=1,
+                    w2=1-beta,
                     rank=rank,
                     oversampling_p=setting["oversampling"],
-                    tol=setting["tol"],
+                    eig_tol=setting["eig_tol"],
                     damping=setting["damping"],
                     rdamping=setting["rdamping"],
                     orthogonalize_method=setting["orthogonalize_method"],
                 )
 
+                state["L"] = state["L_reg"] = L
+                state["Q"] = state["Q_reg"] = Q
+
             else:
                 L = state["L"]
                 Q = state["Q"]
 
-                w1 = setting["beta"]
+                w1 = beta
                 w2 = 1 - w1
 
-                # compute new factors
+                # compute new factors (this function truncates them)
                 L_new, Q_new = adanystrom_update(
                     L1=L,
                     Q1=Q,
@@ -218,73 +227,32 @@ class AdaNystrom(TensorTransform):
                     w2=w2,
                     rank=rank,
                     oversampling_p=setting["oversampling"],
-                    tol=setting["tol"],
+                    eig_tol=setting["eig_tol"],
                     damping=setting["damping"],
                     rdamping=setting["rdamping"],
                     orthogonalize_method=setting["orthogonalize_method"],
                 )
 
-                # reproject subspace optimizer
-                subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
-                if subspace_optimizer is not None:
-                    if (L_new is not None) and (Q_new is not None):
-                        subspace_state = state["subspace_state"]
-                        subspace_optimizer.reproject(L_old=L, Q_old=Q, L_new=L_new, Q_new=Q_new, state=subspace_state)
-
-                # store
-                if L_new is not None: state["L"] = L_new
-                if Q_new is not None: state["Q"] = Q_new
+                _eigengrad_update_state_(state=state, setting=setting, L_new=L_new, Q_new=Q_new)
 
         except torch.linalg.LinAlgError:
             pass
 
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
-        if "L" not in state:
+        if "L_reg" not in state:
             return tensor.clip(-0.1, 0.1)
 
-        L = state["L"]
-        Q = state["Q"]
-        id_reg = setting["id_reg"]
+        if "eigenbasis_state" not in state:
+            state["eigenbasis_state"] = {}
 
-        # debias
-        beta = setting["beta"]
-        L = L / (1 - beta**state["step"])
-
-        # regularize for matmul
-        L, Q = regularize_eig(
-            L=L,
-            Q=Q,
-            truncate=setting["mm_truncate"],
-            tol=setting["mm_tol"],
-            damping=setting["mm_damping"],
-            rdamping=setting["mm_rdamping"],
+        return eigengrad_apply(
+            tensor=tensor,
+            L_reg = state["L_reg"],
+            Q_reg = state["Q_reg"],
+            beta = setting["beta"],
+            step = state["step"],
+            debias = True,
+            id_reg = setting["id_reg"],
+            eigenbasis_optimizer = setting["eigenbasis_optimizer"],
+            eigenbasis_state = state["eigenbasis_state"]
         )
-
-        if L is None or Q is None:
-            del state["L"], state["Q"]
-            return tensor.clip(-0.1, 0.1)
-
-        # step with subspace optimizer
-        subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
-        if subspace_optimizer is not None:
-            if (id_reg is not None) and (id_reg != 0):
-                raise RuntimeError("id_reg is not compatible with subspace_optimizer")
-
-            if "subspace_state" not in state: state["subspace_state"] = {}
-            subspace_state = state["subspace_state"]
-
-            update = subspace_optimizer.step(tensor.ravel(), L=L, Q=Q, state=subspace_state)
-            return update.view_as(tensor)
-
-        # or just whiten
-        L = L.clip(min=torch.finfo(L.dtype).tiny * 2)
-
-        if id_reg is None or id_reg == 0:
-            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=False)
-            dir = G.solve(tensor.ravel())
-
-        else:
-            G = Eigendecomposition(L.sqrt(), Q, use_nystrom=True)
-            dir = G.solve_plus_diag(tensor.ravel(), diag=id_reg)
-
-        return dir.view_as(tensor)

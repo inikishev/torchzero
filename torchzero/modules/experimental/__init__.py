@@ -4,6 +4,10 @@ from .common_directions_whiten import CommonDirectionsWhiten
 from .coordinate_momentum import CoordinateMomentum
 from .cubic_adam import CubicAdam, SubspaceCubicAdam
 from .curveball import CurveBall
+from .eigen_sr1 import EigenSR1
+
+# from dct import DCTProjection
+from .eigengrad import Eigengrad
 from .fft import FFTProjection
 from .gradmin import GradMin
 from .higher_order_newton import HigherOrderNewton
@@ -14,5 +18,3 @@ from .reduce_outward_lr import ReduceOutwardLR
 from .scipy_newton_cg import ScipyNewtonCG
 from .spsa1 import SPSA1
 from .structural_projections import BlockPartition, TensorizeProjection
-# from dct import DCTProjection
-from .eigengrad import Eigengrad

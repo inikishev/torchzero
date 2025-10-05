@@ -1,4 +1,5 @@
 from typing import Literal
+
 import torch
 
 from ..utils.compile import allow_compile

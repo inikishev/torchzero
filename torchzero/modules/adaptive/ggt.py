@@ -7,7 +7,7 @@ from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg, regularize_eig
 from .lre_optimizers import LREOptimizerBase
 
-def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, tol):
+def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, eig_tol):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
@@ -20,7 +20,7 @@ def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, t
 
     try:
         L, Q = torch_linalg.eigh(MTM, retry_float64=True)
-        L, Q = regularize_eig(L, Q, truncate=truncate, tol=tol, damping=damping, rdamping=0)
+        L, Q = regularize_eig(L, Q, truncate=truncate, tol=eig_tol, damping=damping, rdamping=0)
 
         if L is None or Q is None: # this means there are no finite eigenvalues
             return None, None
@@ -51,7 +51,7 @@ class GGT(TensorTransform):
         history_size (int, optional): number of past gradients to store. Defaults to 10.
         beta (float, optional): beta for momentum maintained in whitened space. Defaults to 0.0.
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
-        tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
+        eig_tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
         truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
         damping (float, optional): damping value. Defaults to 1e-4.
         rdamping (float, optional): value of damping relative to largest eigenvalue. Defaults to 0.
@@ -99,11 +99,11 @@ class GGT(TensorTransform):
         self,
         history_size: int = 100,
         update_freq: int = 1,
-        tol: float = 1e-7,
+        eig_tol: float = 1e-7,
         truncate: int | None = None,
         damping: float = 1e-4,
         rdamping: float = 0,
-        subspace_optimizer: LREOptimizerBase | None = None,
+        eigenbasis_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
 
         inner: Chainable | None = None,
@@ -138,15 +138,15 @@ class GGT(TensorTransform):
                 damping=setting["damping"],
                 rdamping=setting["rdamping"],
                 truncate=setting["truncate"],
-                tol=setting["tol"],
+                eig_tol=setting["eig_tol"],
             )
 
-            # reproject subspace optimizer
-            subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
-            if subspace_optimizer is not None:
+            # reproject eigenbasis optimizer
+            eigenbasis_optimizer: LREOptimizerBase | None = setting["eigenbasis_optimizer"]
+            if eigenbasis_optimizer is not None:
                 if (L is not None) and (U is not None) and (L_new is not None) and (U_new is not None):
-                    subspace_state = state["subspace_state"]
-                    subspace_optimizer.reproject(L_old=L, Q_old=U, L_new=L_new, Q_new=U_new, state=subspace_state)
+                    eigenbasis_state = state["eigenbasis_state"]
+                    eigenbasis_optimizer.reproject(L_old=L, Q_old=U, L_new=L_new, Q_new=U_new, state=eigenbasis_state)
 
 
             # store new factors
@@ -167,14 +167,14 @@ class GGT(TensorTransform):
 
         L = state['L']
 
-        # step with subspace optimizer
-        subspace_optimizer: LREOptimizerBase | None = setting["subspace_optimizer"]
-        if subspace_optimizer is not None:
+        # step with eigenbasis optimizer
+        eigenbasis_optimizer: LREOptimizerBase | None = setting["eigenbasis_optimizer"]
+        if eigenbasis_optimizer is not None:
 
-            if "subspace_state" not in state: state["subspace_state"] = {}
-            subspace_state = state["subspace_state"]
+            if "eigenbasis_state" not in state: state["eigenbasis_state"] = {}
+            eigenbasis_state = state["eigenbasis_state"]
 
-            update = subspace_optimizer.step(g, L=L, Q=U, state=subspace_state)
+            update = eigenbasis_optimizer.step(g, L=L, Q=U, state=eigenbasis_state)
             return update.view_as(tensor)
 
         # or just whiten

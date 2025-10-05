@@ -7,7 +7,7 @@ from .torch_tools import swap_tensors_no_use_count_check, vec_to_tensors
 from .tensorlist import TensorList
 
 def _jacobian(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_outputs = torch.cat([i.reshape(-1) for i in outputs])
+    flat_outputs = torch.cat([i.ravel() for i in outputs])
     grad_ouputs = torch.eye(len(flat_outputs), device=outputs[0].device, dtype=outputs[0].dtype)
     jac = []
     for i in range(flat_outputs.numel()):
@@ -24,7 +24,7 @@ def _jacobian(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], crea
 
 
 def _jacobian_batched(outputs: Sequence[torch.Tensor], wrt: Sequence[torch.Tensor], create_graph=False):
-    flat_outputs = torch.cat([i.reshape(-1) for i in outputs])
+    flat_outputs = torch.cat([i.ravel() for i in outputs])
     return torch.autograd.grad(
         flat_outputs,
         wrt,

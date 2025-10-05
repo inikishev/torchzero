@@ -4,7 +4,7 @@ import torch
 
 from ...core import TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..adaptive.lre_optimizers import LREOptimizerBase
+from ..adaptive.lre_optimizers import LREOptimizerBase, _squared_reproject
 
 
 def signed_cbrt(x: TensorList | Any) -> Any:
@@ -113,12 +113,14 @@ class CubicAdam(TensorTransform):
 
 class SubspaceCubicAdam(LREOptimizerBase):
     """Runs cubic Adam in low rank eigenbasis."""
-    def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8, mode: _cubic_adam_mode = 'signed_cbrt'):
+    def __init__(self, beta1=0.9, beta2=0.95, beta3=0.95, eps=1e-8, mode: _cubic_adam_mode = 'signed_cbrt', cautious:bool=False, exact_reproject:bool=True):
         self.beta1 = beta1
         self.beta2 = beta2
         self.beta3 = beta3
         self.eps = eps
+        self.cautious = cautious
         self.mode: _cubic_adam_mode = mode
+        self.exact_reproject = exact_reproject
 
     def step(self, g, L, Q, state):
         g = Q.T @ g
@@ -154,5 +156,5 @@ class SubspaceCubicAdam(LREOptimizerBase):
         C = Q_new.T @ Q_old
 
         state["exp_avg"] = C @ state["exp_avg"]
-        state["exp_avg_sq"] = C.square() @ state["exp_avg_sq"]
-        state["exp_avg_cu"] = C.pow(3) @ state["exp_avg_cu"]
+        state["exp_avg_sq"] = _squared_reproject(C, state["exp_avg_sq"], exact=self.exact_reproject)
+        state["exp_avg_cu"] = C.pow(3) @ state["exp_avg_cu"] # exact reproject with 1_000_000 is feasible

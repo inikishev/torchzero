@@ -2,6 +2,18 @@ from typing import Literal
 import torch
 from ..utils.compile import allow_compile
 
+
+# super slow
+# def cholesky_qr(A):
+#     """QR of (m, n) A via cholesky of (n, n) matrix"""
+#     AtA = A.T @ A
+
+#     L, _ = torch.linalg.cholesky_ex(AtA) # pylint:disable=not-callable
+#     R = L.T
+
+#     Q = torch.linalg.solve_triangular(R.T, A.T, upper=False).T # pylint:disable=not-callable
+#     return Q, R
+
 # reference - https://www.cs.cornell.edu/~bindel/class/cs6210-f09/lec18.pdf
 @allow_compile
 def _get_w_tau(R: torch.Tensor, i: int, eps: float):
