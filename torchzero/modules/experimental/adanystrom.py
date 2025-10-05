@@ -5,7 +5,7 @@ from ...core import Chainable, TensorTransform
 from ...linalg import (
     OrthogonalizeMethod,
     orthogonalize,
-    regularize_eig,
+    regularize_eigh,
     torch_linalg,
 )
 from ...linalg.linear_operator import Eigendecomposition
@@ -104,7 +104,7 @@ def adanystrom_update(
     except torch.linalg.LinAlgError:
         return L1, Q1
 
-    L_prime, S = regularize_eig(L=L_prime, Q=S, truncate=rank, tol=eig_tol, damping=damping, rdamping=rdamping)
+    L_prime, S = regularize_eigh(L=L_prime, Q=S, truncate=rank, tol=eig_tol, damping=damping, rdamping=rdamping)
 
     if L_prime is None or S is None:
         return L1, Q1

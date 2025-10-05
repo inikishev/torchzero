@@ -4,7 +4,7 @@ import warnings
 
 import torch
 from ...core import Chainable, TensorTransform
-from ...linalg import torch_linalg, regularize_eig
+from ...linalg import torch_linalg, regularize_eigh
 from .lre_optimizers import LREOptimizerBase
 
 def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, eig_tol):
@@ -14,13 +14,15 @@ def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, t
     else:
         M = torch.stack(tuple(history), dim=1)# / len(history)
 
-    MTM = M.T @ M
+    MtM = M.T @ M
     if damping != 0:
-        MTM.add_(torch.eye(MTM.size(0), device=MTM.device, dtype=MTM.dtype).mul_(damping))
+        MtM.add_(torch.eye(MtM.size(0), device=MtM.device, dtype=MtM.dtype).mul_(damping))
 
     try:
-        L, Q = torch_linalg.eigh(MTM, retry_float64=True)
-        L, Q = regularize_eig(L, Q, truncate=truncate, tol=eig_tol, damping=damping, rdamping=0)
+        L, Q = torch_linalg.eigh(MtM, retry_float64=True)
+
+        # damping is already added to MTM, rdamping is added afterwards
+        L, Q = regularize_eigh(L, Q, truncate=truncate, tol=eig_tol, damping=0, rdamping=0)
 
         if L is None or Q is None: # this means there are no finite eigenvalues
             return None, None

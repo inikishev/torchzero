@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
-from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg, regularize_eig, OrthogonalizeMethod
+from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg, regularize_eigh, OrthogonalizeMethod
 from ...linalg.linear_operator import Eigendecomposition, ScaledIdentity
 
 class NystromSketchAndSolve(Transform):
@@ -123,7 +123,7 @@ class NystromSketchAndSolve(Transform):
             )
 
             # regularize
-            L, Q = regularize_eig(
+            L, Q = regularize_eigh(
                 L=L,
                 Q=Q,
                 truncate=fs["truncate"],

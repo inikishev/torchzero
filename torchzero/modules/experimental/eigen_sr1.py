@@ -2,7 +2,7 @@ import torch
 
 from ...core import Transform
 from ...linalg.orthogonalize import orthogonalize, OrthogonalizeMethod
-from ...linalg.eigh import eigh_plus_uuT, regularize_eig
+from ...linalg.eigh import eigh_plus_uuT, regularize_eigh
 from ...utils import TensorList, unpack_states, vec_to_tensors_
 from ..opt_utils import safe_clip
 from .eigengrad import _eigengrad_update_state_, eigengrad_apply
@@ -136,7 +136,7 @@ class EigenSR1(Transform):
                         L_new, Q_new = eigh_plus_uuT(L, Q, u, tol=fs["column_space_tol"], alpha=sign.item(), retry_float64=True)
 
                         # truncate/regularize new factors (those go into the accumulator)
-                        L_new, Q_new = regularize_eig(L=L_new, Q=Q_new, truncate=min(fs["rank"], s.numel()),
+                        L_new, Q_new = regularize_eigh(L=L_new, Q=Q_new, truncate=min(fs["rank"], s.numel()),
                                                       tol=fs["eig_tol"], damping=fs["damping"], rdamping=fs["rdamping"])
 
                         _eigengrad_update_state_(state=self.global_state, setting=fs, L_new=L_new, Q_new=Q_new)

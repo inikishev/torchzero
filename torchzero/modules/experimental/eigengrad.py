@@ -4,7 +4,7 @@ from collections.abc import Mapping
 import torch
 
 from ...core import Chainable, TensorTransform
-from ...linalg.eigh import eigh_plus_uuT, regularize_eig
+from ...linalg.eigh import eigh_plus_uuT, regularize_eigh
 from ...linalg.orthogonalize import OrthogonalizeMethod, orthogonalize
 from ...linalg.linear_operator import Eigendecomposition
 from ..adaptive.lre_optimizers import LREOptimizerBase
@@ -37,7 +37,7 @@ def _eigengrad_update_state_(state:dict, setting: Mapping, L_new: torch.Tensor |
         # regularize for matmul
         # this second round of regularization is only used for preconditioning
         # and doesn't affect the accumulator
-        L_reg_new, Q_reg_new = regularize_eig(L=L_new, Q=Q_new,
+        L_reg_new, Q_reg_new = regularize_eigh(L=L_new, Q=Q_new,
             truncate=setting["mm_truncate"],
             tol=setting["mm_tol"],
             damping=setting["mm_damping"],
@@ -179,7 +179,7 @@ class Eigengrad(TensorTransform):
                 L_new, Q_new = eigh_plus_uuT(L*beta, Q, tensor*(1-beta), tol=setting["column_space_tol"], retry_float64=True)
 
                 # truncate/regularize new factors (those go into the accumulator)
-                L_new, Q_new = regularize_eig(L=L_new, Q=Q_new, truncate=setting["rank"], tol=setting["eig_tol"],
+                L_new, Q_new = regularize_eigh(L=L_new, Q=Q_new, truncate=setting["rank"], tol=setting["eig_tol"],
                                               damping=setting["damping"], rdamping=setting["rdamping"])
 
                 _eigengrad_update_state_(state=state, setting=setting, L_new=L_new, Q_new=Q_new)

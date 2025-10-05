@@ -44,7 +44,7 @@ def nystrom_approximation(
     return L, Q
 
 
-def regularize_eig(
+def regularize_eigh(
     L: torch.Tensor,
     Q: torch.Tensor,
     truncate: int | None = None,

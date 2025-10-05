@@ -50,9 +50,6 @@ def zeropower_via_newtonschulz5(G: torch.Tensor, coeffs=_NS_COEFFS) -> torch.Ten
 
     return X.to(G.dtype)
 
-# code from https://github.com/MarkTuddenham/Orthogonal-Optimisers.
-# Tuddenham, M., Prügel-Bennett, A., & Hare, J. (2022).
-# Orthogonalising gradients to speed up neural network optimisation. arXiv preprint arXiv:2202.07052.
 def zeropower_via_svd(A: torch.Tensor) -> torch.Tensor:
     """
     Applies to first 2 dims and isn't batched - rest of dimensions are flattened.
@@ -88,7 +85,7 @@ def orthogonalize_via_qr(A: torch.Tensor):
     return Q
 
 OrthogonalizeMethod = Literal["newtonschulz", "svd", "qr"]
-def orthogonalize(A: torch.Tensor, method: OrthogonalizeMethod = "newtonschulz") -> torch.Tensor:
+def orthogonalize(A: torch.Tensor, method: OrthogonalizeMethod) -> torch.Tensor:
     if method == "newtonschulz": return zeropower_via_newtonschulz5(A)
     if method == "svd": return zeropower_via_svd(A)
     if method == "qr": return orthogonalize_via_qr(A)
