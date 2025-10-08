@@ -40,10 +40,10 @@ def flatten_jacobian(jacs: Sequence[torch.Tensor]) -> torch.Tensor:
 
     Args:
         jacs (Sequence[torch.Tensor]):
-            output from jacobian_wrt where ach tensor has the shape `(*output.shape, *wrt[i].shape)`.
+            output from jacobian_wrt where ach tensor has the shape ``(*output.shape, *wrt[i].shape)``.
 
     Returns:
-        torch.Tensor: has the shape `(output.ndim, wrt.ndim)`.
+        torch.Tensor: has the shape ``(output.ndim, wrt.ndim)``.
     """
     if not jacs:
         return torch.empty(0, 0)

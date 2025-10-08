@@ -156,7 +156,7 @@ class SOAP(TensorTransform):
         shampoo_beta: float | None = 0.95,
         precond_freq: int = 10,
         merge_small: bool = True,
-        max_dim: int = 10_000,
+        max_dim: int = 4096,
         precondition_1d: bool = True,
         eps: float = 1e-8,
         debias: bool = True,

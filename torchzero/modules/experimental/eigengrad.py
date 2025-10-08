@@ -145,7 +145,7 @@ class Eigengrad(TensorTransform):
         id_reg: float | None = None,
         column_space_tol = 1e-9,
 
-        orthogonalize_interval: int | None = 100,
+        orthogonalize_interval: int | None = None,
         orthogonalize_method: OrthogonalizeMethod = 'qr',
 
         eigenbasis_optimizer: LREOptimizerBase | None = None,
@@ -176,7 +176,7 @@ class Eigengrad(TensorTransform):
                 Q = state["Q"]
 
                 # compute new factors
-                L_new, Q_new = eigh_plus_uuT(L*beta, Q, tensor*(1-beta), tol=setting["column_space_tol"], retry_float64=True)
+                L_new, Q_new = eigh_plus_uuT(L*beta, Q, tensor, alpha=(1-beta), tol=setting["column_space_tol"], retry_float64=True)
 
                 # truncate/regularize new factors (those go into the accumulator)
                 L_new, Q_new = regularize_eigh(L=L_new, Q=Q_new, truncate=setting["rank"], tol=setting["eig_tol"],

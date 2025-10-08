@@ -1181,12 +1181,17 @@ class NewSSM(HessianUpdateStrategy):
 
 # this is supposed to be equivalent (and it is)
 def shor_r_(H:torch.Tensor, y:torch.Tensor, alpha:float):
-    p = H@y
-    #(1-y)^2 (ppT)/(pTq)
-    #term = p.outer(p).div_(p.dot(y).clip(min=1e-32))
-    term = p.outer(p).div_(safe_clip(p.dot(y)))
-    H.sub_(term, alpha=1-alpha**2)
+    Hy = H @ y
+    yHy = safe_clip(y.dot(Hy))
+    term = Hy.outer(Hy).div_(yHy)
+    H.sub_(term, alpha=(1-alpha**2))
     return H
+
+# def projected_gradient_(H:torch.Tensor, y:torch.Tensor):
+#     Hy = H @ y
+#     yHy = safe_clip(y.dot(Hy))
+#     H -= (Hy.outer(y) @ H).div_(yHy)
+#     return H
 
 class ShorR(HessianUpdateStrategy):
     """Shor’s r-algorithm.

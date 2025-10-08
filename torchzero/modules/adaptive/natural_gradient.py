@@ -109,7 +109,6 @@ class NaturalGradient(Transform):
         if f is None:
             assert closure is not None
             with torch.enable_grad():
-
                 f = objective.get_loss(backward=False) # n_out
                 assert isinstance(f, torch.Tensor)
 
@@ -161,7 +160,7 @@ class NaturalGradient(Transform):
         if sqrt:
             # this computes U, S <- SVD(M), then calculate update as U S^-1 Uᵀg,
             # but it computes it through eigendecompotision
-            L, U = ggt_update(G.H, damping=reg, rdamping=1e-16, truncate=0, tol=1e-12)
+            L, U = ggt_update(G.H, damping=reg, rdamping=1e-16, truncate=0, eig_tol=1e-12)
 
             if U is None or L is None:
 
@@ -180,12 +179,12 @@ class NaturalGradient(Transform):
         # we need (G^T G)v = g
         # where g = G^T
         # so we need to solve (G^T G)v = G^T
-        GGT = G @ G.H # (n_samples, n_samples)
+        GGt = G @ G.H # (n_samples, n_samples)
 
         if reg != 0:
-            GGT.add_(torch.eye(GGT.size(0), device=GGT.device, dtype=GGT.dtype).mul_(reg))
+            GGt.add_(torch.eye(GGt.size(0), device=GGt.device, dtype=GGt.dtype).mul_(reg))
 
-        z, _ = torch.linalg.solve_ex(GGT, torch.ones_like(GGT[0])) # pylint:disable=not-callable
+        z, _ = torch.linalg.solve_ex(GGt, torch.ones_like(GGt[0])) # pylint:disable=not-callable
         v = G.H @ z
 
         objective.updates = vec_to_tensors(v, params)

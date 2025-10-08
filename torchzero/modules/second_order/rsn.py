@@ -24,9 +24,6 @@ def _qr_orthonormalize(A:torch.Tensor):
 def _orthonormal_sketch(m, n, dtype, device, generator):
     return _qr_orthonormalize(torch.randn(m, n, dtype=dtype, device=device, generator=generator))
 
-def _gaussian_sketch(m, n, dtype, device, generator):
-    return torch.randn(m, n, dtype=dtype, device=device, generator=generator) / math.sqrt(m)
-
 def _rademacher_sketch(m, n, dtype, device, generator):
     rademacher = torch.bernoulli(torch.full((m,n), 0.5), generator = generator).mul_(2).sub_(1)
     return rademacher.mul_(1 / math.sqrt(m))
@@ -40,8 +37,7 @@ class SubspaceNewton(Transform):
         sketch_type (str, optional):
             - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt (default).
             - "orthonormal" - random orthonormal basis. Orthonormality is necessary to use linear operator based modules such as trust region, but it can be slower to compute.
-            - "rademacher" - approximately orthonormal scaled random rademacher basis.
-            - "gaussian" - random gaussian (not orthonormal) basis.
+            - "rademacher" - approximately orthonormal (if dimension is large) scaled random rademacher basis. It is recommended to use at least "orthonormal" - it requires QR but it is still very cheap.
             - "mixed" - random orthonormal basis but with four directions set to gradient, slow and fast gradient EMAs, and previous update direction.
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
@@ -98,7 +94,7 @@ class SubspaceNewton(Transform):
     def __init__(
         self,
         sketch_size: int,
-        sketch_type: Literal["orthonormal", "gaussian", "common_directions", "mixed"] = "common_directions",
+        sketch_type: Literal["orthonormal", "common_directions", "mixed", "rademacher"] = "common_directions",
         damping:float=0,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
         update_freq: int = 1,
@@ -129,10 +125,7 @@ class SubspaceNewton(Transform):
         sketch_type = fs["sketch_type"]
         hvp_method = fs["hvp_method"]
 
-        if sketch_type in ('normal', 'gaussian'):
-            S = _gaussian_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
-
-        elif sketch_type == "rademacher":
+        if sketch_type == "rademacher":
             S = _rademacher_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
         elif sketch_type == 'orthonormal':
@@ -188,7 +181,7 @@ class SubspaceNewton(Transform):
             # form and orthogonalize sketching matrix
             S = torch.stack([g, slow_ema, fast_ema, prev_dir], dim=1)
             if sketch_size > 4:
-                S_random = _gaussian_sketch(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator)
+                S_random = torch.randn(ndim, sketch_size - 3, device=device, dtype=dtype, generator=generator) / math.sqrt(ndim)
                 S = torch.cat([S, S_random], dim=1)
 
             S = _qr_orthonormalize(S)

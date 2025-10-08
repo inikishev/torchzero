@@ -1,12 +1,12 @@
 import torch
 
-from ...core import Chainable, Module, step
+from ...core import Chainable, Transform
 from ...linalg import linear_operator
 from ...utils import vec_to_tensors
 from ...utils.derivatives import flatten_jacobian, jacobian_wrt
 
 
-class SumOfSquares(Module):
+class SumOfSquares(Transform):
     """Sets loss to be the sum of squares of values returned by the closure.
 
     This is meant to be used to test least squares methods against ordinary minimization methods.
@@ -18,7 +18,7 @@ class SumOfSquares(Module):
         super().__init__()
 
     @torch.no_grad
-    def update(self, objective):
+    def update_states(self, objective, states, settings):
         closure = objective.closure
 
         if closure is not None:
@@ -43,7 +43,11 @@ class SumOfSquares(Module):
         if objective.loss_approx is not None:
             objective.loss_approx = objective.loss_approx.pow(2).sum()
 
-class GaussNewton(Module):
+    @torch.no_grad
+    def apply_states(self, objective, states, settings):
+        return objective
+
+class GaussNewton(Transform):
     """Gauss-newton method.
 
     To use this, the closure should return a vector of values to minimize sum of squares of.
@@ -57,6 +61,9 @@ class GaussNewton(Module):
 
     Args:
         reg (float, optional): regularization parameter. Defaults to 1e-8.
+        update_freq (int, optional):
+            frequency of computing the jacobian. When jacobian is not computed, only residuals are computed and updated.
+            Defaults to 1.
         batched (bool, optional): whether to use vmapping. Defaults to True.
 
     Examples:
@@ -101,15 +108,18 @@ class GaussNewton(Module):
             print(f'{losses.mean() = }')
     ```
     """
-    def __init__(self, reg:float = 1e-8, batched:bool=True, inner: Chainable | None = None):
-        super().__init__(defaults=dict(batched=batched, reg=reg))
+    def __init__(self, reg:float = 1e-8, update_freq: int= 1, batched:bool=True, inner: Chainable | None = None):
+        defaults=dict(update_freq=update_freq,batched=batched, reg=reg)
+        super().__init__(defaults=defaults)
         if inner is not None: self.set_child('inner', inner)
 
     @torch.no_grad
-    def update(self, objective):
+    def update_states(self, objective, states, settings):
+        fs = settings[0]
         params = objective.params
         closure = objective.closure
-        batched = self.defaults['batched']
+        batched = fs['batched']
+        update_freq = fs['update_freq']
 
         # compute residuals
         r = objective.loss
@@ -119,14 +129,22 @@ class GaussNewton(Module):
                 r = objective.get_loss(backward=False) # n_residuals
                 assert isinstance(r, torch.Tensor)
 
-        # compute jacobian
-        with torch.enable_grad():
-            J_list = jacobian_wrt([r.ravel()], params, batched=batched)
-
         # set sum of squares scalar loss and it's gradient to objective
         objective.loss = r.pow(2).sum()
 
-        J = self.global_state["J"] = flatten_jacobian(J_list) # (n_residuals, ndim)
+        step = self.increment_counter("step", start=0)
+
+        if step % update_freq == 0:
+
+            # compute jacobian
+            with torch.enable_grad():
+                J_list = jacobian_wrt([r.ravel()], params, batched=batched)
+
+            J = self.global_state["J"] = flatten_jacobian(J_list) # (n_residuals, ndim)
+
+        else:
+            J = self.global_state["J"]
+
         Jr = J.T @ r.detach() # (ndim)
 
         # if there are more residuals, solve (J^T J)x = J^T r, so we need Jr
@@ -157,8 +175,9 @@ class GaussNewton(Module):
             objective.closure = sos_closure
 
     @torch.no_grad
-    def apply(self, objective):
-        reg = self.defaults['reg']
+    def apply_states(self, objective, states, settings):
+        fs = settings[0]
+        reg = fs['reg']
 
         J: torch.Tensor = self.global_state['J']
         nresiduals, ndim = J.shape
@@ -176,39 +195,37 @@ class GaussNewton(Module):
                 Jr_list = objective.get_updates()
                 Jr = torch.cat([t.ravel() for t in Jr_list])
 
-            JJ = J.T @ J # (ndim, ndim)
+            JtJ = J.T @ J # (ndim, ndim)
             if reg != 0:
-                JJ.add_(torch.eye(JJ.size(0), device=JJ.device, dtype=JJ.dtype).mul_(reg))
+                JtJ.add_(torch.eye(JtJ.size(0), device=JtJ.device, dtype=JtJ.dtype).mul_(reg))
 
             if nresiduals >= ndim:
-                v, info = torch.linalg.solve_ex(JJ, Jr) # pylint:disable=not-callable
+                v, info = torch.linalg.solve_ex(JtJ, Jr) # pylint:disable=not-callable
             else:
-                v = torch.linalg.lstsq(JJ, Jr).solution # pylint:disable=not-callable
+                v = torch.linalg.lstsq(JtJ, Jr).solution # pylint:disable=not-callable
 
             objective.updates = vec_to_tensors(v, objective.params)
             return objective
 
-        else:
-            # solve (J J^T)z = r and set v = J^T z
-            # derivation
-            # we need (J^T J)v = J^T r
-            # suppose z is solution to (G G^T)z = r, and v = J^T z
-            # if v = J^T z, then (J^T J)v = (J^T J) (J^T z) = J^T (J J^T) z = J^T r
-            # therefore with our presuppositions (J^T J)v = J^T r
+        # else:
+        # solve (J J^T)z = r and set v = J^T z
+        # we need (J^T J)v = J^T r
+        # if z is solution to (G G^T)z = r, and v = J^T z
+        # then (J^T J)v = (J^T J) (J^T z) = J^T (J J^T) z = J^T r
+        # therefore (J^T J)v = J^T r
+        # also this gives a minimum norm solution
 
-            # also this gives a minimum norm solution
+        r = self.global_state['r']
 
-            r = self.global_state['r']
+        JJT = J @ J.T # (nresiduals, nresiduals)
+        if reg != 0:
+            JJT.add_(torch.eye(JJT.size(0), device=JJT.device, dtype=JJT.dtype).mul_(reg))
 
-            JJT = J @ J.T # (nresiduals, nresiduals)
-            if reg != 0:
-                JJT.add_(torch.eye(JJT.size(0), device=JJT.device, dtype=JJT.dtype).mul_(reg))
+        z, info = torch.linalg.solve_ex(JJT, r) # pylint:disable=not-callable
+        v = J.T @ z
 
-            z, info = torch.linalg.solve_ex(JJT, r) # pylint:disable=not-callable
-            v = J.T @ z
-
-            objective.updates = vec_to_tensors(v, objective.params)
-            return objective
+        objective.updates = vec_to_tensors(v, objective.params)
+        return objective
 
     def get_H(self, objective=...):
         J = self.global_state['J']

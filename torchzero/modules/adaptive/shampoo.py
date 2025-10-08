@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Sequence, Iterable
 
 import numpy as np
 import torch
@@ -81,6 +81,31 @@ def _unmerge_small_dims(tensor: torch.Tensor, flat_sizes: Sequence[int] | None, 
     assert sort_idxs is not None
     tensor = tensor.unflatten(0, flat_sizes)
     return tensor.permute(*np.argsort(sort_idxs).tolist())
+
+def diagonal_memory(params: torch.nn.Module | torch.Tensor | Iterable[torch.Tensor]):
+    """computes number of parameters"""
+    if isinstance(params, torch.nn.Module): params = params.parameters()
+    if isinstance(params, torch.Tensor): params = [params,]
+    params = list(params)
+    return sum(p.numel() for p in params)
+
+def kronecker_memory(params: torch.nn.Module | torch.Tensor | Iterable[torch.Tensor], merge_small:bool=True, max_dim:int=10_000):
+    """computes total size of tensors required to store shampoo preconditioner"""
+    if isinstance(params, torch.nn.Module): params = params.parameters()
+    if isinstance(params, torch.Tensor): params = [params,]
+    params = list(params)
+
+    memory = 0
+    for p in params:
+        if merge_small:
+            p, _, _ = _merge_small_dims(p, max_dim)
+        for dim in p.size():
+            if dim > max_dim: memory += dim
+            else: memory += dim**2
+
+    return memory
+
+
 
 
 class Shampoo(TensorTransform):
