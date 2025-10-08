@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 name = "torchzero"
 description = "Modular optimization library for PyTorch."
 
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
   "torch",
   "numpy",
