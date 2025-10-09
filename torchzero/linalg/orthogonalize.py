@@ -84,7 +84,7 @@ def orthogonalize_via_qr(A: torch.Tensor):
 
     return Q
 
-OrthogonalizeMethod = Literal["newtonschulz", "svd", "qr"]
+OrthogonalizeMethod = Literal["newtonschulz", "svd", "qr", "eigh"]
 def orthogonalize(A: torch.Tensor, method: OrthogonalizeMethod) -> torch.Tensor:
     if method == "newtonschulz": return zeropower_via_newtonschulz5(A)
     if method == "svd": return zeropower_via_svd(A)

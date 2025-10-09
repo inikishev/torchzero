@@ -109,8 +109,10 @@ class NystromSketchAndSolve(Transform):
 
         generator = self.get_generator(params[0].device, seed=fs['seed'])
         try:
-            Omega = torch.randn(ndim, min(fs["rank"], ndim), device=device, dtype=dtype, generator=generator)
-            HOmega = H_mm(orthogonalize(Omega, fs["orthogonalize_method"]))
+            Omega = torch.randn([ndim, min(fs["rank"], ndim)], device=device, dtype=dtype, generator=generator)
+            Omega = orthogonalize(Omega, fs["orthogonalize_method"])
+            HOmega = H_mm(Omega)
+
             # compute the approximation
             L, Q = nystrom_approximation(
                 Omega=Omega,
