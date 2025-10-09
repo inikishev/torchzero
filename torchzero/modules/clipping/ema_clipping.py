@@ -27,33 +27,34 @@ class ClipNormByEMA(TensorTransform):
         self,
         beta=0.99,
         ord: Metrics = 2,
-        eps=1e-6,
         tensorwise:bool=True,
         max_ema_growth: float | None = 1.5,
-        ema_init: Literal['zeros', 'update'] = 'zeros',
+        init: float = 0.1,
+        min_value: float = 1e-2,
         inner: Chainable | None = None,
     ):
-        defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, ema_init=ema_init, eps=eps, max_ema_growth=max_ema_growth)
+        defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, init=init, min_value=min_value, max_ema_growth=max_ema_growth)
         super().__init__(defaults, inner=inner)
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
-        ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(settings[0])
+        ord, tensorwise, max_ema_growth = itemgetter('ord', 'tensorwise', 'max_ema_growth')(settings[0])
 
-        beta, eps = unpack_dicts(settings, 'beta', 'eps', cls=NumberList)
+        beta, min_value = unpack_dicts(settings, 'beta', 'min_value', cls=NumberList)
 
-        ema = unpack_states(states, tensors, 'ema', init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
+        ema = unpack_states(states, tensors, 'ema', init = lambda t: t*settings[0]["init"], cls=TensorList)
 
         ema.lerp_(tensors, 1-beta)
 
+        eps = torch.finfo(ema[0].dtype).tiny * 2
         if tensorwise:
             ema_norm = ema.metric(ord)
 
             # clip ema norm growth
             if max_ema_growth is not None:
                 prev_ema_norm = unpack_states(states, tensors, 'prev_ema_norm', init=ema_norm, cls=TensorList)
-                allowed_norm = (prev_ema_norm * max_ema_growth).clip(min=1e-6)
+                allowed_norm = (prev_ema_norm * max_ema_growth).clip(min=min_value)
                 ema_denom = (ema_norm / allowed_norm).clip(min=1)
                 ema.div_(ema_denom)
                 ema_norm.div_(ema_denom)
@@ -70,15 +71,15 @@ class ClipNormByEMA(TensorTransform):
             # clip ema norm growth
             if max_ema_growth is not None:
                 prev_ema_norm = self.global_state.setdefault('prev_ema_norm', ema_norm)
-                allowed_norm = prev_ema_norm * max_ema_growth
+                allowed_norm = (prev_ema_norm * max_ema_growth).clip(min=min_value[0])
                 if ema_norm > allowed_norm:
                     ema.div_(ema_norm / allowed_norm)
                     ema_norm = allowed_norm
                 prev_ema_norm.set_(ema_norm)
 
             tensors_norm = tensors.global_metric(ord)
-            denom = tensors_norm / ema_norm.clip(min=eps[0])
-            if self.NORMALIZE: denom.clip_(min=eps[0])
+            denom = tensors_norm / ema_norm.clip(min=eps)
+            if self.NORMALIZE: denom.clip_(min=eps)
             else: denom.clip_(min=1)
 
         self.global_state['denom'] = denom

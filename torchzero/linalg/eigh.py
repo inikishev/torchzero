@@ -126,26 +126,35 @@ def eigh_plus_uuT(
 
     return L_prime, Q_prime
 
-def eigh_plus_UUT(
+def eigh_plus_UUt(
     L: torch.Tensor,
     Q: torch.Tensor,
     U: torch.Tensor,
-    alpha: float = 1,
+    alpha: float | torch.Tensor = 1,
     tol = None,
-    retry_float64: bool = False,
-):
+    ortho_method: OrthogonalizeMethod = 'qr',
+    retry_float64=True,
+) -> tuple[torch.Tensor, torch.Tensor] | tuple[None, None]:
     """
     compute eigendecomposition of Q L Q^T + alpha * (U U^T), where Q is ``(m, rank)`` and L is ``(rank, )``,
     U is ``(m, k)`` where k is rank of correction
+
+    returns ``(L, Q)``
     """
     if U.size(1) == 1:
-        return eigh_plus_uuT(L, Q, U[:,0], alpha=alpha, tol=tol, retry_float64=retry_float64)
+        return eigh_plus_uuT(L, Q, U[:,0], alpha=float(alpha), tol=tol)
+
+    # make alpha shape (k, )
+    k = U.size(1)
+    if isinstance(alpha, torch.Tensor):
+        alpha = torch.broadcast_to(alpha, (k, ))
+    else:
+        alpha = torch.full((k,), float(alpha), device=U.device, dtype=U.dtype)
 
     if tol is None: tol = torch.finfo(Q.dtype).eps
     m, r = Q.shape
-
-    Z = Q.T @ U  # (r, k)
-    U_res = U - Q @ Z  # (m, k)
+    QtU = Q.T @ U  # (r, k)
+    U_res = U - Q @ QtU  # (m, k)
 
     # find cols of U not in col space of Q
     res_norms = torch.linalg.vector_norm(U_res, dim=0) # pylint:disable=not-callable
@@ -155,23 +164,26 @@ def eigh_plus_UUT(
     if k_prime == 0:
         # all cols are in Q
         B = Q
-        C = Z # (r x k)
+        C = QtU # (r x k)
         r_new = r
     else:
         # orthonormalize directions that aren't in Q
         U_new = U_res[:, new_indices]
-        Q_u, _ = torch_linalg.qr(U_new, mode='reduced', retry_float64=retry_float64)
+        Q_u = orthogonalize(U_new, method=ortho_method)
         B = torch.hstack([Q, Q_u])
-        C = torch.vstack([Z, Q_u.T @ U])
+        C = torch.vstack([QtU, Q_u.T @ U_res])
         r_new = r + k_prime
-
 
     # project and compute new eigendecomposition
     A_proj = torch.zeros((r_new, r_new), device=Q.device, dtype=Q.dtype)
     A_proj[:r, :r] = L.diag_embed()
-    A_proj.addmm_(C, C.T, alpha=alpha)
+    # A_proj += (C @ C.T).mul_(alpha)
+    A_proj.addmm_(C * alpha, C.T)
 
-    L_prime, S = torch_linalg.eigh(A_proj, retry_float64=retry_float64)
+    try:
+        L_prime, S = torch_linalg.eigh(A_proj, retry_float64=retry_float64)
+    except torch.linalg.LinAlgError:
+        return None, None
 
     # unproject and sort
     Q_prime = B @ S
@@ -182,60 +194,108 @@ def eigh_plus_UUT(
     return L_prime, Q_prime
 
 
-def eigh_plus_UVT_symmetrize(
-    Q: torch.Tensor,
+def eigh_plus_UUt_mm(
+    # A1 = Q @ diag(L) @ Q.T
     L: torch.Tensor,
+    Q: torch.Tensor,
+
+    # A2 = U @ U.T
     U: torch.Tensor,
-    V: torch.Tensor,
-    alpha: float,
-    retry_float64: bool = False,
 
-):
+    # rhs
+    B: torch.Tensor,
+
+    # weights
+    w1: float,
+    w2: float | torch.Tensor,
+
+) -> torch.Tensor:
     """
-    Q is ``(m, rank)``; L is ``(rank, )``; U and V are the low rank correction such that U V^T is ``(m, m)``.
+    Computes ``(w1 * (Q L Q^T) + (U diag(w2) U^T) @ B``,
 
-    This computes eigendecomposition of A, where
+    Q is ``(m, rank)``, L is ``(rank, rank)``, U is ``(m, z)``, B is ``(m, k)``.
 
-    ``M = Q diag(L) Q^T + alpha * (U V^T)``;
-
-    ``A = (M + M^T) / 2``
+    Returns ``(m, k)``
     """
-    m, rank = Q.shape
-    _, k = V.shape
+    # sketch Q L Q^T
+    QtB = Q.T @ B # (rank, k)
+    LQtB = L.unsqueeze(1) * QtB  # (rank, k)
+    sketch1 = Q @ LQtB  # (m, k)
 
-    # project U and V out of the Q subspace via Gram-schmidt
-    Q_T_U = Q.T @ U
-    U_perp = U - Q @ Q_T_U
+    # skecth U U^T
+    UtB = U.T @ B # (z, k)
+    if isinstance(w2, torch.Tensor) and w2.numel() > 1: w2UtB = w2.unsqueeze(-1) * UtB
+    else:  w2UtB = w2 * UtB
+    sketch2 = U @ w2UtB # (m, k)
 
-    Q_T_V = Q.T @ V
-    V_perp = V - Q @ Q_T_V
+    return w1 * sketch1 + sketch2
 
-    R = torch.hstack([U_perp, V_perp])
-    Q_perp, _ = torch_linalg.qr(R, retry_float64=retry_float64)
 
-    Q_B = torch.hstack([Q, Q_perp])
-    r_B = Q_B.shape[1]
+def randomized_eigh_plus_UUt(
+    L1: torch.Tensor,
+    Q1: torch.Tensor,
+    U: torch.Tensor,
+    w1: float,
+    w2: float | torch.Tensor,
+    oversampling_p: int,
+    rank: int,
+    eig_tol: float,
+    damping: float,
+    rdamping: float,
+    ortho_method: OrthogonalizeMethod = 'qr',
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    """
+    compute randomized eigendecomposition of w1 * Q L Q^T + w2 * (U U^T),
+    where Q is ``(m, rank)`` and L is ``(rank, )``,
+    U is ``(m, k)`` where k is rank of correction, returns ``(L, Q)``
+    """
+    n = Q1.shape[0]
+    device = Q1.device
+    dtype = Q1.dtype
+    l = rank + oversampling_p
 
-    # project, symmetrize and compute new eigendecomposition
-    A_proj = torch.zeros((r_B, r_B), device=Q.device, dtype=Q.dtype)
-    A_proj[:rank, :rank] = L.diag_embed()
+    # gaussian test matrix
+    Omega = torch.randn(n, l, device=device, dtype=dtype)
 
-    Q_perp_T_U = Q_perp.T @ U
-    Q_B_T_U = torch.vstack([Q_T_U, Q_perp_T_U])
+    # sketch
+    AOmega = eigh_plus_UUt_mm(L1, Q1, U, Omega, w1, w2)
+    Q = orthogonalize(AOmega, ortho_method)
 
-    Q_perp_T_V = Q_perp.T @ V
-    Q_B_T_V = torch.vstack([Q_T_V, Q_perp_T_V])
+    AQ = eigh_plus_UUt_mm(L1, Q1, U, Q, w1, w2)
+    QtAQ = Q.T @ AQ
 
-    update_proj = Q_B_T_U @ Q_B_T_V.T + Q_B_T_V @ Q_B_T_U.T
-    A_proj.add_(update_proj, alpha=alpha/2)
+    W = (QtAQ + QtAQ.T) / 2.0
 
-    L_prime, S = torch_linalg.eigh(A_proj, retry_float64=retry_float64)
+    # compute new L and Q
+    try:
+        L_prime, S = torch.linalg.eigh(W) # pylint:disable=not-callable
+    except torch.linalg.LinAlgError:
+        return L1, Q1
 
-    # unproject and sort
-    Q_prime = Q_B @ S
+    L_prime, S = regularize_eigh(L=L_prime, Q=S, truncate=rank, tol=eig_tol, damping=damping, rdamping=rdamping)
 
-    idx = torch.argsort(L_prime)
-    L_prime = L_prime[idx]
-    Q_prime = Q_prime[:, idx]
+    if L_prime is None or S is None:
+        return L1, Q1
 
-    return L_prime, Q_prime
+    return L_prime, Q @ S
+
+
+def rank1_eigh(v: torch.Tensor):
+    """returns ``(L, Q)`` of ``(v v^T)``"""
+    vv = v.dot(v)
+    norm = vv.sqrt().clip(min=torch.finfo(vv.dtype).tiny * 2)
+
+    L = vv.unsqueeze(0) # (rank, )
+    Q = v.unsqueeze(-1) / norm # (m, rank)
+
+    return L, Q
+
+def low_rank_eigh(U: torch.Tensor):
+    """returns ``(L, Q)`` of ``alpha * (U U^T)`` (from GGT)"""
+    M = U.T @ U
+    L, S = torch.linalg.eigh(M) # pylint:disable=not-callable
+
+    Q = U @ S
+    Q /= torch.sqrt(L).clip(min=torch.finfo(L.dtype).tiny * 2)
+
+    return L, Q
