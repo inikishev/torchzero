@@ -5,7 +5,7 @@ import torch
 
 from ...core import Chainable, Transform, HVPMethod
 from ...utils import TensorList, vec_to_tensors
-from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg, regularize_eigh, OrthogonalizeMethod
+from ...linalg import nystrom_pcg, nystrom_sketch_and_solve, nystrom_approximation, cg, regularize_eigh, OrthogonalizeMethod, orthogonalize
 from ...linalg.linear_operator import Eigendecomposition, ScaledIdentity
 
 class NystromSketchAndSolve(Transform):
@@ -109,17 +109,13 @@ class NystromSketchAndSolve(Transform):
 
         generator = self.get_generator(params[0].device, seed=fs['seed'])
         try:
+            Omega = torch.randn(ndim, min(fs["rank"], ndim), device=device, dtype=dtype, generator=generator)
+            HOmega = H_mm(orthogonalize(Omega, fs["orthogonalize_method"]))
             # compute the approximation
             L, Q = nystrom_approximation(
-                A_mv=H_mv,
-                A_mm=H_mm,
-                ndim=ndim,
-                rank=min(fs["rank"], ndim),
+                Omega=Omega,
+                AOmega=HOmega,
                 eigv_tol=fs["eigv_tol"],
-                orthogonalize_method=fs["orthogonalize_method"],
-                dtype=dtype,
-                device=device,
-                generator=generator,
             )
 
             # regularize
@@ -260,16 +256,13 @@ class NystromPCG(Transform):
             generator = self.get_generator(device, seed=fs['seed'])
 
             try:
+                Omega = torch.randn(ndim, min(fs["rank"], ndim), device=device, dtype=dtype, generator=generator)
+                HOmega = H_mm(orthogonalize(Omega, fs["orthogonalize_method"]))
+                # compute the approximation
                 L, Q = nystrom_approximation(
-                    A_mv=None,
-                    A_mm=H_mm,
-                    ndim=ndim,
-                    rank=min(fs["rank"], ndim),
+                    Omega=Omega,
+                    AOmega=HOmega,
                     eigv_tol=fs["eigv_tol"],
-                    orthogonalize_method=fs["orthogonalize_method"],
-                    dtype=dtype,
-                    device=device,
-                    generator=generator,
                 )
 
                 self.global_state["L"] = L

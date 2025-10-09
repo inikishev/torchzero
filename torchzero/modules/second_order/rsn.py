@@ -25,8 +25,22 @@ def _orthonormal_sketch(m, n, dtype, device, generator):
     return _qr_orthonormalize(torch.randn(m, n, dtype=dtype, device=device, generator=generator))
 
 def _rademacher_sketch(m, n, dtype, device, generator):
-    rademacher = torch.bernoulli(torch.full((m,n), 0.5), generator = generator).mul_(2).sub_(1)
+    rademacher = torch.bernoulli(torch.full((m,n), 0.5, device=device, dtype=dtype), generator = generator).mul_(2).sub_(1)
     return rademacher.mul_(1 / math.sqrt(m))
+
+def _row_sketch(m, n, dtype, device, generator):
+    weights = torch.ones(m, dtype=dtype, device=device)
+    indices = torch.multinomial(weights, n, replacement=False, generator=generator)
+
+    P = torch.zeros(m, n, dtype=dtype, device=device)
+    P[indices, range(n)] = 1
+    return P
+
+def _topk_rows(grad, m, n, dtype, device, generator):
+    _, indices = torch.topk(grad.abs(), n)
+    P = torch.zeros(m, n, dtype=dtype, device=device)
+    P[indices, range(n)] = 1
+    return P
 
 class SubspaceNewton(Transform):
     """Subspace Newton. Performs a Newton step in a subspace (random or spanned by past gradients).
@@ -37,7 +51,9 @@ class SubspaceNewton(Transform):
         sketch_type (str, optional):
             - "common_directions" - uses history steepest descent directions as the basis[2]. It is orthonormalized on-line using Gram-Schmidt (default).
             - "orthonormal" - random orthonormal basis. Orthonormality is necessary to use linear operator based modules such as trust region, but it can be slower to compute.
-            - "rademacher" - approximately orthonormal (if dimension is large) scaled random rademacher basis. It is recommended to use at least "orthonormal" - it requires QR but it is still very cheap.
+            - "rows" - samples random rows.
+            - "topk" - samples top-rank rows with largest gradient magnitude.
+            - "rademacher" - approximately orthonormal (if dimension is large) scaled random rademacher basis.
             - "mixed" - random orthonormal basis but with four directions set to gradient, slow and fast gradient EMAs, and previous update direction.
         damping (float, optional): hessian damping (scale of identity matrix added to hessian). Defaults to 0.
         hvp_method (str, optional):
@@ -94,7 +110,7 @@ class SubspaceNewton(Transform):
     def __init__(
         self,
         sketch_size: int,
-        sketch_type: Literal["orthonormal", "common_directions", "mixed", "rademacher"] = "common_directions",
+        sketch_type: Literal["orthonormal", "common_directions", "mixed", "rademacher", "rows", "topk"] = "common_directions",
         damping:float=0,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
         update_freq: int = 1,
@@ -130,6 +146,14 @@ class SubspaceNewton(Transform):
 
         elif sketch_type == 'orthonormal':
             S = _orthonormal_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+
+        elif sketch_type == "rows":
+            S = _row_sketch(ndim, sketch_size, device=device, dtype=dtype, generator=generator)
+
+        elif sketch_type == "topk":
+            g_list = objective.get_grads(create_graph=hvp_method in ("batched_autograd", "autograd"))
+            g = torch.cat([t.ravel() for t in g_list])
+            S = _topk_rows(g, ndim, sketch_size, device=device, dtype=dtype, generator=generator)
 
         elif sketch_type == 'common_directions':
             # Wang, Po-Wei, Ching-pei Lee, and Chih-Jen Lin. "The common-directions method for regularized empirical risk minimization." Journal of Machine Learning Research 20.58 (2019): 1-49.
@@ -188,6 +212,10 @@ class SubspaceNewton(Transform):
 
         else:
             raise ValueError(f'Unknown sketch_type {sketch_type}')
+
+        # print(f'{S.shape = }')
+        # I = torch.eye(S.size(1), device=S.device, dtype=S.dtype)
+        # print(f'{torch.nn.functional.mse_loss(S.T @ S, I) = }')
 
         # form sketched hessian
         HS, _ = objective.hessian_matrix_product(S, rgrad=None, at_x0=True,
