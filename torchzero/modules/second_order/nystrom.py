@@ -75,7 +75,7 @@ class NystromSketchAndSolve(Transform):
     """
     def __init__(
         self,
-        rank: int,
+        rank: int = 100,
         reg: float | None = 1e-2,
         eigv_tol: float = 0,
         truncate: int | None = None,
@@ -223,7 +223,7 @@ class NystromPCG(Transform):
     """
     def __init__(
         self,
-        rank: int,
+        rank: int = 100,
         maxiter=None,
         tol=1e-8,
         reg: float = 1e-6,

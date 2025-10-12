@@ -1,7 +1,7 @@
 import math
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence, MutableMapping
 from functools import partial
 from typing import Any, Literal, Protocol, cast, final, overload
 
@@ -202,6 +202,7 @@ def fixed_radius(
     radius_fn: Callable | None = torch.linalg.vector_norm,
 ) -> tuple[float, bool]:
     return init, True
+
 
 _RADIUS_KEYS = Literal['default', 'fixed']
 _RADIUS_STRATEGIES: dict[_RADIUS_KEYS, _RadiusStrategy] = {

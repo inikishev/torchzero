@@ -35,6 +35,8 @@ class ImprovedNewton(Transform):
         self,
         damping: float = 0,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        eigv_tol: float | None = None,
+        truncate: int | None = None,
         update_freq: int = 1,
         precompute_inverse: bool | None = None,
         use_lstsq: bool = False,
@@ -89,6 +91,8 @@ class ImprovedNewton(Transform):
             state = self.global_state,
             damping = fs["damping"],
             eigval_fn = fs["eigval_fn"],
+            eigv_tol = fs["eigv_tol"],
+            truncate = fs["truncate"],
             precompute_inverse = precompute_inverse,
             use_lstsq = fs["use_lstsq"]
         )

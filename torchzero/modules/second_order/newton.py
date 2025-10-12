@@ -7,6 +7,7 @@ from ...core import Chainable, Transform, Objective, HessianMethod
 from ...utils import vec_to_tensors_
 from ...linalg.linear_operator import Dense, DenseWithInverse, Eigendecomposition
 from ...linalg import torch_linalg
+from ...linalg.eigh import regularize_eigh
 
 def _try_lu_solve(H: torch.Tensor, g: torch.Tensor):
     try:
@@ -30,6 +31,8 @@ def _newton_update_state_(
     H: torch.Tensor,
     damping: float,
     eigval_fn: Callable | None,
+    eigv_tol: float | None,
+    truncate: int | None,
     precompute_inverse: bool,
     use_lstsq: bool,
 ):
@@ -39,10 +42,11 @@ def _newton_update_state_(
         reg = torch.eye(H.size(0), device=H.device, dtype=H.dtype).mul_(damping)
         H += reg
 
-    # if eigval_fn is given, we don't need H or H_inv, we store factors
-    if eigval_fn is not None:
+    # if any args require eigendecomp, we don't need H or H_inv, we store factors
+    if any(i is not None for i in [eigval_fn, eigv_tol, truncate]):
         L, Q = torch_linalg.eigh(H, retry_float64=True)
-        L = eigval_fn(L)
+        L, Q = regularize_eigh(L, Q, truncate=truncate, tol=eigv_tol)
+        if eigval_fn is not None: L = eigval_fn(L)
         state["L"] = L
         state["Q"] = Q
         return
@@ -216,6 +220,8 @@ class Newton(Transform):
         self,
         damping: float = 0,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        eigv_tol: float | None = None,
+        truncate: int | None = None,
         update_freq: int = 1,
         precompute_inverse: bool | None = None,
         use_lstsq: bool = False,
@@ -242,6 +248,8 @@ class Newton(Transform):
             H=H,
             damping = fs["damping"],
             eigval_fn = fs["eigval_fn"],
+            eigv_tol = fs["eigv_tol"],
+            truncate = fs["truncate"],
             precompute_inverse = precompute_inverse,
             use_lstsq = fs["use_lstsq"]
         )

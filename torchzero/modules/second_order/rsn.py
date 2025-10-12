@@ -109,13 +109,15 @@ class SubspaceNewton(Transform):
 
     def __init__(
         self,
-        sketch_size: int,
+        sketch_size: int = 100,
         sketch_type: Literal["orthonormal", "common_directions", "mixed", "rademacher", "rows", "topk"] = "common_directions",
         damping:float=0,
         eigval_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        eigv_tol: float | None = None,
+        truncate: int | None = None,
         update_freq: int = 1,
         precompute_inverse: bool = False,
-        use_lstsq: bool = True,
+        use_lstsq: bool = False,
         hvp_method: HVPMethod = "batched_autograd",
         h: float = 1e-2,
         seed: int | None = None,
@@ -228,9 +230,10 @@ class SubspaceNewton(Transform):
             H = H_sketched,
             damping = fs["damping"],
             eigval_fn = fs["eigval_fn"],
+            eigv_tol = fs["eigv_tol"],
+            truncate = fs["truncate"],
             precompute_inverse = fs["precompute_inverse"],
             use_lstsq = fs["use_lstsq"]
-
         )
 
         self.global_state["S"] = S
