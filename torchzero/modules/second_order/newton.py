@@ -45,8 +45,8 @@ def _newton_update_state_(
     # if any args require eigendecomp, we don't need H or H_inv, we store factors
     if any(i is not None for i in [eigval_fn, eigv_tol, truncate]):
         L, Q = torch_linalg.eigh(H, retry_float64=True)
-        L, Q = regularize_eigh(L, Q, truncate=truncate, tol=eigv_tol)
         if eigval_fn is not None: L = eigval_fn(L)
+        L, Q = regularize_eigh(L, Q, truncate=truncate, tol=eigv_tol)
         state["L"] = L
         state["Q"] = Q
         return
