@@ -127,7 +127,7 @@ class ClipValueByEMA(TensorTransform):
     def __init__(
         self,
         beta=0.99,
-        init: Literal['zeros', 'update'] = 'zeros',
+        init: float = 0,
 
         inner: Chainable | None = None,
         exp_avg_tfm:Chainable | None=None,
@@ -138,10 +138,7 @@ class ClipValueByEMA(TensorTransform):
         self.set_child('exp_avg', exp_avg_tfm)
 
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
-        if setting["init"] == "zeros":
-            state["exp_avg"] = torch.zeros_like(tensor)
-        else:
-            state["exp_avg"] = tensor.abs()
+        state["exp_avg"] = tensor.abs() * setting["init"]
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):

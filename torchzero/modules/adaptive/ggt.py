@@ -7,7 +7,7 @@ from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg, regularize_eigh
 from .lre_optimizers import LREOptimizerBase
 
-def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, eig_tol):
+def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, truncate, eig_tol, matrix_power=-1/2):
     """returns U ``(ndim, rank)``, L ``(rank, )``"""
     if isinstance(history, torch.Tensor):
         M = history
@@ -27,7 +27,7 @@ def ggt_update(history: deque[torch.Tensor] | torch.Tensor, damping, rdamping, t
         if L is None or Q is None: # this means there are no finite eigenvalues
             return None, None
 
-        U = (M @ Q) * L.rsqrt()
+        U = (M @ Q) * L.pow(matrix_power)
 
         # this damping is added after computing U, this is why I didn't use one in linalg.regularize_eig
         # that's because we damp singular values this way
@@ -105,6 +105,7 @@ class GGT(TensorTransform):
         truncate: int | None = None,
         damping: float = 1e-4,
         rdamping: float = 0,
+        matrix_power: float = -1/2,
         basis_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
 
@@ -141,6 +142,7 @@ class GGT(TensorTransform):
                 rdamping=setting["rdamping"],
                 truncate=setting["truncate"],
                 eig_tol=setting["eig_tol"],
+                matrix_power=setting["matrix_power"],
             )
 
             # reproject basis optimizer
@@ -181,6 +183,6 @@ class GGT(TensorTransform):
 
         # or just whiten
         z = U.T @ g
-        update = (U * L.rsqrt()) @ z
+        update = (U * L.pow(setting["matrix_power"])) @ z
         return update.view_as(tensor)
 
