@@ -426,13 +426,3 @@ class Eigendecomposition(LinearOperator):
         n = self.Q.size(0)
         return (n,n)
 
-
-class Permutation(LinearOperator):
-    def __init__(self, indices:torch.Tensor, n_rows:int | None = None):
-        self.indices = indices
-        self.device = indices.device
-        self.n_rows = n_rows
-
-    def matvec(self, x):
-        return x[self.indices]
-

@@ -105,7 +105,7 @@ class GGT(TensorTransform):
         truncate: int | None = None,
         damping: float = 1e-4,
         rdamping: float = 0,
-        eigenbasis_optimizer: LREOptimizerBase | None = None,
+        basis_optimizer: LREOptimizerBase | None = None,
         concat_params: bool = True,
 
         inner: Chainable | None = None,
@@ -143,12 +143,12 @@ class GGT(TensorTransform):
                 eig_tol=setting["eig_tol"],
             )
 
-            # reproject eigenbasis optimizer
-            eigenbasis_optimizer: LREOptimizerBase | None = setting["eigenbasis_optimizer"]
-            if eigenbasis_optimizer is not None:
+            # reproject basis optimizer
+            basis_optimizer: LREOptimizerBase | None = setting["basis_optimizer"]
+            if basis_optimizer is not None:
                 if (L is not None) and (U is not None) and (L_new is not None) and (U_new is not None):
-                    eigenbasis_state = state["eigenbasis_state"]
-                    eigenbasis_optimizer.reproject(L_old=L, Q_old=U, L_new=L_new, Q_new=U_new, state=eigenbasis_state)
+                    basis_state = state["basis_state"]
+                    basis_optimizer.reproject(L_old=L, Q_old=U, L_new=L_new, Q_new=U_new, state=basis_state)
 
 
             # store new factors
@@ -169,14 +169,14 @@ class GGT(TensorTransform):
 
         L = state['L']
 
-        # step with eigenbasis optimizer
-        eigenbasis_optimizer: LREOptimizerBase | None = setting["eigenbasis_optimizer"]
-        if eigenbasis_optimizer is not None:
+        # step with basis optimizer
+        basis_optimizer: LREOptimizerBase | None = setting["basis_optimizer"]
+        if basis_optimizer is not None:
 
-            if "eigenbasis_state" not in state: state["eigenbasis_state"] = {}
-            eigenbasis_state = state["eigenbasis_state"]
+            if "basis_state" not in state: state["basis_state"] = {}
+            basis_state = state["basis_state"]
 
-            update = eigenbasis_optimizer.step(g, L=L, Q=U, state=eigenbasis_state)
+            update = basis_optimizer.step(g, L=L, Q=U, state=basis_state)
             return update.view_as(tensor)
 
         # or just whiten

@@ -3,6 +3,19 @@ import math
 import torch
 
 from .orthogonalize import orthogonalize_via_qr
+from .linear_operator import LinearOperator, Dense
+
+
+class Permutation(LinearOperator):
+    def __init__(self, indices:torch.Tensor):
+        self.indices = indices
+        self.device = indices.device
+
+    def matvec(self, x):
+        return x[self.indices]
+
+    def matmat(self, X):
+        return Dense(X[:, self.indices])
 
 def orthonormal_sketch(m, k, dtype, device, generator):
     return orthogonalize_via_qr(torch.randn(m, k, dtype=dtype, device=device, generator=generator))
