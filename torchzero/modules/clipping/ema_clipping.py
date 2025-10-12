@@ -29,23 +29,23 @@ class ClipNormByEMA(TensorTransform):
         ord: Metrics = 2,
         tensorwise:bool=True,
         max_ema_growth: float | None = 1.5,
-        ema_init: Literal['zeros', 'update'] = 'zeros',
+        init: float = 0.0,
         min_norm: float = 1e-6,
 
         inner: Chainable | None = None,
     ):
-        defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, ema_init=ema_init, min_norm=min_norm, max_ema_growth=max_ema_growth)
+        defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, init=init, min_norm=min_norm, max_ema_growth=max_ema_growth)
         super().__init__(defaults, inner=inner)
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)
         eps = torch.finfo(tensors[0].dtype).tiny * 2
-        ord, tensorwise, ema_init, max_ema_growth = itemgetter('ord', 'tensorwise', 'ema_init', 'max_ema_growth')(settings[0])
+        ord, tensorwise, init, max_ema_growth = itemgetter('ord', 'tensorwise', 'init', 'max_ema_growth')(settings[0])
 
         beta, min_norm = unpack_dicts(settings, 'beta', 'min_norm', cls=NumberList)
 
-        exp_avg = unpack_states(states, tensors, 'exp_avg', init = (torch.zeros_like if ema_init=='zeros' else tensors), cls=TensorList)
+        exp_avg = unpack_states(states, tensors, 'exp_avg', init = lambda x: torch.full_like(x, init), cls=TensorList)
 
         exp_avg.lerp_(tensors, 1-beta)
 
