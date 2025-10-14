@@ -226,7 +226,8 @@ class NewtonCGSteihaug(Transform):
         tol: float = 1e-8,
         reg: float = 1e-8,
         solver: Literal['cg', "minres"] = 'cg',
-        adapt_tol: bool = True,
+        adapt_tol: bool = False,
+        terminate_on_tr: bool = True,
         npc_terminate: bool = False,
 
         # hvp settings
@@ -272,7 +273,6 @@ class NewtonCGSteihaug(Transform):
         npc_terminate=fs["npc_terminate"]
         miniter=fs["miniter"]
         max_history=fs["max_history"]
-        adapt_tol=fs["adapt_tol"]
 
 
         # ------------------------------- trust region ------------------------------- #
@@ -294,8 +294,12 @@ class NewtonCGSteihaug(Transform):
             finfo = torch.finfo(orig_params[0].dtype)
             if trust_radius < finfo.tiny * 2:
                 trust_radius = self.global_state['trust_radius'] = init
-                if adapt_tol:
+
+                if fs["adapt_tol"]:
                     self.global_state["tol_mul"] = self.global_state.get("tol_mul", 1) * 0.1
+
+                if fs["terminate_on_tr"]:
+                    objective.should_terminate = True
 
             elif trust_radius > finfo.max / 2:
                 trust_radius = self.global_state['trust_radius'] = init

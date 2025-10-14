@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 
 from ...core import Chainable, Transform
@@ -128,6 +130,10 @@ class GaussNewton(Transform):
             with torch.enable_grad():
                 r = objective.get_loss(backward=False) # n_residuals
                 assert isinstance(r, torch.Tensor)
+
+        if r.numel() == 1:
+            r = r.view(1,1)
+            warnings.warn("Gauss-newton got a single residual. Make sure objective function returns a vector of residuals.")
 
         # set sum of squares scalar loss and it's gradient to objective
         objective.loss = r.pow(2).sum()

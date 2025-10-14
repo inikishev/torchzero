@@ -2,28 +2,28 @@
 import itertools
 import time
 from collections import deque
-from collections.abc import Callable, Sequence, Mapping, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, NamedTuple, cast, overload
 
 import numpy as np
 import torch
 
-from .. import m
 from ..core import Module, Optimizer
 from ..utils import tofloat
+from .methods import _get_method_from_str
 
 _fn_autograd = Callable[[torch.Tensor], torch.Tensor | Any]
 _fn_custom_grad = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 _scalar = float | np.ndarray | torch.Tensor
 _method = str | Module | Sequence[Module] | Callable[..., torch.optim.Optimizer]
 
-def _tensorlist_norm(tensors: Iterable[torch.Tensor], ord):
+def _tensorlist_norm(tensors: Iterable[torch.Tensor], ord) -> torch.Tensor:
     """returns a scalar - global norm of tensors"""
     if ord == torch.inf:
         return max(torch._foreach_max(torch._foreach_abs(tuple(tensors))))
 
     if ord == 1:
-        return sum(t.abs().sum() for t in tensors)
+        return cast(torch.Tensor, sum(t.abs().sum() for t in tensors))
 
     if ord % 2 != 0:
         tensors = torch._foreach_abs(tuple(tensors))
@@ -33,7 +33,7 @@ def _tensorlist_norm(tensors: Iterable[torch.Tensor], ord):
 
 
 
-class Kwargs:
+class Params:
     __slots__ = ("args", "kwargs")
     def __init__(self, args: Sequence[torch.Tensor], kwargs: Mapping[str, torch.Tensor]):
         self.args = tuple(args)
@@ -50,28 +50,46 @@ class Kwargs:
         yield from self.kwargs.values()
 
     def clone(self):
-        return Kwargs(
+        return Params(
             args = [a.clone() for a in self.args],
             kwargs={k:v.clone() for k,v in self.kwargs.items()}
         )
+
+    def __repr__(self):
+        if len(self.args) == 1 and len(self.kwargs) == 0:
+            return f"Params({repr(self.x)})"
+
+        s = "Params("
+        if len(self.args) > 0:
+            s = f"{s}\n\targs = (\n\t\t"
+            s += ",\n\t\t".join(str(a) for a in self.args)
+            s = s + "\n\t)"
+
+        if len(self.kwargs) > 0:
+            s = f'{s}\n\tkwargs = (\n\t\t'
+            for k,v in self.kwargs.items():
+                s = f"{s}{k}={v},\n\t\t"
+            s = s[:-2] + "\t)"
+
+        return f"{s}\n)"
 
     def _call(self, f):
         return f(*self.args, **self.kwargs)
 
     def _detach_clone(self):
-        return Kwargs(
+        return Params(
             args = [a.detach().clone() for a in self.args],
             kwargs={k:v.detach().clone() for k,v in self.kwargs.items()}
         )
 
     def _detach_cpu_clone(self):
-        return Kwargs(
+        return Params(
             args = [a.detach().cpu().clone() for a in self.args],
             kwargs={k:v.detach().cpu().clone() for k,v in self.kwargs.items()}
         )
 
     def _requires_grad_(self, mode=True):
-        return Kwargs(
+        return Params(
             args = [a.requires_grad_(mode) for a in self.args],
             kwargs={k:v.requires_grad_(mode) for k,v in self.kwargs.items()}
         )
@@ -90,15 +108,10 @@ _x0 = (
     Mapping[str, Sequence[torch.Tensor] | Mapping[str, torch.Tensor]] |
     tuple[Sequence[torch.Tensor], Mapping[str, torch.Tensor]] |
     Sequence[Sequence[torch.Tensor] | Mapping[str, torch.Tensor]] |
-    Kwargs
+    Params
 )
 
-def _get_method_from_str(method: str) -> list[Module]:
-    method = ''.join(c for c in method.lower().strip() if c.isalnum())
-    if method == "bfgs":
-        return [m.BFGS(), m.Backtracking()]
 
-    raise NotImplementedError(method)
 
 def _get_opt_fn(method: _method):
     if isinstance(method, str):
@@ -129,7 +142,7 @@ class _MaxSecondsReached(Exception): pass
 class Terminate(Exception): pass
 
 class _WrappedFunc:
-    def __init__(self, f: _fn_autograd | _fn_custom_grad, x0: Kwargs, reduce_fn: Callable, max_history,
+    def __init__(self, f: _fn_autograd | _fn_custom_grad, x0: Params, reduce_fn: Callable, max_history,
                  maxeval:int | None, maxsec: float | None, custom_grad:bool):
         self.f = f
         self.maxeval = maxeval
@@ -146,7 +159,7 @@ class _WrappedFunc:
         if max_history == 0: self.history = None
         else: self.history = deque(maxlen=max_history)
 
-    def __call__(self, x: Kwargs, g: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def __call__(self, x: Params, g: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
         if self.maxeval is not None and self.evals >= self.maxeval:
             raise _MaxEvaluationsReached
 
@@ -177,16 +190,35 @@ class _WrappedFunc:
 
         return v, g
 
+
+
 class MinimizeResult(NamedTuple):
-    kwargs: Kwargs
+    params: Params
     x: torch.Tensor | None
     success: bool
     message: str
     fun: float
     n_iters: int
     n_evals: int
+    g_norm: torch.Tensor | None
+    dir_norm: torch.Tensor | None
     losses: list[float]
     history: deque[tuple[torch.Tensor, torch.Tensor]]
+
+    def __repr__(self):
+        newline = "\n"
+        ident = " " * 10
+        return (
+            f"message:  {self.message}\n"
+            f"success:  {self.success}\n"
+            f"fun:      {self.fun}\n"
+            f"params:   {repr(self.params).replace(newline, newline+ident)}\n"
+            f"x:        {self.x}\n"
+            f"n_iters:  {self.n_iters}\n"
+            f"n_evals:  {self.n_evals}\n"
+            f"g_norm:   {self.g_norm}\n"
+            f"dir_norm: {self.dir_norm}\n"
+        )
 
 
 
@@ -194,25 +226,25 @@ def _make_kwargs(x0: _x0):
     x = cast(Any, x0)
 
     # kwargs
-    if isinstance(x, Kwargs): return x
+    if isinstance(x, Params): return x
 
     # single tensor
-    if isinstance(x, torch.Tensor): return Kwargs(args = (x, ), kwargs = {})
+    if isinstance(x, torch.Tensor): return Params(args = (x, ), kwargs = {})
 
     if isinstance(x, Sequence):
         # args
-        if isinstance(x[0], torch.Tensor): return Kwargs(args=x, kwargs = {})
+        if isinstance(x[0], torch.Tensor): return Params(args=x, kwargs = {})
 
         # tuple of (args, kwrgs)
         assert len(x) == 2 and isinstance(x[0], Sequence) and isinstance(x[1], Mapping)
-        return Kwargs(args=x[0], kwargs=x[1])
+        return Params(args=x[0], kwargs=x[1])
 
     if isinstance(x, Mapping):
         # dict with args and kwargs
-        if "args" in x or "kwargs" in x: return Kwargs(args=x.get("args", ()), kwargs=x.get("kwargs", {}))
+        if "args" in x or "kwargs" in x: return Params(args=x.get("args", ()), kwargs=x.get("kwargs", {}))
 
         # kwargs
-        return Kwargs(args=(), kwargs=x)
+        return Params(args=(), kwargs=x)
 
     raise TypeError(type(x))
 
@@ -221,13 +253,13 @@ def minimize(
     f: _fn_autograd | _fn_custom_grad,
     x0: _x0,
 
-    method: _method,
+    method: _method | None = None,
 
     maxeval: int | None = None,
     maxiter: int | None = None,
     maxsec: float | None = None,
     ftol: _scalar | None = None,
-    gtol: _scalar | None = 0,
+    gtol: _scalar | None = 1e-5,
     xtol: _scalar | None = None,
     max_no_improvement_steps: int | None = 100,
 
@@ -239,10 +271,16 @@ def minimize(
     norm = torch.inf
 
 ) -> MinimizeResult:
-    opt_fn = _get_opt_fn(method)
     x0 = _make_kwargs(x0)
     x = x0._requires_grad_(True)
 
+    # determine method if None
+    if method is None:
+        max_dim = 5_000 if next(iter(x.parameters())).is_cuda else 1_000
+        if sum(p.numel() for p in x.parameters()) > max_dim: method = 'lbfgs'
+        else: method = 'bfgs'
+
+    opt_fn = _get_opt_fn(method)
     optimizer = opt_fn(list(x.parameters()))
 
     f_wrapped = _WrappedFunc(
@@ -282,10 +320,16 @@ def minimize(
 
     losses = []
 
+    tiny = torch.finfo(list(x0.parameters())[0].dtype).tiny ** 2
+    if gtol == 0: gtol = tiny
+    if xtol == 0: xtol = tiny
+
     p_prev = None if xtol is None else [p.detach().clone() for p in x.parameters()]
     fmin = float("inf")
     niter = 0
     n_no_improvement = 0
+    g_norm = None
+    dir_norm = None
 
     terminate_msg = "max iterations reached"
     success = False
@@ -342,28 +386,41 @@ def minimize(
             # gradient infinity norm
             if gtol is not None:
                 grads = x._grads()
-                if grads is not None and _tensorlist_norm(grads, norm) <= gtol:
-                    terminate_msg = 'gradient norm is below tolerance'
-                    success = True
-                    break
+                if grads is not None:
+                    g_norm = _tensorlist_norm(grads, norm)
+                    if g_norm <= gtol:
+                        terminate_msg = 'gradient norm is below tolerance'
+                        success = True
+                        break
+
+                # due to the way torchzero works we sometimes don't populate .grad,
+                # e.g. with Newton, therefore fallback on xtol
+                else:
+                    if xtol is None: xtol = tiny
 
             # difference in parameters
             if xtol is not None:
-                assert p_prev is not None
                 p_new = [p.detach().clone() for p in x.parameters()]
 
-                if _tensorlist_norm(torch._foreach_sub(p_new, p_prev), norm) <= xtol:
-                    terminate_msg = 'update norm is below tolerance'
-                    success = True
-                    break
+                if p_prev is None: # happens when xtol is set in gtol logic
+                    p_prev = p_new
 
-                p_prev = p_new
+                else:
+                    dir_norm = _tensorlist_norm(torch._foreach_sub(p_new, p_prev), norm)
+                    if dir_norm <= xtol:
+                        terminate_msg = 'update norm is below tolerance'
+                        success = True
+                        break
+
+                    p_prev = p_new
 
             # no improvement steps
             if max_no_improvement_steps is not None:
-
-                if fmin >= f_wrapped.fmin: n_no_improvement += 1
-                else: n_no_improvement = 0
+                if f_wrapped.fmin >= fmin:
+                    n_no_improvement += 1
+                else:
+                    fmin = f_wrapped.fmin
+                    n_no_improvement = 0
 
                 if n_no_improvement >= max_no_improvement_steps:
                     terminate_msg = 'reached maximum steps without improvement'
@@ -378,13 +435,15 @@ def minimize(
         x_vec = f_wrapped.x_best.x
 
     result = MinimizeResult(
-        kwargs = f_wrapped.x_best,
+        params = f_wrapped.x_best,
         x = x_vec,
         success = success,
         message = terminate_msg,
         fun = f_wrapped.fmin,
         n_iters = niter,
         n_evals = f_wrapped.evals,
+        g_norm = g_norm,
+        dir_norm = dir_norm,
         losses = losses,
         history = history,
     )
