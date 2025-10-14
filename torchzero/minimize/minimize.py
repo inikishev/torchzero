@@ -222,7 +222,7 @@ class MinimizeResult(NamedTuple):
 
 
 
-def _make_kwargs(x0: _x0):
+def _make_params(x0: _x0):
     x = cast(Any, x0)
 
     # kwargs
@@ -261,18 +261,82 @@ def minimize(
     ftol: _scalar | None = None,
     gtol: _scalar | None = 1e-5,
     xtol: _scalar | None = None,
-    max_no_improvement_steps: int | None = 100,
+    max_no_improvement_iters: int | None = 100,
 
     reduce_fn: Callable[[torch.Tensor], torch.Tensor] = torch.sum,
     max_history: int = 0,
 
     custom_grad: bool = False,
     use_termination_exceptions: bool = True,
-    norm = torch.inf
+    norm = torch.inf,
 
 ) -> MinimizeResult:
-    x0 = _make_kwargs(x0)
+    """Minimize a scalar or multiobjective function of one or more variables.
+
+    Args:
+        f (_fn_autograd | _fn_custom_grad):
+            The objective function to be minimized.
+        x0 (_x0):
+            Initial guess. Can be torch.Tensor, tuple of torch.Tensors to pass as args,
+            or dictionary of torch.Tensors to pass as kwargs.
+        method (_method | None, optional):
+            Type of solver. By default chooses BFGS or L-BFGS depending on number of variables. Defaults to None.
+        maxeval (int | None, optional):
+            terminate when exceeded this number of function evaluations. Defaults to None.
+        maxiter (int | None, optional):
+            terminate when exceeded this number of solver iterations,
+            each iteration may perform multiple function evaluations. Defaults to None.
+        maxsec (float | None, optional):
+            terminate after optimizing for this many seconds. Defaults to None.
+        ftol (_scalar | None, optional):
+            terminate when reached a solution with objective value less or equal to this value. Defaults to None.
+        gtol (_scalar | None, optional):
+            terminate when gradient norm is less or equal to this value.
+            The type of norm is controlled by ``norm`` argument and is infinity norm by default. Defaults to 1e-5.
+        xtol (_scalar | None, optional):
+            terminate when norm of difference between successive parameters is less or equal to this value. Defaults to None.
+        max_no_improvement_iters (int | None, optional):
+            terminate when objective value hasn't improved once for this many consecutive iterations. Defaults to 100.
+        reduce_fn (Callable[[torch.Tensor], torch.Tensor], optional):
+            only has effect when ``f`` is multi-objective / least-squares. Determines how to convert
+            vector returned by ``f`` to a single scalar value for ``ftol`` and ``max_no_improvement_iters``.
+            Defaults to torch.sum.
+        max_history (int, optional):
+            stores this many last evaluated parameters and their values.
+            Set to -1 to store all parameters. Set to 0 to store nothing (default).
+        custom_grad (bool, optional):
+            Allows specifying a custom gradient function instead of using autograd.
+            if True, objective function ``f`` must of the following form:
+            ```python
+            def f(x, grad):
+                value = objective(x)
+                if grad.numel() > 0:
+                    grad[:] = objective_gradient(x)
+                return value
+            ```
+
+            Defaults to False.
+        use_termination_exceptions (bool, optional):
+            if True, ``maxeval`` and ``maxsec`` use exceptions to terminate, therefore they are able to trigger
+            mid-iteration. If False, they can only trigger after iteration, so it might perform slightly more
+            evals and for slightly more seconds than requested. Defaults to True.
+        norm (float, optional):
+            type of norm to use for gradient and update tolerances. Defaults to torch.inf.
+
+    Raises:
+        RuntimeError: _description_
+
+    Returns:
+        MinimizeResult: _description_
+    """
+
+    x0 = _make_params(x0)
     x = x0._requires_grad_(True)
+
+    # checks
+    if custom_grad:
+        if not (len(x.args) == 1 and len(x.kwargs) == 0):
+            raise RuntimeError("custom_grad only works when `x` is a single tensor.")
 
     # determine method if None
     if method is None:
@@ -415,14 +479,14 @@ def minimize(
                     p_prev = p_new
 
             # no improvement steps
-            if max_no_improvement_steps is not None:
+            if max_no_improvement_iters is not None:
                 if f_wrapped.fmin >= fmin:
                     n_no_improvement += 1
                 else:
                     fmin = f_wrapped.fmin
                     n_no_improvement = 0
 
-                if n_no_improvement >= max_no_improvement_steps:
+                if n_no_improvement >= max_no_improvement_iters:
                     terminate_msg = 'reached maximum steps without improvement'
                     success = False
                     break
