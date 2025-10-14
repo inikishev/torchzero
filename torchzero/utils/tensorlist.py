@@ -330,10 +330,10 @@ class TensorList(list[torch.Tensor | Any]):
 
     def global_vector_norm(self, ord:float = 2) -> torch.Tensor:
         # return torch.linalg.vector_norm(self.to_vec(), ord = ord) # pylint:disable = not-callable
-        if ord == 1: return self.global_sum()
-        if ord % 2 == 0: return self.pow(ord).global_sum().pow(1/ord)
         if ord == torch.inf: return self.abs().global_max()
         if ord == -torch.inf: return self.abs().global_min()
+        if ord == 1: return self.abs().global_sum()
+        if ord % 2 == 0: return self.pow(ord).global_sum().pow(1/ord)
         if ord == 0: return (self != 0).global_sum().to(self[0].dtype)
 
         return self.abs().pow_(ord).global_sum().pow(1/ord)

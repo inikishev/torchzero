@@ -5,39 +5,54 @@ import numpy as np
 import torch
 import tqdm
 
-
-def generate_correlated_logistic_data(n_samples=2000, n_features=32, n_correlated_pairs=512, correlation=0.99, seed=0):
-    """Hard logistic regression dataset with correlated features"""
+def generate_correlated_logistic_data(
+    n_samples=100_000,
+    n_features=32,
+    n_classes=10,
+    n_correlated=768,
+    correlation=0.99,
+    seed=0
+):
+    assert n_classes >= 2
     generator = np.random.default_rng(seed)
 
-    # ------------------------------------- X ------------------------------------ #
     X = generator.standard_normal(size=(n_samples, n_features))
-    weights = generator.uniform(-2, 2, n_features)
+    weights = generator.uniform(-2, 2, size=(n_features, n_classes))
 
-    used_pairs = []
-    for i in range(n_correlated_pairs):
+    used_pairs = set()
+    n_correlated = min(n_correlated, n_features * (n_features - 1) // 2)
+
+    for _ in range(n_correlated):
         idxs = None
         while idxs is None or idxs in used_pairs:
-            idxs = tuple(generator.choice(n_features, size=2, replace=False).tolist())
+            pair = generator.choice(n_features, size=2, replace=False)
+            pair.sort()
+            idxs = tuple(pair)
 
-        used_pairs.append(idxs)
+        used_pairs.add(idxs)
         idx1, idx2 = idxs
 
         noise = generator.standard_normal(n_samples) * np.sqrt(1 - correlation**2)
         X[:, idx2] = correlation * X[:, idx1] + noise
 
         w = generator.integers(1, 51)
-        weights[idx1] = w
-        weights[idx2] = -w
+        cls = generator.integers(0, n_classes)
+        weights[idx1, cls] = w
+        weights[idx2, cls] = -w
 
-    # ---------------------------------- logits ---------------------------------- #
     logits = X @ weights
-    probabilities = 1 / (1 + np.exp(-logits))
-    y = generator.binomial(1, probabilities).astype(np.float32)
 
-    X = X - X.mean(0, keepdims=True)
-    X = X / X.std(0, keepdims=True)
-    return X, y
+    logits -= logits.max(axis=1, keepdims=True)
+    exp_logits = np.exp(logits)
+    probabilities = exp_logits / exp_logits.sum(axis=1, keepdims=True)
+
+    y_one_hot = generator.multinomial(1, pvals=probabilities)
+    y = np.argmax(y_one_hot, axis=1)
+
+    X -= X.mean(0, keepdims=True)
+    X /= X.std(0, keepdims=True)
+
+    return X, y.astype(np.int64)
 
 
 # if __name__ == '__main__':
@@ -101,7 +116,7 @@ def run_logistic_regression(X: torch.Tensor, y: torch.Tensor, opt_fn, max_steps:
         # this is for tests
         if _assert_on_evaluated_same_params:
             for p in evaluated_params:
-                assert not _tensorlist_equal(p, model.parameters()), f"evaluated same parameters on epoch {epoch}"
+                assert not _tensorlist_equal(p, model.parameters()), f"{optimizer} evaluated same parameters on epoch {epoch}"
 
             evaluated_params.append([p.clone() for p in model.parameters()])
 
