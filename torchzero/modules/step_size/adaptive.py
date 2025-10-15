@@ -389,15 +389,19 @@ class AdGD(TensorTransform):
 
 class BoldDriver(TensorTransform):
     """Multiplies step size by ``nplus`` if loss decreased compared to last iteration, otherwise multiplies by ``nminus``."""
-    def __init__(self, a_init=1e-3, nplus=1.1, nminus=0.1):
+    def __init__(self, a_init=1e-3, nplus=1.1, nminus=0.1, inner: Chainable | None = None):
         defaults = dict(a_init=a_init, nplus=nplus, nminus=nminus)
-        super().__init__(defaults, uses_loss=True)
+        super().__init__(defaults, uses_loss=True, inner=inner)
+        self.global_state["alpha"] = a_init
+
+    def reset_for_online(self):
+        super().reset_for_online()
+        self.clear_state_keys('f_prev')
 
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         fs = settings[0]
         if "f_prev" not in self.global_state:
             self.global_state["f_prev"] = tofloat(loss)
-            self.global_state["alpha"] = fs["a_init"]
             return
 
         if self.global_state["f_prev"] <= loss:
@@ -415,6 +419,7 @@ class BoldDriver(TensorTransform):
         if not _acceptable_alpha(alpha, tensors[0]):
             self.state.clear()
             self.global_state.clear()
+            self.global_state["alpha"] = settings[0]["a_init"]
             alpha = epsilon_step_size(TensorList(tensors), 1e-7)
 
         torch._foreach_mul_(tensors, alpha)

@@ -154,8 +154,7 @@ class Online(Module):
         closure = objective.closure
         if closure is None: raise ValueError("Closure must be passed for Online")
 
-        step = self.global_state.get('step', 0) + 1
-        self.global_state['step'] = step
+        step = self.increment_counter("step", start = 0)
 
         params = TensorList(objective.params)
         p_cur = params.clone()
@@ -165,7 +164,7 @@ class Online(Module):
         var_c = objective.clone(clone_updates=False)
 
         # on 1st step just step and store previous params
-        if step == 1:
+        if step == 0:
             p_prev.copy_(params)
 
             module.update(var_c)
