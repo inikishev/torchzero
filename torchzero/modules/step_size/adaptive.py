@@ -385,3 +385,40 @@ class AdGD(TensorTransform):
 
     def get_H(self, objective):
         return _get_scaled_identity_H(self, objective)
+
+
+class BoldDriver(TensorTransform):
+    """Multiplies step size by ``nplus`` if loss decreased compared to last iteration, otherwise multiplies by ``nminus``."""
+    def __init__(self, a_init=1e-3, nplus=1.1, nminus=0.1):
+        defaults = dict(a_init=a_init, nplus=nplus, nminus=nminus)
+        super().__init__(defaults, uses_loss=True)
+
+    def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
+        fs = settings[0]
+        if "f_prev" not in self.global_state:
+            self.global_state["f_prev"] = tofloat(loss)
+            self.global_state["alpha"] = fs["a_init"]
+            return
+
+        if self.global_state["f_prev"] <= loss:
+            self.global_state["alpha"] *= fs["nminus"]
+
+        else:
+            self.global_state["alpha"] *= fs["nplus"]
+
+        self.global_state["f_prev"] = tofloat(loss)
+
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        alpha = self.global_state.get('alpha', None)
+
+        if not _acceptable_alpha(alpha, tensors[0]):
+            self.state.clear()
+            self.global_state.clear()
+            alpha = epsilon_step_size(TensorList(tensors), 1e-7)
+
+        torch._foreach_mul_(tensors, alpha)
+        return tensors
+
+    def get_H(self, objective):
+        return _get_scaled_identity_H(self, objective)
