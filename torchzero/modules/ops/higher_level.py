@@ -30,6 +30,7 @@ class EMASquared(TensorTransform):
     def __init__(self, beta:float=0.999, amsgrad=False, pow:float=2):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad)
         super().__init__(defaults)
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "max_exp_avg_sq")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -57,7 +58,7 @@ class SqrtEMASquared(TensorTransform):
     def __init__(self, beta:float=0.999, amsgrad=False, debiased: bool = False, pow:float=2,):
         defaults = dict(beta=beta,pow=pow,amsgrad=amsgrad,debiased=debiased)
         super().__init__(defaults)
-
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "max_exp_avg_sq")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -141,6 +142,8 @@ class CenteredEMASquared(TensorTransform):
     def __init__(self, beta: float = 0.99, amsgrad=False, pow:float=2):
         defaults = dict(beta=beta, amsgrad=amsgrad, pow=pow)
         super().__init__(defaults, uses_grad=False)
+        self.add_projected_keys("grad", "exp_avg")
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "max_exp_avg_sq")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -175,6 +178,8 @@ class CenteredSqrtEMASquared(TensorTransform):
     def __init__(self, beta: float = 0.99, amsgrad=False, debiased: bool = False, pow:float=2):
         defaults = dict(beta=beta, amsgrad=amsgrad, debiased=debiased, pow=pow)
         super().__init__(defaults, uses_grad=False)
+        self.add_projected_keys("grad", "exp_avg")
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "max_exp_avg_sq")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

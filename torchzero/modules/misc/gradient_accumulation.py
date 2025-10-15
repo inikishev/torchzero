@@ -35,6 +35,7 @@ class GradientAccumulation(Module):
     def __init__(self, n: int, mean=True, stop=True):
         defaults = dict(n=n, mean=mean, stop=stop)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "accumulator")
 
 
     @torch.no_grad

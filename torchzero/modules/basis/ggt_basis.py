@@ -27,17 +27,69 @@ class GGTBasis(TensorTransform):
 
     This is equivalent to full-matrix Adagrad on recent gradients.
 
+    Note:
+        the buffers of the ``basis_opt`` are re-projected whenever basis changes. The reprojection logic is not implemented on all modules. Some supported modules are:
+
+        ``Adagrad``, ``FullMatrixAdagrad``, ``Adam``, ``Adan``, ``Lion``, ``MARSCorrection``, ``MSAMMomentum``, ``RMSprop``, ``GGT``, ``EMA``, ``HeavyBall``, ``NAG``, ``ClipNormByEMA``, ``ClipValueByEMA``, ``NormalizeByEMA``, ``ClipValueGrowth``, ``CoordinateMomentum``, ``CubicAdam``.
+
+        Additionally most modules with no internal buffers are supported, e.g. ``Cautious``, ``Sign``, ``ClipNorm``, ``Orthogonalize``, etc. However modules that use weight values, such as ``WeighDecay`` can't be supported, as weights can't be projected.
+
+        Also, if you say use ``EMA`` on output of ``Pow(2)``, the exponential average will be reprojected as gradient and not as squared gradients. Use modules like ``EMASquared``, ``SqrtEMASquared`` to get correct reprojections.
+
+
     Args:
-        history_size (int, optional): number of past gradients to store. Defaults to 10.
+        basis_opt (Chainable): module or modules to run in GGT eigenbasis.
+        history_size (int, optional): number of past gradients to store, and rank of preconditioner. Defaults to 10.
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
         eig_tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
         truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
         damping (float, optional): damping value. Defaults to 1e-4.
         rdamping (float, optional): value of damping relative to largest eigenvalue. Defaults to 0.
         concat_params (bool, optional): if True, treats all parameters as a single vector. Defaults to True.
-        inner (Chainable | None, optional): preconditioner will be applied to output of this module. Defaults to None.
+        inner (Chainable | None, optional):
+            output of this module is projected and ``basis_opt`` will run on it, but preconditioners are updated
+            from original gradients.
 
     ## Examples:
+
+    Examples:
+    Adam in GGT eigenbasis:
+    ```python
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.GGTBasis(tz.m.Adam(beta2=0.99)),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    Full-matrix Adam in GGT eigenbasis. We can define full-matrix Adam through ``FullMatrixAdagrad``.
+    ```python
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.GGTBasis(
+            [tz.m.FullMatrixAdagrad(beta=0.99, inner=tz.m.EMA(0.9, debias=True))]
+        ),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    LaProp in GGT eigenbasis:
+    ```python
+
+    # we define LaProp through other modules, moved it out for brevity
+    laprop = (
+        tz.m.RMSprop(0.95),
+        tz.m.Debias(beta1=None, beta2=0.95),
+        tz.m.EMA(0.95),
+        tz.m.Debias(beta1=0.95, beta2=None),
+    )
+
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.GGTBasis(laprop),
+        tz.m.LR(1e-3)
+    )
+    ```
 
     Reference:
         Agarwal N. et al. Efficient full-matrix adaptive regularization //International Conference on Machine Learning. – PMLR, 2019. – С. 102-110.

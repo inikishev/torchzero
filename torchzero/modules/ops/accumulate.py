@@ -13,6 +13,7 @@ class AccumulateSum(TensorTransform):
     def __init__(self, decay: float = 0):
         defaults = dict(decay=decay)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "sum")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -30,6 +31,7 @@ class AccumulateMean(TensorTransform):
     def __init__(self, decay: float = 0):
         defaults = dict(decay=decay)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "mean")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -65,6 +67,7 @@ class AccumulateMaximum(TensorTransform):
     def __init__(self, decay: float = 0):
         defaults = dict(decay=decay)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "maximum")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -82,6 +85,7 @@ class AccumulateMinimum(TensorTransform):
     def __init__(self, decay: float = 0):
         defaults = dict(decay=decay)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "minimum")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

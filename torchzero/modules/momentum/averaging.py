@@ -20,6 +20,8 @@ class Averaging(TensorTransform):
         defaults = dict(history_size=history_size)
         super().__init__(defaults=defaults)
 
+        self.add_projected_keys("grad", "history", "average")
+
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
         history_size = setting['history_size']
@@ -44,6 +46,8 @@ class WeightedAveraging(TensorTransform):
     def __init__(self, weights: Sequence[float] | torch.Tensor | Any):
         defaults = dict(weights = tolist(weights))
         super().__init__(defaults=defaults)
+
+        self.add_projected_keys("grad", "history")
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -78,6 +82,8 @@ class MedianAveraging(TensorTransform):
     def __init__(self, history_size: int,):
         defaults = dict(history_size = history_size)
         super().__init__(defaults=defaults)
+
+        self.add_projected_keys("grad", "history")
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):

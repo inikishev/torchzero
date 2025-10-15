@@ -25,6 +25,7 @@ class Previous(TensorTransform):
         defaults = dict(n=n)
         super().__init__(defaults=defaults)
 
+        self.add_projected_keys("grad", "history")
 
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
@@ -42,6 +43,7 @@ class LastDifference(TensorTransform):
     """Outputs difference between past two updates."""
     def __init__(self,):
         super().__init__()
+        self.add_projected_keys("grad", "prev_tensors")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -54,6 +56,7 @@ class LastGradDifference(Module):
     """Outputs difference between past two gradients."""
     def __init__(self):
         super().__init__()
+        self.add_projected_keys("grad", "prev_grad")
 
     @torch.no_grad
     def apply(self, objective):
@@ -84,6 +87,7 @@ class LastProduct(TensorTransform):
     """Outputs difference between past two updates."""
     def __init__(self):
         super().__init__()
+        self.add_projected_keys("grad", "prev")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -97,6 +101,7 @@ class LastRatio(TensorTransform):
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur'):
         defaults = dict(numerator=numerator)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "prev")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -112,6 +117,7 @@ class LastAbsoluteRatio(TensorTransform):
     def __init__(self, numerator: Literal['cur', 'prev'] = 'cur', eps:float=1e-8):
         defaults = dict(numerator=numerator, eps=eps)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "prev")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
