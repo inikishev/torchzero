@@ -6,7 +6,7 @@ import torch
 
 from ...core import  TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..opt_utils import ema_
+from ..opt_utils import debias as _debias, ema_
 
 
 class EMA(TensorTransform):
@@ -38,7 +38,7 @@ class EMA(TensorTransform):
 
         exp_avg = ema_(TensorList(tensors), exp_avg_=exp_avg,beta=momentum,dampening=dampening,lerp=lerp)
 
-        if debias: return debias(exp_avg, step=step, beta1=momentum, alpha=1, inplace=False)
+        if debias: return _debias(exp_avg, step=step, beta1=momentum, alpha=1, inplace=False)
         else: return exp_avg.clone() # this has exp_avg storage so needs to be cloned
 
 

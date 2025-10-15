@@ -111,7 +111,7 @@ class GGTBasis(TensorTransform):
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults['inner']
+        del defaults['self'], defaults['inner'], defaults["basis_opt"]
 
         super().__init__(defaults, concat_params=True, inner=inner)
         self.set_child("basis_opt", basis_opt)
