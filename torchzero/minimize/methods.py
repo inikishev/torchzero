@@ -79,6 +79,9 @@ def _get_method_from_str(method: str) -> list[Module]:
     if method in ("gn", "gaussnewton"):
         return [m.GaussNewton(), m.Backtracking()]
 
+    if method == "rprop":
+        return [m.Rprop(alpha=1e-3)]
+
     if method == "lm":
         return [m.LevenbergMarquardt(m.GaussNewton())]
 
@@ -87,5 +90,6 @@ def _get_method_from_str(method: str) -> list[Module]:
 
     if method == "cd":
         return [m.CD(), m.ScipyMinimizeScalar(maxiter=8)]
+
 
     raise NotImplementedError(method)

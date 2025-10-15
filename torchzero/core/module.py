@@ -2,7 +2,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, overload, TYPE_CHECKING
+from typing import Any, overload, TYPE_CHECKING, Literal
 
 import torch
 
@@ -14,6 +14,7 @@ from .functional import step_tensors
 if TYPE_CHECKING:
     from .objective import Objective
 
+ProjectedBuffs = Literal["grad", "grad_sq", "grad_cu", "covariance", "inverse"]
 
 class Module(ABC):
     """Abstract base class for an optimizer modules.
@@ -51,6 +52,9 @@ class Module(ABC):
 
         self._overridden_keys = set()
         """tracks keys overridden with ``set_param_groups``, only used to not give a warning"""
+
+        self._projected_keys: defaultdict[ProjectedBuffs, set[str]] = defaultdict(set)
+        """tracks keys with gradient-like buffers, covariance-like buffers, etc for reprojecting"""
 
 
     def set_param_groups(self, param_groups: Params):

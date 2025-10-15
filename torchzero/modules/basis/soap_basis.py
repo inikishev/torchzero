@@ -3,7 +3,8 @@ import warnings
 
 import torch
 
-from ...core import TensorTransform, Chainable
+from ...core import TensorTransform, Chainable, Module
+from ..adaptive import Adam
 from ...utils import unpack_dicts, unpack_states, TensorList, NumberList
 from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
 from ...linalg import torch_linalg
@@ -151,33 +152,25 @@ class SOAP(TensorTransform):
     """
     def __init__(
         self,
-        beta1: float = 0.95,
-        beta2: float = 0.95,
         shampoo_beta: float | None = 0.95,
         precond_freq: int = 10,
         merge_small: bool = True,
         max_dim: int = 4096,
         precondition_1d: bool = True,
-        eps: float = 1e-8,
-        debias: bool = True,
-        proj_exp_avg: bool = True,
-        alpha: float = 1,
-
+        basis_opt: Module = Adam(0.95, 0.95),
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
-        del defaults['self'], defaults["inner"]
+        del defaults['self'], defaults["inner"], defaults["basis_opt"]
 
         super().__init__(defaults)
         self.set_child("inner", inner)
+        self.set_child("basis_opt", basis_opt)
 
     @torch.no_grad
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
         if setting["merge_small"]:
             tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
-
-        state["exp_avg_proj"] = torch.zeros_like(tensor)
-        state["exp_avg_sq_proj"] = torch.zeros_like(tensor)
 
         if tensor.ndim <= 1 and not setting["precondition_1d"]:
             state['GG'] = []
@@ -221,18 +214,13 @@ class SOAP(TensorTransform):
             return TensorList(tensors).clamp(-0.1, 0.1)
             # return TensorList(tensors).zero_()
 
+
         fs = settings[0]
         merged = []
         projected = []
-
-        # -------------------------------- inner step -------------------------------- #
-        mod_tensors = tensors # this doesn't go into preconditioner
-        if "inner" in self.children:
-            mod_tensors = self.inner_step_tensors("inner", tensors, clone=True,
-                                              params=params, grads=grads, loss=loss)
-
         # ---------------------------------- project --------------------------------- #
-        for tensor, state, setting in zip(mod_tensors, states, settings):
+
+        for tensor, state, setting in zip(tensors, states, settings):
             if setting["merge_small"]:
                 tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
@@ -243,35 +231,12 @@ class SOAP(TensorTransform):
 
             projected.append(tensor)
 
-
-        # ------------------------ run adam in projected space ----------------------- #
-        exp_avg_proj, exp_avg_sq_proj = unpack_states(states, projected, "exp_avg_proj", "exp_avg_sq_proj", must_exist=True, cls=TensorList)
-        alpha, beta1, beta2, eps = unpack_dicts(settings, "alpha", "beta1", "beta2", "eps", cls=NumberList)
-
-        # lerp exp_avg in projected space
-        if fs["proj_exp_avg"]:
-            exp_avg_proj.lerp_(projected, weight=1-beta1)
-
-        # or lerp in original space and project
-        else:
-            exp_avg = exp_avg_proj
-            exp_avg.lerp_(merged, weight=1-beta1)
-            exp_avg_proj = []
-            for t, state, setting in zip(exp_avg, states, settings):
-                if state['GG'] is not None:
-                    t = project(t, state["Q"])
-                exp_avg_proj.append(t)
-
-        # lerp exp_avg_sq
-        exp_avg_sq_proj.mul_(beta2).addcmul_(projected, projected, value=1-beta2)
-
-        # adam direction
-        denom = exp_avg_sq_proj.sqrt().add_(eps)
-        dirs_proj = exp_avg_proj / denom
+        # ------------------------ run opt in projected space ----------------------- #
+        projected = self.inner_step_tensors("basis_opt", tensors=projected, clone=False, grads=projected)
 
         # ------------------------------- project back ------------------------------- #
         dirs: list[torch.Tensor] = []
-        for dir, state, setting in zip(dirs_proj, states, settings):
+        for dir, state, setting in zip(projected, states, settings):
             if state['GG'] is not None:
                 dir = project_back(dir, state['Q'])
 
@@ -279,6 +244,19 @@ class SOAP(TensorTransform):
                 dir = _unmerge_small_dims(dir, state['flat_sizes'], state['sort_idxs'])
 
             dirs.append(dir)
+
+
+        # -------------------------------- inner step -------------------------------- #
+        if "inner" in self.children:
+            tensors = self.inner_step_tensors("inner", tensors, clone=False,
+                                              params=params, grads=grads,loss=loss)
+
+            # we now have to re-merge small dims on updated tensors
+            merged = []
+            for tensor, state, setting in zip(tensors, states, settings):
+                if setting["merge_small"]:
+                    tensor, _, _ = _merge_small_dims(tensor, setting["max_dim"])
+                    merged.append(tensor)
 
         # -------------------------- update preconditioners -------------------------- #
         # Update is done after the gradient step to avoid using current gradients in the projection.
@@ -293,9 +271,7 @@ class SOAP(TensorTransform):
                 if (state['step'] - 1) % setting['precond_freq'] == 0:
 
                     # unproject exp_avg before updating if it is maintained projected
-                    exp_avg = None
-                    if fs["proj_exp_avg"]:
-                        exp_avg = project_back(state["exp_avg_proj"], state["Q"])
+                    exp_avg = project_back(state["exp_avg_proj"], state["Q"])
 
                     # update projection matrix and exp_avg_sq_proj
                     try:
@@ -303,9 +279,7 @@ class SOAP(TensorTransform):
                             state["exp_avg_sq_proj"], state['GG'], state['Q'])
 
                         # re-project exp_avg if it is maintained projected
-                        if fs["proj_exp_avg"]:
-                            assert exp_avg is not None
-                            state["exp_avg_proj"] = project(exp_avg, state["Q"])
+                        state["exp_avg_proj"] = project(exp_avg, state["Q"])
 
                     except torch.linalg.LinAlgError:
                         pass

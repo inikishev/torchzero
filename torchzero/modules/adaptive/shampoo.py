@@ -207,6 +207,9 @@ class Shampoo(TensorTransform):
         if setting["merge_small"]:
             tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
+            if "inner" not in self.children:
+                state["merged"] = tensor
+
         if 'diagonal_accumulator' in state:
             update_diagonal_(tensor, state['diagonal_accumulator'], beta=setting["beta"])
         else:
@@ -227,10 +230,15 @@ class Shampoo(TensorTransform):
 
         state["step"] += 1
 
+
     @torch.no_grad
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):
+
         if setting["merge_small"]:
-            tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
+            if "inner" not in self.children:
+                tensor = state.pop("merged")
+            else:
+                tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
         if 'diagonal_accumulator' in state:
             dir = apply_diagonal_(tensor, state['diagonal_accumulator'], eps=setting["adagrad_eps"])

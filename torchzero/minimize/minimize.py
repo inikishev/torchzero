@@ -280,7 +280,8 @@ def minimize(
             Initial guess. Can be torch.Tensor, tuple of torch.Tensors to pass as args,
             or dictionary of torch.Tensors to pass as kwargs.
         method (_method | None, optional):
-            Type of solver. By default chooses BFGS or L-BFGS depending on number of variables. Defaults to None.
+            Type of solver. Can be a string, a ``Module`` (like ``tz.m.BFGS()``), or a list of ``Module``.
+            By default chooses BFGS or L-BFGS depending on number of variables. Defaults to None.
         maxeval (int | None, optional):
             terminate when exceeded this number of function evaluations. Defaults to None.
         maxiter (int | None, optional):

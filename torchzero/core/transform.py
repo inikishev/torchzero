@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from operator import itemgetter
-from typing import Any, final, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast, final
 
 import torch
 
+from ..utils import safe_dict_update_, vec_to_tensors
 from .module import Module
-from ..utils import vec_to_tensors, safe_dict_update_
 
 if TYPE_CHECKING:
     from .chain import Chainable
@@ -127,6 +127,7 @@ class TensorTransform(Transform):
         self._concat_params = concat_params
         self._uses_grad = uses_grad
         self._uses_loss = uses_loss
+
 
     # ------------------------------- single tensor ------------------------------ #
     def single_tensor_initialize(

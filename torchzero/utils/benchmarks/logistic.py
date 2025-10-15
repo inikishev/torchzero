@@ -12,7 +12,7 @@ def generate_correlated_logistic_data(
     n_correlated=768,
     correlation=0.99,
     seed=0
-):
+) -> tuple[np.ndarray, np.ndarray]:
     assert n_classes >= 2
     generator = np.random.default_rng(seed)
 
