@@ -6,7 +6,7 @@ import torch
 
 from ...core import  TensorTransform
 from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
-from ..opt_utils import debias, ema_
+from ..opt_utils import ema_
 
 
 class EMA(TensorTransform):
