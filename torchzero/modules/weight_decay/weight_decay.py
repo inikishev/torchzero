@@ -117,17 +117,17 @@ class RelativeWeightDecay(TensorTransform):
         ord: int  = 2,
         norm_input: Literal["update", "grad", "params"] = "update",
         metric: Metrics = 'mad',
+        cautious: bool = False,
     ):
-        defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input, metric=metric)
+        defaults = dict(weight_decay=weight_decay, ord=ord, norm_input=norm_input, metric=metric, cautious=cautious)
         super().__init__(defaults, uses_grad=norm_input == 'grad')
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         weight_decay = NumberList(s['weight_decay'] for s in settings)
 
-        ord = settings[0]['ord']
-        norm_input = settings[0]['norm_input']
-        metric = settings[0]['metric']
+        fs = settings[0]
+        norm_input = fs['norm_input']
 
         if norm_input == 'update': src = TensorList(tensors)
         elif norm_input == 'grad':
@@ -138,8 +138,13 @@ class RelativeWeightDecay(TensorTransform):
         else:
             raise ValueError(norm_input)
 
-        norm = src.global_metric(metric)
-        return weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * norm, ord)
+        norm = src.global_metric(fs['metric'])
+
+        if fs["cautious"]:
+            wd_ = cautious_weight_decay_
+        else:
+            wd_ = weight_decay_
+        return wd_(as_tensorlist(tensors), as_tensorlist(params), weight_decay * norm, fs["ord"])
 
 
 @torch.no_grad
