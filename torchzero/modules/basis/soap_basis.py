@@ -5,75 +5,14 @@ import torch
 
 from ...core import TensorTransform, Chainable, Module
 from ..adaptive import Adam
-from ...utils import unpack_dicts, unpack_states, TensorList, NumberList
+from ...utils import unpack_dicts, unpack_states, TensorList, NumberList, set_storage_
 from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
 from ...linalg import torch_linalg
-
-@torch.no_grad
-def update_soap_covariances_(
-    grad: torch.Tensor,
-    GGs_: list[torch.Tensor | None],
-    beta: float | None,
-):
-    for i, GG in enumerate(GGs_):
-        if GG is None: continue
-
-        axes = list(range(i)) + list(range(i + 1, grad.ndim)) # this works fine with 1d params
-        if beta is None: GG.add_(torch.tensordot(grad, grad, (axes, axes))) # pyright:ignore[reportArgumentType]
-        else: GG.lerp_(torch.tensordot(grad, grad, (axes, axes)), 1-beta) # pyright:ignore[reportArgumentType]
-
-@torch.no_grad
-def project(tensor: torch.Tensor, Q: list[torch.Tensor | None]):
-    """
-    Projects the gradient to the eigenbases of the preconditioner.
-    """
-    for M in Q:
-        if M is not None:
-            tensor = torch.tensordot(tensor, M, dims=[[0], [0]]) # pyright:ignore[reportArgumentType]
-        else:
-            permute_order = list(range(1, len(tensor.shape))) + [0]
-            tensor = tensor.permute(permute_order)
-
-    return tensor
-
-@torch.no_grad
-def project_back(tensor: torch.Tensor, Q: list[torch.Tensor| None]):
-    """
-    Projects the gradient back to the original space.
-    """
-    for M in Q:
-        if M is not None:
-            tensor = torch.tensordot(tensor, M, dims=[[0], [1]]) # pyright:ignore[reportArgumentType]
-        else:
-            permute_order = list(range(1, len(tensor.shape))) + [0]
-            tensor = tensor.permute(permute_order)
-
-    return tensor
-
-# function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
-@torch.no_grad
-def get_orthogonal_matrix(mats: list[torch.Tensor | None]):
-    """
-    Computes the eigenbases of the preconditioner using torch.linalg.eigh decomposition.
-    """
-
-    final = []
-    for M in mats:
-
-        if M is None:
-            final.append(None)
-            continue
-
-        _, Q = torch_linalg.eigh(M + 1e-30 * torch.eye(M.shape[0], device=M.device), retry_float64=True)
-
-        Q = torch.flip(Q, [1])
-        final.append(Q)
-
-    return final
+from ..adaptive.soap import get_orthogonal_matrix, project, project_back, update_soap_covariances_
 
 # function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py#L240
 @torch.no_grad
-def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | None], Q_list: list[torch.Tensor | None]):
+def get_orthogonal_matrix_QR(grad_sqs: list[torch.Tensor], GG: list[torch.Tensor | None], Q_list: list[torch.Tensor | None]):
     """
     Computes the eigenbases of the preconditioner using one round of power iteration
     followed by torch.linalg.qr decomposition.
@@ -93,7 +32,7 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
         est_eig = torch.diagonal(O.T @ M @ O)
         sort_idx = torch.argsort(est_eig, descending=True)
-        exp_avg_sq = exp_avg_sq.index_select(ind, sort_idx)
+        grad_sqs = [s.index_select(ind, sort_idx) for s in grad_sqs]
 
         power_iter = M @ O[:, sort_idx]
         Q, _ = torch_linalg.qr(power_iter.to(torch.float32), retry_float64=True)
@@ -101,63 +40,20 @@ def get_orthogonal_matrix_QR(exp_avg_sq: torch.Tensor, GG: list[torch.Tensor | N
 
         final.append(Q)
 
-    return final, exp_avg_sq
+    return final, grad_sqs
 
-class SOAP(TensorTransform):
-    """SOAP (ShampoO with Adam in the Preconditioner's eigenbasis from https://arxiv.org/abs/2409.11321).
-
-    Args:
-        beta1 (float, optional): beta for first momentum. Defaults to 0.95.
-        beta2 (float, optional): beta for second momentum. Defaults to 0.95.
-        shampoo_beta (float | None, optional):
-            beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad (which works worse). Defaults to 0.95.
-        precond_freq (int, optional): How often to update the preconditioner. Defaults to 10.
-        merge_small (bool, optional): Whether to merge small dims. Defaults to True.
-        max_dim (int, optional): Won't precondition dims larger than this. Defaults to 10_000.
-        precondition_1d (bool, optional):
-            Whether to precondition 1d params (SOAP paper sets this to False). Defaults to True.
-        eps (float, optional):
-            epsilon for dividing first momentum by second. Defaults to 1e-8.
-        debias (bool, optional):
-            enables adam bias correction. Defaults to True.
-        proj_exp_avg (bool, optional):
-            if True, maintains exponential average of gradients (momentum) in projected space.
-            If False - in original space Defaults to True.
-        alpha (float, optional):
-            learning rate. Defaults to 1.
-        inner (Chainable | None, optional):
-            output of this module is projected and Adam will run on it, but preconditioners are updated
-            from original gradients.
-
-    ### Examples:
-    SOAP:
-
-    ```python
-    opt = tz.Optimizer(
-        model.parameters(),
-        tz.m.SOAP(),
-        tz.m.LR(1e-3)
-    )
-    ```
-    Stabilized SOAP:
-
-    ```python
-    opt = tz.Optimizer(
-        model.parameters(),
-        tz.m.SOAP(),
-        tz.m.NormalizeByEMA(max_ema_growth=1.2),
-        tz.m.LR(1e-2)
-    )
-    ```
+class SOAPBasis(TensorTransform):
+    """
+    Run another optimizer in Shampoo eigenbases.
     """
     def __init__(
         self,
+        basis_opt: Chainable,
         shampoo_beta: float | None = 0.95,
         precond_freq: int = 10,
         merge_small: bool = True,
         max_dim: int = 4096,
         precondition_1d: bool = True,
-        basis_opt: Module = Adam(0.95, 0.95),
         inner: Chainable | None = None,
     ):
         defaults = locals().copy()
@@ -262,7 +158,10 @@ class SOAP(TensorTransform):
         # -------------------------- update preconditioners -------------------------- #
         # Update is done after the gradient step to avoid using current gradients in the projection.
 
-        for grad, state, setting in zip(merged_grads, states, settings):
+        grad_buffs = self.get_child_projected_buffers("basis_opt", "grad")
+        grad_sq_buffs = self.get_child_projected_buffers("basis_opt", ["grad_sq", "grad_cu"])
+
+        for grad, g_buffs, g_sq_buffs, state, setting in zip(merged_grads, grad_buffs, grad_sq_buffs, states, settings):
             if state['GG'] is not None:
 
                 # lerp covariances
@@ -271,34 +170,24 @@ class SOAP(TensorTransform):
                 # (state['step'] - 1) since we start updating on 2nd step
                 if (state['step'] - 1) % setting['precond_freq'] == 0:
 
-                    # unproject exp_avg before updating if it is maintained projected
-                    unprojected = []
-                    basis_opt = self.children["basis_opt"]
-                    for k in basis_opt._projected_keys["grad"]:
-
-
-                    exp_avg = project_back(state["exp_avg_proj"], state["Q"])
+                    # unproject grad buffers before updating
+                    g_buffs_unproj = [project_back(buff, state["Q"]) for buff in g_buffs]
 
                     # update projection matrix and exp_avg_sq_proj
                     try:
-                        state['Q'], state['exp_avg_sq_proj'] = get_orthogonal_matrix_QR(
-                            state["exp_avg_sq_proj"], state['GG'], state['Q'])
+                        state['Q'], g_sq_buffs_new = get_orthogonal_matrix_QR(
+                            g_sq_buffs, state['GG'], state['Q'])
 
-                        # re-project exp_avg if it is maintained projected
-                        state["exp_avg_proj"] = project(exp_avg, state["Q"])
+                        for b_old, b_new in zip(g_sq_buffs, g_sq_buffs_new):
+                            set_storage_(b_old, b_new)
+
+                        # re-project grad buffers
+                        for b_proj, b_unproj in zip(g_buffs, g_buffs_unproj):
+                            set_storage_(b_proj, project(b_unproj, state["Q"]))
 
                     except torch.linalg.LinAlgError:
                         pass
 
             state["step"] += 1
 
-
-        # ------------------------- bias-corrected step size ------------------------- #
-        if fs["debias"]:
-            steps1 = [s+1 for s in steps]
-            bias_correction1 = 1.0 - beta1 ** steps1
-            bias_correction2 = 1.0 - beta2 ** steps1
-            alpha = alpha * (bias_correction2 ** .5) / bias_correction1
-
-        torch._foreach_mul_(dirs, alpha)
         return dirs

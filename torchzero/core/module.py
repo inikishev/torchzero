@@ -14,7 +14,7 @@ from .functional import step_tensors
 if TYPE_CHECKING:
     from .objective import Objective
 
-ProjectedBuffs = Literal["grad", "grad_sq", "grad_cu", "covariance", "inverse"]
+ProjectedBuffer = Literal["grad", "grad_sq", "grad_cu", "covariance", "inverse"]
 
 class Module(ABC):
     """Abstract base class for an optimizer modules.
@@ -53,7 +53,7 @@ class Module(ABC):
         self._overridden_keys = set()
         """tracks keys overridden with ``set_param_groups``, only used to not give a warning"""
 
-        self._projected_keys: defaultdict[ProjectedBuffs, set[str]] = defaultdict(set)
+        self._projected_keys: defaultdict[ProjectedBuffer, set[str]] = defaultdict(set)
         """tracks keys with gradient-like buffers, covariance-like buffers, etc for reprojecting"""
 
         self._fake_params: dict[str, list[torch.Tensor]] = {}
@@ -153,7 +153,7 @@ class Module(ABC):
         fake = params is None
         if fake:
             if key not in self._fake_params:
-                self._fake_params[key] = tensors
+                self._fake_params[key] = [torch.empty_like(t) for t in tensors]
             params = self._fake_params[key]
             _set_fake_params_(params, tensors)
 
@@ -347,6 +347,33 @@ class Module(ABC):
         value = self.global_state.get(key, start - 1) + 1
         self.global_state[key] = value
         return value
+
+    def get_child_projected_buffers(self, key: str, buff: ProjectedBuffer | Sequence[ProjectedBuffer], params:Sequence[torch.Tensor] | None = None) -> list[list[torch.Tensor]]:
+        """if params is None, assumes fake parameters"""
+        if isinstance(buff, str): buff = (buff, )
+
+        child = self.children[key]
+        if params is None:
+            params = self._fake_params[key]
+
+        vals = []
+        for b in buff:
+            for buff_key in child._projected_keys[b]:
+                state = child.state[params[0]]
+                if buff_key in state:
+                    vals.append([child.state[p][buff_key] for p in params])
+
+        # recursively do this on children,
+        # note that if params are fake, children will have same fake params
+        # unless that child steps with something else. I don't think that is feasible to support it
+        for c in child.children:
+            vals.extend(child.get_child_projected_buffers(c, buff, params=params))
+
+        return vals
+
+    def add_projected_keys(self, buffer: ProjectedBuffer, *keys):
+        for k in keys: self._projected_keys[buffer].add(k)
+
 
     # ---------------------------- OVERRIDABLE METHODS --------------------------- #
     def update(self, objective:"Objective") -> None:

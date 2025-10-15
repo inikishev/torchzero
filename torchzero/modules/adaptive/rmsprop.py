@@ -38,6 +38,8 @@ class RMSprop(TensorTransform):
         super().__init__(defaults, inner=inner)
 
         self.set_child('exp_avg_sq', exp_avg_sq_tfm)
+        self.add_projected_keys("grad", "exp_avg")
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "exp_avg_sq_max")
 
     @torch.no_grad
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):

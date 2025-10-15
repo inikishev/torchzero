@@ -6,13 +6,13 @@ from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
 
 def mars_correction_(
     tensors_: TensorList,
-    prev_: TensorList,
+    g_prev_: TensorList,
     beta: float | NumberList,
     scaling: float | NumberList,
     max_norm: float | NumberList |  None,
 ):
-    dg = (tensors_ - prev_).mul_(scaling * beta / (1-beta))
-    prev_.copy_(tensors_)
+    dg = (tensors_ - g_prev_).mul_(scaling * beta / (1-beta))
+    g_prev_.copy_(tensors_)
 
     c = tensors_.add_(dg)
     if max_norm is not None:
@@ -63,16 +63,17 @@ class MARSCorrection(TensorTransform):
     ):
         defaults = dict(beta=beta, scaling=scaling, max_norm=max_norm)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "g_prev")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
-        prev = unpack_states(states, tensors, 'prev', init=tensors, cls=TensorList)
+        g_prev = unpack_states(states, tensors, 'g_prev', init=tensors, cls=TensorList)
         beta, scaling = unpack_dicts(settings, 'beta', 'scaling', cls=NumberList)
         max_norm = settings[0]['max_norm']
 
         return mars_correction_(
             tensors_=TensorList(tensors),
-            prev_=prev,
+            g_prev_=g_prev,
             beta=beta,
             scaling=scaling,
             max_norm=max_norm,

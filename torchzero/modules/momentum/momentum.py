@@ -24,6 +24,8 @@ class EMA(TensorTransform):
         defaults = dict(momentum=momentum,dampening=dampening,debiased=debiased,lerp=lerp,ema_init=ema_init)
         super().__init__(defaults, uses_grad=False)
 
+        self.add_projected_keys("grad", "exp_avg")
+
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1
@@ -87,6 +89,8 @@ class NAG(TensorTransform):
     def __init__(self, momentum:float=0.9, dampening:float=0, lerp=False):
         defaults = dict(momentum=momentum,dampening=dampening, lerp=lerp)
         super().__init__(defaults, uses_grad=False)
+
+        self.add_projected_keys("grad", "velocity")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):

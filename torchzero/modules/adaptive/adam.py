@@ -38,9 +38,8 @@ class Adam(TensorTransform):
         self.set_child('exp_avg', exp_avg_tfm)
         self.set_child('exp_avg_sq', exp_avg_sq_tfm)
 
-        self._projected_keys["grad"].add("exp_avg")
-        self._projected_keys["grad_sq"].add("exp_avg_sq")
-        self._projected_keys["grad_sq"].add("max_exp_avg_sq")
+        self.add_projected_keys("grad", "exp_avg")
+        self.add_projected_keys("grad_sq", "exp_avg_sq", "max_exp_avg_sq")
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):

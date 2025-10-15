@@ -30,6 +30,7 @@ class ClipValueGrowth(TensorTransform):
     ):
         defaults = dict(add=add, mul=mul, min_value=min_value, max_decay=max_decay)
         super().__init__(defaults)
+        self.add_projected_keys("grad", "prev")
 
 
     def single_tensor_apply(self, tensor, param, grad, loss, state, setting):

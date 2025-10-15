@@ -40,6 +40,7 @@ class Adagrad(TensorTransform):
         super().__init__(defaults=defaults, inner=inner)
 
         self.set_child('accumulator', accumulator_tfm)
+        self.add_projected_keys("grad", "accumulator")
 
     @torch.no_grad
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):

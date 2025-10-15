@@ -36,6 +36,7 @@ class ClipNormByEMA(TensorTransform):
     ):
         defaults = dict(beta=beta, ord=ord, tensorwise=tensorwise, init=init, min_norm=min_norm, max_ema_growth=max_ema_growth)
         super().__init__(defaults, inner=inner)
+        self.add_projected_keys("grad", "exp_avg")
 
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
@@ -136,6 +137,7 @@ class ClipValueByEMA(TensorTransform):
         super().__init__(defaults, inner=inner)
 
         self.set_child('exp_avg', exp_avg_tfm)
+        self.add_projected_keys("grad", "exp_avg")
 
     def single_tensor_initialize(self, tensor, param, grad, loss, state, setting):
         state["exp_avg"] = tensor.abs() * setting["init"]

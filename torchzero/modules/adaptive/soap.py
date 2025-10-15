@@ -1,12 +1,13 @@
-from operator import itemgetter
 import warnings
+from operator import itemgetter
 
 import torch
 
-from ...core import TensorTransform, Chainable
-from ...utils import unpack_dicts, unpack_states, TensorList, NumberList
-from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
+from ...core import Chainable, TensorTransform
 from ...linalg import torch_linalg
+from ...modules.adaptive.shampoo import _merge_small_dims, _unmerge_small_dims
+from ...utils import NumberList, TensorList, unpack_dicts, unpack_states
+
 
 @torch.no_grad
 def update_soap_covariances_(

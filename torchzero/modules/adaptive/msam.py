@@ -121,6 +121,8 @@ class MSAMMomentum(TensorTransform):
         defaults = dict(lr = lr, momentum=momentum, rho=rho, nesterov=nesterov, lerp=lerp, weight_decay=weight_decay)
         super().__init__(defaults, uses_grad=False)
 
+        self.add_projected_keys("grad", "velocity")
+
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         velocity = unpack_states(states, tensors, 'velocity', cls=TensorList)
@@ -180,6 +182,7 @@ class MSAM(Transform):
         super().__init__(defaults)
 
         self.set_child('modules', modules)
+        self.add_projected_keys("grad", "velocity")
 
 
     @torch.no_grad

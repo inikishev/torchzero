@@ -87,6 +87,9 @@ class Adan(TensorTransform):
         self.set_child("v", v_tfm)
         self.set_child("n", n_tfm)
 
+        self.add_projected_keys("grad_sq", "m", "v", "g_prev")
+        self.add_projected_keys("grad", "n")
+
     @torch.no_grad
     def multi_tensor_update(self, tensors, params, grads, loss, states, settings):
         tensors = TensorList(tensors)

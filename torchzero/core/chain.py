@@ -1,8 +1,9 @@
 from collections.abc import Iterable
 
 from ..utils.python_tools import flatten
-from .module import Module, Chainable
 from .functional import _chain_step
+from .module import Chainable, Module
+
 
 class Chain(Module):
     """Chain modules, mostly used internally"""
