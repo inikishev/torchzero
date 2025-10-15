@@ -27,7 +27,7 @@ def get_momentum(trial: optuna.Trial, prefix: str, conditional: bool=True) -> li
             m = NAG(beta, dampening, lerp)
             if debiased: m = Chain(m, Debias(beta1=beta))
         else:
-            m = EMA(beta, dampening, debiased=debiased, lerp=lerp)
+            m = EMA(beta, dampening, debias=debiased, lerp=lerp)
         return [m]
     return []
 

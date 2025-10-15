@@ -105,7 +105,7 @@ def test_adam(amsgrad):
     tz_fn_ops = lambda p: tz.Optimizer(
         p,
         tz.m.DivModules(
-            tz.m.EMA(0.9, debiased=True),
+            tz.m.EMA(0.9, debias=True),
             [tz.m.SqrtEMASquared(0.999, debiased=True, amsgrad=amsgrad), tz.m.Add(1e-8)]
         ))
     tz_fn_ops2 = lambda p: tz.Optimizer(
