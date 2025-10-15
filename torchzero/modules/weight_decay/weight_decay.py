@@ -166,3 +166,75 @@ class DirectWeightDecay(Module):
 
         decay_weights_(objective.params, weight_decay, ord)
         return objective
+
+
+@torch.no_grad
+def cautious_weight_decay_(
+    grad_: TensorList,
+    params: TensorList,
+    weight_decay: float | NumberList,
+    ord: int = 2
+):
+    """modifies in-place and returns ``grad_``. https://arxiv.org/abs/2510.12402"""
+    mask = (grad_ * params) > 0
+    if ord == 1: return grad_.add_(params.sign().mul_(weight_decay).mul_(mask))
+    if ord == 2: return grad_.add_(params.mul(weight_decay).mul_(mask))
+    if ord - 1 % 2 != 0: return grad_.add_(params.pow(ord-1).mul_(weight_decay).mul_(mask))
+    return grad_.add_(params.pow(ord-1).copysign_(params).mul_(weight_decay).mul_(mask))
+
+
+class CautiousWeightDecay(TensorTransform):
+    """Cautious weight decay (https://arxiv.org/pdf/2510.12402).
+
+    Weight decay but only applied to updates where update sign matches weight decay sign.
+
+    Args:
+        weight_decay (float): weight decay scale.
+        ord (int, optional): order of the penalty, e.g. 1 for L1 and 2 for L2. Defaults to 2.
+        target (Target, optional): what to set on var. Defaults to 'update'.
+
+    ### Examples:
+
+    Adam with non-decoupled cautious weight decay
+    ```python
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.CautiousWeightDecay(1e-3),
+        tz.m.Adam(),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    Adam with decoupled cautious weight decay that still scales with learning rate
+    ```python
+
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.CautiousWeightDecay(1e-3),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    Adam with fully decoupled cautious weight decay that doesn't scale with learning rate
+    ```python
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.Adam(),
+        tz.m.LR(1e-3),
+        tz.m.CautiousWeightDecay(1e-6)
+    )
+    ```
+
+    """
+    def __init__(self, weight_decay: float, ord: int = 2):
+
+        defaults = dict(weight_decay=weight_decay, ord=ord)
+        super().__init__(defaults)
+
+    @torch.no_grad
+    def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
+        weight_decay = NumberList(s['weight_decay'] for s in settings)
+        ord = settings[0]['ord']
+
+        return cautious_weight_decay_(as_tensorlist(tensors), as_tensorlist(params), weight_decay, ord)
