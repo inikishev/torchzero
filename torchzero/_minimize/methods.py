@@ -14,82 +14,87 @@ from ..utils import tofloat
 
 
 def _get_method_from_str(method: str) -> list[Module]:
-    method = ''.join(c for c in method.lower().strip() if c.isalnum())
+    stripped = ''.join(c for c in method.lower().strip() if c.isalnum())
 
-    if method == "bfgs":
+    if stripped == "bfgs":
         return [m.RestartOnStuck(m.BFGS()), m.Backtracking()]
 
-    if method == "lbfgs":
+    if stripped == "lbfgs":
         return [m.LBFGS(100), m.Backtracking()]
 
-    if method == "newton":
+    if stripped == "newton":
         return [m.Newton(), m.Backtracking()]
 
-    if method == "sfn":
+    if stripped == "sfn":
         return [m.Newton(eigval_fn=lambda x: x.abs().clip(min=1e-10)), m.Backtracking()]
 
-    if method == "inm":
+    if stripped == "inm":
         return [m.ImprovedNewton(), m.Backtracking()]
 
-    if method == 'crn':
+    if stripped == 'crn':
         return [m.CubicRegularization(m.Newton())]
 
-    if method == "commondirections":
+    if stripped == "commondirections":
         return [m.SubspaceNewton(sketch_type='common_directions'), m.Backtracking()]
 
-    if method == "trust":
+    if stripped == "trust":
         return [m.LevenbergMarquardt(m.Newton())]
 
-    if method == "trustexact":
-        return [m.TrustCG(m.Newton())]
-
-    if method == "dogleg":
+    if stripped == "dogleg":
         return [m.Dogleg(m.Newton())]
 
-    if method == "trustbfgs":
-        return [m.LevenbergMarquardt(m.BFGS())]
+    if stripped == "trustbfgs":
+        return [m.RestartOnStuck(m.LevenbergMarquardt(m.BFGS()))]
 
-    if method == "trustsr1":
-        return [m.LevenbergMarquardt(m.SR1())]
+    if stripped == "trustsr1":
+        return [m.RestartOnStuck(m.LevenbergMarquardt(m.SR1()))]
 
-    if method == "newtoncg":
+    if stripped == "newtoncg":
         return [m.NewtonCG(), m.Backtracking()]
 
-    if method == "tn":
+    if stripped == "tn":
         return [m.NewtonCG(maxiter=10), m.Backtracking()]
 
-    if method == "trustncg":
+    if stripped == "trustncg":
         return [m.NewtonCGSteihaug()]
 
-    if method == "gd":
+    if stripped == "gd":
         return [m.Backtracking()]
 
-    if method == "cg":
+    if stripped == "cg":
         return [m.FletcherReeves(), m.StrongWolfe(c2=0.1, fallback=True)]
 
-    if method == "bb":
+    if stripped in ("shor", "shorr"):
+        return [m.ShorR(), m.StrongWolfe(c2=0.1, fallback=True)]
+
+    if stripped == "pgm":
+        return [m.ProjectedGradientMethod(), m.StrongWolfe(c2=0.1, fallback=True)]
+
+    if stripped == "bb":
         return [m.RestartOnStuck(m.BarzilaiBorwein())]
 
-    if method == "bbstab":
+    if stripped == "bbstab":
         return [m.BBStab()]
 
-    if method == "adgd":
+    if stripped == "adgd":
         return [m.AdGD()]
 
-    if method in ("gn", "gaussnewton"):
+    if stripped in ("bd", "bolddriver"):
+        return [m.BoldDriver()]
+
+    if stripped in ("gn", "gaussnewton"):
         return [m.GaussNewton(), m.Backtracking()]
 
-    if method == "rprop":
+    if stripped == "rprop":
         return [m.Rprop(alpha=1e-3)]
 
-    if method == "lm":
+    if stripped == "lm":
         return [m.LevenbergMarquardt(m.GaussNewton())]
 
-    if method == "mlm":
+    if stripped == "mlm":
         return [m.LevenbergMarquardt(m.GaussNewton(), y=1)]
 
-    if method == "cd":
+    if stripped == "cd":
         return [m.CD(), m.ScipyMinimizeScalar(maxiter=8)]
 
-
-    raise NotImplementedError(method)
+    raise NotImplementedError(stripped)
