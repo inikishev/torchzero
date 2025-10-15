@@ -88,6 +88,10 @@ class CubicAdam(TensorTransform):
         defaults=dict(beta1=beta1,beta2=beta2,beta3=beta3,eps=eps,debiased=debiased,alpha=alpha,mode=mode)
         super().__init__(defaults)
 
+        self.add_projected_keys("grad", "exp_avg")
+        self.add_projected_keys("grad_sq", "exp_avg_sq")
+        self.add_projected_keys("grad_cu", "exp_avg_cu")
+
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         step = self.global_state['step'] = self.global_state.get('step', 0) + 1

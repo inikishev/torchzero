@@ -21,4 +21,4 @@ from .variance_reduction import *
 from .weight_decay import *
 from .wrappers import *
 from .zeroth_order import *
-from .basis import SOAPBasis
+from .basis import *

@@ -353,6 +353,7 @@ class Module(ABC):
         if isinstance(buff, str): buff = (buff, )
 
         child = self.children[key]
+        child.on_get_projected_buffers()
         if params is None:
             params = self._fake_params[key]
 
@@ -361,7 +362,21 @@ class Module(ABC):
             for buff_key in child._projected_keys[b]:
                 state = child.state[params[0]]
                 if buff_key in state:
-                    vals.append([child.state[p][buff_key] for p in params])
+                    tensors = [child.state[p][buff_key] for p in params]
+                    if isinstance(tensors[0], torch.Tensor):
+                        vals.append(tensors)
+                    else: # its usually a deque
+                        assert isinstance(tensors[0], Sequence), type(tensors[0])
+                        vals.extend(zip(*tensors))
+
+                elif buff_key in child.global_state:
+                    val = child.global_state[buff_key]
+                    if len(val) == 0: continue
+                    if isinstance(val[0], torch.Tensor):
+                        vals.append(val)
+                    else:
+                        assert isinstance(val[0], Sequence)
+                        vals.extend(zip(*vals))
 
         # recursively do this on children,
         # note that if params are fake, children will have same fake params
@@ -446,6 +461,9 @@ class Module(ABC):
         and then ``apply``.
         """
         for c in self.children.values(): c.reset_for_online()
+
+    def on_get_projected_buffers(self):
+        """runs before projected buffers are accessed"""
 
     def _extra_pack(self) -> dict:
         """extra information to store in ``state_dict`` of this optimizer.

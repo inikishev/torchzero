@@ -44,14 +44,13 @@ class GGT(TensorTransform):
     """
     GGT method from https://arxiv.org/pdf/1806.02958
 
-    The update rule is to stack recent gradients into M, compute U, S <- SVD(M), then calculate update as U S^-1 Uᵀg.
-    But it uses eigendecomposition on MᵀM to get U and S^2 because that is faster when you don't neeed V.
+    The update rule is to stack recent gradients into M and
+    compute eigendecomposition of M M^T via eigendecomposition of M^T M.
 
     This is equivalent to full-matrix Adagrad on recent gradients.
 
     Args:
         history_size (int, optional): number of past gradients to store. Defaults to 10.
-        beta (float, optional): beta for momentum maintained in whitened space. Defaults to 0.0.
         update_freq (int, optional): frequency of updating the preconditioner (U and S). Defaults to 1.
         eig_tol (float, optional): removes eigenvalues this much smaller than largest eigenvalue. Defaults to 1e-7.
         truncate (int, optional): number of larges eigenvalues to keep. None to disable. Defaults to None.
@@ -115,6 +114,7 @@ class GGT(TensorTransform):
         del defaults['self'], defaults['inner'], defaults['concat_params']
 
         super().__init__(defaults, concat_params=concat_params, inner=inner)
+        self.add_projected_keys("grad", "history")
 
     @torch.no_grad
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):

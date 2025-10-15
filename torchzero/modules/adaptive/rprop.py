@@ -128,15 +128,15 @@ def rprop_(
 
 class Rprop(TensorTransform):
     """
-    Resilient propagation. The update magnitude gets multiplied by `nplus` if gradient didn't change the sign,
-    or `nminus` if it did. Then the update is applied with the sign of the current gradient.
+    Resilient propagation. The update magnitude gets multiplied by ``nplus`` if gradient didn't change the sign,
+    or ``nminus`` if it did. Then the update is applied with the sign of the current gradient.
 
     Additionally, if gradient changes sign, the update for that weight is reverted.
     Next step, magnitude for that weight won't change.
 
     Compared to pytorch this also implements backtracking update when sign changes.
 
-    This implementation is identical to :code:`torch.optim.Rprop` if :code:`backtrack` is set to False.
+    This implementation is identical to ``torch.optim.Rprop`` if ``backtrack`` is set to False.
 
     Args:
         nplus (float): multiplicative increase factor for when ascent didn't change sign (default: 1.2).
@@ -163,6 +163,8 @@ class Rprop(TensorTransform):
     ):
         defaults = dict(nplus = nplus, nminus = nminus, alpha = alpha, lb = lb, ub = ub, backtrack=backtrack)
         super().__init__(defaults, uses_grad=False)
+
+        self.add_projected_keys("grad", "prev")
 
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
@@ -196,14 +198,14 @@ class Rprop(TensorTransform):
 
 class ScaleLRBySignChange(TensorTransform):
     """
-    learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign,
-    or `nminus` if it did.
+    learning rate gets multiplied by ``nplus`` if ascent/gradient didn't change the sign,
+    or ``nminus`` if it did.
 
     This is part of RProp update rule.
 
     Args:
-        nplus (float): learning rate gets multiplied by `nplus` if ascent/gradient didn't change the sign
-        nminus (float): learning rate gets multiplied by `nminus` if ascent/gradient changed the sign
+        nplus (float): learning rate gets multiplied by ``nplus`` if ascent/gradient didn't change the sign
+        nminus (float): learning rate gets multiplied by ``nminus`` if ascent/gradient changed the sign
         lb (float): lower bound for lr.
         ub (float): upper bound for lr.
         alpha (float): initial learning rate.

@@ -16,8 +16,6 @@ def get_orthogonal_matrix_QR(grad_sqs: list[torch.Tensor], GG: list[torch.Tensor
     """
     Computes the eigenbases of the preconditioner using one round of power iteration
     followed by torch.linalg.qr decomposition.
-
-    Approximately modifies ``exp_avg_sq`` to be in the new eigenbases.
      """
     final = []
 
@@ -45,6 +43,64 @@ def get_orthogonal_matrix_QR(grad_sqs: list[torch.Tensor], GG: list[torch.Tensor
 class SOAPBasis(TensorTransform):
     """
     Run another optimizer in Shampoo eigenbases.
+
+    Note:
+        the buffers of the ``basis_opt`` are re-projected whenever basis changes. The reprojection logic is not implemented on all modules. The supported modules are:
+
+        ``Adagrad``, ``Adam``, ``Adan``, ``Lion``, ``MARSCorrection``, ``MSAMMomentum``, ``RMSprop``, ``EMA``, ``HeavyBall``, ``NAG``, ``ClipNormByEMA``, ``ClipValueByEMA``, ``NormalizeByEMA``, ``ClipValueGrowth``, ``CoordinateMomentum``, ``CubicAdam``.
+
+        Additionally most modules with no internal buffers are supported, e.g. ``Cautious``, ``Sign``, ``ClipNorm``, ``Orthogonalize``, etc. However modules that use parameters, such as ``WeighDecay`` can't be supported, as parameters aren't projected.
+
+    Args:
+        basis_opt (Chainable): module or modules to run in Shampoo eigenbases.
+        shampoo_beta (float | None, optional):
+            beta for covariance matrices accumulators. Can be None, then it just sums them like Adagrad (which works worse). Defaults to 0.95.
+        precond_freq (int, optional): How often to update the preconditioner. Defaults to 10.
+        merge_small (bool, optional): Whether to merge small dims. Defaults to True.
+        max_dim (int, optional): Won't precondition dims larger than this. Defaults to 10_000.
+        precondition_1d (bool, optional):
+            Whether to precondition 1d params (SOAP paper sets this to False). Defaults to True.
+        inner (Chainable | None, optional):
+            output of this module is projected and ``basis_opt`` will run on it, but preconditioners are updated
+            from original gradients.
+
+    Examples:
+    SOAP with MARS and AMSGrad:
+    ```python
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.SOAPBasis([tz.m.MARSCorrection(0.95), tz.m.Adam(0.95, 0.95, amsgrad=True)]),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    LaProp in Shampoo eigenbases (SOLP):
+    ```python
+
+    # we define LaProp through other modules, moved it out for brevity
+    laprop = (
+        tz.m.RMSprop(0.95),
+        tz.m.Debias(beta1=None, beta2=0.95),
+        tz.m.EMA(0.95),
+        tz.m.Debias(beta1=0.95, beta2=None),
+    )
+
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.SOAPBasis(laprop),
+        tz.m.LR(1e-3)
+    )
+    ```
+
+    Lion in Shampoo eigenbases (works kinda well):
+    ```python
+
+    opt = tz.Optimizer(
+        model.parameters(),
+        tz.m.SOAPBasis(tz.m.Lion()),
+        tz.m.LR(1e-3)
+    )
+    ```
     """
     def __init__(
         self,
@@ -113,7 +169,6 @@ class SOAPBasis(TensorTransform):
             return TensorList(tensors).clamp(-0.1, 0.1)
             # return TensorList(tensors).zero_()
 
-        fs = settings[0]
         merged_updates = [] # for when exp_avg is maintained unprojected
         merged_grads = [] # this doesn't go into preconditioner
         projected = []
@@ -129,8 +184,10 @@ class SOAPBasis(TensorTransform):
         for grad, update, state, setting in zip(tensors, updates, states, settings):
             if setting["merge_small"]:
                 update, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(update, setting["max_dim"])
-                if has_inner:
+                if has_inner: # grad is a different tensor, merge it too
                     grad, _, _ = _merge_small_dims(grad, setting["max_dim"])
+                else: # in this case update is still just grad
+                    grad = update
 
             merged_updates.append(update)
             merged_grads.append(grad)
@@ -161,7 +218,7 @@ class SOAPBasis(TensorTransform):
         grad_buffs = self.get_child_projected_buffers("basis_opt", "grad")
         grad_sq_buffs = self.get_child_projected_buffers("basis_opt", ["grad_sq", "grad_cu"])
 
-        for grad, g_buffs, g_sq_buffs, state, setting in zip(merged_grads, grad_buffs, grad_sq_buffs, states, settings):
+        for i, (grad, state, setting) in enumerate(zip(merged_grads, states, settings)):
             if state['GG'] is not None:
 
                 # lerp covariances
@@ -169,6 +226,8 @@ class SOAPBasis(TensorTransform):
 
                 # (state['step'] - 1) since we start updating on 2nd step
                 if (state['step'] - 1) % setting['precond_freq'] == 0:
+                    g_buffs = [b[i] for b in grad_buffs]
+                    g_sq_buffs = [b[i] for b in grad_sq_buffs]
 
                     # unproject grad buffers before updating
                     g_buffs_unproj = [project_back(buff, state["Q"]) for buff in g_buffs]

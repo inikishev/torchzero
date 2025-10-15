@@ -29,6 +29,8 @@ class CoordinateMomentum(TensorTransform):
         defaults = dict(p=p)
         super().__init__(defaults)
 
+        self.add_projected_keys("grad", "velocity")
+
     @torch.no_grad
     def multi_tensor_apply(self, tensors, params, grads, loss, states, settings):
         p = NumberList(s['p'] for s in settings)

@@ -238,8 +238,10 @@ class SOAP(TensorTransform):
         for grad, update, state, setting in zip(tensors, updates, states, settings):
             if setting["merge_small"]:
                 update, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(update, setting["max_dim"])
-                if has_inner:
+                if has_inner: # grad is a different tensor, merge it too
                     grad, _, _ = _merge_small_dims(grad, setting["max_dim"])
+                else: # in this case update is still just grad
+                    grad = update
 
             merged_updates.append(update)
             merged_grads.append(grad)

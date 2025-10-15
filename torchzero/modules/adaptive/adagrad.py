@@ -236,6 +236,7 @@ class FullMatrixAdagrad(TensorTransform):
         super().__init__(defaults=defaults, inner=inner, concat_params=concat_params)
 
         self.set_child("accumulator", accumulator_tfm)
+        self.add_projected_keys("covariance", "accumulator")
 
     @torch.no_grad
     def single_tensor_update(self, tensor, param, grad, loss, state, setting):
