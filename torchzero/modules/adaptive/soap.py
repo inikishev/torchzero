@@ -222,26 +222,31 @@ class SOAP(TensorTransform):
             # return TensorList(tensors).zero_()
 
         fs = settings[0]
-        merged = []
+        merged_updates = [] # for when exp_avg is maintained unprojected
+        merged_grads = [] # this doesn't go into preconditioner
         projected = []
 
         # -------------------------------- inner step -------------------------------- #
-        mod_tensors = tensors # this doesn't go into preconditioner
-        if "inner" in self.children:
-            mod_tensors = self.inner_step_tensors("inner", tensors, clone=True,
+        updates = tensors
+        has_inner = "inner" in self.children
+        if has_inner:
+            updates = self.inner_step_tensors("inner", updates, clone=True,
                                               params=params, grads=grads, loss=loss)
 
         # ---------------------------------- project --------------------------------- #
-        for tensor, state, setting in zip(mod_tensors, states, settings):
+        for grad, update, state, setting in zip(tensors, updates, states, settings):
             if setting["merge_small"]:
-                tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
+                update, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(update, setting["max_dim"])
+                if has_inner:
+                    grad, _, _ = _merge_small_dims(grad, setting["max_dim"])
 
-            merged.append(tensor)
+            merged_updates.append(update)
+            merged_grads.append(grad)
 
             if state['GG'] is not None:
-                tensor = project(tensor, state['Q'])
+                update = project(update, state['Q'])
 
-            projected.append(tensor)
+            projected.append(update)
 
 
         # ------------------------ run adam in projected space ----------------------- #
@@ -255,7 +260,7 @@ class SOAP(TensorTransform):
         # or lerp in original space and project
         else:
             exp_avg = exp_avg_proj
-            exp_avg.lerp_(merged, weight=1-beta1)
+            exp_avg.lerp_(merged_updates, weight=1-beta1)
             exp_avg_proj = []
             for t, state, setting in zip(exp_avg, states, settings):
                 if state['GG'] is not None:
@@ -283,11 +288,11 @@ class SOAP(TensorTransform):
         # -------------------------- update preconditioners -------------------------- #
         # Update is done after the gradient step to avoid using current gradients in the projection.
 
-        for tensor, state, setting in zip(merged, states, settings):
+        for grad, state, setting in zip(merged_grads, states, settings):
             if state['GG'] is not None:
 
                 # lerp covariances
-                update_soap_covariances_(tensor, state['GG'], beta=setting["shampoo_beta"])
+                update_soap_covariances_(grad, state['GG'], beta=setting["shampoo_beta"])
 
                 # (state['step'] - 1) since we start updating on 2nd step
                 if (state['step'] - 1) % setting['precond_freq'] == 0:

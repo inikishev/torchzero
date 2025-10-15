@@ -31,7 +31,7 @@ class Transform(Module):
 
         self._objective = None
         if inner is not None:
-            self.set_child("inner", inner)
+            self.set_child("__inner", inner)
 
     # settings shouldn't mutate, so they are typed as Sequence[Mapping]
     def update_states(self, objective: "Objective", states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> None:
@@ -70,8 +70,8 @@ class Transform(Module):
     def apply(self, objective: "Objective"):
 
         # inner step
-        if "inner" in self.children:
-            inner = self.children["inner"]
+        if "__inner" in self.children:
+            inner = self.children["__inner"]
             objective = inner.step(objective)
 
         # apply and return
