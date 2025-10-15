@@ -3,7 +3,7 @@ from collections.abc import Sequence, Iterable, Mapping
 import warnings
 import torch, numpy as np
 
-
+from .torch_tools import set_storage_
 
 Params = Iterable[torch.Tensor | tuple[str, torch.Tensor] | Mapping[str, Any]]
 
@@ -146,4 +146,16 @@ def _set_update_and_grad_(
             if grads_iter is not None: group_grads[i] = next(grads_iter)
 
     return param_groups
+
+
+def _set_fake_params_(fake_params: Iterable[torch.Tensor], storage: Iterable[torch.Tensor]):
+    """sets ``fake_params`` storage to ``storage`` while they remain the same python object"""
+    for fake_p, s in zip(fake_params, storage):
+        fake_p.set_(s.view_as(s).requires_grad_()) # pyright: ignore[reportArgumentType]
+
+def _empty_fake_param_storage_(fake_params: Iterable[torch.Tensor]):
+    """sets ``fake_params`` storage to empty while they remain the same python object"""
+    for p in fake_params:
+        set_storage_(p, torch.empty(0, device=p.device, dtype=p.dtype))
+
 

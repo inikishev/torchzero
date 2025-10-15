@@ -83,6 +83,7 @@ def step_tensors(
         modules = (modules, )
 
     # make fake params if they are only used for shapes
+    # note that if modules use states, tensors must always be the same python object
     if params is None:
         params = [t.view_as(t).requires_grad_() for t in tensors]
 
@@ -96,7 +97,7 @@ def step_tensors(
     objective.updates = list(tensors)
 
     # step with modules
-    # this won't update parameters in-place because objective.Optimizer is None
+    # this won't update parameters in-place (on modules with fused update) because objective.Optimizer is None
     objective = _chain_step(objective, modules)
 
     # return updates

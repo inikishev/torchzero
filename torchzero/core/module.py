@@ -8,7 +8,7 @@ import torch
 
 from ..linalg.linear_operator import LinearOperator
 from ..utils.optimizer import Init, ListLike, get_state_vals
-from ..utils.params import Params, _make_param_groups
+from ..utils.params import Params, _make_param_groups, _set_fake_params_, _empty_fake_param_storage_
 from .functional import step_tensors
 
 if TYPE_CHECKING:
@@ -55,6 +55,9 @@ class Module(ABC):
 
         self._projected_keys: defaultdict[ProjectedBuffs, set[str]] = defaultdict(set)
         """tracks keys with gradient-like buffers, covariance-like buffers, etc for reprojecting"""
+
+        self._fake_params: dict[str, list[torch.Tensor]] = {}
+        """fake parameters for state keys and shape inference, key is name of child, value is list of fake parameters"""
 
 
     def set_param_groups(self, param_groups: Params):
@@ -127,7 +130,9 @@ class Module(ABC):
             clone (bool):
                 If ``key`` exists, whether to clone ``tensors`` to avoid modifying buffers in-place.
                 If ``key`` doesn't exist, ``tensors`` are always returned without cloning
-            params (Iterable[torch.Tensor] | None, optional): pass None if ``tensors`` have different shape. Defaults to None.
+            params (Iterable[torch.Tensor] | None, optional):
+                pass None if ``tensors`` have different shape, it will create fake params from tensors
+                for state keys and shape inference. Defaults to None.
             grads (Sequence[torch.Tensor] | None, optional): grads. Defaults to None.
             loss (torch.Tensor | None, optional): loss. Defaults to None.
             closure (Callable | None, optional): closure. Defaults to None.
@@ -141,8 +146,25 @@ class Module(ABC):
             return tensors
 
         if clone: tensors = [t.clone() for t in tensors]
-        return step_tensors(modules=child, tensors=tensors, params=params, grads=grads,
+
+        # set fake params to same storage as tensors so as to not use any extra memory
+        # while they still refer to same python objects, so they can be used
+        # as state keys and for shape inference when params aren't given.
+        fake = params is None
+        if fake:
+            if key not in self._fake_params:
+                self._fake_params[key] = tensors
+            params = self._fake_params[key]
+            _set_fake_params_(params, tensors)
+
+        update = step_tensors(modules=child, tensors=tensors, params=params, grads=grads,
                             loss=loss, closure=closure, objective=objective)
+
+        # set fake params storage to empty
+        if fake:
+            _empty_fake_param_storage_(params)
+
+        return update
 
 
     def __repr__(self):

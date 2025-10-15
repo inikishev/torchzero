@@ -172,6 +172,9 @@ class SOAP(TensorTransform):
         if setting["merge_small"]:
             tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
 
+        state["exp_avg_proj"] = torch.zeros_like(tensor)
+        state["exp_avg_sq_proj"] = torch.zeros_like(tensor)
+
         if tensor.ndim <= 1 and not setting["precondition_1d"]:
             state['GG'] = []
 
@@ -214,29 +217,40 @@ class SOAP(TensorTransform):
             return TensorList(tensors).clamp(-0.1, 0.1)
             # return TensorList(tensors).zero_()
 
-
         fs = settings[0]
-        merged = []
+        merged_updates = [] # for when exp_avg is maintained unprojected
+        merged_grads = [] # this doesn't go into preconditioner
         projected = []
+
+        # -------------------------------- inner step -------------------------------- #
+        updates = tensors
+        has_inner = "inner" in self.children
+        if has_inner:
+            updates = self.inner_step_tensors("inner", updates, clone=True,
+                                              params=params, grads=grads, loss=loss)
+
         # ---------------------------------- project --------------------------------- #
-
-        for tensor, state, setting in zip(tensors, states, settings):
+        for grad, update, state, setting in zip(tensors, updates, states, settings):
             if setting["merge_small"]:
-                tensor, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(tensor, setting["max_dim"])
+                update, state['flat_sizes'], state['sort_idxs'] = _merge_small_dims(update, setting["max_dim"])
+                if has_inner:
+                    grad, _, _ = _merge_small_dims(grad, setting["max_dim"])
 
-            merged.append(tensor)
+            merged_updates.append(update)
+            merged_grads.append(grad)
 
             if state['GG'] is not None:
-                tensor = project(tensor, state['Q'])
+                update = project(update, state['Q'])
 
-            projected.append(tensor)
+            projected.append(update)
+
 
         # ------------------------ run opt in projected space ----------------------- #
-        projected = self.inner_step_tensors("basis_opt", tensors=projected, clone=False, grads=projected)
+        dirs_proj = self.inner_step_tensors("basis_opt", tensors=projected, clone=True, grads=projected)
 
         # ------------------------------- project back ------------------------------- #
         dirs: list[torch.Tensor] = []
-        for dir, state, setting in zip(projected, states, settings):
+        for dir, state, setting in zip(dirs_proj, states, settings):
             if state['GG'] is not None:
                 dir = project_back(dir, state['Q'])
 
@@ -245,32 +259,24 @@ class SOAP(TensorTransform):
 
             dirs.append(dir)
 
-
-        # -------------------------------- inner step -------------------------------- #
-        if "inner" in self.children:
-            tensors = self.inner_step_tensors("inner", tensors, clone=False,
-                                              params=params, grads=grads,loss=loss)
-
-            # we now have to re-merge small dims on updated tensors
-            merged = []
-            for tensor, state, setting in zip(tensors, states, settings):
-                if setting["merge_small"]:
-                    tensor, _, _ = _merge_small_dims(tensor, setting["max_dim"])
-                    merged.append(tensor)
-
         # -------------------------- update preconditioners -------------------------- #
         # Update is done after the gradient step to avoid using current gradients in the projection.
 
-        for tensor, state, setting in zip(merged, states, settings):
+        for grad, state, setting in zip(merged_grads, states, settings):
             if state['GG'] is not None:
 
                 # lerp covariances
-                update_soap_covariances_(tensor, state['GG'], beta=setting["shampoo_beta"])
+                update_soap_covariances_(grad, state['GG'], beta=setting["shampoo_beta"])
 
                 # (state['step'] - 1) since we start updating on 2nd step
                 if (state['step'] - 1) % setting['precond_freq'] == 0:
 
                     # unproject exp_avg before updating if it is maintained projected
+                    unprojected = []
+                    basis_opt = self.children["basis_opt"]
+                    for k in basis_opt._projected_keys["grad"]:
+
+
                     exp_avg = project_back(state["exp_avg_proj"], state["Q"])
 
                     # update projection matrix and exp_avg_sq_proj
