@@ -285,8 +285,8 @@ def rank1_eigh(v: torch.Tensor):
     vv = v.dot(v)
     norm = vv.sqrt().clip(min=torch.finfo(vv.dtype).tiny * 2)
 
-    L = vv.unsqueeze(0) # (rank, )
-    Q = v.unsqueeze(-1) / norm # (m, rank)
+    L = vv.unsqueeze(0) # (1, )
+    Q = v.unsqueeze(-1) / norm # (m, 1)
 
     return L, Q
 

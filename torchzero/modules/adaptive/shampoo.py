@@ -31,7 +31,7 @@ def update_shampoo_preconditioner_(
             if reg != 0:
                 accumulator = accumulator + torch.eye(accumulator.size(0), device=accumulator.device, dtype=accumulator.dtype).mul_(reg)
 
-            if matrix_power is None: matrix_power = -1 / max(grad.ndim, 2)
+            if matrix_power is None: matrix_power = -1 / max(grad.ndim * 2, 2)
             set_storage_(preconditioner, _matrix_power(accumulator, matrix_power, method=matrix_power_method))
 
 def apply_shampoo_preconditioner(
