@@ -130,7 +130,7 @@ class GGT(TensorTransform):
         step = state.get('step', 0)
         state['step'] = step + 1
 
-        if step % update_freq == 0 :
+        if step % update_freq == 0:
 
             # compute new factors
             L = state.get("L", None)

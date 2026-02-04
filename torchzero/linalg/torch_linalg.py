@@ -46,7 +46,7 @@ def eigh(A: torch.Tensor, UPLO="L", retry_float64:bool=False) -> tuple[torch.Ten
     try:
         return torch.linalg.eigh(A, UPLO=UPLO) # pylint:disable=not-callable
 
-    except torch.linalg.LinAlgError as e:
+    except (torch.linalg.LinAlgError, RuntimeError) as e:
         if not retry_float64: raise e
         dtype = A.dtype
         if dtype == torch.float64: raise e

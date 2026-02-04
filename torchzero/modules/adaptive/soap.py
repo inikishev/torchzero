@@ -51,6 +51,7 @@ def project_back(tensor: torch.Tensor, Q: list[torch.Tensor| None]):
     return tensor
 
 # function from https://github.com/nikhilvyas/SOAP/blob/main/soap.py
+# this is only used once per accumulator to initialize it
 @torch.no_grad
 def get_orthogonal_matrix(mats: list[torch.Tensor | None]):
     """
@@ -64,7 +65,19 @@ def get_orthogonal_matrix(mats: list[torch.Tensor | None]):
             final.append(None)
             continue
 
-        _, Q = torch_linalg.eigh(M + 1e-30 * torch.eye(M.shape[0], device=M.device), retry_float64=True)
+        if not torch.isfinite(M).all():
+            raise RuntimeError(f"Initial gradient for parameter {M.shape} has non-finite values.")
+
+        M_f64 = M.to(torch.float64) + 1e-30 * torch.eye(M.shape[0], device=M.device, dtype=torch.float64)
+        try:
+            _, Q_f64 = torch_linalg.eigh(M_f64)
+        except RuntimeError as e:
+            if M_f64.is_cpu: raise e
+            M_f64 = M_f64.cpu()
+            _, Q_f64 = torch_linalg.eigh(M_f64) # apparently there is a bug in CUDA eigh
+            Q_f64 = Q_f64.to(M.device)
+
+        Q = Q_f64.to(M.dtype)
 
         Q = torch.flip(Q, [1])
         final.append(Q)
@@ -156,7 +169,7 @@ class SOAP(TensorTransform):
         beta2: float = 0.95,
         shampoo_beta: float | None = 0.95,
         precond_freq: int = 10,
-        merge_small: bool = True,
+        merge_small: bool = False,
         max_dim: int = 4096,
         precondition_1d: bool = True,
         eps: float = 1e-8,

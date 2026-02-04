@@ -1,5 +1,9 @@
+from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
+from typing import Any
 import torch
+
+from myai.legacy.torchzero.core.objective import Objective
 from ...utils import TensorList, NumberList, unpack_dicts, unpack_states
 from ...core import Transform
 
@@ -126,6 +130,8 @@ class SAM(Transform):
 
         objective.closure = sam_closure
 
+    def apply_states(self, objective: Objective, states: list[dict[str, Any]], settings: Sequence[Mapping[str, Any]]) -> Objective:
+        return objective
 # different class because defaults for SAM are bad for ASAM
 class ASAM(SAM):
     """Adaptive Sharpness-Aware Minimization from https://arxiv.org/pdf/2102.11600#page=6.52

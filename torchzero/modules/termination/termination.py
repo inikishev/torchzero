@@ -120,12 +120,13 @@ class TerminateByUpdateNorm(TerminationCriteriaBase):
 
 
 class TerminateOnNoImprovement(TerminationCriteriaBase):
-    def __init__(self, tol:float = 1e-8, n: int = 10):
+    def __init__(self, tol:float|None = None, n: int = 10):
         defaults = dict(tol=tol)
         super().__init__(defaults, n=n)
 
     def termination_criteria(self, objective):
         tol = self.defaults['tol']
+        if tol is None: tol = torch.finfo(objective.params[0].dtype).tiny * 2
 
         f = tofloat(objective.get_loss(False))
         if 'f_min' not in self.global_state:

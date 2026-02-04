@@ -53,11 +53,11 @@ _SingleFilter = Callable[[torch.Tensor], bool] | torch.Tensor | Iterable[torch.T
 Filter = _SingleFilter | Iterable[_SingleFilter]
 
 def _make_filter(filter: Filter):
-    if callable(filter): return filter
     if isinstance(filter, torch.Tensor):
         return lambda x: x is filter
     if isinstance(filter, torch.nn.Module):
         return _make_filter(filter.parameters())
+    if callable(filter): return filter
 
     # iterable
     filters = [_make_filter(f) for f in filter]
