@@ -40,6 +40,6 @@ jobs:
           python -m pip install scipy
           python -m pip install opt_einsum
           python -m pip install git+https://github.com/inikishev/torchzero.git
-          python -m pip install git+https://github.com/my-unlisted-repos/visualbench.git
+          python -m pip install git+https://github.com/inikishev/visualbench.git
 
       - run: mkdocs gh-deploy --force
