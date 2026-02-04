@@ -727,8 +727,8 @@ Adam = Run(
 )
 # ------------------------------ optimizers/soap ----------------------------- #
 SOAP = Run(
-    func_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(), tz.m.LR(0.4)),
-    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(precond_freq=1), tz.m.LR(1)),
+    func_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(merge_small=True), tz.m.LR(0.4)),
+    sphere_opt=lambda p: tz.Optimizer(p, tz.m.SOAP(precond_freq=1, merge_small=True), tz.m.LR(1)),
     needs_closure=False,
     # merge and unmerge lrs are very different so need to test convergence separately somewhere
     func='rosen', steps=50, loss=4, merge_invariant=False,
