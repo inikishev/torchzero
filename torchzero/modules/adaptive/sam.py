@@ -3,9 +3,8 @@ from contextlib import nullcontext
 from typing import Any
 import torch
 
-from myai.legacy.torchzero.core.objective import Objective
 from ...utils import TensorList, NumberList, unpack_dicts, unpack_states
-from ...core import Transform
+from ...core import Transform, Objective
 
 
 class SAM(Transform):
